@@ -13,6 +13,9 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
 
 ### `fairing` — the shell
 
+- The built-in settings screens group their rows in filled cards. A title with no actions is as
+  tall as its words, a section heading as tall as its text, an explanation wraps at about seventy
+  characters, and the wide settings screen's two titles sit on one line.
 - The pull-down shade has a colour role of its own, `ColorRole::ShadeSurface` (`shade_surface`
   under `[theme.palette]`). Unset, it follows `surface`; set, it colours the curtain, the floating
   card and the tile pucks without touching any other surface.

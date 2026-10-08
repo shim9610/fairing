@@ -152,9 +152,13 @@ use egui::{Response, Ui};
 ///
 /// | | draws | says |
 /// |---|---|---|
-/// | [`Filled`](Self::Filled) | `SurfaceVariant`, `card_radius`, raised | **a thing you act on** — a stat strip, a media tile, a bar you press |
+/// | [`Filled`](Self::Filled) | `SurfaceVariant`, `card_radius`, raised | **a thing you act on** — a group of settings rows, a stat strip, a media tile, a bar you press |
 /// | [`Outlined`](Self::Outlined) | a hairline, no fill, `corner_radius`, flat | **a thing you read** — a chart, a reading, a result |
-/// | [`Divided`](Self::Divided) | nothing, and a full-width rule under it | **a grouping of rows** — a settings section |
+/// | [`Divided`](Self::Divided) | nothing, and a full-width rule under it | **a plain list** — rows that run edge to edge with no box |
+///
+/// The built-in settings screens group their rows in `Filled` cards, as One UI and iOS do. They
+/// were `Divided` once, and at a one-finger row a page of edge-to-edge rows read as one long list
+/// with the sections lost in it.
 ///
 /// `Outlined` takes the smaller `corner_radius` rather than `card_radius` deliberately: a box with
 /// no fill has only its edge, and a big radius on a hairline reads as a bubble. Part of why the
@@ -485,7 +489,7 @@ impl Deco {
 }
 
 /// The vertical gap between cards (relative to the row height).
-const CARD_GAP: f32 = 0.38;
+pub(crate) const CARD_GAP: f32 = 0.38;
 /// A total row's height, relative to an ordinary row's. It carries `type_scale.heading`
 /// where a row carries `body`, and 1.375 of the text wants more than 1.0 of the row.
 const TOTAL_ROW: f32 = 1.3;
@@ -497,6 +501,11 @@ const HERO_ASPECT: f32 = 16.0 / 9.0;
 const HERO_SCRIM: f32 = 0.55;
 /// How far the explanation below a card sits from it (relative to the row height).
 const NOTE_GAP: f32 = 0.10;
+/// **The longest line an explanation runs to**, in ems of its own text size. Prose is read
+/// comfortably at 45 to 75 characters a line, and an average character is about half an em, so
+/// 36 ems is some 70 characters. Without it a note on a wide pane ran the full width — 150
+/// characters a line on a 1024 px panel — and the eye lost its place going back for the next line.
+const NOTE_MEASURE: f32 = 36.0;
 // **Four text sizes used to live here as fractions of `row_height`** — section 0.22, title 0.44,
 // note 0.23, slider 0.29 — and they are gone because a fraction of a row is not a type size. The
 // row was the only handle they had when the type scale could not be reached, and it made the
@@ -509,10 +518,9 @@ const NOTE_GAP: f32 = 0.10;
 const SECTION_TRACKING: f32 = 0.06;
 /// The gap between a section heading and the card right below it (relative to the row height). The
 /// heading **belongs to the card below** — it has to be narrower than the gap to the card above
-/// (`CARD_GAP`) for the eye to tell which one it hangs on. Zero because the label's own line box
-/// already leaves descender room under the text; anything on top of that and the heading floats
-/// midway between the two cards, claiming neither.
-const SECTION_GAP: f32 = 0.0;
+/// (`CARD_GAP`) for the eye to tell which one it hangs on: about a quarter of it, a hair more
+/// than the label's own descender room, so the text does not sit on the card's edge.
+const SECTION_GAP: f32 = 0.1;
 /// The list column's width fraction (relative to the Pane's width).
 const LIST_FRACTION: f32 = 0.36;
 /// The list column's cap (du). Wider than this and there is only empty space behind the labels.
@@ -1944,28 +1952,25 @@ pub fn header<R>(
     let sub_h = subtitle.map_or(0.0, |_| {
         line_gap + ui.ctx().fonts_mut(|f| f.row_height(&sub_font))
     });
-    // The band is at least a control tall even with no actions in it, so a header with a button and
-    // one without do not sit at different heights on two screens of the same app.
-    let band_h = (title_h + sub_h).max(crate::theme::control_height(
-        &cx.theme.metrics,
-        &cx.theme.control,
-    ));
-    let (band, _) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), band_h),
-        egui::Sense::hover(),
-    );
-
-    let text = egui::Rect::from_min_max(
-        egui::pos2(band.min.x + inset, band.min.y),
-        egui::pos2(band.max.x - inset, band.max.y),
-    );
+    // **A band with actions in it is at least a control tall**, so a button in the header has
+    // room and two headers with buttons sit at one height. A band with none is as tall as its
+    // words: reserving a control's height under a bare title left a gap between the title and the
+    // first card that read as a missing row, and at a one-finger row it was most of one.
+    let block_h = title_h + sub_h;
+    let control_h = crate::theme::control_height(&cx.theme.metrics, &cx.theme.control);
+    let top = ui.cursor().min;
+    let width = ui.available_width();
+    let with_actions = block_h.max(control_h);
     // The actions first, right to left — then the words take what is left. Painted first and
     // unbounded, a title ran under the actions as soon as the pane was narrower than both: a split
     // pane put "Dashboard" through its own badge.
     // Centred on the title's line, not on the band: see the doc.
     let slot = egui::Rect::from_min_max(
-        egui::pos2(text.min.x, band.min.y),
-        egui::pos2(text.max.x, band.min.y + title_h.max(band_h - sub_h)),
+        egui::pos2(top.x + inset, top.y),
+        egui::pos2(
+            top.x + width - inset,
+            top.y + title_h.max(with_actions - sub_h),
+        ),
     );
     let (out, used) = {
         let mut child = ui.new_child(
@@ -1976,7 +1981,14 @@ pub fn header<R>(
         let out = actions(&mut child, cx);
         (out, child.min_rect())
     };
-    let words_end = if used.width() > 0.5 {
+    let has_actions = used.width() > 0.5;
+    let band_h = if has_actions { with_actions } else { block_h };
+    let (band, _) = ui.allocate_exact_size(egui::vec2(width, band_h), egui::Sense::hover());
+    let text = egui::Rect::from_min_max(
+        egui::pos2(band.min.x + inset, band.min.y),
+        egui::pos2(band.max.x - inset, band.max.y),
+    );
+    let words_end = if has_actions {
         (used.min.x - inset).max(text.min.x)
     } else {
         text.max.x
@@ -1986,7 +1998,6 @@ pub fn header<R>(
     // the band's bottom edge — the arithmetic came out flush to the last decimal — so a pixel of
     // rounding, or a face whose descender runs past `row_height`, let it under whatever was drawn
     // next. It showed up as a subtitle sliced in half by the first card below it.
-    let block_h = title_h + sub_h;
     let mut y = band.min.y + (band_h - block_h).max(0.0) * 0.5;
     let painter = ui.painter();
     let line = |text: &str, font: egui::FontId, color: egui::Color32| {
@@ -2030,16 +2041,26 @@ pub fn section(ui: &mut Ui, cx: &Cx<'_>, text: &str) {
     // `content_inset` — see `title`. A subheading belongs to the card below it and has to line up
     // with that card's rows, not sit its own distance in.
     let size = m.type_scale.small;
-    ui.horizontal(|ui| {
-        ui.add_space(m.content_inset);
-        ui.label(
-            egui::RichText::new(text)
-                .size(size)
-                // Tracking scales with the text, so it stays proportional at any density.
-                .extra_letter_spacing(size * SECTION_TRACKING)
-                .color(cx.theme.color(ColorRole::Muted)),
-        );
-    });
+    // **Its own text tall, not a control tall.** Laid out in `ui.horizontal`, the line took egui's
+    // `interact_size` as its height — one touch target — and the heading floated in a band as
+    // tall as a row, as far from its card as from the one above it. A `Frame` indents it without
+    // that floor.
+    egui::Frame::new()
+        .inner_margin(egui::Margin {
+            left: round_i8(m.content_inset),
+            right: 0,
+            top: 0,
+            bottom: 0,
+        })
+        .show(ui, |ui| {
+            ui.label(
+                egui::RichText::new(text)
+                    .size(size)
+                    // Tracking scales with the text, so it stays proportional at any density.
+                    .extra_letter_spacing(size * SECTION_TRACKING)
+                    .color(cx.theme.color(ColorRole::Muted)),
+            );
+        });
     ui.add_space(m.row_height * SECTION_GAP);
 }
 
@@ -2059,12 +2080,16 @@ pub fn note(ui: &mut Ui, cx: &Cx<'_>, text: &str) {
             bottom: 0,
         })
         .show(ui, |ui| {
+            ui.set_max_width(m.type_scale.small * NOTE_MEASURE);
             ui.label(
                 egui::RichText::new(text)
                     .size(m.type_scale.small)
                     .color(cx.theme.color(ColorRole::Muted)),
             );
         });
+    // The same gap a card leaves under itself, so the next section's heading does not sit on the
+    // explanation's last line.
+    ui.add_space(m.row_height * CARD_GAP);
 }
 
 /// The hairline between two rows **inside** a card.

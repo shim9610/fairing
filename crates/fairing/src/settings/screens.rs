@@ -410,6 +410,10 @@ fn two_pane(ui: &mut Ui, cx: &mut Cx<'_>, list_width: f32, entries: &[SettingsEn
         egui::pos2(split + 1.0, full.top()),
         full.max,
     )));
+    // **The two titles on one line.** The list's title sits under the top gap its `page` opens,
+    // and the right column's title is drawn outside a page — the screen under it brings its own
+    // scroll — so without the same gap here "Wi-Fi" sat higher than "Settings" beside it.
+    right.add_space(cx.theme.metrics.row_height * ui::CARD_GAP);
     if let Some(id) = selected.as_deref() {
         let heading = entries
             .iter()
@@ -456,23 +460,16 @@ fn shows(cx: &Cx<'_>, id: &str) -> bool {
 fn home_body(ui: &mut Ui, cx: &mut Cx<'_>, entries: &[SettingsEntry]) {
     let s = cx.strings;
     ui::title(ui, cx, tr!(s, "Settings"));
-    ui::group_with(
-        ui,
-        cx,
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            for entry in entries {
-                if !shows(cx, &entry.id) {
-                    continue;
-                }
-                if ui::icon_row(ui, cx, entry.icon.clone(), s.get(&entry.title), None, None)
-                    .clicked()
-                {
-                    cx.open(&entry.id);
-                }
+    ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+        for entry in entries {
+            if !shows(cx, &entry.id) {
+                continue;
             }
-        },
-    );
+            if ui::icon_row(ui, cx, entry.icon.clone(), s.get(&entry.title), None, None).clicked() {
+                cx.open(&entry.id);
+            }
+        }
+    });
 }
 
 /// The `settings.display` screen's body, **without** the scroll wrapper.
@@ -490,85 +487,68 @@ pub fn display_body(ui: &mut Ui, cx: &mut Cx<'_>) {
         .capabilities()
         .contains(Capabilities::BRIGHTNESS);
 
-    ui::group_with(
-        ui,
-        cx,
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            if has_brightness {
-                let mut value = f32::from(cx.services.display.brightness().unwrap_or(50));
-                if ui::slider_row(
-                    ui,
-                    cx,
-                    tr!(s, "Brightness"),
-                    &mut value,
-                    0.0..=100.0,
-                    "%",
-                    true,
-                ) {
-                    let level = percent(value);
-                    // The backend is the original and the settings value is the copy the UI remembers.
-                    let _ = cx.services.display.set_brightness(level);
-                    cx.set_setting(
-                        keys::DISPLAY_BRIGHTNESS,
-                        SettingValue::Int(i64::from(level)),
-                    );
-                }
-            } else {
-                ui::info_row(ui, cx, tr!(s, "Brightness"), tr!(s, "Not supported"));
-            }
-        },
-    );
-
-    ui::section_card_with(
-        ui,
-        cx,
-        tr!(s, "Theme"),
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            let dark = matches!(
-                cx.settings.get(&keys::THEME_DARK.into()),
-                Some(SettingValue::Bool(true))
-            );
-            if let Some(index) = ui::choice_rows(
+    ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+        if has_brightness {
+            let mut value = f32::from(cx.services.display.brightness().unwrap_or(50));
+            if ui::slider_row(
                 ui,
                 cx,
-                &[(tr!(s, "Light"), None), (tr!(s, "Dark"), None)],
-                usize::from(dark),
+                tr!(s, "Brightness"),
+                &mut value,
+                0.0..=100.0,
+                "%",
+                true,
             ) {
-                cx.set_setting(keys::THEME_DARK, SettingValue::Bool(index == 1));
+                let level = percent(value);
+                // The backend is the original and the settings value is the copy the UI remembers.
+                let _ = cx.services.display.set_brightness(level);
+                cx.set_setting(
+                    keys::DISPLAY_BRIGHTNESS,
+                    SettingValue::Int(i64::from(level)),
+                );
             }
-        },
-    );
+        } else {
+            ui::info_row(ui, cx, tr!(s, "Brightness"), tr!(s, "Not supported"));
+        }
+    });
+
+    ui::section_card_with(ui, cx, tr!(s, "Theme"), ui::Deco::new(), |ui, cx| {
+        let dark = matches!(
+            cx.settings.get(&keys::THEME_DARK.into()),
+            Some(SettingValue::Bool(true))
+        );
+        if let Some(index) = ui::choice_rows(
+            ui,
+            cx,
+            &[(tr!(s, "Light"), None), (tr!(s, "Dark"), None)],
+            usize::from(dark),
+        ) {
+            cx.set_setting(keys::THEME_DARK, SettingValue::Bool(index == 1));
+        }
+    });
     ui::note(
         ui,
         cx,
         tr!(s, "Applies to the shell and every built-in screen."),
     );
 
-    ui::section_card_with(
-        ui,
-        cx,
-        tr!(s, "Panel"),
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
+    ui::section_card_with(ui, cx, tr!(s, "Panel"), ui::Deco::new(), |ui, cx| {
+        ui::info_row(
+            ui,
+            cx,
+            tr!(s, "Resolution"),
+            &format!("{} × {}", info.size_px.0, info.size_px.1),
+        );
+        if let Some(mm) = info.physical_mm {
             ui::info_row(
                 ui,
                 cx,
-                tr!(s, "Resolution"),
-                &format!("{} × {}", info.size_px.0, info.size_px.1),
+                tr!(s, "Physical size"),
+                &format!("{:.0} × {:.0} mm", mm.0, mm.1),
             );
-            if let Some(mm) = info.physical_mm {
-                ui::info_row(
-                    ui,
-                    cx,
-                    tr!(s, "Physical size"),
-                    &format!("{:.0} × {:.0} mm", mm.0, mm.1),
-                );
-            }
-            ui::info_row(ui, cx, tr!(s, "Rotation"), &format!("{}°", info.rotation));
-        },
-    );
+        }
+        ui::info_row(ui, cx, tr!(s, "Rotation"), &format!("{}°", info.rotation));
+    });
 }
 
 /// The `settings.sound` screen's body, **without** the scroll wrapper.
@@ -591,63 +571,52 @@ pub fn sound_body(ui: &mut Ui, cx: &mut Cx<'_>) {
     } else {
         None
     };
-    ui::group_with(
-        ui,
-        cx,
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            let mut volume = match live {
-                Some(audio) => f32::from(audio.level),
-                None => cx
-                    .settings
-                    .get(&keys::AUDIO_VOLUME.into())
-                    .and_then(stored_percent)
-                    .map_or(50.0, f32::from),
-            };
-            if ui::slider_row(
-                ui,
-                cx,
-                tr!(s, "Volume"),
-                &mut volume,
-                0.0..=100.0,
-                "%",
-                true,
-            ) {
-                cx.set_setting(
-                    keys::AUDIO_VOLUME,
-                    SettingValue::Int(i64::from(percent(volume))),
-                );
-            }
-            let mut muted = live.map_or_else(
-                || {
-                    matches!(
-                        cx.settings.get(&keys::AUDIO_MUTED.into()),
-                        Some(SettingValue::Bool(true))
-                    )
-                },
-                |audio| audio.muted,
+    ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+        let mut volume = match live {
+            Some(audio) => f32::from(audio.level),
+            None => cx
+                .settings
+                .get(&keys::AUDIO_VOLUME.into())
+                .and_then(stored_percent)
+                .map_or(50.0, f32::from),
+        };
+        if ui::slider_row(
+            ui,
+            cx,
+            tr!(s, "Volume"),
+            &mut volume,
+            0.0..=100.0,
+            "%",
+            true,
+        ) {
+            cx.set_setting(
+                keys::AUDIO_VOLUME,
+                SettingValue::Int(i64::from(percent(volume))),
             );
-            if ui::switch_row(ui, cx, tr!(s, "Mute"), None, &mut muted, true) {
-                cx.set_setting(keys::AUDIO_MUTED, SettingValue::Bool(muted));
-            }
-        },
-    );
+        }
+        let mut muted = live.map_or_else(
+            || {
+                matches!(
+                    cx.settings.get(&keys::AUDIO_MUTED.into()),
+                    Some(SettingValue::Bool(true))
+                )
+            },
+            |audio| audio.muted,
+        );
+        if ui::switch_row(ui, cx, tr!(s, "Mute"), None, &mut muted, true) {
+            cx.set_setting(keys::AUDIO_MUTED, SettingValue::Bool(muted));
+        }
+    });
 
-    ui::section_card_with(
-        ui,
-        cx,
-        tr!(s, "Alerts"),
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            let mut silent = matches!(
-                cx.settings.get(&keys::UI_SILENT.into()),
-                Some(SettingValue::Bool(true))
-            );
-            if ui::switch_row(ui, cx, tr!(s, "Silent"), None, &mut silent, true) {
-                cx.set_setting(keys::UI_SILENT, SettingValue::Bool(silent));
-            }
-        },
-    );
+    ui::section_card_with(ui, cx, tr!(s, "Alerts"), ui::Deco::new(), |ui, cx| {
+        let mut silent = matches!(
+            cx.settings.get(&keys::UI_SILENT.into()),
+            Some(SettingValue::Bool(true))
+        );
+        if ui::switch_row(ui, cx, tr!(s, "Silent"), None, &mut silent, true) {
+            cx.set_setting(keys::UI_SILENT, SettingValue::Bool(silent));
+        }
+    });
     ui::note(
         ui,
         cx,
@@ -674,18 +643,13 @@ pub fn locale_body(ui: &mut Ui, cx: &mut Cx<'_>) {
         .iter()
         .map(|(tag, name)| (*name, Some(*tag)))
         .collect();
-    ui::group_with(
-        ui,
-        cx,
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            if let Some(index) = ui::choice_rows(ui, cx, &options, current) {
-                if let Some((tag, _)) = locales.get(index) {
-                    cx.set_setting(keys::UI_LOCALE, SettingValue::Text((*tag).to_owned()));
-                }
+    ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+        if let Some(index) = ui::choice_rows(ui, cx, &options, current) {
+            if let Some((tag, _)) = locales.get(index) {
+                cx.set_setting(keys::UI_LOCALE, SettingValue::Text((*tag).to_owned()));
             }
-        },
-    );
+        }
+    });
 }
 
 /// The `settings.datetime` screen's body, **without** the scroll wrapper.
@@ -714,35 +678,24 @@ pub fn datetime_body(ui: &mut Ui, cx: &mut Cx<'_>) {
         None,
     );
 
-    ui::group_with(
-        ui,
-        cx,
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            if ui::switch_row(ui, cx, tr!(s, "24-hour time"), None, &mut h24, true) {
-                cx.set_setting(keys::UI_CLOCK_12H, SettingValue::Bool(!h24));
-            }
-        },
-    );
+    ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+        if ui::switch_row(ui, cx, tr!(s, "24-hour time"), None, &mut h24, true) {
+            cx.set_setting(keys::UI_CLOCK_12H, SettingValue::Bool(!h24));
+        }
+    });
 
-    ui::section_card_with(
-        ui,
-        cx,
-        tr!(s, "Time source"),
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            ui::info_row(
-                ui,
-                cx,
-                tr!(s, "Set manually"),
-                if settable {
-                    tr!(s, "Available")
-                } else {
-                    tr!(s, "Not supported")
-                },
-            );
-        },
-    );
+    ui::section_card_with(ui, cx, tr!(s, "Time source"), ui::Deco::new(), |ui, cx| {
+        ui::info_row(
+            ui,
+            cx,
+            tr!(s, "Set manually"),
+            if settable {
+                tr!(s, "Available")
+            } else {
+                tr!(s, "Not supported")
+            },
+        );
+    });
     ui::note(
         ui,
         cx,
@@ -779,18 +732,13 @@ pub fn wifi_body(ui: &mut Ui, cx: &mut Cx<'_>) {
 
     let s = cx.strings;
     let snapshot = cx.services.wifi.snapshot();
-    ui::group_with(
-        ui,
-        cx,
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            let mut enabled = snapshot.enabled;
-            if ui::switch_row(ui, cx, tr!(s, "Wi-Fi"), None, &mut enabled, true) {
-                let _ = cx.services.wifi.set_enabled(enabled);
-                cx.set_setting(keys::WIFI_ENABLED, SettingValue::Bool(enabled));
-            }
-        },
-    );
+    ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+        let mut enabled = snapshot.enabled;
+        if ui::switch_row(ui, cx, tr!(s, "Wi-Fi"), None, &mut enabled, true) {
+            let _ = cx.services.wifi.set_enabled(enabled);
+            cx.set_setting(keys::WIFI_ENABLED, SettingValue::Bool(enabled));
+        }
+    });
     if !snapshot.enabled {
         ui::note(ui, cx, tr!(s, "Turn Wi-Fi on to see nearby networks."));
         return;
@@ -818,50 +766,44 @@ pub fn wifi_body(ui: &mut Ui, cx: &mut Cx<'_>) {
         WifiState::Off | WifiState::Idle => {}
     }
 
-    ui::section_card_with(
-        ui,
-        cx,
-        tr!(s, "Networks"),
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            if ui::icon_row(
+    ui::section_card_with(ui, cx, tr!(s, "Networks"), ui::Deco::new(), |ui, cx| {
+        if ui::icon_row(
+            ui,
+            cx,
+            IconRef::Builtin("refresh"),
+            tr!(s, "Scan for networks"),
+            None,
+            None,
+        )
+        .clicked()
+        {
+            let _ = cx.services.wifi.scan();
+        }
+        for network in &snapshot.networks {
+            let known = snapshot.known.iter().any(|saved| saved == &network.ssid);
+            let subtitle = match (known, network.secured) {
+                (true, _) => tr!(s, "Saved"),
+                (false, true) => tr!(s, "Secured"),
+                (false, false) => tr!(s, "Open"),
+            };
+            let trailing = format!("{}/4", network.strength);
+            let press = ui::icon_row_with_long_press(
                 ui,
                 cx,
-                IconRef::Builtin("refresh"),
-                tr!(s, "Scan for networks"),
-                None,
-                None,
-            )
-            .clicked()
-            {
-                let _ = cx.services.wifi.scan();
+                IconRef::Builtin("wifi"),
+                &network.ssid,
+                Some(subtitle),
+                Some(&trailing),
+            );
+            // **Both are reported, neither is acted on.** See this function's docs.
+            if press.tapped {
+                cx.wifi_network_tapped(&network.ssid, network.secured, known);
             }
-            for network in &snapshot.networks {
-                let known = snapshot.known.iter().any(|saved| saved == &network.ssid);
-                let subtitle = match (known, network.secured) {
-                    (true, _) => tr!(s, "Saved"),
-                    (false, true) => tr!(s, "Secured"),
-                    (false, false) => tr!(s, "Open"),
-                };
-                let trailing = format!("{}/4", network.strength);
-                let press = ui::icon_row_with_long_press(
-                    ui,
-                    cx,
-                    IconRef::Builtin("wifi"),
-                    &network.ssid,
-                    Some(subtitle),
-                    Some(&trailing),
-                );
-                // **Both are reported, neither is acted on.** See this function's docs.
-                if press.tapped {
-                    cx.wifi_network_tapped(&network.ssid, network.secured, known);
-                }
-                if press.long_pressed {
-                    cx.wifi_network_long_pressed(&network.ssid, known);
-                }
+            if press.long_pressed {
+                cx.wifi_network_long_pressed(&network.ssid, known);
             }
-        },
-    );
+        }
+    });
     if snapshot.networks.is_empty() {
         ui::note(
             ui,
@@ -1023,64 +965,54 @@ fn network_rows(ui: &mut Ui, cx: &mut Cx<'_>, form: &mut Option<NetworkForm>) {
             cx,
             &format!("{} · {}", iface.name, s.get(kind_label(iface.kind))),
         );
-        ui::group_with(
-            ui,
-            cx,
-            ui::Deco::new().container(ui::Container::Divided),
-            |ui, cx| {
-                ui::info_row(
-                    ui,
-                    cx,
-                    tr!(s, "Link"),
-                    if iface.up {
-                        tr!(s, "Connected")
-                    } else {
-                        tr!(s, "No link")
-                    },
-                );
-                let ipv4 = iface.ipv4.map_or_else(
-                    || tr!(s, "None").to_owned(),
-                    |net| {
-                        let how = if iface.dhcp { "DHCP" } else { tr!(s, "manual") };
-                        format!("{}/{} · {how}", net.addr, net.prefix)
-                    },
-                );
-                ui::info_row(ui, cx, "IPv4", &ipv4);
-                if let Some(gateway) = iface.gateway {
-                    ui::info_row(ui, cx, tr!(s, "Gateway"), &gateway.to_string());
-                }
-                if !iface.dns.is_empty() {
-                    ui::info_row(ui, cx, "DNS", &join_addrs(&iface.dns));
-                }
-                for net in &iface.ipv6 {
-                    ui::info_row(ui, cx, "IPv6", &format!("{}/{}", net.addr, net.prefix));
-                }
-                if let Some(mac) = &iface.mac {
-                    ui::info_row(ui, cx, tr!(s, "MAC"), mac);
-                }
-                if editable && ui::nav_row(ui, cx, tr!(s, "Set the IPv4 address"), None).clicked() {
-                    *form = Some(NetworkForm::iface(iface));
-                }
-            },
-        );
+        ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+            ui::info_row(
+                ui,
+                cx,
+                tr!(s, "Link"),
+                if iface.up {
+                    tr!(s, "Connected")
+                } else {
+                    tr!(s, "No link")
+                },
+            );
+            let ipv4 = iface.ipv4.map_or_else(
+                || tr!(s, "None").to_owned(),
+                |net| {
+                    let how = if iface.dhcp { "DHCP" } else { tr!(s, "manual") };
+                    format!("{}/{} · {how}", net.addr, net.prefix)
+                },
+            );
+            ui::info_row(ui, cx, "IPv4", &ipv4);
+            if let Some(gateway) = iface.gateway {
+                ui::info_row(ui, cx, tr!(s, "Gateway"), &gateway.to_string());
+            }
+            if !iface.dns.is_empty() {
+                ui::info_row(ui, cx, "DNS", &join_addrs(&iface.dns));
+            }
+            for net in &iface.ipv6 {
+                ui::info_row(ui, cx, "IPv6", &format!("{}/{}", net.addr, net.prefix));
+            }
+            if let Some(mac) = &iface.mac {
+                ui::info_row(ui, cx, tr!(s, "MAC"), mac);
+            }
+            if editable && ui::nav_row(ui, cx, tr!(s, "Set the IPv4 address"), None).clicked() {
+                *form = Some(NetworkForm::iface(iface));
+            }
+        });
     }
 
     if let Some(hostname) = cx.services.network.hostname() {
         ui::section(ui, cx, tr!(s, "This device"));
-        ui::group_with(
-            ui,
-            cx,
-            ui::Deco::new().container(ui::Container::Divided),
-            |ui, cx| {
-                if editable {
-                    if ui::nav_row(ui, cx, tr!(s, "Hostname"), Some(&hostname)).clicked() {
-                        *form = Some(NetworkForm::hostname(&hostname));
-                    }
-                } else {
-                    ui::info_row(ui, cx, tr!(s, "Hostname"), &hostname);
+        ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+            if editable {
+                if ui::nav_row(ui, cx, tr!(s, "Hostname"), Some(&hostname)).clicked() {
+                    *form = Some(NetworkForm::hostname(&hostname));
                 }
-            },
-        );
+            } else {
+                ui::info_row(ui, cx, tr!(s, "Hostname"), &hostname);
+            }
+        });
     }
 }
 
@@ -1208,31 +1140,26 @@ fn finish_form(
         );
     }
     let (mut apply_pressed, mut cancel_pressed) = (false, false);
-    ui::group_with(
-        ui,
-        cx,
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            apply_pressed = ui::icon_row(
-                ui,
-                cx,
-                IconRef::Builtin("check"),
-                tr!(s, "Apply"),
-                None,
-                None,
-            )
-            .clicked();
-            cancel_pressed = ui::icon_row(
-                ui,
-                cx,
-                IconRef::Builtin("close"),
-                tr!(s, "Cancel"),
-                None,
-                None,
-            )
-            .clicked();
-        },
-    );
+    ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+        apply_pressed = ui::icon_row(
+            ui,
+            cx,
+            IconRef::Builtin("check"),
+            tr!(s, "Apply"),
+            None,
+            None,
+        )
+        .clicked();
+        cancel_pressed = ui::icon_row(
+            ui,
+            cx,
+            IconRef::Builtin("close"),
+            tr!(s, "Cancel"),
+            None,
+            None,
+        )
+        .clicked();
+    });
     if cancel_pressed {
         return true;
     }
@@ -1333,31 +1260,26 @@ fn join_addrs(addrs: &[IpAddr]) -> String {
 pub fn bluetooth_body(ui: &mut Ui, cx: &mut Cx<'_>) {
     let s = cx.strings;
     let snapshot = cx.services.bluetooth.snapshot();
-    ui::group_with(
-        ui,
-        cx,
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            let mut enabled = snapshot.enabled;
-            if ui::switch_row(ui, cx, tr!(s, "Bluetooth"), None, &mut enabled, true) {
-                let _ = cx.services.bluetooth.set_enabled(enabled);
-                cx.set_setting(keys::BLUETOOTH_ENABLED, SettingValue::Bool(enabled));
+    ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+        let mut enabled = snapshot.enabled;
+        if ui::switch_row(ui, cx, tr!(s, "Bluetooth"), None, &mut enabled, true) {
+            let _ = cx.services.bluetooth.set_enabled(enabled);
+            cx.set_setting(keys::BLUETOOTH_ENABLED, SettingValue::Bool(enabled));
+        }
+        if snapshot.enabled {
+            let mut discovering = snapshot.discovering;
+            if ui::switch_row(
+                ui,
+                cx,
+                tr!(s, "Discoverable"),
+                Some(tr!(s, "Other devices can find this one")),
+                &mut discovering,
+                true,
+            ) {
+                let _ = cx.services.bluetooth.set_discovering(discovering);
             }
-            if snapshot.enabled {
-                let mut discovering = snapshot.discovering;
-                if ui::switch_row(
-                    ui,
-                    cx,
-                    tr!(s, "Discoverable"),
-                    Some(tr!(s, "Other devices can find this one")),
-                    &mut discovering,
-                    true,
-                ) {
-                    let _ = cx.services.bluetooth.set_discovering(discovering);
-                }
-            }
-        },
-    );
+        }
+    });
     if !snapshot.enabled {
         ui::note(ui, cx, tr!(s, "Turn Bluetooth on to pair a device."));
         return;
@@ -1371,62 +1293,50 @@ pub fn bluetooth_body(ui: &mut Ui, cx: &mut Cx<'_>) {
 
     let (paired, found): (Vec<_>, Vec<_>) = snapshot.devices.iter().partition(|d| d.paired);
     if !paired.is_empty() {
-        ui::section_card_with(
-            ui,
-            cx,
-            tr!(s, "Paired"),
-            ui::Deco::new().container(ui::Container::Divided),
-            |ui, cx| {
-                for device in paired {
-                    let subtitle = if device.connected {
-                        tr!(s, "Connected")
-                    } else {
-                        tr!(s, "Not connected")
-                    };
-                    if ui::icon_row(
-                        ui,
-                        cx,
-                        IconRef::Builtin("bluetooth"),
-                        &device.name,
-                        Some(subtitle),
-                        None,
-                    )
-                    .clicked()
-                    {
-                        let _ = cx
-                            .services
-                            .bluetooth
-                            .connect(&device.addr, !device.connected);
-                    }
+        ui::section_card_with(ui, cx, tr!(s, "Paired"), ui::Deco::new(), |ui, cx| {
+            for device in paired {
+                let subtitle = if device.connected {
+                    tr!(s, "Connected")
+                } else {
+                    tr!(s, "Not connected")
+                };
+                if ui::icon_row(
+                    ui,
+                    cx,
+                    IconRef::Builtin("bluetooth"),
+                    &device.name,
+                    Some(subtitle),
+                    None,
+                )
+                .clicked()
+                {
+                    let _ = cx
+                        .services
+                        .bluetooth
+                        .connect(&device.addr, !device.connected);
                 }
-            },
-        );
+            }
+        });
     }
     if found.is_empty() {
         ui::note(ui, cx, tr!(s, "Looking for nearby devices…"));
     } else {
-        ui::section_card_with(
-            ui,
-            cx,
-            tr!(s, "Available"),
-            ui::Deco::new().container(ui::Container::Divided),
-            |ui, cx| {
-                for device in found {
-                    if ui::icon_row(
-                        ui,
-                        cx,
-                        IconRef::Builtin("bluetooth"),
-                        &device.name,
-                        None,
-                        None,
-                    )
-                    .clicked()
-                    {
-                        let _ = cx.services.bluetooth.pair(&device.addr);
-                    }
+        ui::section_card_with(ui, cx, tr!(s, "Available"), ui::Deco::new(), |ui, cx| {
+            for device in found {
+                if ui::icon_row(
+                    ui,
+                    cx,
+                    IconRef::Builtin("bluetooth"),
+                    &device.name,
+                    None,
+                    None,
+                )
+                .clicked()
+                {
+                    let _ = cx.services.bluetooth.pair(&device.addr);
                 }
-            },
-        );
+            }
+        });
     }
 }
 
@@ -1458,39 +1368,34 @@ fn pairing_card(ui: &mut Ui, cx: &mut Cx<'_>, snapshot: &crate::services::BtSnap
             Some(ColorRole::Primary),
         ),
     }
-    ui::group_with(
-        ui,
-        cx,
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            if ui::icon_row(
-                ui,
-                cx,
-                IconRef::Builtin("check"),
-                tr!(s, "Confirm"),
-                None,
-                None,
-            )
-            .clicked()
-            {
-                // `None` — the shell answers a passkey it was **shown**. A PIN to be typed is the
-                // integrator's to collect and pass in here.
-                let _ = cx.services.bluetooth.respond_pairing(true, None);
-            }
-            if ui::icon_row(
-                ui,
-                cx,
-                IconRef::Builtin("close"),
-                tr!(s, "Cancel"),
-                None,
-                None,
-            )
-            .clicked()
-            {
-                let _ = cx.services.bluetooth.respond_pairing(false, None);
-            }
-        },
-    );
+    ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+        if ui::icon_row(
+            ui,
+            cx,
+            IconRef::Builtin("check"),
+            tr!(s, "Confirm"),
+            None,
+            None,
+        )
+        .clicked()
+        {
+            // `None` — the shell answers a passkey it was **shown**. A PIN to be typed is the
+            // integrator's to collect and pass in here.
+            let _ = cx.services.bluetooth.respond_pairing(true, None);
+        }
+        if ui::icon_row(
+            ui,
+            cx,
+            IconRef::Builtin("close"),
+            tr!(s, "Cancel"),
+            None,
+            None,
+        )
+        .clicked()
+        {
+            let _ = cx.services.bluetooth.respond_pairing(false, None);
+        }
+    });
     true
 }
 
@@ -1524,30 +1429,25 @@ fn power_confirm(
         Some(tr!(s, "This cannot be undone.")),
         Some(ColorRole::Warning),
     );
-    ui::group_with(
-        ui,
-        cx,
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            if ui::icon_row(ui, cx, IconRef::Builtin("check"), verb, None, None).clicked() {
-                // The shell gives the integrator a chance to tidy up through the `PowerRequest` event, and then it runs.
-                cx.request_power(request);
-                *pending = None;
-            }
-            if ui::icon_row(
-                ui,
-                cx,
-                IconRef::Builtin("close"),
-                tr!(s, "Cancel"),
-                None,
-                None,
-            )
-            .clicked()
-            {
-                *pending = None;
-            }
-        },
-    );
+    ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+        if ui::icon_row(ui, cx, IconRef::Builtin("check"), verb, None, None).clicked() {
+            // The shell gives the integrator a chance to tidy up through the `PowerRequest` event, and then it runs.
+            cx.request_power(request);
+            *pending = None;
+        }
+        if ui::icon_row(
+            ui,
+            cx,
+            IconRef::Builtin("close"),
+            tr!(s, "Cancel"),
+            None,
+            None,
+        )
+        .clicked()
+        {
+            *pending = None;
+        }
+    });
 }
 
 /// The actual rows of `settings.power`. `pending` is held and saved by the caller.
@@ -1582,47 +1482,37 @@ fn power_rows(ui: &mut Ui, cx: &mut Cx<'_>, pending: &mut Option<PowerRequest>) 
         .capabilities()
         .contains(Capabilities::POWER_CONTROL)
     {
-        ui::group_with(
-            ui,
-            cx,
-            ui::Deco::new().container(ui::Container::Divided),
-            |ui, cx| {
-                ui::info_row(ui, cx, tr!(s, "Restart"), tr!(s, "Not supported"));
-            },
-        );
+        ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+            ui::info_row(ui, cx, tr!(s, "Restart"), tr!(s, "Not supported"));
+        });
         return;
     }
-    ui::group_with(
-        ui,
-        cx,
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            if ui::icon_row(
-                ui,
-                cx,
-                IconRef::Builtin("restart"),
-                tr!(s, "Restart"),
-                None,
-                None,
-            )
-            .clicked()
-            {
-                *pending = Some(PowerRequest::Reboot);
-            }
-            if ui::icon_row(
-                ui,
-                cx,
-                IconRef::Builtin("power"),
-                tr!(s, "Shut down"),
-                None,
-                None,
-            )
-            .clicked()
-            {
-                *pending = Some(PowerRequest::Shutdown);
-            }
-        },
-    );
+    ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+        if ui::icon_row(
+            ui,
+            cx,
+            IconRef::Builtin("restart"),
+            tr!(s, "Restart"),
+            None,
+            None,
+        )
+        .clicked()
+        {
+            *pending = Some(PowerRequest::Reboot);
+        }
+        if ui::icon_row(
+            ui,
+            cx,
+            IconRef::Builtin("power"),
+            tr!(s, "Shut down"),
+            None,
+            None,
+        )
+        .clicked()
+        {
+            *pending = Some(PowerRequest::Shutdown);
+        }
+    });
     ui::note(
         ui,
         cx,
@@ -1643,46 +1533,36 @@ pub fn about_body(ui: &mut Ui, cx: &mut Cx<'_>) {
     // Whatever the device's `InfoBackend` knows — with the `Null` default, none of it.
     let s = cx.strings;
     let device = cx.services.info.device();
-    ui::group_with(
-        ui,
-        cx,
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            for (label, value) in [
-                (tr!(s, "Model"), &device.model),
-                (tr!(s, "Firmware"), &device.firmware),
-                (tr!(s, "System"), &device.os),
-            ] {
-                if let Some(value) = value {
-                    ui::info_row(ui, cx, label, value);
-                }
+    ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+        for (label, value) in [
+            (tr!(s, "Model"), &device.model),
+            (tr!(s, "Firmware"), &device.firmware),
+            (tr!(s, "System"), &device.os),
+        ] {
+            if let Some(value) = value {
+                ui::info_row(ui, cx, label, value);
             }
-            ui::info_row(ui, cx, "fairing", env!("CARGO_PKG_VERSION"));
-            if cx.allows("settings.about.details") {
-                if let Some(serial) = &device.serial {
-                    ui::info_row(ui, cx, tr!(s, "Serial number"), serial);
-                }
-                if let Some(secs) = device.uptime_secs {
-                    ui::info_row(ui, cx, tr!(s, "Uptime"), &format_uptime(secs, s));
-                }
-                let info = cx.services.display.info();
-                ui::info_row(
-                    ui,
-                    cx,
-                    tr!(s, "Panel"),
-                    &format!("{} × {}", info.size_px.0, info.size_px.1),
-                );
+        }
+        ui::info_row(ui, cx, "fairing", env!("CARGO_PKG_VERSION"));
+        if cx.allows("settings.about.details") {
+            if let Some(serial) = &device.serial {
+                ui::info_row(ui, cx, tr!(s, "Serial number"), serial);
             }
-        },
-    );
+            if let Some(secs) = device.uptime_secs {
+                ui::info_row(ui, cx, tr!(s, "Uptime"), &format_uptime(secs, s));
+            }
+            let info = cx.services.display.info();
+            ui::info_row(
+                ui,
+                cx,
+                tr!(s, "Panel"),
+                &format!("{} × {}", info.size_px.0, info.size_px.1),
+            );
+        }
+    });
 
     ui::section(ui, cx, tr!(s, "Open source licences"));
-    ui::group_with(
-        ui,
-        cx,
-        ui::Deco::new().container(ui::Container::Divided),
-        licences,
-    );
+    ui::group_with(ui, cx, ui::Deco::new(), licences);
 }
 
 /// Stream the crate table from `THIRD_PARTY.md` as `name version — licence` lines.
@@ -1990,51 +1870,41 @@ fn credential_rows(ui: &mut Ui, cx: &mut Cx<'_>, form: &mut Option<CredentialFor
     let entries = cx.credentials().to_vec();
     let levels = level_labels(cx);
     ui::section(ui, cx, tr!(s, "Entries"));
-    ui::group_with(
-        ui,
-        cx,
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            if entries.is_empty() {
-                ui::info_row(ui, cx, tr!(s, "No entries"), "");
+    ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+        if entries.is_empty() {
+            ui::info_row(ui, cx, tr!(s, "No entries"), "");
+        }
+        for entry in &entries {
+            let level = levels
+                .get(usize::from(entry.level.0))
+                .map_or("", |label| s.get(label));
+            let trailing = if entry.disabled {
+                tr!(s, "{level} · off").replace("{level}", level)
+            } else {
+                level.to_owned()
+            };
+            if !cx.may_grant(entry.level) {
+                // Above the session's own level: listed, not changed.
+                ui::info_row(ui, cx, &entry.label, &trailing);
+            } else if ui::nav_row(ui, cx, &entry.label, Some(&trailing)).clicked() {
+                *form = Some(CredentialForm::edit(entry));
             }
-            for entry in &entries {
-                let level = levels
-                    .get(usize::from(entry.level.0))
-                    .map_or("", |label| s.get(label));
-                let trailing = if entry.disabled {
-                    tr!(s, "{level} · off").replace("{level}", level)
-                } else {
-                    level.to_owned()
-                };
-                if !cx.may_grant(entry.level) {
-                    // Above the session's own level: listed, not changed.
-                    ui::info_row(ui, cx, &entry.label, &trailing);
-                } else if ui::nav_row(ui, cx, &entry.label, Some(&trailing)).clicked() {
-                    *form = Some(CredentialForm::edit(entry));
-                }
-            }
-        },
-    );
-    ui::group_with(
-        ui,
-        cx,
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            if ui::icon_row(
-                ui,
-                cx,
-                IconRef::Builtin("plus"),
-                tr!(s, "Add an entry"),
-                None,
-                None,
-            )
-            .clicked()
-            {
-                *form = Some(CredentialForm::add(grantable(cx, levels.len())));
-            }
-        },
-    );
+        }
+    });
+    ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+        if ui::icon_row(
+            ui,
+            cx,
+            IconRef::Builtin("plus"),
+            tr!(s, "Add an entry"),
+            None,
+            None,
+        )
+        .clicked()
+        {
+            *form = Some(CredentialForm::add(grantable(cx, levels.len())));
+        }
+    });
 }
 
 /// What an Apply came to, a card a line: what did not go through, then what did.
@@ -2084,16 +1954,11 @@ fn credential_form(ui: &mut Ui, cx: &mut Cx<'_>, form: &mut CredentialForm) -> b
     }
     ui::section(ui, cx, tr!(s, "Level"));
     let options: Vec<(&str, Option<&str>)> = levels.iter().map(|l| (s.get(l), None)).collect();
-    ui::group_with(
-        ui,
-        cx,
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            if let Some(picked) = ui::choice_rows(ui, cx, &options, form.level) {
-                form.level = picked;
-            }
-        },
-    );
+    ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+        if let Some(picked) = ui::choice_rows(ui, cx, &options, form.level) {
+            form.level = picked;
+        }
+    });
     let words = secret_words(kind);
     let heading = match (form.editing.is_some(), kinds.len() > 1) {
         (true, true) => tr!(s, "New secret"),
@@ -2165,31 +2030,26 @@ fn credential_foot(
         ui::note(ui, cx, tr!(s, "Saving…"));
     }
     let (mut apply, mut cancel) = (false, false);
-    ui::group_with(
-        ui,
-        cx,
-        ui::Deco::new().container(ui::Container::Divided),
-        |ui, cx| {
-            apply = ui::icon_row(
-                ui,
-                cx,
-                IconRef::Builtin("check"),
-                tr!(s, "Apply"),
-                None,
-                None,
-            )
-            .clicked();
-            cancel = ui::icon_row(
-                ui,
-                cx,
-                IconRef::Builtin("close"),
-                tr!(s, "Cancel"),
-                None,
-                None,
-            )
-            .clicked();
-        },
-    );
+    ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
+        apply = ui::icon_row(
+            ui,
+            cx,
+            IconRef::Builtin("check"),
+            tr!(s, "Apply"),
+            None,
+            None,
+        )
+        .clicked();
+        cancel = ui::icon_row(
+            ui,
+            cx,
+            IconRef::Builtin("close"),
+            tr!(s, "Cancel"),
+            None,
+            None,
+        )
+        .clicked();
+    });
     if cancel {
         return true;
     }
