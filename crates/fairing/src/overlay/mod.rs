@@ -828,8 +828,8 @@ impl Overlay {
 
     /// The **top notification's close hit Rect** as drawn last frame.
     ///
-    /// Wider than the × drawn — at a multiple of `shade.close` it comes to 9.4 mm under the gloved
-    /// default, short of `finger_hard_mm` (10.1 mm), so the drawing is left as it is and only the
+    /// Wider than the × drawn — at a multiple of `shade.close` it comes to 9.4 mm under a gloved
+    /// finger, short of `finger_hard_mm` (10.1 mm), so the drawing is left as it is and only the
     /// place pressed widens to `touch_target` (hit size and drawn size kept apart). Exposed here so
     /// that tests need not duplicate the layout arithmetic.
     #[doc(hidden)]

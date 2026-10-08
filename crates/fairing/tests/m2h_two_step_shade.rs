@@ -72,7 +72,7 @@ fn the_first_pull_stops_at_the_tiles() -> fairing::Result<()> {
     let full = pull_to(&mut two, tall * 0.9);
     pull_to(&mut two, 2.0);
 
-    let half = tall * 0.42;
+    let half = tall * 0.32;
     let stopped = pull_to(&mut two, half);
     let straight_through = pull_to(&mut one, half);
 
@@ -98,7 +98,7 @@ fn a_second_pull_carries_on_to_the_notifications() -> fairing::Result<()> {
     let full = pull_to(&mut h, tall * 0.9);
     pull_to(&mut h, 2.0);
 
-    let first = pull_to(&mut h, tall * 0.42);
+    let first = pull_to(&mut h, tall * 0.32);
     // From the stop, grab the panel and keep going.
     let x = wide * 0.5;
     h.press(egui::pos2(x, first - 4.0));
@@ -135,7 +135,7 @@ fn a_grab_at_the_stop_that_lands_with_its_first_move_carries_on() -> fairing::Re
     pull_to(&mut h, tall * 0.9);
     pull_to(&mut h, 2.0);
 
-    let first = pull_to(&mut h, tall * 0.42);
+    let first = pull_to(&mut h, tall * 0.32);
     let x = wide * 0.5;
     h.press(egui::pos2(x, first - 4.0));
     h.move_to(egui::pos2(x, first + 120.0));
@@ -169,7 +169,7 @@ fn a_grab_at_the_stop_that_lands_with_its_first_move_carries_on() -> fairing::Re
 fn even_the_first_pull_of_the_session_stops() -> fairing::Result<()> {
     let mut h = shell(true)?;
     let tall = h.screen_rect().height();
-    let rest = pull_to(&mut h, tall * 0.42);
+    let rest = pull_to(&mut h, tall * 0.32);
     assert!(
         rest > 1.0 && rest < tall * 0.5,
         "the first pull ever has to come to rest at the tiles like any other: it went to {rest}"
@@ -191,11 +191,11 @@ fn the_tiles_come_down_over_an_undimmed_screen() -> fairing::Result<()> {
     let tall = two.screen_rect().height();
 
     let at_stop = {
-        pull_to(&mut two, tall * 0.42);
+        pull_to(&mut two, tall * 0.32);
         two.shell.overlay().scrim_alpha()
     };
     let same_pull_one_step = {
-        pull_to(&mut one, tall * 0.42);
+        pull_to(&mut one, tall * 0.32);
         one.shell.overlay().scrim_alpha()
     };
     assert!(
@@ -301,7 +301,7 @@ fn a_press_on_the_page_closes_a_shade_resting_at_the_stop() -> fairing::Result<(
     .with_app(Page::default());
     h.frames(3);
     let tall = h.screen_rect().height();
-    let stop = pull_to(&mut h, tall * 0.42);
+    let stop = pull_to(&mut h, tall * 0.32);
     let full = h.shell.overlay().height();
     assert!(
         h.shell.overlay().is_open() && stop < full - 1.0,

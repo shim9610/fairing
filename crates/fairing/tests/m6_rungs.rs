@@ -962,7 +962,7 @@ mod shade {
         // Open and close once, so the panel has drawn and the stop is known.
         pull_to(&mut h, tall * 0.9);
         pull_to(&mut h, 2.0);
-        Ok(pull_to(&mut h, tall * 0.42))
+        Ok(pull_to(&mut h, tall * 0.32))
     }
 
     /// **A two-step shade stops under the lowest tile** the layout placed.

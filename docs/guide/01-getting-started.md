@@ -242,7 +242,7 @@ are [08 §6](08-troubleshooting.md#6-korean-renders-as-tofu).
 
 ### 4.3 The panel's size
 
-Touch targets and bar sizes are written in millimetres (a 13 mm finger, a 7 mm status bar), so
+Touch targets and bar sizes are written in millimetres (a 9 mm finger, a 7 mm status bar), so
 the shell has to know how big a pixel is. Tell it the panel's visible area:
 
 ```rust
@@ -256,8 +256,23 @@ let shell = fairing::Shell::builder(fairing::ShellConfig::default())
 
 A display backend that reports `DisplayInfo::physical_mm` does the same, and the builder's value
 wins over it. With neither, the shell assumes about 6.3 pixels per millimetre and logs a warning:
-a touch target is then 82 px on every panel — oversized on a coarse one, under a fingertip on a
+a touch target is then 57 px on every panel — oversized on a coarse one, under a fingertip on a
 dense one.
+
+The finger is a bare one by default, and the text is sized for a panel read at hand-held
+distance — a phone's density, where a row is one finger tall. A device worked with gloves or a
+stylus says so, and every touch target, row and bar grows with it; a panel read standing up
+moves the text on its own:
+
+```rust
+# fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
+use fairing::unit::ScalePolicy;
+let shell = fairing::Shell::builder(fairing::ShellConfig::default())
+    .scale_policy(ScalePolicy::gloved().with_viewing_distance_mm(600.0))
+    .build(ctx)?;
+# Ok(shell)
+# }
+```
 
 ### 4.4 When you are not using the runner
 

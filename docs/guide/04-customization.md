@@ -96,11 +96,11 @@ from `MetricsSpec` in physical units each frame rather than being fixed
 |---|---|---|
 | `status_bar_height` | `32.0` | Status bar height (the single source of truth for bar height) |
 | `nav_bar_height` | `56.0` | Nav bar height |
-| `touch_target` | `48.0` | Minimum touch target. Nav item minimum width, the basis for slider and switch heights, egui `interact_size` |
+| `touch_target` | `48.0` | Minimum touch target — one finger (9 mm by default). Nav item minimum width, the basis for slider and switch heights, egui `interact_size` |
 | `icon_cell` | `96.0` | The side of a desktop cell. What the automatic grid counts columns and rows from |
 | `icon_size` | `48.0` | Desktop icon size. Toast, heads-up and tile icons are half of it |
 | `status_icon_size` | `18.0` | The status bar's icons and the icons in the shade's notification rows. `[status_bar] icon_size` pins it from config |
-| `row_height` | `56.0` | `ListRow` height (the larger of this and `widget_height`) |
+| `row_height` | `48.0` | `ListRow` height (the larger of this and `widget_height`). **One touch target** by default: the padding is inside the row, and a row grows only when its own text needs more |
 | `corner_radius` | `12.0` | **Container** corner radius — cards, tiles, toasts, heads-up, OSK keys, press tint, egui `window_corner_radius` and `menu_corner_radius` |
 | `control_radius` | `6.0` | **Control** corner radius — every egui widget (buttons, fields, combos). Half the container's, so a button inside a card does not read as another card. Set it equal to `corner_radius` for the old uniform look |
 | `edge_px` | `24.0` | Edge zone width. When a bar is visible, the whole bar becomes the zone |
@@ -137,9 +137,9 @@ from `MetricsSpec` in physical units each frame rather than being fixed
 | `osk_key_gap` | `6.0` | Gap between OSK keys |
 | `osk_max_key` | `72.0` du floor, `finger × 1.5` | The tallest a row of OSK keys gets, gap included — a cap on `[osk] height_ratio`, so a tall panel does not get rows the size of a palm. `[osk] min_key_px` wins where the two cross. `f32::INFINITY` lifts the cap — `None` in a `MetricsSpec` ([03 §6.2](03-chrome.md#62-layouts)) |
 | `split_divider` | `8.0` | The band between two panes ([03 §2.3](03-chrome.md#23-recent-screens-and-the-split)). Its handle is widened to `touch_target` for the finger; this is what is drawn and what the panes give up |
-| `widget_height` | `56.0` | Default height of `BigButton` · `ListRow` · the shade footer |
-| `slider_thumb` | `28.0` du floor, `finger × 0.585` | Slider thumb diameter. It is dragged with a finger, so it is a **touch** dimension and tracks `finger_mm` — 28 du (4.4 mm) is right for a Material-sized hand and visibly under-scale beside the 13 mm gloved default (D143) |
-| `type_scale` | `13/16/17/22/16` du floors, `text × 0.811/1/1.063/1.374/1` | **The five text sizes** (`small` · `body` · `button` · `heading` · `monospace`). `Theme::egui_style()` builds egui's `TextStyle` from them. **They track the viewing distance, not `finger_mm`**: one body em (`Dim::text(1.0)`) is `0.008684 ×` `ScalePolicy::viewing_distance_mm` — 4.34 mm at the default 500 mm, about 27 du, the em a gloved 13 mm finger used to give. The hand and the eye are separate knobs: a gloved policy grows the touch targets and leaves the text alone, and a standing kiosk raises `viewing_distance_mm` and the text grows with everything sized in `text` beside it. The `du` floors are the old fixed sizes, so a panel of unknown density still reads |
+| `widget_height` | `48.0` | Default height of `BigButton` · `ListRow` · the shade footer. One touch target, like a row |
+| `slider_thumb` | `28.0` du floor, `finger × 0.585` | Slider thumb diameter. It is dragged with a finger, so it is a **touch** dimension and tracks `finger_mm` — 28 du (4.4 mm) is right for a Material-sized hand and visibly under-scale beside a gloved 13 mm target |
+| `type_scale` | `13/16/17/22/16` du floors, `text × 0.811/1/1.063/1.374/1` | **The five text sizes** (`small` · `body` · `button` · `heading` · `monospace`). `Theme::egui_style()` builds egui's `TextStyle` from them. **They track the viewing distance, not `finger_mm`**: one body em (`Dim::text(1.0)`) is `0.008684 ×` `ScalePolicy::viewing_distance_mm` — 3.13 mm at the default 360 mm, about 20 du, a phone's body text. The hand and the eye are separate knobs: a gloved policy grows the touch targets and leaves the text alone, and a standing kiosk raises `viewing_distance_mm` and the text grows with everything sized in `text` beside it. The `du` floors are the old fixed sizes, so a panel of unknown density still reads |
 
 ### 1.3 MotionTokens
 

@@ -162,7 +162,9 @@ These are the rules the design keeps coming back to.
 1. **Any touchscreen device is a target.** There is no list of target devices, so no default
    assumes one.
 2. **Every way of touching is a target:** capacitive and resistive panels, bare fingers and
-   gloves. Sizes are set in millimetres.
+   gloves. Sizes are set in millimetres. The default is a bare 9 mm finger and text read at
+   hand-held distance, the density of a phone or a tablet; a device worked with gloves says so,
+   and every target grows with it.
 3. **Backends belong to the integrator.** The crate defines the traits and ships no system code.
 4. **Customization happens in code.** Every part can be turned on, turned off or redrawn without
    forking the crate.

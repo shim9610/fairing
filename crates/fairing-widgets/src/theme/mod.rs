@@ -662,7 +662,7 @@ pub struct Metrics {
     pub status_text_size: f32,
     /// The status bar item caption text size.
     pub status_label_size: f32,
-    /// The settings row height (56).
+    /// The settings row height (48): one touch target.
     pub row_height: f32,
     /// Where a row's, a card's or a bar's content starts, measured in from its edge (16).
     ///
@@ -781,7 +781,7 @@ pub struct Metrics {
     /// tall panel, where a fraction of the screen made each row as big as a palm.
     /// `f32::INFINITY` lifts the cap — what [`MetricsSpec::osk_max_key`] set to `None` resolves to.
     pub osk_max_key: f32,
-    /// The default widget height — `BigButton` and `ListRow` (56) (M2, A7).
+    /// The default widget height — `BigButton` and `ListRow` (48): one touch target.
     pub widget_height: f32,
     /// The slider thumb diameter (28) (M2, A7).
     pub slider_thumb: f32,
@@ -800,7 +800,7 @@ impl Default for Metrics {
             status_icon_size: 18.0,
             status_text_size: 15.0,
             status_label_size: 12.0,
-            row_height: 56.0,
+            row_height: 48.0,
             content_inset: 16.0,
             corner_radius: 12.0,
             control_radius: 6.0,
@@ -839,7 +839,7 @@ impl Default for Metrics {
             heads_up_height: 88.0,
             osk_key_gap: 6.0,
             osk_max_key: 72.0,
-            widget_height: 56.0,
+            widget_height: 48.0,
             slider_thumb: 28.0,
             type_scale: TypeScale::default(),
         }

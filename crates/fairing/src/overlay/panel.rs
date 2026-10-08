@@ -476,7 +476,7 @@ struct PanelStyle {
 ///
 /// `notification_row_height` alone is not enough. The gap is carved out of the row
 /// (`slot.shrink2(.., card_gap * 0.5)`), and `card_gap` is a multiple of `corner_radius` — which
-/// started resolving with the finger at the vocabulary's adoption step 4. At the gloved default the
+/// started resolving with the finger at the vocabulary's adoption step 4. At a gloved 13 mm finger the
 /// gap grew to 13.7 du and took the card down to 78.2, under the 81.89 touch target, so the close
 /// button could no longer reach full size however wide its hit Rect asked to be: it is clipped to
 /// the card. Stating the rule here rather than hoping the token is generous enough is the fix —
@@ -1824,8 +1824,8 @@ fn draw_notification_row(
     // **The size drawn and the place pressed are separated** — the same prescription as a grid
     // cell's `rect` and `visual`.
     //
-    // The close × is drawn at a multiple of `shade.close` (0.72), which comes to 9.4 mm under the gloved
-    // default — short of `finger_hard_mm` (10.1 mm). Growing the drawing would bury the notification card
+    // The close × is drawn at a multiple of `shade.close` (0.72), which comes to 9.4 mm under a gloved
+    // finger — short of `finger_hard_mm` (10.1 mm). Growing the drawing would bury the notification card
     // in ×s, so **the drawing is left as it is and only the hit Rect** widens to the touch target. It
     // widens leftwards and covers the body text, but the text is not pressable, and between the two the
     // close is the smaller than a card tap (opening the notification), so it is right that it takes the place.

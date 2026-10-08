@@ -296,7 +296,7 @@ fn opening_a_row_near_the_bottom_scrolls_its_body_into_view() -> fairing::Result
         let mut h = bench(filler)?;
         let s = snap(&mut h);
         let screen_bottom = h.screen_rect().max.y;
-        let pane_bottom = screen_bottom - 120.0;
+        let pane_bottom = h.shell.layout().content.max.y;
         let fits = s.header.max.y < pane_bottom;
         let runs_past = s.header.max.y + 2.0 * s.header.height() > pane_bottom;
         if fits && runs_past {
@@ -314,9 +314,10 @@ fn opening_a_row_near_the_bottom_scrolls_its_body_into_view() -> fairing::Result
     let open = snap(&mut h);
     let body = open.body.unwrap_or(egui::Rect::NOTHING);
     // The nav bar takes the bottom of the screen; the pane ends above it.
+    let pane_bottom = h.shell.layout().content.max.y;
     assert!(
-        body.max.y <= screen_bottom - 100.0,
-        "the body's end ({}) is not on the screen (bottom {screen_bottom})",
+        body.max.y <= pane_bottom + 0.5,
+        "the body's end ({}) is not in the pane (bottom {pane_bottom}, screen {screen_bottom})",
         body.max.y
     );
     assert!(open.header.min.y > 0.0, "the header left the screen");

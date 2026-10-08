@@ -527,9 +527,6 @@ fn main() -> fairing::Result<()> {
 /// The demo's config. The headless regression test reads the same file (`tests/m1_headless.rs`).
 const CONFIG: &str = include_str!("demo.toml");
 
-/// The finger width the demo uses (mm). Bare-fingered — the common premise for a shop terminal or a kiosk.
-const DEMO_FINGER_MM: f32 = 9.0;
-
 /// The demo's default wallpaper — **the original artwork**.
 ///
 /// The procedural Abyss (`--wallpaper=abyss`) is a code approximation of the same picture and is much
@@ -2578,12 +2575,12 @@ fn panel_scale(builder: fairing::ShellBuilder) -> fairing::ShellBuilder {
         log::info!("panel size {w} x {h} mm");
         b = b.physical_mm(w, h);
     }
-    // The crate's default is **gloved, 13 mm**. What the demo imitates is a shop terminal, so
-    // bare-fingered is right — at 13 mm only three list rows fit on a 1024 × 600. `--finger-mm=13`
-    // shows the gloved density as it is.
-    let finger = common::arg_finger_mm(&args).unwrap_or(DEMO_FINGER_MM);
-    log::info!("finger {finger} mm");
-    b = b.scale_policy(fairing::unit::ScalePolicy::default().with_finger_mm(finger));
+    // The crate's default, a bare finger, is right for the shop terminal the demo imitates.
+    // `--finger-mm=13` shows the gloved density.
+    if let Some(finger) = common::arg_finger_mm(&args) {
+        log::info!("finger {finger} mm");
+        b = b.scale_policy(fairing::unit::ScalePolicy::default().with_finger_mm(finger));
+    }
     if common::arg_legacy(&args) {
         log::info!("drawing with pre-M2b metrics (legacy_du)");
         b = b.metrics_spec(fairing::theme::MetricsSpec::legacy_du());

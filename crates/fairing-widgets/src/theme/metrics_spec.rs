@@ -44,8 +44,8 @@ use crate::Result;
 ///     egui::vec2(800.0, 480.0),
 /// );
 /// let m = MetricsSpec::default().resolve(&scale);
-/// // The default is gloved (13 mm), so the touch target is a physical 13 mm.
-/// assert!((scale.du_to_mm(m.touch_target) - 13.0).abs() < 0.5);
+/// // The default is a bare finger (9 mm), so the touch target is a physical 9 mm.
+/// assert!((scale.du_to_mm(m.touch_target) - 9.0).abs() < 0.5);
 /// ```
 // No `Copy` is attached — it is 14 `Span`s, so 1,180 bytes. Passed by value, clippy's
 // `large_types_passed_by_value` makes a fair point. The answer is `&self`.
@@ -75,8 +75,8 @@ pub struct MetricsSpec {
     pub nav_icon_size: Span<Rigid>,
     /// The dock's thickness.
     pub dock_height: Span<Hand>,
-    /// The list row height.
-    pub row_height: Span<Eye>,
+    /// The list row height: **one touch target**, with the text and its padding inside it.
+    pub row_height: Span<Hand>,
     /// The gap between a card and the pane's edge.
     pub screen_inset: Span<Hand>,
     /// A container's corner radius.
@@ -95,8 +95,8 @@ pub struct MetricsSpec {
     /// number the concentric-corner rule needs out of reach of the theme. The value is unchanged:
     /// `finger(0.10) + du(0.8)` is exactly that product written out.
     pub card_pad: Span<Eye>,
-    /// The widget height.
-    pub widget_height: Span<Eye>,
+    /// The widget height: one touch target, like a row.
+    pub widget_height: Span<Hand>,
     /// The desktop label text size.
     pub desktop_label_size: Span<Rigid>,
     /// The quick-settings tile size.
@@ -105,8 +105,7 @@ pub struct MetricsSpec {
     ///
     /// It is dragged with a finger, so it belongs with the touch dimensions and not with the
     /// visual ones. Fixed at 28 du it was 4.4 mm — right for the Material-sized hand these numbers
-    /// were drawn for, and visibly under-scale beside a 13 mm gloved target and the text that now
-    /// tracks it.
+    /// were drawn for, and visibly under-scale beside a gloved 13 mm target.
     pub slider_thumb: Span<Hand>,
     /// The notification row height.
     pub notification_row_height: Span<Hand>,
@@ -127,33 +126,17 @@ pub struct MetricsSpec {
     /// by definition and the other four say their ratio to it out loud. The em itself comes from
     /// [`ScalePolicy::viewing_distance_mm`](crate::unit::ScalePolicy::viewing_distance_mm): text is
     /// read, and how big a thing has to be to be read is a fact about **distance**, not about hands.
+    /// At the default hand-held distance the body em is 3.13 mm, a phone's.
     ///
-    /// They used to be `Dim::finger` fractions, on the reasoning below — which was right about the
-    /// problem and wrong about the cure, because there was no knob for the eye and the finger was
-    /// the only physical term going. The finger was a **proxy** for the viewing distance, and like
-    /// every proxy it broke the first time the two came apart: a panel read standing at a metre had
-    /// to state its type scale directly, and every length still written in finger terms stopped
-    /// following it.
+    /// They used to be `Dim::finger` fractions, with the finger standing in for the viewing distance
+    /// because there was no knob for the eye. Like every proxy it broke the first time the two came
+    /// apart: a panel read standing at a metre had to state its type scale directly, and every
+    /// length still written in finger terms stopped following it. The hand and the eye are separate
+    /// knobs now: a gloved policy grows the targets and leaves the text alone, and a standing kiosk
+    /// raises the distance and the text grows with everything sized in `text` beside it.
     ///
-    /// # The argument that put them on the finger, kept because half of it still holds
-    ///
-    /// A `du` is already a physical unit — the anchor fixes it at about 0.159 mm — so a fixed `du`
-    /// text size is a fixed *millimetre* text size. It just does not move with
-    /// [`ScalePolicy::finger_mm`](crate::unit::ScalePolicy::finger_mm), and while these were fixed
-    /// that produced a shell **sized for two different rooms at once**: the touch targets took the
-    /// default gloved finger (13 mm, an operator at arm's length) while the text stayed at 16 du =
-    /// 2.54 mm, which is a phone held at 30 cm. Rows came out 14 mm tall with text filling 18 % of
-    /// them, against 29 % on Material and 38 % on iOS — a screen of large empty rows with small
-    /// text adrift inside them.
-    ///
-    /// The safety argument that makes the finger gloved by default has a reading half: assume a
-    /// close viewer and meet an operator at arm's length and the text **cannot be read**. So the
-    /// text moves with the same assumption the targets do.
-    ///
-    /// The fractions are today's values read against a Material-sized finger (48 du ≈ 7.6 mm, the
-    /// hand these numbers were drawn for): 13/47.9, 16/47.9, 17/47.9, 22/47.9. At that finger the
-    /// scale is unchanged; at the gloved default it grows with everything else. Each keeps a `du`
-    /// floor equal to the old fixed value.
+    /// The ratios 0.811 / 1 / 1.063 / 1.374 / 1 are the shipped scale's shape. Each keeps a `du`
+    /// floor so a panel of unknown density still reads.
     pub type_scale: [Span<Eye>; 5],
 }
 
@@ -180,12 +163,13 @@ impl Default for MetricsSpec {
             status_label_size: Span::fixed(Dim::mm(2.4)).min(Dim::du(12.0)),
             nav_icon_size: Span::fixed(Dim::mm(5.0)).min(Dim::du(24.0)),
             dock_height: Span::fixed(Dim::finger(1.7)).min(Dim::du(96.0)),
-            // **A control, plus the 8 du that keeps two rows from touching.** It was
-            // `finger(1.0) + du(8.0)`, which was the same number by a different road: a row's job
-            // is to hold a line of text, so it has to move with the text and not with the hand.
-            // Left on the finger it broke the crate's own `a_row_keeps_its_proportion_to_its_text`
-            // invariant the moment the text stopped tracking the finger.
-            row_height: Span::fixed(Dim::text(3.0) + Dim::du(8.0)).min(Dim::du(56.0)),
+            // **A row is one touch target tall, and its padding goes inside it.** It was three
+            // body ems plus 8 du, which stacked a margin on top of the target: at a 9 mm finger a
+            // settings row came out 14 mm tall where a phone's is 9. Phones size the row to the
+            // finger and fit the text in it (One UI on a Galaxy Fold: 8.8 mm rows, 2.9 mm body
+            // em), and so does this. Text that outgrows the row is not clipped: `ListRow` floors
+            // itself on its own lines, so a low-vision type scale grows the row with it.
+            row_height: Span::fixed(Dim::finger(1.0)).min(Dim::du(48.0)),
             // **Adoption step 4: the finger terms go on.** Until now each of these carried only its `du` base,
             // so the render matched what the crate shipped before the control vocabulary existed. The terms
             // below make them move with `ScalePolicy::finger_mm` like the rows and the text already do — a
@@ -196,19 +180,12 @@ impl Default for MetricsSpec {
             // This had to come **after** the shell stopped hand-drawing its rows (step 3). With those rows
             // still reading `screen_inset` while `ListRow` read `content_inset`, turning the terms on would
             // have widened the reported four-du label gap to 6.8 rather than closing it.
-            // **The inset does not scale one-for-one with the finger.** At `finger(0.333)` it
-            // resolved to 18.88 du against a 64.7 du row - 0.29 - where One UI sits at 0.33 and
-            // iOS at 0.36, and it read visibly tight: the label crowded the card's edge on exactly
-            // the rows that are tallest. Scaling it straight off the finger is not the fix either,
-            // because the row grows with the finger and the inset would grow with it: at the
-            // gloved 13 mm default a proportional inset reaches 0.44 of the row, nearly half the
-            // height in padding. The references hold it near-constant while the target grows, so
-            // the base is mostly physical with a small finger term - 27.3 du at 9 mm and 32.0 at
-            // 13 mm, which is 0.42 and 0.36 of their rows.
-            // The finger term was 0.186, which is 0.557 body ems — an inset is the white space a
-            // *reader* needs before the first letter, so it moves with the text. The millimetre
-            // term stays: part of this gap is the glass edge, and that is a physical distance.
-            content_inset: Span::fixed(Dim::mm(2.66) + Dim::text(0.557)).min(Dim::du(24.0)),
+            // **Where a row's text starts.** An inset is the white space a reader needs before
+            // the first letter, so it moves with the text, plus a millimetre term for the glass
+            // edge. It stays a modest share of the row: One UI starts the text 2.85 mm in on a
+            // Galaxy Fold's 8.8 mm rows, and this is 2.76 mm at the default policy. The older
+            // `mm(2.66) + text(0.557)` came to half of a one-finger row.
+            content_inset: Span::fixed(Dim::mm(1.2) + Dim::text(0.5)).min(Dim::du(16.0)),
             screen_inset: Span::fixed(Dim::finger(0.25)).min(Dim::du(12.0)),
             // A corner is looked at, not pressed, and it has to keep step with `card_pad` — the
             // concentric rule is `inner = outer - gap` and the gap is now text. The fractions are
@@ -228,7 +205,7 @@ impl Default for MetricsSpec {
             // than a hair less. `metrics_are_concentric` holds it to within 1 du.
             control_radius: Span::fixed(Dim::text(0.8982)).min(Dim::du(14.0)),
             card_pad: Span::fixed(Dim::text(0.3) + Dim::du(0.8)).min(Dim::du(5.6)),
-            widget_height: Span::fixed(Dim::text(3.0) + Dim::du(8.0)).min(Dim::du(56.0)),
+            widget_height: Span::fixed(Dim::finger(1.0)).min(Dim::du(48.0)),
             desktop_label_size: Span::fixed(Dim::mm(2.7)).min(Dim::du(13.0)),
             tile_size: Span::fixed(Dim::finger(1.3)).min(Dim::du(72.0)),
             slider_thumb: Span::fixed(Dim::finger(0.585)).min(Dim::du(28.0)),
@@ -648,33 +625,31 @@ mod scale_tests {
         }
     }
 
-    /// **The row and the text it holds grow together.** Both derive from `finger_mm`, so the ratio
-    /// between them has to stay put across the whole range a device might declare - otherwise a
-    /// gloved panel would get roomy rows and a bare-fingered one crowded ones, or the reverse.
+    /// **A row is one touch target, and its text fits inside it.** The row follows the finger and
+    /// the text follows the eye, so the ratio between them is free to move; what must hold at every
+    /// finger a device might declare is that the row is exactly the target (no margin stacked on
+    /// top of it), that a line of body text and its padding fit inside, and that the inset stays a
+    /// modest share of the row.
     #[test]
-    fn a_row_keeps_its_proportion_to_its_text() {
-        let mut seen = Vec::new();
+    fn a_row_is_one_touch_target_and_holds_its_text() {
         for finger in [6.0_f32, 9.0, 11.0, 13.0, 16.0] {
             let (m, c, _) = at(finger, 6.67);
-            seen.push((
-                finger,
-                m.row_height / m.type_scale.body,
-                m.row_height / c.mark_size,
-                m.content_inset / m.row_height,
-            ));
-        }
-        for &(finger, row_text, row_mark, inset_row) in &seen {
             assert!(
-                (3.1..=3.6).contains(&row_text),
-                "finger {finger}: row/body is {row_text:.2}, outside 3.1..3.6"
+                (m.row_height - m.touch_target).abs() < 0.01,
+                "finger {finger}: row {:.2} is not the touch target {:.2}",
+                m.row_height,
+                m.touch_target
             );
+            let line = m.type_scale.body * 1.25 + c.gap * 2.0;
             assert!(
-                (1.7..=2.0).contains(&row_mark),
-                "finger {finger}: row/mark is {row_mark:.2}, outside 1.7..2.0"
+                line <= m.row_height,
+                "finger {finger}: a body line and its padding ({line:.2}) overflow the row {:.2}",
+                m.row_height
             );
+            let inset_row = m.content_inset / m.row_height;
             assert!(
-                (0.30..=0.45).contains(&inset_row),
-                "finger {finger}: inset/row is {inset_row:.2}, outside 0.30..0.45"
+                (0.15..=0.40).contains(&inset_row),
+                "finger {finger}: inset/row is {inset_row:.2}, outside 0.15..0.40"
             );
         }
     }
@@ -716,7 +691,7 @@ mod scale_tests {
     fn the_low_density_floors_are_one_consistent_set() {
         let (m, c, _) = at(13.0, 2.0);
         assert!(
-            (m.row_height - 56.0).abs() < 0.01,
+            (m.row_height - 48.0).abs() < 0.01,
             "row_height {}",
             m.row_height
         );
@@ -726,15 +701,16 @@ mod scale_tests {
             m.touch_target
         );
         assert!(
-            (m.content_inset - 24.0).abs() < 0.01,
+            (m.content_inset - 16.0).abs() < 0.01,
             "inset {}",
             m.content_inset
         );
         assert!((c.mark_size - 28.8).abs() < 0.01, "mark {}", c.mark_size);
-        let row_text = m.row_height / m.type_scale.body;
+        let line = m.type_scale.body * 1.25 + c.gap * 2.0;
         assert!(
-            (3.1..=3.6).contains(&row_text),
-            "at the floors the row/body ratio is {row_text:.2}"
+            line <= m.row_height,
+            "at the floors a body line ({line:.2}) overflows the row {:.2}",
+            m.row_height
         );
     }
 }

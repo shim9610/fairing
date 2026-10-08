@@ -127,8 +127,8 @@
 //!
 //! The row height derives from `metrics.row_height`, the padding from `metrics.screen_inset` and the
 //! corners from `metrics.corner_radius`. They sit on the `1 du = 1 egui point` anchor, so
-//! changing the gloved 13 mm policy grows the settings screens with it — which is why the numbers
-//! are not written down again here.
+//! changing the finger policy (a gloved 13 mm in place of the bare 9 mm default) grows the
+//! settings screens with it — which is why the numbers are not written down again here.
 
 pub use fairing_widgets::fit::{contain, cover_uv};
 
@@ -337,7 +337,7 @@ impl Deco {
     /// **Separate the logical size from the visual size** (du). The hit area is left as it is and
     /// **only what is seen** shrinks by this much.
     ///
-    /// A device UI often needs a touch target of 13 mm for a gloved hand while wanting the
+    /// A device UI often needs a large touch target (13 mm for a gloved hand) while wanting the
     /// screen to look dense. Make the cell small and it cannot be pressed; leave it large and it
     /// looks bare — this value is what pulls the two apart.
     ///

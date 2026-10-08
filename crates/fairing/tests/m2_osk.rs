@@ -200,6 +200,9 @@ fn a_toast_stays_below_the_status_bar_over_a_tall_keyboard() -> fairing::Result<
     let mut config = single_level_access();
     config.motion.reduce = true;
     config.osk.height_ratio = 1.0;
+    // Rows that big, so the keyboard outgrows the content whatever the finger size: the floor wins
+    // over the one-and-a-half-finger cap.
+    config.osk.min_key_px = 140.0;
     let (mut h, form) = form_harness_on(config, ChromePolicy::default())?;
     let field = form.borrow().rect_a.center();
     tap(&mut h, field);

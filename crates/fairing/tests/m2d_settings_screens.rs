@@ -713,8 +713,10 @@ fn a_row_can_grow_but_never_below_the_touch_target() -> fairing::Result<()> {
     let Some((base, touch)) = row_height(None) else {
         return Err(fairing::Error::Config("the row was not drawn".to_owned()));
     };
+    // egui rounds every allocated rect to 1/32 of a point, so a target that is not a multiple of
+    // that comes back up to 1/32 short. That is rounding, not a shorter row.
     assert!(
-        base >= touch,
+        base + 1.0 / 32.0 >= touch,
         "the default row is shorter than the touch target: {base}/{touch}"
     );
 

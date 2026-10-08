@@ -298,7 +298,7 @@ pub fn arg_panel_mm(args: &[String]) -> Option<(f32, f32)> {
     Some((w.parse().ok()?, h.parse().ok()?))
 }
 
-/// `--finger-mm=9` — the finger's diameter (mm). Not given, the policy default (gloved, 13 mm).
+/// `--finger-mm=13` — the finger's diameter (mm). Not given, the policy default (bare, 9 mm).
 pub fn arg_finger_mm(args: &[String]) -> Option<f32> {
     args.iter()
         .find_map(|a| a.strip_prefix("--finger-mm="))?

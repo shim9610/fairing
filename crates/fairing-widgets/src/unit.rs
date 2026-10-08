@@ -69,18 +69,20 @@ pub const FINGER_GLOVED_MM: f32 = 13.0;
 /// text from everything sized beside it. Measured on the shipped kiosk example, that is exactly
 /// what happened: the text grew 2.30x and every control stayed at one finger.
 ///
-/// 500 mm is a seated or leaning operator — the distance the shipped fractions already encoded.
-pub const VIEWING_DEFAULT_MM: f32 = 500.0;
+/// 360 mm is a hand-held panel or one at a desk — where a phone or a tablet is read. It puts the
+/// body em at 3.13 mm, which is what One UI draws on a Galaxy Fold's main screen, so a shell that
+/// declares nothing comes out at the density people already read every day. A panel read from
+/// further away raises this, and its text grows in proportion.
+pub const VIEWING_DEFAULT_MM: f32 = 360.0;
 
 /// **The body em as a fraction of the viewing distance** — the one number that turns "how far away
 /// is the reader" into "how big is the text".
 ///
-/// It is not a taste. At [`VIEWING_DEFAULT_MM`] it gives a 4.342 mm em, which is exactly what
-/// `Dim::finger(0.334)` gave at a gloved 13 mm finger, so no shipped panel moves. And it is the
-/// value it is because of what that em subtends: a 4.342 mm em at 500 mm is 29.85 arcmin, and a
-/// cap is 0.70 of an em, so the **capital subtends 20.9 arcmin** — ISO 9241-303's 20 arcmin floor
-/// for comfortable reading, one tenth of a percent above it. Doubling the distance doubles the
-/// text and the angle is unchanged, which is the whole point.
+/// It is not a taste. It is the value it is because of what the em subtends: an em of 0.008684 of
+/// the distance is 29.85 arcmin, and a cap is 0.70 of an em, so the **capital subtends 20.9
+/// arcmin** — ISO 9241-303's 20 arcmin floor for comfortable reading, one tenth of a percent above
+/// it. At [`VIEWING_DEFAULT_MM`] that is a 3.126 mm em (19.69 du). Doubling the distance doubles
+/// the text and the angle is unchanged, which is the whole point.
 pub const BODY_PER_VIEWING: f32 = 0.008_684;
 
 /// Fold a non-finite value onto a fallback. `Dim::px` goes to infinity when `pixels_per_point`
@@ -150,8 +152,8 @@ fn finite_or(v: f32, fallback: f32) -> f32 {
 /// use fairing_widgets::theme::MetricsSpec;
 /// use fairing_widgets::unit::{Dim, Span};
 /// let spec = MetricsSpec {
-///     // A body-relative row with a flat trim, and a floor under it.
-///     row_height: Span::fixed(Dim::text(2.6) + Dim::du(6.0)).min(Dim::du(32.0)),
+///     // A body-relative inset with a flat trim, and a floor under it.
+///     content_inset: Span::fixed(Dim::text(0.6) + Dim::du(6.0)).min(Dim::du(12.0)),
 ///     // "56 du, and I do mean 56 du."
 ///     status_bar_height: Span::fixed(Dim::du(56.0)).pinned(),
 ///     // "Hand-sized, in a field the crate sizes in millimetres."
@@ -683,10 +685,10 @@ pub struct ScalePolicy {
     /// The finger diameter (mm). This one value moves every `Dim::finger` term and the audit
     /// thresholds together.
     ///
-    /// The default is **gloved** ([`FINGER_GLOVED_MM`]). With no list of target devices and every
-    /// kind of input in scope, a shell that declares nothing has to work
-    /// under the hardest condition — assume a bare finger and meet a glove and it **cannot be
-    /// pressed**, while the other way round is merely loose, and visibly so.
+    /// The default is a **bare finger** ([`FINGER_BARE_MM`]), the size phones and tablets are
+    /// built for: a row is one finger tall, as on a phone. A device worked with gloves or a stylus
+    /// says so with [`ScalePolicy::gloved`] or `with_finger_mm(13.0)`, and every touch target,
+    /// row and bar grows with it.
     pub finger_mm: f32,
     /// The "below this it is unusable" floor (mm). `None` means `finger_mm × 7/9`.
     pub finger_hard_mm: Option<f32>,
@@ -705,8 +707,7 @@ pub struct ScalePolicy {
     /// It is the eye's knob, and [`Self::finger_mm`] is the hand's. A standing kiosk raises this
     /// one and leaves the finger alone; a gloved bench instrument raises the finger and leaves this
     /// alone; a screen read across a room raises both. The default is
-    /// [`VIEWING_DEFAULT_MM`], which reproduces the values the crate shipped when the type scale
-    /// still hung off the finger.
+    /// [`VIEWING_DEFAULT_MM`], a panel read at hand-held distance.
     ///
     /// **Raise this rather than overriding `MetricsSpec::type_scale`.** Rewriting the type scale
     /// changes the unit the text is written in, and every length written in the old unit stops
@@ -738,7 +739,7 @@ pub struct ScalePolicy {
 impl Default for ScalePolicy {
     fn default() -> Self {
         Self {
-            finger_mm: FINGER_GLOVED_MM,
+            finger_mm: FINGER_BARE_MM,
             finger_hard_mm: None,
             ui_scale: 1.0,
             assume_px_per_mm: DU_PER_MM,
@@ -751,19 +752,19 @@ impl Default for ScalePolicy {
 }
 
 impl ScalePolicy {
-    /// A bare-finger-only device (`finger_mm = 9.0`).
+    /// A bare-finger device (`finger_mm = 9.0`). The same as the default.
     #[must_use]
     pub fn bare() -> Self {
-        Self {
-            finger_mm: FINGER_BARE_MM,
-            ..Self::default()
-        }
+        Self::default()
     }
 
-    /// A device operated with gloves (`finger_mm = 13.0`). The same as the default.
+    /// A device operated with gloves or a stylus (`finger_mm = 13.0`).
     #[must_use]
     pub fn gloved() -> Self {
-        Self::default()
+        Self {
+            finger_mm: FINGER_GLOVED_MM,
+            ..Self::default()
+        }
     }
 
     /// Set how far the operator stands from the glass (mm) — the eye's knob.
@@ -869,7 +870,7 @@ impl Scale {
             pixels_per_point: 1.0,
             du_per_mm: DU_PER_MM,
             px_per_mm: DU_PER_MM,
-            finger_mm: FINGER_GLOVED_MM,
+            finger_mm: FINGER_BARE_MM,
             text_du: BODY_PER_VIEWING * VIEWING_DEFAULT_MM * DU_PER_MM,
             root_du: egui::vec2(1024.0, 600.0),
             ui_scale: 1.0,
@@ -1157,7 +1158,7 @@ mod tests {
     #[test]
     fn the_hard_floor_follows_the_finger() {
         let p = ScalePolicy::default();
-        assert!((p.hard_mm() - FINGER_GLOVED_MM * 7.0 / 9.0).abs() < 1e-4);
+        assert!((p.hard_mm() - FINGER_BARE_MM * 7.0 / 9.0).abs() < 1e-4);
         let p2 = ScalePolicy::default().with_finger_hard_mm(7.0);
         assert!((p2.hard_mm() - 7.0).abs() < 1e-6);
     }

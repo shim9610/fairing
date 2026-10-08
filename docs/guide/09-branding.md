@@ -954,7 +954,7 @@ when `wallpaper = "abyss"`.
 | `ShellBuilder::theme(Theme)` | Palette **plus metrics and motion tokens**. `[theme]` alone only changes colours |
 | `ShellBuilder::palettes(dark, light)` | The two palettes the theme toggle moves between |
 | `ShellBuilder::fonts(FontSet)` / `font(..)` | Type (§3) |
-| `ShellBuilder::scale_policy(..)` | **Defaults to a 13 mm gloved finger.** This one value moves touch targets, bar thickness and icon cells together |
+| `ShellBuilder::scale_policy(..)` | **Defaults to a bare 9 mm finger** and text read at hand-held distance. The finger moves touch targets, rows, bar thickness and icon cells together; `ScalePolicy::gloved()` is 13 mm |
 | `ShellBuilder::metrics_spec(..)` | The shell's metrics, mixing mm, finger units and du |
 | `ShellBuilder::physical_mm(w, h)` | The escape hatch for a panel whose EDID lies |
 | `ShellBuilder::status_bar_painter` / `nav_bar_painter` | A whole bar (§6.2) |

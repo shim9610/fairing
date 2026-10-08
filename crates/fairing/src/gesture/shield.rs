@@ -105,8 +105,8 @@ mod tests {
         let counter = Rc::clone(&hits);
         // **Where the button lands, recorded rather than assumed.** This used to tap a literal
         // `(20, 60)`, which was inside the button only while `screen_inset` was frozen at 12 du. It
-        // resolves with the finger since the control vocabulary's adoption step 4 — 20.47 at the gloved
-        // default — so the literal fell outside and the test failed for a reason that had nothing to do
+        // resolves with the finger since the control vocabulary's adoption step 4 — 20.47 at a gloved
+        // finger — so the literal fell outside and the test failed for a reason that had nothing to do
         // with the shield it is about.
         let button = Rc::new(Cell::new(egui::Rect::NOTHING));
         let seen = Rc::clone(&button);

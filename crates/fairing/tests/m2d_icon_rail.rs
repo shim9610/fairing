@@ -88,10 +88,11 @@ fn the_rail_stays_below_the_bars() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **On a narrow panel it stands aside.** At 480 px the rail plus a screen leaves neither usable.
+/// **On a narrow panel it stands aside.** Narrower than two icon cells, the rail plus a screen
+/// leaves neither usable.
 #[test]
 fn a_narrow_panel_drops_the_rail() -> fairing::Result<()> {
-    let h = rail_shell("left", 240.0, 320.0)?;
+    let h = rail_shell("left", 160.0, 320.0)?;
     assert!(
         h.shell.layout().rail.is_none(),
         "it is narrow and the rail stayed"

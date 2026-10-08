@@ -182,7 +182,7 @@ Three things the defaults cannot know. The shell logs a warning at startup for e
 until you tell it:
 
 - **The panel's size.** Without `.physical_mm(w, h)` (or a display backend that reports
-  it) the shell assumes a density, and the "13 mm" touch targets are a guess.
+  it) the shell assumes a density, and the 9 mm touch targets are a guess.
 - **Fonts.** The crate carries no face of its own, on purpose: which faces a device shows,
   and under what licence, is the device's call. egui's built-in face has one weight and Latin
   letters only: titles come out flat, and Hangul or `₩` come out as boxes. The shell warns when there is no bold, and

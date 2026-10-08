@@ -178,10 +178,10 @@ back_edges = ["left"]
 | `enabled` | `true` | `false` means no bar and wider content |
 | `style` | `"buttons"` | `"gesture"`: a band with the home indicator, and the bottom edge's swipes in place of the buttons (§2.6) |
 | `items` | `["back", "home", "recents"]` | The slots and their order |
-| `height` | unset | The bar height in du, pinned. Unset, it is one finger plus 8 du, at least 56 du (90 du at the assumed density). The same rule as `[status_bar] height` |
+| `height` | unset | The bar height in du, pinned. Unset, it is one finger plus 8 du, at least 56 du (65 du at the assumed density). The same rule as `[status_bar] height` |
 | `back_edges` | `["left"]` | Which screen edges accept a back gesture. Only `"left"` and `"right"` are valid; an empty array means no gesture back |
 
-Item widths are distributed evenly between one `touch_target` (a 13 mm finger by default) and
+Item widths are distributed evenly between one `touch_target` (a 9 mm finger by default) and
 `nav_item_max_span` of them (3), centred. To place them yourself, see
 [04 §10.1](04-customization.md#101-the-nav-bars-items).
 

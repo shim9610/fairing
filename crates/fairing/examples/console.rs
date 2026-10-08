@@ -407,16 +407,10 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
     // that shows what the tokens do.
     let (mm_w, mm_h) = common::arg_panel_mm(&args).unwrap_or((345.0, 215.0));
     builder = builder.physical_mm(mm_w, mm_h);
-    // A bench instrument is read at arm's length over the work, not at the 500 mm the crate
-    // assumes. Move the anchor and every text-derived token follows.
-    //
-    // The hand matters as much: the crate assumes a **gloved** 13 mm fingertip, which is right for
-    // a panel behind a hatch and far too big for a bench a bare hand reaches over. Left at the
-    // default the switch, the slider thumb and every touch target come out sized for a mitten while
-    // the rows around them are sized for reading.
-    let mut policy = fairing::unit::ScalePolicy::default()
-        .with_viewing_distance_mm(420.0)
-        .with_finger_mm(9.0);
+    // A bench instrument is read over the work, a little further off than the hand-held 360 mm
+    // the crate assumes. Move the anchor and every text-derived token follows. The hand is the
+    // crate's default bare finger, which is what reaches over a bench.
+    let mut policy = fairing::unit::ScalePolicy::default().with_viewing_distance_mm(420.0);
     if let Some(finger) = common::arg_finger_mm(&args) {
         policy = policy.with_finger_mm(finger);
     }

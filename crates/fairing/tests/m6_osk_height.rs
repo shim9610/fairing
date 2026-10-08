@@ -64,9 +64,11 @@ fn a_tall_panel_stops_the_rows_at_the_cap() -> fairing::Result<()> {
 /// `pixels_per_point` at 1, so the test does not pay for a font atlas at a higher scale.
 #[test]
 fn the_cap_is_one_and_a_half_fingers() -> fairing::Result<()> {
+    // Gloved, so one and a half fingers clears the 72 du floor at this density.
     let h = keyboard_up(600.0, 1600.0, |ctx| {
         Shell::builder(single_level_access())
             .physical_mm(120.0, 320.0)
+            .scale_policy(fairing::unit::ScalePolicy::gloved())
             .build(ctx)
     })?;
     let scale = h.shell.scale();

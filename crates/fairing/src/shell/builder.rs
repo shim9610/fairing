@@ -465,14 +465,15 @@ impl ShellBuilder {
     /// The physical scale policy. Finger size, viewing magnification, the density fallback
     /// and the `ppp` range.
     ///
-    /// The default is **gloved** (`finger_mm = 13.0`) — with no list of target devices and every
-    /// way of operating them in play, a shell that declares nothing has to work under the hardest
-    /// conditions. On a bare-finger-only device, hand over `finger_mm: 9.0`.
+    /// The default is a **bare finger** (`finger_mm = 9.0`) read at hand-held distance — the
+    /// density of a phone or a tablet. On a device worked with gloves or a stylus, hand over
+    /// [`ScalePolicy::gloved`](crate::unit::ScalePolicy::gloved) (13 mm) and every touch target,
+    /// row and bar grows with it.
     ///
     /// ```no_run
     /// use fairing::unit::ScalePolicy;
     /// # let cfg = fairing::ShellConfig::default();
-    /// let b = fairing::Shell::builder(cfg).scale_policy(ScalePolicy::bare());
+    /// let b = fairing::Shell::builder(cfg).scale_policy(ScalePolicy::gloved());
     /// ```
     #[must_use]
     pub fn scale_policy(mut self, policy: ScalePolicy) -> Self {
@@ -521,9 +522,9 @@ impl ShellBuilder {
     ///
     /// **It belongs here for the same reason the other two do.** Until it was, `theme.control` was
     /// filled once from `ControlMetrics::default()` - which resolves against `Scale::identity()`,
-    /// a **gloved 13 mm** finger at 1 px per du - and never resolved again. So every control drew
-    /// at the gloved size on every panel: a switch measured 7.8 mm tall whether the device declared
-    /// a 9 mm bare finger or nothing at all, while the row around it followed the real scale. The
+    /// one fixed finger at 1 px per du - and never resolved again. So every control drew at that
+    /// size on every panel: a switch measured the same whatever finger the device declared, while
+    /// the row around it followed the real scale. The
     /// shell now resolves this each frame beside `metrics_spec` and `component_spec`.
     #[must_use]
     pub fn control_spec(mut self, spec: ControlSpec) -> Self {

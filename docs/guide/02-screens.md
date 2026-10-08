@@ -644,7 +644,7 @@ Everything so far was about **declaring** a screen. The **inside** of one is bui
 and `examples/kiosk.rs`.
 
 Stacking `ui.heading` · `ui.button` · `egui::ScrollArea` by hand does work. It also means
-re-deciding touch targets (13 mm with gloves), card backgrounds, role colours, scrolling and side
+re-deciding touch targets, card backgrounds, role colours, scrolling and side
 margins on every screen — and the one screen that misses a decision just quietly looks different.
 
 ### 8.1 Three layers
@@ -728,7 +728,7 @@ layout::action_bar(
 ### 8.4 Grids
 
 `Grid` takes a **minimum cell width** and produces as many columns as the width allows. It is not
-in absolute pixels but in multiples of the row height, so it follows the gloved-hand policy.
+in absolute pixels but in multiples of the row height, so it follows the finger policy.
 
 | Handle | When |
 |---|---|

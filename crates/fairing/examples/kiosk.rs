@@ -47,9 +47,9 @@
 //!
 //! ## Read standing, at 70 cm — the two axes of size
 //!
-//! **The touch target and the visual size are different axes.** `touch_target` and `row_height` are
-//! the *floor* the finger sets, and they stay around a physical 13 mm even on a large panel — which
-//! is right. But on a 380 × 900 mm panel 13 mm is 1.4 % of the screen, so laying out by multiples
+//! **The touch target and the visual size are different axes.** `touch_target` is the *floor* the
+//! finger sets (a gloved 13 mm here), and `row_height` is taken from the text, a reading size; both
+//! stay around a physical 13–15 mm even on a large panel — which is right. But on a 380 × 900 mm panel 13 mm is 1.4 % of the screen, so laying out by multiples
 //! alone looks like a phone screen shrunk and pasted on. So this example **derives the visible size
 //! from the screen and props it up on the finger** — [`vrow`] · [`pad`] · [`bar_rows`] ·
 //! [`band_text`] are all the same rule.
@@ -987,8 +987,8 @@ fn centered_fit(
 
 /// The pinned bottom bar's height (as a multiple of the row height).
 ///
-/// **The touch target and the visual size are different axes.** `row_height` comes from a 13 mm
-/// finger, and on a 32-inch panel 13 mm is 2 % of the screen — written as a multiple alone the bar
+/// **The touch target and the visual size are different axes.** `row_height` is a reading size of
+/// about 13 mm, and on a 32-inch panel 13 mm is 2 % of the screen — written as a multiple alone the bar
 /// goes thread-thin and the CTA is invisible. What can be pressed and what catches the eye are
 /// different problems, so on a large panel the screen fraction is let win. The floor is still the
 /// finger's.
@@ -1007,9 +1007,9 @@ fn bar_text(cx: &Cx<'_>) -> f32 {
 /// **The visual row height** — the vertical unit the lists and cards use.
 ///
 /// The same point [`bar_rows`] makes, made about the body. `row_height` is **the floor the finger
-/// sets**, not a large panel's layout unit. Stacking a cart in 13 mm rows on a 900 mm portrait panel
-/// makes the lines look like threads — they can be pressed, but they do not look like goods. It is
-/// derived from the screen and propped up on `row_height`.
+/// and the eye set**, not a large panel's layout unit. Stacking a cart in 13 mm rows on a 900 mm
+/// portrait panel makes the lines look like threads — they can be pressed, but they do not look
+/// like goods. It is derived from the screen and propped up on `row_height`.
 fn vrow(cx: &Cx<'_>) -> f32 {
     (cx.pane.rect.height() * 0.034).max(cx.theme.metrics.row_height)
 }
@@ -2550,10 +2550,11 @@ impl Opts {
 /// choose their eyesight, and the way to buy that headroom is to size for further away than the
 /// customer stands. It reproduces the shipped render to 0.1 %.
 fn standing_policy(shape: Shape, finger_mm: Option<f32>) -> fairing::unit::ScalePolicy {
-    let mut policy = fairing::unit::ScalePolicy::default();
-    // The finger is left at the crate's default, the gloved 13 mm — on a shared screen where winter
-    // gloves and elderly hands both turn up, "a shell that declares nothing works under the hardest
-    // conditions" is simply right. `--finger-mm=9` tries the bare-finger policy.
+    // **Gloved, 13 mm**, not the crate's bare-finger default: on a shared screen where winter
+    // gloves and elderly hands both turn up, the larger target is right. `--finger-mm=9` tries the
+    // bare-finger policy. And a customer stands, so the text is sized for further away than the
+    // hand-held default - 500 mm on the counter unit, more on the tall one.
+    let mut policy = fairing::unit::ScalePolicy::gloved().with_viewing_distance_mm(500.0);
     if let Some(mm) = finger_mm {
         policy = policy.with_finger_mm(mm);
     }
@@ -2587,6 +2588,22 @@ fn build(
         builder = builder.physical_mm(w, h);
     }
     builder = builder.scale_policy(standing_policy(shape, finger_mm));
+    // **Rows sized for reading, not for the hand.** The crate's row is one touch target, which is
+    // right for a panel held at hand-held distance. A customer stands in front of this one and the
+    // screens are laid out in multiples of the row, so it takes the row from the text instead:
+    // three body ems and a hair, which follows `viewing_distance_mm`. The finger still floors
+    // every control through `touch_target`.
+    builder = builder.metrics_spec({
+        use fairing::unit::{Dim, Span};
+        let read = Span::fixed(Dim::text(3.0) + Dim::du(8.0))
+            .min(Dim::du(56.0))
+            .reanchored();
+        fairing::theme::MetricsSpec {
+            row_height: read,
+            widget_height: read,
+            ..fairing::theme::MetricsSpec::default()
+        }
+    });
     let mut shell = builder.build(ctx)?;
     shell
         .desktop_mut()

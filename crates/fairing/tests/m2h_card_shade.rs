@@ -458,16 +458,19 @@ fn a_two_step_card_stops_at_the_tiles_and_a_press_on_the_page_closes_it() -> fai
     );
     // Past the stop it grows: pull on and the card is taller than the stop.
     pull_to(&mut h, x, screen.height() * 0.35);
-    let y = h.shell.overlay().y();
-    h.press(egui::pos2(x, y - 4.0));
+    // Grab the card itself, low on it and below the tiles: it sits to one side of the screen,
+    // and how far across depends on how wide the card resolves.
+    let card = need(h.shell.overlay().frame().panel, "the card at the stop")?;
+    let (gx, y) = (card.center().x, card.max.y - 4.0);
+    h.press(egui::pos2(gx, y));
     h.frames(1);
     for i in 1..=10 {
         #[expect(clippy::cast_precision_loss, reason = "ten steps")]
         let t = i as f32 / 10.0;
-        h.move_to(egui::pos2(x, y - 4.0 + (screen.height() * 0.95 - y) * t));
+        h.move_to(egui::pos2(gx, y + (screen.height() * 0.95 - y) * t));
         h.frames(1);
     }
-    h.release(egui::pos2(x, screen.height() * 0.95));
+    h.release(egui::pos2(gx, screen.height() * 0.95));
     h.frames(40);
     let grown = need(h.shell.overlay().frame().panel, "the grown card")?;
     assert!(
