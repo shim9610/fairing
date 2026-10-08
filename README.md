@@ -1,3 +1,15 @@
+<p align="center">
+  <img src="docs/images/social-preview.png" alt="fairing: a touchscreen shell for embedded devices, built on egui" width="100%">
+</p>
+
+<p align="center">
+  <a href="https://github.com/shim9610/fairing/actions/workflows/ci.yml"><img src="https://github.com/shim9610/fairing/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/rust-1.95%2B-orange.svg" alt="Rust 1.95+">
+  <a href="https://github.com/emilk/egui"><img src="https://img.shields.io/badge/egui-0.36-8a2be2.svg" alt="egui 0.36"></a>
+  <img src="https://img.shields.io/badge/unsafe-forbidden-success.svg" alt="unsafe forbidden">
+</p>
+
 # fairing
 
 **A touchscreen shell for embedded devices, built on [egui](https://github.com/emilk/egui).**

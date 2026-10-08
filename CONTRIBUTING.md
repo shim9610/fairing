@@ -72,6 +72,10 @@ fixed 60 Hz clock, so the frames do not depend on how fast the machine draws, an
 `tools/make_gif.py` stitches them the same way every time: rerun on the machine that made them,
 the script reproduced the committed GIFs byte for byte.
 
+The social preview card at the top of the README, `docs/images/social-preview.png`, comes from
+`tools/social_preview.py` (Pillow again). After rebuilding it, upload it under the repository's
+Settings, General, Social preview as well.
+
 ## Keeping the documents up to date
 
 When the documents and the code disagree, fix the document in the same PR that changes the code.
