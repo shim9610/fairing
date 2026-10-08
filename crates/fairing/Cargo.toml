@@ -17,7 +17,7 @@ categories = ["gui", "embedded"]
 exclude = ["examples/*.rs", "examples/common/", "examples/kiosk.toml", "src/guide_probe.rs"]
 
 [dependencies]
-fairing-widgets = { path = "../fairing-widgets", version = "0.0.1" }
+fairing-widgets = { path = "../fairing-widgets", version = "0.1.0" }
 egui = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
@@ -38,7 +38,7 @@ default = ["mock", "overlay", "osk", "brand", "settings"]
 mock = []
 overlay = []
 osk = []
-# `brand` = the manta mark, the Abyss procedural background, the app tile and the splash (12). **Only the
+# `brand` = the manta mark and the Abyss procedural background. **Only the
 # drawing code** is inside — the palette presets, `AbyssTier` and the `Wallpaper` variants are outside the gate.
 brand = []
 # `settings` = the 11 built-in settings **screens**. The value model (`SettingKey`,
@@ -95,6 +95,9 @@ required-features = ["runner-x11", "mock"]
 [lints]
 workspace = true
 
+# docs.rs builds the Linux target only: that is where the crate runs, and the runner's window
+# stack is the one part that differs per platform.
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
+targets = ["x86_64-unknown-linux-gnu"]

@@ -44,10 +44,9 @@ two-set layout) is a separate switch: `[osk] layout = "hangul"`.
 
 ```toml
 [dependencies]
-# in the same workspace, or with the repository checked out next door
-fairing = { path = "../fairing/crates/fairing", features = ["runner"] }
-# or from git
-# fairing = { git = "https://github.com/shim9610/fairing", features = ["runner"] }
+fairing = { version = "0.1", features = ["runner"] }
+# or the repository checked out next door
+# fairing = { path = "../fairing/crates/fairing", features = ["runner"] }
 
 # egui itself is optional.
 # Leave it out and use `fairing::egui` - a version mismatch becomes impossible.

@@ -7,8 +7,7 @@ members = [
 ]
 
 [workspace.package]
-# 0.1.0 is the M6 tag on the 08 roadmap. The M0 scaffold stage uses 0.0.1.
-version = "0.0.1"
+version = "0.1.0"
 edition = "2021"
 rust-version = "1.95"
 license = "MIT"
@@ -36,7 +35,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # Workspace-internal path dependencies. Dropping the version trips cargo-deny's `wildcards = "deny"`,
 # so [workspace.package]'s value is repeated here. `cargo xtask integrity` (audit stage 0) compares the
 # two so they cannot drift apart. The members use version.workspace = true.
-fairing = { path = "crates/fairing", version = "0.0.1", default-features = false }
+fairing = { path = "crates/fairing", version = "0.1.0", default-features = false }
 
 # The workspace lints, applied to every member.
 [workspace.lints.rust]

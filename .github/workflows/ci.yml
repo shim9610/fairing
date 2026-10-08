@@ -94,3 +94,19 @@ jobs:
         run: |
           df -h /
           du -sh target 2>/dev/null || true
+
+  # The crates declare `rust-version = "1.95"`, and everything else here builds with the newer
+  # toolchain in rust-toolchain.toml. This job keeps the declaration honest: the two libraries,
+  # every feature on, checked with 1.95 itself.
+  msrv:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the declared minimum toolchain
+        run: rustup toolchain install 1.95 --profile minimal
+
+      - name: Check the libraries with it
+        run: cargo +1.95 check --locked -p fairing -p fairing-widgets --all-features

@@ -16,8 +16,9 @@ hand) and code that needs something outside this repository (a crate such as `im
 is written down as "it cannot".
 
 > **What this guide describes is the code in the repository today.** Where something is planned
-> but not in the code, the guide says so on the spot. Nothing has been
-> published yet, so there is no migration to describe — see [§Before 0.1](#before-01).
+> but not in the code, the guide says so on the spot. 0.1.0 is the
+> first published release, so there is no migration to describe — see
+> [§Coming from before 0.1](#coming-from-before-01).
 
 ## Reading order
 
@@ -108,14 +109,14 @@ at a time as you need it.
 
 ## What exists and what does not
 
-Milestones M0 to M5 are done, and M6 is down to the 0.1.0 release. The milestone table, what
+Milestones M0 to M6 are done, released as 0.1.0. The milestone table, what
 comes after 0.1 and the known limits are in the [roadmap](../roadmap.md). The guide writes down
 what is not there as "it cannot" and shows the workaround that exists today.
 
-## Before 0.1
+## Coming from before 0.1
 
-Nothing has been published yet, so this guide has no migration notes: it describes the code as it
-stands. Two things a reader of older notes may trip on:
+0.1.0 is the first published release, so this guide has no migration notes: it describes the code
+as it stands. Two things a reader of older notes may trip on:
 
 - **Lengths are in du** — density-independent units, egui's points. Touch targets and bar sizes
   are written in millimetres and resolve to du once the panel's size is known

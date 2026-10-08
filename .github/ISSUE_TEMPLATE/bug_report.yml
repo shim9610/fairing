@@ -1,0 +1,48 @@
+name: Bug report
+description: Something in fairing behaves differently from what the docs say.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: >
+        The smallest code or `fairing.toml` that shows it. A `testing::Harness` test that fails is
+        the best report there is.
+      render: rust
+  - type: input
+    id: version
+    attributes:
+      label: fairing version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and panel
+      description: The board, the panel's resolution and its physical size in mm, and the touch type.
+      placeholder: "aarch64 board, 1280x800, 217x136 mm, capacitive"
+  - type: input
+    id: platform
+    attributes:
+      label: OS and compositor
+      placeholder: "Ubuntu Core 24, ubuntu-frame"
+  - type: input
+    id: features
+    attributes:
+      label: Features turned on
+      placeholder: "default + runner"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log output
+      description: The shell logs through the `log` facade; set your logger to the debug level if you can.
+      render: text

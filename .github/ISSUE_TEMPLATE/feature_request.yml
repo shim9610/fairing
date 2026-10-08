@@ -1,0 +1,21 @@
+name: Feature request
+description: Something your device needs that fairing cannot do yet.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What the device needs
+      description: The situation on the device, not the API you have in mind yet.
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: What you do today
+      description: The workaround, if there is one, and what is wrong with it.
+  - type: textarea
+    id: idea
+    attributes:
+      label: An idea for the shape
+      description: Optional. A trait to implement, a builder call, a config key.

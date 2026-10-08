@@ -1,5 +1,5 @@
-//! The guide doctest gate. Each page of `docs/guide` becomes the doc comment of one item here, so
-//! rustdoc compiles every Rust block on it. Only built for doctests with every feature on — see
+//! The guide doctest gate. Each page of `docs/guide`, and the crate README that crates.io shows,
+//! becomes the doc comment of one item here, so rustdoc compiles every Rust block on it. Only built for doctests with every feature on — see
 //! where `lib.rs` declares it. The paths reach outside the crate, which is why the module must
 //! never be compiled in a normal build: a packaged crate does not carry `docs/`.
 
@@ -42,3 +42,7 @@ pub struct Guide09Branding;
 #[cfg(doctest)]
 #[doc = include_str!("../../../docs/guide/README.md")]
 pub struct GuideReadme;
+
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+pub struct CrateReadme;

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Integrator guide
+    url: https://github.com/shim9610/fairing/tree/main/docs/guide
+    about: How to put fairing into your device binary, with a troubleshooting page.
+  - name: Report a vulnerability
+    url: https://github.com/shim9610/fairing/security/advisories/new
+    about: Please report security problems privately, not as an issue.

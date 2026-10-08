@@ -9,7 +9,12 @@ access gates: the parts every kiosk, panel and bench instrument rebuilds, in one
 process and one egui frame loop. It is not an OS, an app launcher or a window
 manager. You write screens as egui closures; fairing owns everything around them.
 
-```rust
+```toml
+[dependencies]
+fairing = { version = "0.1", features = ["runner-x11"] }
+```
+
+```rust,no_run
 use fairing::{icon, screen, Cx};
 
 fn main() -> fairing::Result<()> {
@@ -61,7 +66,7 @@ drive `Shell::frame` from an eframe app you already have.
 | `overlay` | on | The shade: quick-settings tiles, the notification list, the scrim |
 | `osk` | on | The on-screen keyboard |
 | `settings` | on | The built-in settings screens |
-| `brand` | on | The manta mark, the Abyss background, the app tile and the splash |
+| `brand` | on | The manta mark and the Abyss procedural background |
 | `mock` | on | Mock backends — clock, power, Wi-Fi, Bluetooth, display, audio, network and device info — for development |
 | `runner` | off | An eframe window bootstrap (`runner::run_shell`) |
 | `runner-x11` | off | The same, with X11 as well as Wayland on Linux |
@@ -87,11 +92,15 @@ and tested on Linux.
 - Screenshots and runnable examples are in the
   [repository README](https://github.com/shim9610/fairing).
 
-## Not yet
+## By design, and not yet
 
-- No settings persistence: take `ShellEvent::SettingChanged` and store it yourself.
+- The crate writes no files. A changed setting comes out as `ShellEvent::SettingChanged`;
+  keep it where your device keeps such things and hand it back with
+  `Shell::restore_settings` at the next start.
 - Built-in text in English and Korean only; add other languages with
   `ShellBuilder::translations`.
+- The known limits are listed in the
+  [roadmap](https://github.com/shim9610/fairing/blob/HEAD/docs/roadmap.md#4-known-limits).
 
 ## The recommended profile for a device binary
 

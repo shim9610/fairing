@@ -697,13 +697,13 @@ builds with different feature combinations.
 ```toml
 # Integrator Cargo.toml: a minimal shell with no shade and no keyboard
 [dependencies]
-fairing = { git = "https://github.com/shim9610/fairing", default-features = false }
+fairing = { version = "0.1", default-features = false }
 ```
 
 ```toml
 # For development: including the runner
 [dependencies]
-fairing = { git = "https://github.com/shim9610/fairing", features = ["runner-x11", "mock"] }
+fairing = { version = "0.1", features = ["runner-x11", "mock"] }
 ```
 
 Until the crates are on crates.io, depend on the repository as above.

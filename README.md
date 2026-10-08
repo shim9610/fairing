@@ -107,11 +107,9 @@ level and friends) that redraw from state.
 
 ## Quick start
 
-fairing is not on crates.io yet. Until it is, depend on this repository:
-
 ```toml
 [dependencies]
-fairing = { git = "https://github.com/shim9610/fairing", features = ["runner-x11"] }
+fairing = { version = "0.1", features = ["runner-x11"] }
 egui = "0.36"   # the same minor as fairing's; or name it through `fairing::egui`
 ```
 
@@ -371,12 +369,15 @@ The integrator guide lives in [`docs/guide/`](docs/guide/README.md). Read
 [01 Getting started](docs/guide/01-getting-started.md) →
 [02 Screens](docs/guide/02-screens.md) → [03 Chrome](docs/guide/03-chrome.md) and
 you have a running device UI. The guide index carries a task-to-page table. The API
-reference will be on docs.rs once the crates are published; until then,
-`cargo doc --open` builds it. What changed is in [`CHANGELOG.md`](CHANGELOG.md).
+reference is on [docs.rs](https://docs.rs/fairing). What changed is in [`CHANGELOG.md`](CHANGELOG.md).
 
 How the crate is put together is in [`docs/architecture.md`](docs/architecture.md). Where it
 stands, what comes after 0.1 and the limits it has today are in
 [`docs/roadmap.md`](docs/roadmap.md).
+
+## Security
+
+Please report security problems privately, as [`SECURITY.md`](SECURITY.md) describes.
 
 ## Licence
 
