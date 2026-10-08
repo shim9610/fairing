@@ -798,7 +798,7 @@ press it. To see the screens during development, use `SettingsConfig::ignoring_c
 ```toml
 # The default features are ["mock", "overlay", "osk", "brand", "settings"].
 # Drop what you want gone and **re-list the rest**, or it disappears quietly.
-fairing = { version = "0.1", default-features = false,
+fairing = { git = "https://github.com/shim9610/fairing", default-features = false,
             features = ["mock", "overlay", "osk", "runner"] }
 #            ↑ without brand (manta, abyss) and settings (the built-in screens)
 ```

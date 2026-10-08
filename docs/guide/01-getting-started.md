@@ -44,7 +44,8 @@ two-set layout) is a separate switch: `[osk] layout = "hangul"`.
 
 ```toml
 [dependencies]
-fairing = { version = "0.1", features = ["runner"] }
+# not on crates.io until 0.1.0 is published, so from git for now
+fairing = { git = "https://github.com/shim9610/fairing", features = ["runner"] }
 # or the repository checked out next door
 # fairing = { path = "../fairing/crates/fairing", features = ["runner"] }
 

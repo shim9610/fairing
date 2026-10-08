@@ -6,7 +6,8 @@ described in the [integrator guide](guide/README.md); how they fit together is i
 
 ## 1. Where it stands
 
-0.1.0 is the first published release. Milestones M0 to M6 are done.
+Nothing has been published yet. Milestones M0 to M5 are done, and M6 is down to the 0.1.0
+release.
 
 | M | Name | State | Where the guide covers it |
 |---|---|---|---|
@@ -18,7 +19,7 @@ described in the [integrator guide](guide/README.md); how they fit together is i
 | M3 | Access control: the unlock prompt and lock screen, `Authenticator` and `PinTable`, the `PinPad` and `PatternPad` widgets, temporary unlocks, the session timeout and the idle lock, `settings.credentials` | Done | [05 §5](guide/05-access-control.md#5-the-shells-prompt-and-the-authenticator) · [05 §7](guide/05-access-control.md#7-the-session--temporary-unlocks-the-timeout-the-idle-lock) |
 | M4 | Settings screens and backend traits: the `settings.*` screens, the audio, network and device-information traits with their `Null` and `Mock`, backends of your own | Done. The backends and the saving of settings are yours | [06](guide/06-services.md) · [06 §7.1](guide/06-services.md#71-keeping-settings-across-a-restart) |
 | M5 | Two panes: `cx.open_in_other_pane`, the divider, the focus, `SplitSupport`; the recent screens; the split control and tile; `[workspace]` | Done | [02 §6.1](guide/02-screens.md#61-two-panes) · [03 §2.3](guide/03-chrome.md#23-recent-screens-and-the-split) · [07 §16](guide/07-config-reference.md#16-workspace) |
-| M6 | Finishing: the string table with Korean built in and live language switching; gesture navigation; the info popover on a held desktop icon; layouts and painters for the nav bar, toasts, banners, the keyboard and the shade; the status bar's items placed; painters for the lock screen, the unlock prompt, the recent screens and every kind of widget; thin gesture handles on the side and bottom edges; gesture regions of your own; the prelude and the `hello` example | Done, released as 0.1.0 | [04 §9](guide/04-customization.md#9-text-and-translations) · [03 §2.6](guide/03-chrome.md#26-the-gesture-style) · [03 §3.8](guide/03-chrome.md#38-holding-an-icon-the-info-popover) · [04 §10](guide/04-customization.md#10-moving-and-redrawing-the-other-pieces) · [03 §9](guide/03-chrome.md#9-gestures) |
+| M6 | Finishing: the string table with Korean built in and live language switching; gesture navigation; the info popover on a held desktop icon; layouts and painters for the nav bar, toasts, banners, the keyboard and the shade; the status bar's items placed; painters for the lock screen, the unlock prompt, the recent screens and every kind of widget; thin gesture handles on the side and bottom edges; gesture regions of your own; the prelude and the `hello` example | Under way. What is left is the 0.1.0 release | [04 §9](guide/04-customization.md#9-text-and-translations) · [03 §2.6](guide/03-chrome.md#26-the-gesture-style) · [03 §3.8](guide/03-chrome.md#38-holding-an-icon-the-info-popover) · [04 §10](guide/04-customization.md#10-moving-and-redrawing-the-other-pieces) · [03 §9](guide/03-chrome.md#9-gestures) |
 
 ## 2. 0.1.0
 

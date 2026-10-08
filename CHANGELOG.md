@@ -6,11 +6,9 @@ All notable changes to the fairing crates are recorded here. The format follows
 
 ## Unreleased
 
-Nothing yet.
+Nothing has been published to crates.io yet. This will be the first release, 0.1.0.
 
-## [0.1.0] - 2026-10-08
-
-The first published release. The crates are licensed under MIT alone. The `fairing-widgets`
+The crates are licensed under MIT alone. The `fairing-widgets`
 package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geometry it is built from.
 
 ### `fairing` — the shell
@@ -238,5 +236,3 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
   one: both come after 0.1, as does arranging desktop icons. A band of your own goes inside your
   screens (`layout::action_bar`, `layout::tab_bar`).
 - No accessibility tree and no right-to-left layout.
-
-[0.1.0]: https://github.com/shim9610/fairing/releases/tag/v0.1.0
