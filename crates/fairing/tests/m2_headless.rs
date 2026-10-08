@@ -775,6 +775,12 @@ fn gesture_back_regrab_confirms_with_the_combined_progress() -> fairing::Result<
     );
     let p = h.shell.workspace().stack_transition().t();
     assert!(p > 0.33, "the summed progress: {p}");
+    // Drawn at the caught `p` plus the new dx / W (200 px of 1024), the grab counted once.
+    let expected = (grab + 200.0 / 1024.0).clamp(0.0, 1.0);
+    assert!(
+        (p - expected).abs() < 0.03,
+        "drawn at {p}, while the release is judged on {expected}"
+    );
     still(&mut h, end, 12);
     let _ = h.shell.poll_events();
     h.release(end);

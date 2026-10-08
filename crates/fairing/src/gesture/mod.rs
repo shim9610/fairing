@@ -124,6 +124,12 @@ pub struct GestureEngine {
     still: Option<(Pos2, Duration)>,
     /// Whether `SwipeHold` has already been emitted for this pause.
     hold_reported: bool,
+    /// A `Cancelled` end made outside frame stage 5 ([`GestureEngine::cancel_held_over`]), for
+    /// the next [`GestureEngine::update`] to report.
+    held_over: Option<Gesture>,
+    /// Where a press went down in the frame that also released the press before it, for the
+    /// next frame to take up.
+    repress: Option<Pos2>,
 }
 
 impl GestureEngine {
@@ -138,6 +144,8 @@ impl GestureEngine {
             screen: Rect::NOTHING,
             still: None,
             hold_reported: false,
+            held_over: None,
+            repress: None,
         }
     }
 
@@ -179,6 +187,7 @@ impl GestureEngine {
             velocity: i.pointer.velocity(),
             dt: Duration::from_secs_f32(i.stable_dt.clamp(0.0, crate::motion::MAX_DT)),
         });
+        let was_idle = matches!(self.rec, Recognizer::Idle);
         self.rec = match self.rec {
             Recognizer::Idle => self.on_idle(&input, frame),
             Recognizer::Pressed {
@@ -197,6 +206,21 @@ impl GestureEngine {
             } => self.on_region(&input, frame, region, (origin, at), moved),
             Recognizer::Passed { origin } => self.on_passed(&input, origin),
         };
+        // A release and the next press in one frame (a quick double tap on a slow frame): the
+        // release ended the press before, and this frame's gesture is that end. The new press is
+        // taken up on the next frame, from where it went down, rather than lost to `Idle` with
+        // the finger down — the emergency gesture's corner press included.
+        let pressed_again = input.released && input.pressed && input.down;
+        self.repress = if !was_idle && matches!(self.rec, Recognizer::Idle) && pressed_again {
+            input.press.or(input.pos)
+        } else {
+            None
+        };
+        // A swipe cancelled since the last frame ends now, for its consumer to settle. It wins
+        // over whatever the rest of the cancelled press made of this frame.
+        if let Some(end) = self.held_over.take() {
+            self.current = Some(end);
+        }
         if !self.tuning.enabled {
             self.current = None;
         }
@@ -209,7 +233,15 @@ impl GestureEngine {
         // From where the finger came down, not from where this frame left it: a press and the
         // first move of a quick pull can arrive in one frame, and the moved point may already be
         // past the edge zone the press began in.
-        let (true, Some(origin)) = (input.pressed, input.press.or(input.pos)) else {
+        // A press left over from the frame that released the one before counts as this frame's,
+        // while the finger is still down.
+        let repress = self.repress.take().filter(|_| input.down);
+        let pressed = if input.pressed {
+            input.press.or(input.pos)
+        } else {
+            repress
+        };
+        let Some(origin) = pressed else {
             self.sample = None;
             return Recognizer::Idle;
         };
@@ -474,6 +506,16 @@ impl GestureEngine {
         self.rec
     }
 
+    /// How far the edge swipe in progress has come in from its edge (px), as its last frame
+    /// reported it.
+    #[must_use]
+    pub(crate) fn swipe_progress(&self) -> Option<f32> {
+        match (self.rec, self.sample) {
+            (Recognizer::EdgeSwipe { edge, .. }, Some(s)) => Some(s.delta.dot(edge.inward())),
+            _ => None,
+        }
+    }
+
     /// The edge of the edge swipe or slide in progress.
     #[must_use]
     pub fn active_edge(&self) -> Option<Edge> {
@@ -573,6 +615,24 @@ impl GestureEngine {
                 self.rec = Recognizer::Passed { origin };
             }
             _ => {}
+        }
+    }
+
+    /// [`GestureEngine::cancel`] from **outside frame stage 5** — between frames, or from an
+    /// earlier stage. The `Cancelled` end is held over and reported by the next
+    /// [`GestureEngine::update`]: written into this frame's `current` it would be cleared unread,
+    /// and the consumer following the swipe (the shade, the back gesture, the lift) would stay
+    /// mid-drag for good.
+    pub(crate) fn cancel_held_over(&mut self) {
+        let following = matches!(
+            self.rec,
+            Recognizer::EdgeSwipe { .. } | Recognizer::EdgeSlide { .. } | Recognizer::Region { .. }
+        );
+        let was = self.current;
+        self.cancel();
+        if following {
+            self.held_over = self.current;
+            self.current = was;
         }
     }
 

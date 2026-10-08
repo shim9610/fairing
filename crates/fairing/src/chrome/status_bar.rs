@@ -468,6 +468,9 @@ pub struct StatusBar {
     pub tap_opens_shade: bool,
     /// The item Rects drawn last frame (by id). Only the values are overwritten each frame — a `String` is made once per id.
     item_rects: Vec<(String, Rect)>,
+    /// The content width each integrator item last measured to, kept across frames (unlike
+    /// `item_rects`, which a collapsed item leaves empty). The next frame's layout uses it.
+    measured: Vec<(String, f32)>,
     /// The layout buffer (`clear` + `push` each frame, no reallocation).
     layout: Vec<Placed>,
     /// The text galley cache.
@@ -578,6 +581,7 @@ impl StatusBar {
             background: ColorRole::Surface,
             tap_opens_shade: cfg.tap_opens_shade,
             item_rects: Vec::new(),
+            measured: Vec::new(),
             layout: Vec::new(),
             texts: Vec::new(),
             fades: StatusFades::default(),
@@ -608,6 +612,7 @@ impl StatusBar {
         self.fades.wifi.is_animating(now)
             || self.fades.battery.is_animating(now)
             || self.fades.bluetooth.is_animating(now)
+            || self.fades.volume.is_animating(now)
     }
 
     /// Remove a built-in item (`shell.remove("status.clock")`). `true` if it was there.
@@ -617,6 +622,7 @@ impl StatusBar {
         self.center.retain(|s| s.id != id);
         self.right.retain(|s| s.id != id);
         self.item_rects.retain(|(i, _)| i != id);
+        self.measured.retain(|(i, _)| i != id);
         self.texts.retain(|t| t.id != id);
         before != self.left.len() + self.center.len() + self.right.len()
     }
@@ -856,7 +862,7 @@ impl StatusBar {
             icon,
             layout,
             texts,
-            item_rects,
+            measured,
             fades,
             ..
         } = self;
@@ -882,7 +888,7 @@ impl StatusBar {
                         slot,
                         spec: Some(index),
                         custom: Some(custom_index),
-                        width: recorded_width(item_rects, &spec.id),
+                        width: recorded_width(measured, &spec.id),
                         priority: spec.priority,
                         rect: Rect::NOTHING,
                         shown: true,
@@ -916,7 +922,7 @@ impl StatusBar {
                     slot,
                     spec: None,
                     custom: Some(custom_index),
-                    width: recorded_width(item_rects, &decl.id),
+                    width: recorded_width(measured, &decl.id),
                     priority: decl.priority,
                     rect: Rect::NOTHING,
                     shown: true,
@@ -1049,6 +1055,7 @@ impl StatusBar {
             layout,
             texts,
             item_rects,
+            measured,
             fades,
             ..
         } = self;
@@ -1086,6 +1093,7 @@ impl StatusBar {
                             placed.rect.min,
                             egui::vec2(content.width(), placed.rect.height()),
                         );
+                        record_width(measured, &decl.id, content.width());
                     }
                 }
             } else if let Some(spec) = spec {
@@ -1102,6 +1110,33 @@ impl StatusBar {
             if response.clicked() {
                 action = Some(StatusBarAction::ItemTapped(id.to_owned()));
             }
+        }
+        // An integrator item that collapsed before it was ever drawn is run once, out of sight,
+        // to measure it: laid out on the estimate alone it could stay collapsed for good where
+        // its real width fits. Measured, a collapsed item is not run again.
+        for placed in layout.iter().filter(|placed| !placed.shown) {
+            let Some(decl) = placed.custom.and_then(|i| custom.get_mut(i)) else {
+                continue;
+            };
+            if measured.iter().any(|(id, _)| *id == decl.id) {
+                continue;
+            }
+            let mut child = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(ui.max_rect())
+                    .layout(egui::Layout::left_to_right(egui::Align::Center))
+                    .invisible(),
+            );
+            let mut cx = parts.cx(pane, None);
+            (decl.ui)(&mut child, &mut cx);
+            // Something that draws nothing is recorded too, so it is not run again.
+            let content = child.min_rect();
+            let width = if content.is_positive() {
+                content.width()
+            } else {
+                CUSTOM_WIDTH_GUESS
+            };
+            record_width(measured, &decl.id, width);
         }
         action
     }
@@ -1136,14 +1171,21 @@ fn slot_span(layout: &[Placed], slot: Slot) -> f32 {
     }
 }
 
-/// The width recorded last frame (an integrator item's estimate).
-fn recorded_width(rects: &[(String, Rect)], id: &str) -> f32 {
-    rects
+/// The width an integrator item last measured to, or the estimate before it has been measured.
+fn recorded_width(measured: &[(String, f32)], id: &str) -> f32 {
+    measured
         .iter()
         .find(|(i, _)| i == id)
-        .map(|(_, r)| *r)
-        .filter(Rect::is_positive)
-        .map_or(CUSTOM_WIDTH_GUESS, |r| r.width())
+        .map_or(CUSTOM_WIDTH_GUESS, |(_, w)| *w)
+}
+
+/// Record an integrator item's measured width. A `String` is made only for an id seen for the
+/// first time.
+fn record_width(measured: &mut Vec<(String, f32)>, id: &str, width: f32) {
+    match measured.iter_mut().find(|(i, _)| i == id) {
+        Some((_, w)) => *w = width,
+        None => measured.push((id.to_owned(), width)),
+    }
 }
 
 /// The gate decision. The `None` fallback (a `StatusItemSpec` an integrator built themselves) is

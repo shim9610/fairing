@@ -550,9 +550,10 @@ impl Cx<'_> {
         self.requests.push(CxRequest::Knock { id: id.to_owned() });
     }
 
-    /// How many more knocks a hidden entry point needs. `None` for an unknown id, or for a
-    /// **trigger that cannot be counted**
-    /// ([`KnockTrigger::remaining`](crate::access::KnockTrigger::remaining) is `None`).
+    /// How many more knocks a hidden entry point needs, once it is down to the entry's
+    /// [`hint_from`](crate::access::HiddenEntry::hint_from). `None` for an unknown id, for an
+    /// entry with no `hint_from` or not yet down to it, or for a **trigger that cannot be
+    /// counted** ([`KnockTrigger::remaining`](crate::access::KnockTrigger::remaining) is `None`).
     ///
     /// **This frame's [`Cx::knock`] is not in it yet** — requests are handled at the end of the
     /// frame.

@@ -322,7 +322,7 @@ area should stay clear of.
 | `launch(a: LaunchAction)` | Any launch action. `Open` · `Run` · `Set` · `Toggle` · `OpenOverlay` … |
 | `request_power(r: PowerRequest)` | Ask for shutdown/reboot/suspend. The integrator confirms it with `Shell::commit_power` |
 | `knock(id: &str)` | One knock on a hidden entry point ([05 §9](05-access-control.md)) |
-| `knock_remaining(id: &str) -> Option<u8>` | Knocks left, for drawing "3 more". `None` for an unknown id or an uncountable trigger |
+| `knock_remaining(id: &str) -> Option<u8>` | Knocks left, for drawing "3 more", once they are down to the entry's `hint_from`. `None` before that, without a `hint_from`, for an unknown id or an uncountable trigger |
 | `allows(gate) -> bool` | For hiding a section inside a screen. Delegates the gate decision |
 | `has_screen(id: &str) -> bool` | Whether a screen is declared under that id. Registration only |
 | `screen_allowed(id: &str) -> bool` | Registered **and** its own gate passes. This is the one to filter a list of entries on — a declaration's gate defaults to its id but `.gate(..)` can name another, so `allows(id)` is not the same question |
@@ -354,16 +354,21 @@ in order.
 | `Resized(Vec2)` | Pane size changed: the content moved (a bar, the window), a split came or went (once, as its slide ends), or the divider was let go. **Not** every frame of a divider drag — `cx.pane.rect` is live and immediate mode needs nothing more | Invalidate layout caches |
 | `Destroyed` | The last notification. The drop follows immediately | Release resources |
 
-Three rules:
+Four rules:
 
 1. Consecutive duplicates collapse. `Paused, Paused` becomes one; `Paused, Resumed, Paused`
    stays three.
 2. Nothing is queued after `Destroyed`.
 3. The same event travels two paths: `on_lifecycle` for trait implementations, `cx.event` for
    closures.
+4. Only the latest size counts: a `Resized` not yet delivered takes the newer size in its place,
+   so a screen in the background hears one `Resized` however often the content changed size.
 
 A closure gets one per `ui` call. They pile up while it is not being drawn and come out in order
 once it is.
+
+A screen that comes to the top while the shade, the unlock prompt or the recent screens cover it
+(the one above it finished on its own) is `Paused`, not `Resumed` — `Resumed` follows when they go.
 
 ```rust
 use fairing::{screen, screen_with, Cx, Lifecycle, Screen, Services, Shell, ShellConfig};

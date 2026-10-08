@@ -138,6 +138,10 @@ pub type ToastLayout = Box<dyn FnMut(&ToastLayoutCx<'_>, &mut [Rect])>;
 /// The banner is the painter's whole — the background included. The shell slides it in and out,
 /// holds it (the timer stopping while a finger rests on it), takes its tap — which opens the
 /// notification — and its swipe up, which puts it away.
+///
+/// A notification whose gate the session fails arrives redacted, as the shade draws it: the
+/// title is the "1 notification" line, the body is empty, the icon is the bell, the level is
+/// `Info` and there is no progress. The content it hides never reaches the painter.
 pub struct HeadsUpCx<'a> {
     /// Where the shell put the banner this frame. Fill it.
     pub rect: Rect,

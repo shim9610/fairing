@@ -169,8 +169,9 @@ impl HangulComposer {
                 self.cho = Some(cho);
                 return Compose::taken(String::new(), self.render());
             }
-            // A jamo that cannot be an initial (a component of a compound final, and so on) is committed as one character as it stands.
-            return Compose::taken(String::new(), String::new());
+            // A jamo that cannot be an initial (a compound final, and so on) is not composed: it
+            // is handed back, and the caller types it as one character as it stands.
+            return Compose::flushed(String::new());
         }
 
         // A consonant arriving on a vowel-only state (`ㅏ`) commits the previous character and opens a new one.

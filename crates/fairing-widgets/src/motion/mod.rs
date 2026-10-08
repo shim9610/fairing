@@ -562,13 +562,19 @@ impl AnimationStore {
     }
 
     /// Tween `id`'s value towards `target` and return the current one. An id seen for the first time lands on `target`.
+    /// So does one whose value is not a number (a NaN target asked for earlier): there is
+    /// nothing to tween from.
     pub fn animate(&mut self, id: egui::Id, target: f32, tween: Tween, frame: u64) -> f32 {
         let entry = self.entries.entry(id).or_insert_with(|| Entry {
             anim: Animated::new(target),
             last_seen: frame,
         });
         entry.last_seen = frame;
-        if (entry.anim.target() - target).abs() > f32::EPSILON {
+        // Written so a NaN on either side counts as a new target, not as the same one.
+        let same = (entry.anim.target() - target).abs() <= f32::EPSILON;
+        if !entry.anim.value().is_finite() {
+            entry.anim.snap(target);
+        } else if !same {
             entry.anim.to(target, tween);
             self.animating = true;
         }

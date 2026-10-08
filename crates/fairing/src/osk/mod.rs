@@ -7,7 +7,10 @@
 //! - **A close request** ([`Osk::hide`]: back · the Hide key) puts the target straight back to
 //!   hidden and sets `dismissed`. `Auto` will not reopen even with the focus unchanged.
 //!   Two signals release it — a rising edge of `wants` (false → true), and **the frame
-//!   after a press on the screen while closed, if something has focus**. The second is needed
+//!   after a tap on the screen while closed ends, if something still has focus**. The second
+//!   is checked once the finger has lifted, not on the frame after the press: a tap on empty
+//!   space takes the focus away only when it completes, so read any earlier it would reopen
+//!   the keyboard for the debounce. The second is needed
 //!   because in egui 0.36.1 pressing another `TextEdit` hands the focus over within the same
 //!   pass, so `wants` never drops to false for even one frame (`TextEdit` calls `request_focus`
 //!   on the **press** — `text_edit/builder.rs:798`). Watching only the rising edge would leave a
@@ -21,8 +24,9 @@
 //!   `Layout.osk` / `PaneInfo.inset_bottom = y` are handed over **every frame** (the content is
 //!   not pushed).
 //! - **Size**: height = the screen height × `height_ratio` (0.38), but no row of keys taller than
-//!   `metrics.osk_max_key` (one and a half fingers; infinite when an integrator lifts the cap)
-//!   and none shorter than `min_key_px` (48); the floor wins where the two cross.
+//!   `metrics.osk_max_key` (one and a half fingers, gap included; infinite when an integrator
+//!   lifts the cap) and no key shorter than `min_key_px` (48, the gaps on top); the floor wins
+//!   where the two cross. Either way it is never taller than the room above the nav bar.
 //! - **Key taps**: the hit area is the drawn key Rect plus half the gap, so there is no dead band
 //!   between keys. A pressed key is tinted immediately (A7) and shrinks by `press_scale`. Label
 //!   galleys are not laid out again while the face and the text size are unchanged — zero heap
@@ -128,6 +132,11 @@ pub struct Osk {
     /// The tallest a row of keys gets (du) — `metrics.osk_max_key`, handed over by the shell every
     /// frame because it is resolved in millimetres.
     max_key: f32,
+    /// The gap between keys and round the panel (du) — `metrics.osk_key_gap`, handed over with
+    /// `max_key`.
+    key_gap: f32,
+    /// The height above the nav bar (du), handed over with `max_key`. The panel never exceeds it.
+    room: f32,
     y: Animated<f32>,
     height: f32,
     shown: bool,
@@ -152,7 +161,9 @@ pub struct Osk {
     last_shift_at: Option<f64>,
     /// The previous pass's focused widget (what to restore after injecting).
     last_focus: Option<egui::Id>,
-    /// Whether the screen was pressed on this frame while closed (if something has focus next frame, it reopens).
+    /// A press on the screen began while closed and the finger is still down.
+    press_held_while_dismissed: bool,
+    /// A tap on the screen while closed ended on the last frame (if something still has focus, it reopens).
     press_while_dismissed: bool,
     /// The special-key icon cache — glyphs egui's default font does not have (⇧ ⌫ ↵ ▾ ✓) are drawn
     /// with built-in icons ([`special_icon`]). The label strings stay `key_rect`'s keys.
@@ -169,8 +180,16 @@ pub struct Osk {
     /// How many of the composing characters are **already in the buffer**. The next step erases
     /// that many with ⌫ and types the new composition result (`inject::inject_compose`).
     provisional: usize,
+    /// Where the caret of the field being composed into should stand once the last composition
+    /// result has landed: `(the field, the caret's character index)`. A caret anywhere else at
+    /// the next jamo means the buffer is not as the composition left it — the field refused a
+    /// character, or text came from somewhere other than the keyboard.
+    expect_caret: Option<(egui::Id, usize)>,
     /// The layout the `한/영` key crosses to. `None` means a single language, so there is no `한/영` key.
     lang_alt: Option<OskLayout>,
+    /// Whether this keyboard runs as a `한/영` pair. It outlives a detour through a layout with
+    /// no pair (the numpad, a custom pad), so the key comes back with the layout that had it.
+    paired: bool,
     /// Drawn in `Order::Foreground` above the unlock prompt rather than in `Order::Middle` (the
     /// password card needs the keyboard, and the modal takes every press below it).
     raised: bool,
@@ -221,6 +240,8 @@ impl Osk {
             height_ratio: cfg.height_ratio,
             min_key_px: cfg.min_key_px,
             max_key: crate::theme::Metrics::default().osk_max_key,
+            key_gap: crate::theme::Metrics::default().osk_key_gap,
+            room: f32::INFINITY,
             y: Animated::new(0.0),
             height: 0.0,
             shown: false,
@@ -235,11 +256,14 @@ impl Osk {
             shift_lock: false,
             last_shift_at: None,
             last_focus: None,
+            press_held_while_dismissed: false,
             press_while_dismissed: false,
             icons: IconCache::new(),
             ctx: None,
             composer,
             provisional: 0,
+            expect_caret: None,
+            paired: lang_alt.is_some(),
             lang_alt,
             raised: false,
             key_layout: None,
@@ -258,9 +282,11 @@ impl Osk {
         // `한/영` key, so starting on qwerty does not get one), and where it was **already running as a
         // pair** it is kept even on moving to English — otherwise one `set_layout(Qwerty)` takes the key
         // to come back with away and it is stuck in English. [`Self::toggle_lang`], which the `한/영` key
-        // calls, always kept it; only this one, called by the integrator, did not.
-        let paired = self.lang_alt.is_some();
-        self.lang_alt = if matches!(layout, OskLayout::Hangul) || paired {
+        // calls, always kept it; only this one, called by the integrator, did not. The pairing
+        // is remembered apart from the key: a detour through the numpad, which has no `한/영`
+        // key, does not end it, so restoring the layout found before brings the key back.
+        self.paired |= matches!(layout, OskLayout::Hangul);
+        self.lang_alt = if self.paired {
             layout.lang_pair()
         } else {
             None
@@ -319,6 +345,7 @@ impl Osk {
     /// in `inject_compose`).
     fn flush_composer(&mut self) {
         self.provisional = 0;
+        self.expect_caret = None;
         let Some(composer) = self.composer.as_mut() else {
             return;
         };
@@ -333,12 +360,39 @@ impl Osk {
     fn put_compose(&mut self, ctx: &egui::Context, out: &crate::osk::compose::Compose) {
         let mut text = out.commit.clone();
         text.push_str(&out.preedit);
+        let field = self.last_focus;
+        let before = field.and_then(|id| caret(ctx, id));
         let _ = inject_compose(ctx, self.provisional, &text);
+        self.expect_caret = field.zip(before).map(|(id, at)| {
+            (
+                id,
+                at.saturating_sub(self.provisional) + text.chars().count(),
+            )
+        });
         self.provisional = out.preedit.chars().count();
+    }
+
+    /// **The composition only goes on over a buffer it left as it was.** The erase-and-retype
+    /// assumes the composing characters are the last ones before the caret. When the caret is
+    /// not where the last result should have left it, they are not: a full field (`char_limit`)
+    /// refused a jamo, or a hardware keyboard or a barcode scanner typed after it, or moved the
+    /// caret. Erasing then would take a committed character or the scanned text. So the
+    /// composition ends there — what is in the buffer stays — and the next jamo starts afresh.
+    fn check_buffer(&mut self, ctx: &egui::Context) {
+        if self.provisional == 0 {
+            return;
+        }
+        let Some((id, want)) = self.expect_caret else {
+            return;
+        };
+        if caret(ctx, id).is_some_and(|at| at != want) {
+            self.flush_composer();
+        }
     }
 
     /// Feed a character key to the composer. `true` if it consumed it — the caller then injects nothing more.
     fn feed_composer(&mut self, ctx: &egui::Context, text: &str) -> bool {
+        self.check_buffer(ctx);
         let Some(composer) = self.composer.as_mut() else {
             return false;
         };
@@ -350,6 +404,7 @@ impl Osk {
 
     /// Feed a delete to the composer. `true` if a composition was in progress (one jamo was taken back).
     fn backspace_composer(&mut self, ctx: &egui::Context) -> bool {
+        self.check_buffer(ctx);
         let Some(composer) = self.composer.as_mut() else {
             return false;
         };
@@ -379,15 +434,20 @@ impl Osk {
         self.shift_lock
     }
 
-    /// The tallest a row of keys may get, in du — the shell resolves `metrics.osk_max_key` every
-    /// frame and hands it over before [`Osk::update`].
-    pub(crate) fn set_max_key(&mut self, du: f32) {
-        self.max_key = du;
+    /// What bounds the panel, in du — the tallest a row of keys may get (`metrics.osk_max_key`),
+    /// the gap between keys (`metrics.osk_key_gap`), and the room above the nav bar. The shell
+    /// resolves them every frame and hands them over before [`Osk::update`].
+    pub(crate) fn set_bounds(&mut self, max_key: f32, key_gap: f32, room: f32) {
+        self.max_key = max_key;
+        self.key_gap = key_gap.max(0.0);
+        self.room = room.max(0.0);
     }
 
     /// The OSK height at this screen height: the `height_ratio` share, cut to `max_key` per row
-    /// and then raised to `min_key_px` per row — so where the cap and the floor cross, the floor
-    /// wins and the keys stay big enough to hit.
+    /// (gap included) and then raised so no key is shorter than `min_key_px` (the gaps come on
+    /// top) — so where the cap and the floor cross, the floor wins and the keys stay big enough to
+    /// hit. Last, it is cut to the screen and to the room above the nav bar: a keyboard whose top
+    /// row is off the glass cannot be typed on at all.
     #[must_use]
     pub(crate) fn height_for(&self, screen_height: f32) -> f32 {
         let rows = self
@@ -395,10 +455,12 @@ impl Osk {
             .faces
             .get(self.face)
             .map_or(4, |f| f.rows.len().max(1)) as f32;
+        let floor = self.min_key_px.mul_add(rows, self.key_gap * (rows + 1.0));
         (screen_height * self.height_ratio)
             .min(self.max_key * rows)
-            .max(self.min_key_px * rows)
+            .max(floor)
             .min(screen_height)
+            .min(self.room)
     }
 
     /// Frame stage 5: the show/hide decision plus its progress. `wants` =
@@ -424,7 +486,16 @@ impl Osk {
             let regained = wants && (!prev || self.press_while_dismissed);
             self.dismissed = if regained { None } else { Some(wants) };
         }
-        self.press_while_dismissed = self.dismissed.is_some() && self.pointer_pressed();
+        // A tap is over when the finger lifts: only then has egui settled where the focus went
+        // (a tap on empty space surrenders it on the release), so it is read the frame after.
+        let (pressed, released) = self.pointer_edges();
+        let held = self.dismissed.is_some() && (self.press_held_while_dismissed || pressed);
+        self.press_while_dismissed = held && released;
+        self.press_held_while_dismissed = held && !released;
+        if mode != OskMode::Auto || self.dismissed.is_some() {
+            // Only the automatic mode hides on lost focus, so only it keeps a debounce running.
+            self.lost_focus_at = None;
+        }
         let want_shown = match mode {
             OskMode::Off => false,
             OskMode::Manual => self.manual,
@@ -462,6 +533,16 @@ impl Osk {
         moving || pressing
     }
 
+    /// When the lost-focus debounce runs out and an automatic keyboard hides — the moment the
+    /// shell wakes for. `None` while nothing is counting down (focus held, or a manual keyboard,
+    /// which never hides by itself).
+    #[must_use]
+    pub(crate) fn hide_deadline(&self, tokens: &MotionTokens) -> Option<Instant> {
+        self.lost_focus_at
+            .filter(|_| self.shown)
+            .and_then(|since| since.checked_add(tokens.osk_hide_debounce))
+    }
+
     /// Draw above the unlock prompt (`true`) or in the keyboard's own place under the shade
     /// (`false`). The shell raises it for the one draw that happens while the prompt is up.
     pub(crate) fn raise(&mut self, above: bool) {
@@ -483,6 +564,7 @@ impl Osk {
         self.flush_composer();
         self.manual = false;
         self.lost_focus_at = None;
+        self.press_held_while_dismissed = false;
         self.press_while_dismissed = false;
         // It conservatively assumes something has focus right now — if not, it becomes `Some(false)` next frame.
         self.dismissed = Some(true);
@@ -578,6 +660,7 @@ impl Osk {
             // putting it in again here would make the same characters once more in the new widget.
             if self.last_focus.is_some_and(|prev| prev != id) {
                 self.provisional = 0;
+                self.expect_caret = None;
                 if let Some(composer) = self.composer.as_mut() {
                     composer.reset();
                 }
@@ -794,11 +877,12 @@ impl Osk {
         self.press.snap(0.0);
     }
 
-    /// Whether the screen was pressed on this frame. `false` while the context has not been captured yet (= only the rising edge is watched).
-    fn pointer_pressed(&self) -> bool {
-        self.ctx
-            .as_ref()
-            .is_some_and(|ctx| ctx.input(|input| input.pointer.any_pressed()))
+    /// Whether the screen was pressed, and released, on this frame. Both `false` while the
+    /// context has not been captured yet (= only the rising edge is watched).
+    fn pointer_edges(&self) -> (bool, bool) {
+        self.ctx.as_ref().map_or((false, false), |ctx| {
+            ctx.input(|input| (input.pointer.any_pressed(), input.pointer.any_released()))
+        })
     }
 
     /// Restore the focus after injecting. If something already holds it, leave it alone.
@@ -854,7 +938,10 @@ impl Osk {
     }
 
     /// After a character key: an unlocked uppercase face returns to lowercase (the built-in qwerty).
+    /// A character also ends the ⇧ double tap: ⇧, a letter, ⇧ is two one-shot capitals (typing
+    /// "HI"), not a lock.
     fn after_text_key(&mut self) {
+        self.last_shift_at = None;
         if self.layout.has_shift() && self.face == layouts::UPPER_FACE && !self.shift_lock {
             self.face = layouts::LOWER_FACE;
             self.invalidate_labels();
@@ -865,6 +952,16 @@ impl Osk {
     fn invalidate_labels(&mut self) {
         self.labels_key = (usize::MAX, 0);
     }
+}
+
+/// The caret of the `TextEdit` `id` as a character index — the start of the selection when
+/// there is one, which is where typed text lands. `None` for a field that keeps no egui
+/// text-edit state.
+fn caret(ctx: &egui::Context, id: egui::Id) -> Option<usize> {
+    let range = egui::text_edit::TextEditState::load(ctx, id)?
+        .cursor
+        .char_range()?;
+    Some(range.primary.index.0.min(range.secondary.index.0))
 }
 
 /// Rebuild the label galleys for this frame.

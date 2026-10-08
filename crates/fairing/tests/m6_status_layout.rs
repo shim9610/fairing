@@ -252,8 +252,9 @@ fn a_status_rect_past_the_bar_is_cut_by_it() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **A collapsed `status_item` is not run.** Its closure draws it, so a closure called for an item
-/// with no room would draw into nothing — and do whatever else it does each frame.
+/// **A collapsed `status_item` is not run** beyond the one out-of-sight pass that measures it.
+/// Its closure draws it, so a closure called each frame for an item with no room would draw into
+/// nothing — and do whatever else it does each frame.
 #[test]
 fn a_collapsed_status_item_is_not_run() -> fairing::Result<()> {
     let runs = Rc::new(Cell::new(0_u32));
@@ -276,6 +277,8 @@ fn a_collapsed_status_item_is_not_run() -> fairing::Result<()> {
         None,
         "it has room"
     );
-    assert_eq!(runs.get(), 0, "a collapsed item's closure ran");
+    assert_eq!(runs.get(), 1, "measured once, out of sight");
+    h.frames(10);
+    assert_eq!(runs.get(), 1, "a collapsed item's closure ran again");
     Ok(())
 }

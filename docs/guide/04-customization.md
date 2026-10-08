@@ -139,7 +139,7 @@ from `MetricsSpec` in physical units each frame rather than being fixed
 | `split_divider` | `8.0` | The band between two panes ([03 §2.3](03-chrome.md#23-recent-screens-and-the-split)). Its handle is widened to `touch_target` for the finger; this is what is drawn and what the panes give up |
 | `widget_height` | `56.0` | Default height of `BigButton` · `ListRow` · the shade footer |
 | `slider_thumb` | `28.0` du floor, `finger × 0.585` | Slider thumb diameter. It is dragged with a finger, so it is a **touch** dimension and tracks `finger_mm` — 28 du (4.4 mm) is right for a Material-sized hand and visibly under-scale beside the 13 mm gloved default (D143) |
-| `type_scale` | `13/16/17/22/16` du floors, `finger × 0.271/0.334/0.355/0.459/0.334` | **The five text sizes** (`small` · `body` · `button` · `heading` · `monospace`). `Theme::egui_style()` builds egui's `TextStyle` from them. **They track `finger_mm`**: a `du` is already a physical unit, so a fixed `du` size is a fixed millimetre size that does not follow the hand the panel was set up for — with the gloved 13 mm default that left 14 mm rows holding text at 18 % of their height, against 29 % on Material and 38 % on iOS. The fractions are the old values read against a Material-sized finger, so at that finger nothing changes |
+| `type_scale` | `13/16/17/22/16` du floors, `text × 0.811/1/1.063/1.374/1` | **The five text sizes** (`small` · `body` · `button` · `heading` · `monospace`). `Theme::egui_style()` builds egui's `TextStyle` from them. **They track the viewing distance, not `finger_mm`**: one body em (`Dim::text(1.0)`) is `0.008684 ×` `ScalePolicy::viewing_distance_mm` — 4.34 mm at the default 500 mm, about 27 du, the em a gloved 13 mm finger used to give. The hand and the eye are separate knobs: a gloved policy grows the touch targets and leaves the text alone, and a standing kiosk raises `viewing_distance_mm` and the text grows with everything sized in `text` beside it. The `du` floors are the old fixed sizes, so a panel of unknown density still reads |
 
 ### 1.3 MotionTokens
 
@@ -227,8 +227,9 @@ fn snappy() -> Theme {
   notification rows both draw at it. From config, `[status_bar] icon_size` pins it; with an
   injected theme, the theme's value is used and the key is ignored with a warning.
 - **The egui `Style`** comes from the theme too. `Theme::egui_style()` stops separating hover
-  from press (touch has no hover), removes shadows, and redefines the five text sizes as
-  13/16/17/22/16. egui's own widgets inside a screen get this style.
+  from press (touch has no hover), removes shadows, and redefines the five text sizes from
+  `Metrics::type_scale` — 13/16/17/22/16 du in a bare `Theme::dark()`, resolved from the viewing
+  distance on a running shell (§1.2). egui's own widgets inside a screen get this style.
 
 ### 1.6 Widget metrics — `ComponentSpec`
 

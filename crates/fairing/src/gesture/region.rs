@@ -94,6 +94,8 @@ pub(crate) const MAX_ZONES: usize = 3 * MAX_HANDLES_A_SIDE + MAX_GESTURE_REGIONS
 pub trait GestureRegion {
     /// **Where the region is this frame**, or `None` to stand aside and leave the glass to what
     /// is under it. Asked every frame the regions are in play, before the frame's touch is read.
+    /// The rect is clipped to the glass, so `Rect::EVERYTHING` is the whole glass; one with
+    /// nothing left of it, or not finite, stands aside.
     fn place(&mut self, cx: &RegionPlaceCx<'_>) -> Option<Rect>;
 
     /// **A touch that began in the region**, every frame from its press to its end.

@@ -258,6 +258,18 @@ pub trait Authenticator {
     /// returns, that check is over. A wait ends with an answer or with `cancel`, never otherwise.
     fn cancel(&mut self) {}
 
+    /// The shell refused a grant this authenticator gave: on the unlock prompt a level no higher
+    /// than the session already holds, or a level the table does not have. To whoever is at the
+    /// prompt it was not a way in, and an authenticator with an attempt limit counts it as a
+    /// failure — otherwise a credential someone knows starts the count again between guesses at
+    /// one they do not.
+    ///
+    /// `None` (the default) leaves the shell's own refusal, "That is not enough for this". A
+    /// `Denied` or a `Locked` answered here is applied in its place; anything else is ignored.
+    fn refused(&mut self, _now: Instant) -> Option<AuthOutcome> {
+        None
+    }
+
     /// The prompt opened for `gate` (the lock screen's is `session.lock`) — start listening now.
     /// Anything a reader picked up while no prompt was up belongs to nobody and should be dropped
     /// here: a badge swiped at a panel that asked for nothing must not unlock the next person's
@@ -398,8 +410,11 @@ pub struct PinTable {
     attempt_limit: Option<u32>,
     /// The lockout, where a table set one.
     lock: Option<Duration>,
-    /// Wrong PINs in a row since the last right one or the last lockout.
+    /// Wrong PINs in a row since the last right one the shell took, or the last lockout.
     failures: u32,
+    /// The count the last right PIN cleared, until the shell takes the grant: a grant it refuses
+    /// puts the count back, so a PIN someone knows does not start it again.
+    cleared: u32,
     locked_until: Option<Instant>,
 }
 
@@ -532,6 +547,7 @@ impl PinTable {
             attempt_limit,
             lock,
             failures: 0,
+            cleared: 0,
             locked_until: None,
         })
     }
@@ -585,7 +601,20 @@ impl Authenticator for PinTable {
         methods
     }
 
+    /// A refused grant is a failure like a wrong PIN, on top of the count it cleared; only a
+    /// lockout replaces the shell's words.
+    fn refused(&mut self, now: Instant) -> Option<AuthOutcome> {
+        self.failures = self
+            .failures
+            .saturating_add(std::mem::take(&mut self.cleared));
+        match self.fail(now, "") {
+            locked @ AuthOutcome::Locked { .. } => Some(locked),
+            _ => None,
+        }
+    }
+
     fn submit(&mut self, credential: Credential, now: Instant) -> AuthOutcome {
+        self.cleared = 0;
         if let Some(until) = self.locked_until {
             if now < until {
                 return AuthOutcome::Locked {
@@ -623,7 +652,7 @@ impl Authenticator for PinTable {
         };
         match granted {
             Some(level) => {
-                self.failures = 0;
+                self.cleared = std::mem::take(&mut self.failures);
                 AuthOutcome::Granted(Subject {
                     id: None,
                     level,

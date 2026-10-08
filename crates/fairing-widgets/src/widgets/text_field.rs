@@ -93,7 +93,7 @@ impl<'a> TextField<'a> {
         self
     }
 
-    /// Draw it masked.
+    /// Draw it masked, single-line or [`multiline`](Self::multiline).
     #[must_use]
     pub const fn password(mut self, password: bool) -> Self {
         self.password = password;
@@ -138,8 +138,11 @@ impl<'a> TextField<'a> {
             .margin(margin)
             .desired_width(width);
         if self.multiline {
+            // The multi-line edit is a new builder: it keeps the mask only if it is given it
+            // again.
             edit = egui::TextEdit::multiline(self.text)
                 .hint_text(self.hint.unwrap_or_default())
+                .password(self.password)
                 .margin(margin)
                 .desired_width(width)
                 .desired_rows(LINES);

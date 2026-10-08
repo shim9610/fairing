@@ -116,6 +116,14 @@ pub(crate) struct WorkspaceOutput {
     pub(crate) closed: Vec<(String, InstanceId)>,
 }
 
+/// A back gesture held out of the way ([`Workspace::hold_back_gesture`]): the drag, the pane it
+/// is in and the screen it is dragging.
+pub(crate) struct HeldBack {
+    stack: StackTransition,
+    pane: usize,
+    top: Option<InstanceId>,
+}
+
 /// The workspace.
 pub struct Workspace {
     view: WorkspaceView,
@@ -180,6 +188,8 @@ pub struct Workspace {
     overview: Option<Overview>,
     /// What the overview closed in `tick` (a thrown card landing), for the next `ui` to report.
     overview_closed: Vec<(String, InstanceId)>,
+    /// The shade or the unlock prompt is over the screens on show ([`Workspace::set_covered`]).
+    covered: bool,
     /// The lift: the screen on show following a finger up from the bottom edge.
     lift: Option<Lift>,
     /// The quick switch: two tasks' screens sliding with a finger along the indicator.
@@ -239,6 +249,7 @@ impl Workspace {
             split_metrics: (8.0, 48.0),
             overview: None,
             overview_closed: Vec::new(),
+            covered: false,
             lift: None,
             switch: None,
             quick: None,
@@ -411,6 +422,45 @@ impl Workspace {
         }
         self.settle();
         self.focus = pane;
+    }
+
+    /// Take a back gesture the finger is still dragging out of the way, while the other pane acts
+    /// on its own: focusing that pane for a moment settles every transition, and the user's drag
+    /// must not be one of them. `None` where no drag is under way.
+    pub(crate) fn hold_back_gesture(&mut self) -> Option<HeldBack> {
+        if !matches!(
+            self.stack,
+            StackTransition::DraggingBack {
+                confirmed: None,
+                ..
+            }
+        ) {
+            return None;
+        }
+        Some(HeldBack {
+            stack: std::mem::replace(&mut self.stack, StackTransition::Idle),
+            pane: self.focus,
+            top: self.active_task().and_then(Task::top).map(Instance::id),
+        })
+    }
+
+    /// Put back what [`Workspace::hold_back_gesture`] took: the finger carries on where it was.
+    /// Where the pane under it changed in the meantime the drag is over, and the screen it was
+    /// dragging, still on top, is told `Resumed`.
+    pub(crate) fn resume_back_gesture(&mut self, held: HeldBack) {
+        let top = self.active_task().and_then(Task::top).map(Instance::id);
+        if self.focus == held.pane
+            && top == held.top
+            && matches!(self.stack, StackTransition::Idle)
+            && self.view == WorkspaceView::Tasks
+            && self.overview.is_none()
+        {
+            self.stack = held.stack;
+            return;
+        }
+        if let Some(instance) = held.top.and_then(|id| self.instance_mut(id)) {
+            instance.queue(Lifecycle::Resumed);
+        }
     }
 
     /// Focus the pane showing `instance` — a screen asking for something from its own pane.
@@ -654,10 +704,16 @@ impl Workspace {
         }
     }
 
-    /// The overview is gone, back to what it covered: those screens are `Resumed`.
+    /// The overview is gone, back to what it covered: those screens are `Resumed`. A card thrown
+    /// away and still flying ends its task all the same.
     fn finish_overview_return(&mut self) {
+        let thrown = self.overview.as_mut().and_then(Overview::take_thrown);
         self.overview = None;
         self.layers_dirty = true;
+        if let Some(key) = thrown {
+            let closed = self.close_card(key);
+            self.overview_closed.extend(closed);
+        }
         if self.view == WorkspaceView::Tasks {
             self.queue_focused(Lifecycle::Resumed);
         }
@@ -1323,7 +1379,8 @@ impl Workspace {
             .drag_back((self.back_grab + p).clamp(0.0, 1.0), v_p);
     }
 
-    /// The `p` the back gesture was taken hold of again at (A3 re-entry; 0 means a fresh gesture).
+    /// The `p` the back gesture under way was taken hold of again at (A3 re-entry; 0 means a fresh
+    /// gesture, or none under way).
     #[doc(hidden)]
     #[must_use]
     pub fn gesture_back_grab(&self) -> f32 {
@@ -1333,7 +1390,15 @@ impl Workspace {
     /// The release: confirmed at `p ≥ 0.33`, or at `v_x ≥ fling` (the caller decides and hands it
     /// over as `confirm`). Confirmed, the top comes off the stack as the outgoing instance;
     /// cancelled, it is restored with `Resumed`.
-    pub fn release_gesture_back(&mut self, confirm: bool, tokens: &MotionTokens) {
+    ///
+    /// The (declaration id, instance id) of what came off the stack. `None` for a cancel, and for
+    /// a release whose gesture something else already ended (a `back` from elsewhere mid-drag):
+    /// nothing was closed by it.
+    pub fn release_gesture_back(
+        &mut self,
+        confirm: bool,
+        tokens: &MotionTokens,
+    ) -> Option<(String, InstanceId)> {
         if !matches!(
             self.stack,
             StackTransition::DraggingBack {
@@ -1341,8 +1406,10 @@ impl Workspace {
                 ..
             }
         ) {
-            return;
+            return None;
         }
+        // Let go, the gesture is over: the next one starts fresh unless it catches this one.
+        self.back_grab = 0.0;
         let outgoing = if confirm {
             self.active_task_mut().and_then(Task::pop)
         } else {
@@ -1351,6 +1418,7 @@ impl Workspace {
             }
             None
         };
+        let closed = outgoing.as_ref().map(|o| (o.decl_id().to_owned(), o.id()));
         // The outgoing slot takes len so it does not collide with the new top (len−1).
         let base = Self::slot_base(self.focus);
         let outgoing = outgoing.map(|mut o| {
@@ -1371,6 +1439,23 @@ impl Workspace {
             .release_back(confirm, outgoing, tokens.spring, tokens.reduce, width);
         if tokens.reduce {
             self.settle_stack();
+        }
+        closed
+    }
+
+    /// The shade or the unlock prompt covers the screens on show (the shell says so as it
+    /// changes). A screen that comes to the top under them is `Paused`, not `Resumed`.
+    pub(crate) fn set_covered(&mut self, covered: bool) {
+        self.covered = covered;
+    }
+
+    /// What a screen coming to the top of a task on show hears: `Resumed`, or `Paused` while the
+    /// shade, the prompt or the overview's cards are over it — they resume it when they go.
+    fn on_show(&self) -> Lifecycle {
+        if self.covered || self.overview.is_some() {
+            Lifecycle::Paused
+        } else {
+            Lifecycle::Resumed
         }
     }
 
@@ -2067,6 +2152,29 @@ impl Workspace {
         true
     }
 
+    /// The resident screen of a declaration that is being replaced or removed goes to its open
+    /// instance, wherever that is — on a stack, leaving through a transition or waiting for its
+    /// `Destroyed` — so what that instance hears from now on reaches the screen it ran, not
+    /// whatever the registry holds under the id next. Without an instance it is dropped here.
+    pub(crate) fn adopt_resident(&mut self, decl_id: &str, screen: Box<dyn crate::screen::Screen>) {
+        let outgoing = match &mut self.stack {
+            StackTransition::Popping { outgoing, .. }
+            | StackTransition::DraggingBack { outgoing, .. } => outgoing.as_deref_mut(),
+            StackTransition::Idle | StackTransition::Pushing { .. } => None,
+        };
+        let mut all = self
+            .tasks
+            .iter_mut()
+            .chain(self.closing_task.iter_mut())
+            .chain(self.leaving_task.iter_mut())
+            .flat_map(Task::iter_mut)
+            .chain(outgoing)
+            .chain(self.graveyard.iter_mut());
+        if let Some(instance) = all.find(|i| i.decl_id() == decl_id && i.is_resident()) {
+            instance.adopt(screen);
+        }
+    }
+
     /// `remove(id)`: end every instance of that declaration. No animation. With none at all, a
     /// transition in progress is left alone.
     pub(crate) fn close_decl(&mut self, decl_id: &str, tokens: &MotionTokens) {
@@ -2088,11 +2196,13 @@ impl Workspace {
         mut pred: impl FnMut(&Instance) -> bool,
         tokens: &MotionTokens,
     ) -> Vec<(String, InstanceId)> {
+        // Of the active task only the top two are drawn — the one on show and the one a push or
+        // a pop slides it over. An instance stopped deeper down goes without touching the motion.
         let active_index = self.pane_task_index();
         let in_active = active_index
             .and_then(|i| self.tasks.get(i))
             .into_iter()
-            .flat_map(Task::iter)
+            .flat_map(|task| task.iter().skip(task.len().saturating_sub(2)))
             .any(&mut pred);
         let in_stacks = in_active || self.tasks.iter().flat_map(Task::iter).any(&mut pred);
         let in_transit = self.closing_task.iter().flat_map(Task::iter).any(&mut pred)
@@ -2121,9 +2231,6 @@ impl Workspace {
                 // A task with no match is left alone (`last_active` too).
                 continue;
             }
-            if shown.contains(&index) {
-                changed_shown.push(index);
-            }
             let was_top = task.top().map(Instance::id);
             let mut all = Vec::new();
             while let Some(instance) = task.pop() {
@@ -2141,6 +2248,10 @@ impl Workspace {
                     task.push(instance);
                 }
             }
+            // Only a task on show whose top changed has a screen newly on show.
+            if shown.contains(&index) && task.top().map(Instance::id) != was_top {
+                changed_shown.push(index);
+            }
         }
         for instance in buried {
             self.bury(instance);
@@ -2148,9 +2259,10 @@ impl Workspace {
         // The new top gets a `Resumed`. **Only where something really came out of a task on show** — a
         // background task being tidied up must not make a lifecycle event on the foreground screen (and
         // mid-transition it would throw the order out as well).
+        let on_top = self.on_show();
         for index in changed_shown {
             if let Some(top) = self.tasks.get_mut(index).and_then(Task::top_mut) {
-                top.queue(Lifecycle::Resumed);
+                top.queue(on_top);
             }
         }
         self.prune_empty_tasks(tokens);
@@ -2165,6 +2277,17 @@ impl Workspace {
         tokens: &MotionTokens,
     ) -> Vec<(String, InstanceId)> {
         self.close_where(|instance| instance.evict_due(now), tokens)
+    }
+
+    /// The earliest moment [`Workspace::evict_expired`] has something to end, so that an idle
+    /// panel wakes for it.
+    #[must_use]
+    pub(crate) fn next_eviction(&self) -> Option<Instant> {
+        self.tasks
+            .iter()
+            .flat_map(Task::iter)
+            .filter_map(Instance::evict_at)
+            .min()
     }
 
     fn prune_empty_tasks(&mut self, _tokens: &MotionTokens) {
@@ -2249,11 +2372,12 @@ impl Workspace {
     /// Handle the end of a stack transition: `Resumed` on the top, `Stopped` below it.
     fn finish_stack(&mut self) {
         self.layers_dirty = true;
+        let on_top = self.on_show();
         if let Some(task) = self.active_task_mut() {
             let len = task.len();
             for (i, instance) in task.iter_mut().enumerate() {
                 if i + 1 == len {
-                    instance.queue(Lifecycle::Resumed);
+                    instance.queue(on_top);
                 } else if !instance.is_stopped() {
                     instance.queue(Lifecycle::Stopped);
                 }
@@ -4361,7 +4485,7 @@ mod tests {
         assert!((ws.gesture_back_grab() - 0.0).abs() < 1e-6);
         ws.drag_gesture_back(0.4, 0.0);
         assert!((ws.stack_transition().t() - 0.4).abs() < 1e-6);
-        ws.release_gesture_back(false, &tokens);
+        let _ = ws.release_gesture_back(false, &tokens);
         assert_eq!(ws.stack_transition().back_confirmed(), Some(false));
         assert_eq!(
             drain_find(&mut ws, "b"),
@@ -4390,7 +4514,7 @@ mod tests {
         );
 
         // Confirmed, b comes off the stack and is Destroyed at the end of the transition.
-        ws.release_gesture_back(true, &tokens);
+        let _ = ws.release_gesture_back(true, &tokens);
         assert_eq!(ws.active_task().map(Task_len), Some(1));
         for _ in 0..120 {
             ws.tick(1.0 / 60.0);

@@ -27,7 +27,7 @@
 //! [`super::Overlay::ui`]). Both call only this type's `begin_drag` / `drag` / `release`; who
 //! owns the gesture (the nested-scroll handoff) is decided in `Overlay`.
 
-use crate::motion::{DragSpring, ReleaseRule, Tween};
+use crate::motion::{DragSpring, ReleaseRule, Spring, Tween};
 use crate::theme::MotionTokens;
 use std::time::{Duration, Instant};
 
@@ -74,6 +74,8 @@ pub struct Shade {
     /// drawn back up — it fades and lifts inside a tenth of the time it took to arrive — so a
     /// card shade closes on this tween. `None` (the curtain) springs shut as it always has.
     close: Option<Tween>,
+    /// The spring the shade last settled on, so a relayout mid-opening can re-aim it.
+    spring: Spring,
 }
 
 impl Shade {
@@ -89,6 +91,7 @@ impl Shade {
             detent: None,
             open_at: h,
             close: None,
+            spring: tokens.shade.spring,
         }
     }
 
@@ -97,23 +100,33 @@ impl Shade {
         self.close = tween;
     }
 
-    /// Update the height (when the layout changes). If it is open, the value follows.
+    /// Update the height (when the layout changes). If it is open, or still settling open, the
+    /// value follows.
     pub(crate) fn set_height(&mut self, height: f32) {
         let h = height.max(1.0);
         if (h - self.height).abs() < 0.5 {
             return;
         }
+        // "Fully open" is judged against the height it was open at, before it changes.
+        let fully_open = self.open_at >= self.height - 0.5;
         self.height = h;
         self.y.set_range(0.0, h);
-        if self.open_at >= self.height - 0.5 || self.detent.is_none() {
+        if fully_open || self.detent.is_none() {
             self.open_at = h;
         }
-        if self.state == OverlayState::Open {
+        self.open_at = self.open_at.min(h);
+        let at = self.open_at;
+        match self.state {
             // **To the stop it is resting on, not to the top.** With a detent the shade has two
             // open positions, and snapping a tile-height shade to the full height on a relayout
             // would look like it opened itself.
-            let at = self.open_at;
-            self.y.snap(at);
+            OverlayState::Open => self.y.snap(at),
+            // Still on its way: the spring is re-aimed from where it is, with the speed it has,
+            // so it does not land `Open` at the old height.
+            OverlayState::Settling { opening: true } if (self.y.target() - at).abs() > 0.5 => {
+                self.y.release(at, self.spring);
+            }
+            _ => {}
         }
     }
 
@@ -300,6 +313,7 @@ impl Shade {
         if opening {
             self.open_at = target;
         }
+        self.spring = tokens.shade.spring;
         if tokens.reduce {
             self.y.snap(target);
             self.state = if opening {

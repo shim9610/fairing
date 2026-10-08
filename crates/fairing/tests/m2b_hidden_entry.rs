@@ -216,7 +216,7 @@ fn a_screen_can_read_how_many_knocks_are_left() -> fairing::Result<()> {
         sh.launch(LaunchAction::open("about"));
     })?;
     h.frames(2);
-    assert_eq!(seen.get(), Some(5), "at the start they are all left");
+    assert_eq!(seen.get(), None, "five left is above hint_from: quiet");
     h.shell.knock("service");
     h.shell.knock("service");
     h.frames(2);
@@ -394,11 +394,14 @@ impl KnockTrigger for KeyCombo {
 fn a_custom_trigger_opens_the_door() -> fairing::Result<()> {
     let mut h = test_shell(single_level_access(), |sh| {
         sh.add(stub("factory"));
-        sh.add_hidden_entry(HiddenEntry::new(
-            "factory",
-            KeyCombo::default(),
-            LaunchAction::open("factory"),
-        ));
+        sh.add_hidden_entry(
+            HiddenEntry::new(
+                "factory",
+                KeyCombo::default(),
+                LaunchAction::open("factory"),
+            )
+            .hint_from(3),
+        );
     })?;
     h.frames(2);
     let _ = h.shell.poll_events().len();
@@ -427,11 +430,14 @@ fn a_custom_trigger_reports_its_own_hint() -> fairing::Result<()> {
             ui.label("about");
         }));
         sh.add(stub("factory"));
-        sh.add_hidden_entry(HiddenEntry::new(
-            "factory",
-            KeyCombo::default(),
-            LaunchAction::open("factory"),
-        ));
+        sh.add_hidden_entry(
+            HiddenEntry::new(
+                "factory",
+                KeyCombo::default(),
+                LaunchAction::open("factory"),
+            )
+            .hint_from(3),
+        );
         sh.launch(LaunchAction::open("about"));
     })?;
     h.frames(2);
@@ -447,11 +453,14 @@ fn a_custom_trigger_reports_its_own_hint() -> fairing::Result<()> {
 fn a_wrong_key_resets_the_combo() -> fairing::Result<()> {
     let mut h = test_shell(single_level_access(), |sh| {
         sh.add(stub("factory"));
-        sh.add_hidden_entry(HiddenEntry::new(
-            "factory",
-            KeyCombo::default(),
-            LaunchAction::open("factory"),
-        ));
+        sh.add_hidden_entry(
+            HiddenEntry::new(
+                "factory",
+                KeyCombo::default(),
+                LaunchAction::open("factory"),
+            )
+            .hint_from(3),
+        );
     })?;
     h.frames(2);
     let _ = h.shell.poll_events().len();
@@ -520,11 +529,9 @@ fn an_uncountable_trigger_has_no_hint() -> fairing::Result<()> {
             ui.label("about");
         }));
         sh.add(stub("factory"));
-        sh.add_hidden_entry(HiddenEntry::new(
-            "any",
-            AnyTap,
-            LaunchAction::open("factory"),
-        ));
+        sh.add_hidden_entry(
+            HiddenEntry::new("any", AnyTap, LaunchAction::open("factory")).hint_from(u8::MAX),
+        );
         sh.launch(LaunchAction::open("about"));
     })?;
     h.frames(2);

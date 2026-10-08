@@ -13,6 +13,7 @@ the links beside each table for that.
 | A file that cannot be read | `Error::Io` |
 | Bad syntax or a wrong type | `Error::Config` (`ShellConfig::from_toml` → `toml::from_str` fails) |
 | A value out of range | `Error::Config` from `ShellConfig::validate` — the "Validation" column below |
+| A float that is not a number | `Error::Config`. `nan` and `inf` are valid TOML floats, but every float key must be finite, those whose "Validation" column says "None" included |
 | An unknown section or key | Silently ignored (`#[serde(default)]` plus serde's default behaviour). A typo still boots; only range and cross-reference errors stop start-up |
 | A section behind a feature you turned off (`overlay`, `osk`) | **Still parsed.** A config file with `[overlay]` reads fine with the feature off, so two builds with different feature sets can share one file |
 
@@ -208,10 +209,10 @@ Always parsed regardless of features. There is no key that disables notification
 | Key | Type | Default | Meaning | Validation |
 |---|---|---|---|---|
 | `height_ratio` | `f32` | `0.38` | Keyboard height as a fraction of the screen, up to `osk_max_key` a row unless the code lifts that cap ([04 §1.2](04-customization.md#12-metrics-tokens)) | Outside `(0.0, 1.0]` is an error |
-| `min_key_px` | `f32` | `48.0` | Minimum key height (du). It wins over `osk_max_key` where the two cross | Must be `> 0.0` |
+| `min_key_px` | `f32` | `48.0` | Minimum key height (du), the gaps between rows not counted. It wins over `osk_max_key` where the two cross; the room above the nav bar still bounds the keyboard | Must be `> 0.0` |
 | `layout` | `String` | `"qwerty"` | `"qwerty"`, `"numpad"` or `"hangul"` (`"ko"` also works) | Anything else **warns and falls back to qwerty** |
 | `numpad_decimal` | `bool` | `true` | A decimal point on the numpad | None |
-| `numpad_sign` | `bool` | `false` | A ± key on the numpad | None |
+| `numpad_sign` | `bool` | `false` | A `-` key on the numpad, which types a minus sign | None |
 
 `layout = "hangul"` is the two-set Korean layout. Jamo do not go in raw — a
 `HangulComposer` assembles them into syllables. A `한/영` key on the bottom row

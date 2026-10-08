@@ -21,7 +21,7 @@
 //! [`ListRow`] choice rows**, the same shape `layout::choice_rows` builds, with a trailing `check`
 //! on the selected one. The two alternatives were both rejected:
 //!
-//! * *Shrink the text.* The type scale tracks the finger and the contrast gate is
+//! * *Shrink the text.* The type scale tracks the viewing distance and the contrast gate is
 //!   argued from the size the label actually resolves to. A control that quietly drops below
 //!   `type_scale.button` would be the one place in the crate where text size depends on the width
 //!   of the container, so the same label would be legible on one panel and not on another with no

@@ -12,8 +12,9 @@
 
 use super::hooks::{BannerView, HeadsUpCx, HeadsUpLayout, HeadsUpLayoutCx, HeadsUpPainter};
 use super::model::{Level, Notification, NotificationId};
+use crate::access::{Access, Gate};
 use crate::i18n::Strings;
-use crate::icons::{IconCache, IconRef, IconSet, IconStyle};
+use crate::icons::{builtin, IconCache, IconRef, IconSet, IconStyle};
 use crate::motion::{DragSpring, ReleaseRule, RubberBand};
 use crate::theme::{ColorRole, MotionTokens, Theme};
 use egui::{Color32, Rect};
@@ -29,6 +30,10 @@ const DOWN_RUBBER: RubberBand = RubberBand {
     max: 16.0,
 };
 // The three dimensions (`pad` · `icon_gap` · `progress_h`) are `theme.components.heads_up`.
+
+/// The title a banner shows for a notification whose gate the session fails — the same
+/// wording (and string key) as the shade's redacted row.
+const HIDDEN_NOTIFICATION: &str = "1 notification";
 
 /// The heads-up phase.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,6 +90,9 @@ struct Banner {
     icon: IconRef,
     level: Level,
     progress: Option<f32>,
+    /// The notification's gate. Checked on every frame it is drawn, so a session that changes
+    /// while the banner is up (a lock, a timeout) hides the content from then on.
+    gate: Option<Gate>,
     y: DragSpring,
     phase: HeadsUpPhase,
     until: Instant,
@@ -110,6 +118,7 @@ impl Banner {
         self.icon = notification.shown_icon();
         self.level = notification.level;
         self.progress = notification.progress;
+        self.gate.clone_from(&notification.gate);
         self.rect = Rect::NOTHING;
         self.pressed = false;
         self.needed = 0.0;
@@ -163,6 +172,7 @@ impl HeadsUp {
             icon: notification.shown_icon(),
             level: notification.level,
             progress: notification.progress,
+            gate: notification.gate.clone(),
             y,
             phase: HeadsUpPhase::Entering,
             until,
@@ -171,6 +181,19 @@ impl HeadsUp {
             wrap: 0.0,
             needed: 0.0,
         });
+    }
+
+    /// The notification on screen was updated in place: the banner takes the new content and
+    /// keeps where it is, its phase and its timer. Another id is left alone.
+    pub(crate) fn update(&mut self, notification: &Notification) {
+        let Some(banner) = self.current.as_mut().filter(|b| b.id == notification.id) else {
+            return;
+        };
+        let (rect, pressed, needed) = (banner.rect, banner.pressed, banner.needed);
+        banner.fill(notification);
+        banner.rect = rect;
+        banner.pressed = pressed;
+        banner.needed = needed;
     }
 
     /// The height the banner is drawn and travels at: the token, or more where the content
@@ -187,10 +210,12 @@ impl HeadsUp {
 
     /// Start leaving (after a tap, or on the timer).
     pub fn dismiss(&mut self, tokens: &MotionTokens) {
+        // The drawn height, not the token: a banner the content made taller leaves all the way.
+        let h = self.h();
         if let Some(b) = &mut self.current {
             b.phase = HeadsUpPhase::Leaving;
             b.pressed = false;
-            b.y.to(-self.height, tokens.heads_up_out);
+            b.y.to(-h, tokens.heads_up_out);
         }
     }
 
@@ -253,6 +278,10 @@ impl HeadsUp {
         let Some(b) = &mut self.current else {
             return false;
         };
+        // Whether it was still on its way before this step: a leaving banner is removed only
+        // after the frame that drew it at the end of its travel, so it slides all the way off
+        // rather than vanishing from part way.
+        let was_moving = b.y.is_animating();
         let moving = b.y.tick(dt);
         if b.phase == HeadsUpPhase::Entering && !moving {
             b.phase = HeadsUpPhase::Holding;
@@ -271,10 +300,12 @@ impl HeadsUp {
                 b.y.to(-h, out);
                 return true;
             }
-            HeadsUpPhase::Leaving if !moving => {
+            HeadsUpPhase::Leaving if !was_moving => {
                 self.current = None;
                 return false;
             }
+            // Arrived: one more frame draws it there, and the next removes it.
+            HeadsUpPhase::Leaving => return true,
             _ => {}
         }
         moving
@@ -321,10 +352,12 @@ impl HeadsUp {
             .is_some_and(|b| b.pressed || b.phase == HeadsUpPhase::Dragging)
     }
 
-    /// Whether it is moving.
+    /// Whether it is moving. A banner on its way out counts until it is gone.
     #[must_use]
     pub fn is_animating(&self) -> bool {
-        self.current.as_ref().is_some_and(|b| b.y.is_animating())
+        self.current
+            .as_ref()
+            .is_some_and(|b| b.y.is_animating() || b.phase == HeadsUpPhase::Leaving)
     }
 
     /// The expiry to arm an idle repaint for. None while it is held (the timer is stopped).
@@ -365,7 +398,8 @@ impl HeadsUp {
 
     /// Stage 13: draw at the top (`Area(Order::Tooltip)`), or where the integrator's layout puts
     /// it, with the built-in banner or the integrator's painter. Taps and drags are
-    /// taken here and returned.
+    /// taken here and returned. A notification whose gate `access` fails is drawn redacted, as
+    /// the shade draws it: one line of "1 notification", the bell, no body and no progress.
     #[allow(clippy::too_many_arguments)] // What drawing the banner needs, the hooks' two included.
     pub(crate) fn ui(
         &mut self,
@@ -376,6 +410,7 @@ impl HeadsUp {
         now: Instant,
         icons: &mut IconSet,
         strings: &Strings,
+        access: &Access,
     ) -> Option<HeadsUpAction> {
         let h = self.h();
         let id = self.current.as_ref()?.id;
@@ -395,40 +430,18 @@ impl HeadsUp {
         }
         let rect = place.translate(egui::vec2(0.0, y));
         banner.rect = rect;
+        let allowed = banner.gate.as_ref().is_none_or(|gate| access.allows(gate));
         let response = egui::Area::new(egui::Id::new("fairing.heads_up"))
             .order(egui::Order::Tooltip)
             .fixed_pos(rect.min)
             .constrain(false)
             .fade_in(false)
             .show(ctx, |ui| {
-                match painter.as_mut() {
-                    Some(painter) => {
-                        let Banner {
-                            id,
-                            title,
-                            body,
-                            icon,
-                            level,
-                            progress,
-                            pressed,
-                            needed,
-                            ..
-                        } = banner;
-                        let view = BannerView {
-                            id: *id,
-                            title,
-                            body,
-                            icon,
-                            level: *level,
-                            progress: *progress,
-                            pressed: *pressed,
-                        };
-                        painter(
-                            ui,
-                            &mut HeadsUpCx::new(rect, view, theme, icons, strings, needed),
-                        );
-                    }
-                    None => paint_banner(ui, rect, banner, theme, cache),
+                if let Some(painter) = painter.as_mut() {
+                    paint_with(painter, ui, rect, banner, allowed, theme, icons, strings);
+                } else {
+                    let hidden = (!allowed).then(|| strings.get(HIDDEN_NOTIFICATION));
+                    paint_banner(ui, rect, banner, hidden, theme, cache);
                 }
                 ui.allocate_rect(rect, egui::Sense::click_and_drag())
             })
@@ -477,11 +490,64 @@ impl HeadsUp {
     }
 }
 
+/// Hand one banner to the integrator's painter — redacted where the session fails its gate.
+#[allow(clippy::too_many_arguments)] // The painter's context, built from what `HeadsUp::ui` holds.
+fn paint_with(
+    painter: &mut HeadsUpPainter,
+    ui: &mut egui::Ui,
+    rect: Rect,
+    banner: &mut Banner,
+    allowed: bool,
+    theme: &Theme,
+    icons: &mut IconSet,
+    strings: &Strings,
+) {
+    let Banner {
+        id,
+        title,
+        body,
+        icon,
+        level,
+        progress,
+        pressed,
+        needed,
+        ..
+    } = banner;
+    let view = if allowed {
+        BannerView {
+            id: *id,
+            title,
+            body,
+            icon,
+            level: *level,
+            progress: *progress,
+            pressed: *pressed,
+        }
+    } else {
+        BannerView {
+            id: *id,
+            title: strings.get(HIDDEN_NOTIFICATION),
+            body: "",
+            icon: &builtin::BELL,
+            level: Level::Info,
+            progress: None,
+            pressed: *pressed,
+        }
+    };
+    painter(
+        ui,
+        &mut HeadsUpCx::new(rect, view, theme, icons, strings, needed),
+    );
+}
+
 /// One banner: the background, icon, title, body and progress. Galley- and polyline-cached, so no allocation.
+/// With `hidden` (a gated notification the session may not read) that line is the title, and
+/// the body, the progress and the notification's own icon and accent are left out.
 fn paint_banner(
     ui: &egui::Ui,
     rect: Rect,
     banner: &mut Banner,
+    hidden: Option<&str>,
     theme: &Theme,
     icons: &mut IconCache,
 ) {
@@ -501,19 +567,28 @@ fn paint_banner(
     // The in-chrome icon size rule (half of `icon_size` = 24 px) — the same as a panel tile's.
     let m = theme.components.heads_up;
     let icon_size = metrics.icon_size * 0.5;
-    let accent = theme.color(banner.level.role());
+    let accent = theme.color(if hidden.is_some() {
+        ColorRole::Muted
+    } else {
+        banner.level.role()
+    });
     let inset = metrics.content_inset;
     let text_x = rect.min.x + inset + icon_size + m.icon_gap;
     let wrap = (rect.max.x - inset - text_x).max(24.0);
     banner.wrap = wrap;
     // The galleys are not held across frames — a growing atlas throws the UVs out.
     let title = painter.layout(
-        banner.title.clone(),
+        hidden.map_or_else(|| banner.title.clone(), str::to_owned),
         egui::TextStyle::Button.resolve(ui.style()),
         Color32::PLACEHOLDER,
         wrap,
     );
-    let body = (!banner.body.is_empty()).then(|| {
+    let progress = if hidden.is_some() {
+        None
+    } else {
+        banner.progress
+    };
+    let body = (hidden.is_none() && !banner.body.is_empty()).then(|| {
         painter.layout(
             banner.body.clone(),
             egui::TextStyle::Body.resolve(ui.style()),
@@ -532,12 +607,15 @@ fn paint_banner(
     let title_h = title.size().y;
     let block_h = title_h + body.as_ref().map_or(0.0, |g| line_gap + g.size().y);
     // What this content needs top to bottom; the banner grows to it on the next frame.
-    let progress_h = banner
-        .progress
-        .map_or(0.0, |_| line_gap + m.progress_h + m.pad * 0.5);
+    let progress_h = progress.map_or(0.0, |_| line_gap + m.progress_h + m.pad * 0.5);
     banner.needed = inset + block_h + progress_h + inset;
     let mut y = rect.min.y + inset;
-    if let IconRef::Builtin(name) = &banner.icon {
+    let icon = if hidden.is_some() {
+        &builtin::BELL
+    } else {
+        &banner.icon
+    };
+    if let IconRef::Builtin(name) = icon {
         if let Some(def) = crate::icons::find(name) {
             let style = IconStyle::sized(icon_size);
             let icon_rect = Rect::from_center_size(
@@ -556,7 +634,7 @@ fn paint_banner(
     if let Some(galley) = body {
         painter.galley(egui::pos2(text_x, y), galley, theme.color(ColorRole::Muted));
     }
-    if let Some(progress) = banner.progress {
+    if let Some(progress) = progress {
         let track = Rect::from_min_size(
             egui::pos2(text_x, rect.max.y - m.pad * 0.5 - m.progress_h),
             egui::vec2(rect.max.x - m.pad - text_x, m.progress_h),

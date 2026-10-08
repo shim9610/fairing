@@ -631,9 +631,16 @@ pub trait InfoBackend: Backend {
 }
 
 /// A backend of the integrator's own, kept so that it can be handed back by its type.
-trait Custom: Backend + Any {}
+trait Custom: Backend + Any {
+    /// The backend's type name, for the log.
+    fn type_name(&self) -> &'static str;
+}
 
-impl<T: Backend + Any> Custom for T {}
+impl<T: Backend + Any> Custom for T {
+    fn type_name(&self) -> &'static str {
+        std::any::type_name::<T>()
+    }
+}
 
 /// The set of backends. Anything unspecified is a `Null*` (the clock is [`clock::SystemClock`]).
 pub struct Services {
@@ -716,6 +723,33 @@ impl Services {
                 backend.next_wake()
             })
             .min()
+    }
+
+    /// Name every backend whose `next_wake` is at or before `now` — a built-in one by its field,
+    /// a custom one by its type — for the shell's warning about a backend that keeps it from
+    /// going idle. No allocation.
+    pub(crate) fn for_each_stale(&self, now: Instant, mut name: impl FnMut(&str)) {
+        let builtin: [(&str, &dyn Backend); 8] = [
+            ("clock", &*self.clock),
+            ("power", &*self.power),
+            ("wifi", &*self.wifi),
+            ("bluetooth", &*self.bluetooth),
+            ("display", &*self.display),
+            ("audio", &*self.audio),
+            ("network", &*self.network),
+            ("info", &*self.info),
+        ];
+        let stale = |backend: &dyn Backend| backend.next_wake().is_some_and(|at| at <= now);
+        for (label, backend) in builtin {
+            if stale(backend) {
+                name(label);
+            }
+        }
+        for backend in &self.custom {
+            if stale(&**backend) {
+                name((**backend).type_name());
+            }
+        }
     }
 
     /// Hand the `Waker` to every backend at startup.

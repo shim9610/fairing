@@ -133,7 +133,9 @@ Its position comes from one of two places.
 
 The `ui` the closure receives is a child `Ui` inside the item rect the shell laid out. On the
 first frame the width is unknown, so it is estimated at 72 px; from the next frame the width
-actually drawn is used.
+actually drawn is used. An item that collapses on that estimate is run once out of sight (nothing
+it draws is shown, and its widgets take no input) so its real width is known; after that a
+collapsed item is not run until it has room again.
 
 Taps are the closure's own widgets' business. The only thing the shell handles for you is the
 `tap_action` of built-in items.
@@ -1074,7 +1076,7 @@ updates in place, keeping its position.
 |---|---|---|---|
 | `text` | `String` | — | `Toast::new(text)` |
 | `level` | `Level` | `Level::Info` | `.level(level)` |
-| `duration` | `Duration` | `Duration::ZERO` = `[notify] toast_ms` | `.duration(d)` |
+| `duration` | `Duration` | `Duration::ZERO` = `[notify] toast_ms`; `Duration::MAX` = until tapped | `.duration(d)` |
 | `icon` | `Option<IconRef>` | `None` | `.icon(icon)` |
 
 `&str` and `String` are `Into<Toast>`, so `handle.toast("Saved")` works directly.
@@ -1128,6 +1130,9 @@ A new notification appears briefly as a banner at the top.
 | Swipe up | Dismisses it |
 | Tap | Runs `Notification::action`, then leaves |
 | If the shade opens | Absorbed immediately (no exit animation) |
+| A gate the session fails | Redacted as in the shade: one line of "1 notification", the bell, no body and no progress (a `.heads_up_painter(..)` is handed the same) |
+| Over the lock screen | Shown, redacted where gated as above; a tap only dismisses it |
+| The same id updated while it is up | The banner shows the new content (no new heads-up) |
 
 Only one at a time.
 
@@ -1180,8 +1185,9 @@ Closing it with back or with the keyboard's hide key (▾) means it does not com
 even in `Auto`. Two signals reopen it:
 
 - `wants` going from false to true
-- A press on the screen after it was closed, with focus still there on the next frame (so
-  re-tapping the same field opens it again)
+- A tap on the screen after it was closed, with focus still there once the finger lifts (so
+  re-tapping the same field, or tapping another one, opens it again; a tap on empty space takes
+  the focus away and leaves it closed)
 
 ### 6.2 Layouts
 
@@ -1197,13 +1203,14 @@ numpad_sign = false
 | Key | Default | Meaning |
 |---|---|---|
 | `height_ratio` | `0.38` | Height = screen height × this. Above 0 and at most 1 |
-| `min_key_px` | `48.0` | Minimum height of a key row. If the ratio gives less, it is raised |
+| `min_key_px` | `48.0` | Minimum height of a key, the gaps between rows not counted. If the ratio gives less, it is raised |
 
 The ratio has a ceiling too. A row of keys is never taller than the theme's `osk_max_key` — one
 and a half fingers, and at least 72 du (04 §1.2) — so a tall portrait panel gets a keyboard sized
 for a hand rather than a third of the glass. Where the floor and the ceiling cross (a big
 `min_key_px` on a small panel), the floor wins. Either way the keyboard is never taller than the
-screen.
+room above the nav bar (the screen, when the nav bar is off), so its top row is always on the
+glass — on a panel too short for the floor, the keys come out shorter than `min_key_px`.
 
 The ceiling is a theme token, so it changes in code: give the builder a `MetricsSpec` with an
 `osk_max_key` of your own, or `None` to lift it and let the ratio alone decide.
@@ -1269,7 +1276,9 @@ fn use_custom_pad(shell: &mut Shell) {
 }
 ```
 
-The `span` in `KeyDef::special(action, label, span)` is a multiple of one default key. Every row
+The `span` in `KeyDef::special(action, label, span)` is a multiple of one default key, held to
+`0.5..=6` and rounded to a tenth: narrower than half a key is no target for a finger, and one key
+wider than six squeezes the rest of its face. Every row
 in a face divides up the width of the longest row, so keys stay the same size even when rows
 have different key counts.
 
@@ -1590,9 +1599,10 @@ fn register_icons(shell: &mut Shell) -> (IconRef, IconRef) {
 | Polyline cache | Used | Not used |
 | Constraint | Subpaths with `fill: true` must be **convex** | None |
 
-`Seg` is `M` (move) · `L` (line) · `Q` (quadratic Bézier) · `C` (cubic Bézier) · `Z` (close). A
-registered name that collides with a built-in icon mixes up the cache, so it logs a warning. A
-prefix like `app-` is the safe habit.
+`Seg` is `M` (move) · `L` (line) · `Q` (quadratic Bézier) · `C` (cubic Bézier) · `Z` (close). The
+name is only a label: an icon is drawn by the `CustomIconId` `register_icon` returns, and the
+polyline cache keys on the path, so a name shared with a built-in or another registration still
+draws as itself.
 
 ### 8.4 Adding a new SVG to the built-in set
 
@@ -1814,7 +1824,8 @@ screen reads the same `Pointer` through `cx.app::<Pointer>()` and draws it.
   keyboard's band while it is up (`keys`), the edges the screen keeps from edge gestures
   (`blocked`, all four with `edge_guard`), the shell's own edge bands (`edge_zone(edge)`), and the
   scale for millimetres. A region is yours, so the shell places it wherever `place` says, on a
-  screen with `edge_guard` too: a region that should stand aside there checks `blocked`.
+  screen with `edge_guard` too: a region that should stand aside there checks `blocked`. The
+  rect is clipped to the glass, so `Rect::EVERYTHING` is the whole of it.
 - **The touch is the region's from the press to the release.** Nothing under the region sees it,
   not a widget and not a desktop page, and no gesture of the shell's starts from it.
   `touch` hears it every frame as a `RegionTouch`: `Started` on the press, `Moved` on each frame

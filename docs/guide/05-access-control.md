@@ -252,9 +252,13 @@ it. Behind it, no new edge swipe starts.
 A few rules hold whatever the authenticator does:
 
 - **A grant has to be worth something.** A `Granted` level the table does not
-  have, or — outside the lock screen — one no higher than the session already
-  holds, is answered as a refusal ("That is not enough for this"). A valid but
-  lower credential never demotes the session or closes its screens.
+  have, one no higher than the session already holds on the unlock prompt, or
+  one below the session's start on the lock screen (which takes the start
+  itself), is answered as a refusal ("That is not enough for this"). A valid but
+  lower credential never demotes the session or closes its screens. The
+  authenticator hears of the refusal through `Authenticator::refused(now)` and
+  may count it as a failure — `PinTable` does, so a PIN someone knows does not
+  start the attempt count again between guesses at one they do not.
 - **A lockout stays.** Closing the prompt and opening it again, or a second
   request arriving over an open one, keeps the countdown and the dead keys — for a
   password and a badge as much as a keypad. Nothing is submitted while locked.
@@ -326,7 +330,8 @@ show_path = true                # optional: draw the path as the finger draws it
   so. A dot twice, a dot off the grid, fewer than `min_points` dots, or two levels
   sharing a pattern is an `Error::Config` too.
 - Wrong PINs and wrong patterns count against **one** attempt limit — two ways in
-  are not two allowances. Either table may set `attempt_limit` and `lock_secs`;
+  are not two allowances. A right PIN the shell refuses (an operator PIN typed
+  by an operator at a maintainer gate) counts too. Either table may set `attempt_limit` and `lock_secs`;
   where both do, the stricter limit and the longer lockout hold. The count lives
   in memory, and a restart clears it.
 - The file holds the secrets in clear text, and the shell says so once at start-up
@@ -755,11 +760,9 @@ screen("about", |ui: &mut egui::Ui, cx: &mut Cx| {
     if model.clicked() {
         cx.knock("service");
     }
-    // The crate draws no hint. Read the count and render it your way.
+    // The crate draws no hint. The count comes from `hint_from` down; render it your way.
     if let Some(left) = cx.knock_remaining("service") {
-        if (1..=3).contains(&left) {
-            ui.small(format!("{left} more to open"));
-        }
+        ui.small(format!("{left} more to open"));
     }
 })
 # ;

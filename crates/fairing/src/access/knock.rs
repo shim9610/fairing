@@ -250,30 +250,53 @@ pub struct Zone {
     pub min: (f32, f32),
     /// Bottom right (as a fraction).
     pub max: (f32, f32),
+    /// For [`Zone::corner`]: the corner and the side, as a fraction of the short side. It
+    /// resolves to a square there, and `min` / `max` are only its outline on a square screen.
+    square: Option<(Corner, f32)>,
 }
 
 impl Zone {
     /// A rectangle in fractions.
     #[must_use]
     pub const fn new(min: (f32, f32), max: (f32, f32)) -> Self {
-        Self { min, max }
+        Self {
+            min,
+            max,
+            square: None,
+        }
     }
 
-    /// A square in a screen corner. `size` is a fraction too.
+    /// A square in a screen corner. `size` is its side as a fraction of the screen's short side
+    /// (at most 0.5), so it stays a square on a wide panel.
     #[must_use]
     pub fn corner(corner: Corner, size: f32) -> Self {
         let s = size.clamp(0.0, 0.5);
-        match corner {
-            Corner::TopLeft => Self::new((0.0, 0.0), (s, s)),
-            Corner::TopRight => Self::new((1.0 - s, 0.0), (1.0, s)),
-            Corner::BottomLeft => Self::new((0.0, 1.0 - s), (s, 1.0)),
-            Corner::BottomRight => Self::new((1.0 - s, 1.0 - s), (1.0, 1.0)),
+        let (min, max) = match corner {
+            Corner::TopLeft => ((0.0, 0.0), (s, s)),
+            Corner::TopRight => ((1.0 - s, 0.0), (1.0, s)),
+            Corner::BottomLeft => ((0.0, 1.0 - s), (s, 1.0)),
+            Corner::BottomRight => ((1.0 - s, 1.0 - s), (1.0, 1.0)),
+        };
+        Self {
+            min,
+            max,
+            square: Some((corner, s)),
         }
     }
 
     /// Resolve into screen coordinates.
     #[must_use]
     pub fn resolve(self, screen: Rect) -> Rect {
+        if let Some((corner, size)) = self.square {
+            let side = screen.width().min(screen.height()) * size;
+            let (x, y) = match corner {
+                Corner::TopLeft => (screen.min.x, screen.min.y),
+                Corner::TopRight => (screen.max.x - side, screen.min.y),
+                Corner::BottomLeft => (screen.min.x, screen.max.y - side),
+                Corner::BottomRight => (screen.max.x - side, screen.max.y - side),
+            };
+            return Rect::from_min_size(egui::pos2(x, y), egui::vec2(side, side));
+        }
         let at = |u: f32, v: f32| {
             egui::pos2(
                 screen.width().mul_add(u, screen.min.x),
@@ -608,11 +631,11 @@ mod tests {
         assert_eq!(k.feed(&input(now, &[], &[], 1)), KnockStep::Opened);
     }
 
-    /// A corner square is a screen fraction and the coordinates resolve against the screen Rect.
+    /// A corner square is a fraction of the short side and resolves against the screen Rect.
     #[test]
     fn zones_resolve_against_the_screen() {
         let r = Zone::corner(Corner::BottomRight, 0.10).resolve(screen());
-        assert!((r.min.x - 720.0).abs() < 0.01, "{r:?}");
+        assert!((r.min.x - 752.0).abs() < 0.01, "{r:?}");
         assert!((r.min.y - 432.0).abs() < 0.01, "{r:?}");
         assert!(r.contains(egui::pos2(795.0, 475.0)));
         assert!(!r.contains(egui::pos2(700.0, 475.0)));

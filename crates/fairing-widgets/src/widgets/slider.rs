@@ -183,7 +183,16 @@ pub struct TouchSlider<'a> {
 
 impl<'a> TouchSlider<'a> {
     /// Edits `value` within `range`.
+    ///
+    /// A range given high to low is taken as the caller meant it — the ends are sorted, as
+    /// [`Stepper::range`](super::Stepper::range) does — so the slider still edits rather than
+    /// pinning every touch to one end.
     pub fn new(value: &'a mut f32, range: RangeInclusive<f32>) -> Self {
+        let range = if range.start() <= range.end() {
+            range
+        } else {
+            *range.end()..=*range.start()
+        };
         Self {
             value,
             range,
@@ -706,7 +715,10 @@ fn follow_finger(response: &mut Response, axis: Rect, value: &mut f32, lo: f32, 
     };
     let t = ((pos.x - axis.min.x) / axis.width().max(1.0)).clamp(0.0, 1.0);
     let next = span.mul_add(t, lo);
-    if (next - *value).abs() > f32::EPSILON {
+    // Written so a value that is not a number (a bad reading upstream) counts as different:
+    // a touch is how the operator puts it right.
+    let same = (next - *value).abs() <= f32::EPSILON;
+    if !same {
         *value = next;
         response.mark_changed();
     }

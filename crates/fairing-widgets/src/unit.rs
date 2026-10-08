@@ -879,6 +879,9 @@ impl Scale {
     }
 
     /// Resolve from a density and a policy. If `px_per_mm` is not finite and positive, the policy's assumption is used.
+    ///
+    /// `root_px` is the shell's root `Rect` in **physical pixels**; it becomes
+    /// [`Scale::root_du`] divided by the resolved `pixels_per_point`.
     #[must_use]
     pub fn resolve(
         px_per_mm: f32,

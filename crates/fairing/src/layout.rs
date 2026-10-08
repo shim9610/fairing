@@ -2262,7 +2262,8 @@ pub fn nav_row(ui: &mut Ui, cx: &mut Cx<'_>, title: &str, value: Option<&str>) -
 /// in one shop and swiped in another. What the crate settles is that the dots are there, that the
 /// live one is [`Primary`](fairing_widgets::theme::ColorRole::Primary) and the rest are
 /// `OnPrimary` at the `badge_alpha`, and that they sit inside the picture rather than under it, so
-/// the band costs exactly its own height.
+/// the band costs exactly its own height. Past twelve pages twelve dots are drawn, a window that
+/// follows the live one.
 pub fn hero<R>(
     ui: &mut Ui,
     cx: &mut Cx<'_>,
@@ -2321,10 +2322,15 @@ fn paint_scrim(ui: &Ui, cx: &Cx<'_>, rect: egui::Rect) {
 
 /// The page dots, inside the picture's foot.
 fn paint_dots(ui: &Ui, cx: &Cx<'_>, rect: egui::Rect, (current, count): (usize, usize)) {
+    const MAX_DOTS: usize = 12;
     if count < 2 {
         return;
     }
-    let count = u16::try_from(count).unwrap_or(u16::MAX).min(12);
+    // At most `MAX_DOTS` dots: past that, a window of them that keeps the live one in it.
+    let first = current
+        .saturating_sub(MAX_DOTS / 2)
+        .min(count.saturating_sub(MAX_DOTS));
+    let count = u16::try_from(count.min(MAX_DOTS)).unwrap_or(u16::MAX);
     let d = cx.theme.control.badge_h * cx.theme.control.badge_dot_ratio * 0.5;
     let gap = cx.theme.control.gap;
     let total = (d + gap).mul_add(f32::from(count) - 1.0, d);
@@ -2336,7 +2342,7 @@ fn paint_dots(ui: &Ui, cx: &Cx<'_>, rect: egui::Rect, (current, count): (usize, 
         .color(ColorRole::OnPrimary)
         .gamma_multiply(cx.theme.control.badge_alpha);
     for slot in 0..count {
-        let on = usize::from(slot) == current;
+        let on = first + usize::from(slot) == current;
         ui.painter()
             .circle_filled(egui::pos2(x, y), d * 0.5, if on { live } else { waiting });
         x += d + gap;

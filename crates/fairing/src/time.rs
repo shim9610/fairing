@@ -96,10 +96,13 @@ pub struct Civil {
 }
 
 impl WallTime {
-    /// The seconds with the local offset added (`i64`, so negative epochs work too).
+    /// The seconds with the local offset added (`i64`, so negative epochs work too). A value
+    /// beyond `i64` (a clock reporting garbage) saturates rather than overflowing.
     #[must_use]
     pub fn local_secs(&self) -> i64 {
-        i64::try_from(self.utc_secs).unwrap_or(i64::MAX) + i64::from(self.offset_min) * 60
+        i64::try_from(self.utc_secs)
+            .unwrap_or(i64::MAX)
+            .saturating_add(i64::from(self.offset_min) * 60)
     }
 
     /// The local calendar time.

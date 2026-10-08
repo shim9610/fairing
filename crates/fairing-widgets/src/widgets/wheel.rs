@@ -32,6 +32,11 @@
 //! The chosen index is **the row under the window right now**, so `changed()` fires as the drum
 //! passes each row and not only when it settles — a clock that ticks as the hour wheel turns
 //! beats one that jumps when it stops.
+//!
+//! A value the **caller** sets is the other way round: the drum turns to it (the short way on a
+//! joined drum) and the value stays what the caller wrote, with no `changed()` for the rows
+//! the turn passes. An index past the end is pulled onto the drum — the last row, or the same
+//! row modulo the count when joined — and that correction is reported as a change.
 
 use super::{WheelLook, WheelRow};
 use crate::cx::WidgetCx as Cx;
@@ -125,42 +130,97 @@ impl<'a> WheelPicker<'a> {
         if count == 0 {
             return response;
         }
-        let id = ui.id().with(self.id_salt);
-        let mut drum: Animated<f32> = ui
-            .data(|d| d.get_temp::<Animated<f32>>(id))
-            .unwrap_or_else(|| Animated::new(as_f32(*self.selected)));
-
-        // The caller moved the value while the drum was at rest: turn to it.
-        if drum.mode() == Mode::Idle && index_at(drum.value(), count, self.wrap) != *self.selected {
-            drum.to(as_f32(*self.selected), cx.theme.motion.switch);
-        }
-        if self.enabled {
-            self.steer(ui, cx, &response, rect, row_h, &mut drum);
-        }
-        let dt = ui.input(|i| i.stable_dt);
-        if drum.tick(dt) {
-            ui.ctx().request_repaint();
-        }
-        ui.data_mut(|d| d.insert_temp(id, drum));
-
-        let index = index_at(drum.value(), count, self.wrap);
-        if index != *self.selected {
-            *self.selected = index;
+        // An index past the end — a stale one, or a "nothing chosen" sentinel — is pulled onto
+        // the drum: the last row on an open drum, the same row modulo the count on a joined one.
+        let wanted = self.onto_drum(*self.selected, count);
+        if wanted != *self.selected {
+            *self.selected = wanted;
             response.mark_changed();
         }
-        self.paint(ui, cx, rect, row_h, drum.value());
+        let id = ui.id().with(self.id_salt);
+        let mut drum: Drum = ui.data(|d| d.get_temp::<Drum>(id)).unwrap_or(Drum {
+            pos: Animated::new(as_f32(wanted)),
+            caller: false,
+        });
+
+        // The caller moved the value while the drum was at rest, or while it was still turning
+        // to the caller's last value: turn to it, the short way round on a joined drum.
+        let resting = drum.pos.mode() == Mode::Idle || drum.caller;
+        if resting && index_at(drum.pos.target(), count, self.wrap) != wanted {
+            let target = self.turn_to(drum.pos.value(), wanted, count);
+            drum.pos.to(target, cx.theme.motion.switch);
+            drum.caller = true;
+        }
+        if self.enabled && self.steer(ui, cx, &response, rect, row_h, &mut drum.pos) {
+            // The finger took over: from here the rows passed are the operator's choice.
+            drum.caller = false;
+        }
+        let dt = ui.input(|i| i.stable_dt);
+        if drum.pos.tick(dt) {
+            ui.ctx().request_repaint();
+        }
+
+        // A turn to the caller's value keeps that value: the rows it passes on the way are not
+        // changes the operator made.
+        if !drum.caller {
+            let index = index_at(drum.pos.value(), count, self.wrap);
+            if index != *self.selected {
+                *self.selected = index;
+                response.mark_changed();
+            }
+        }
+        if drum.pos.mode() == Mode::Idle {
+            drum.caller = false;
+        }
+        ui.data_mut(|d| d.insert_temp(id, drum));
+        self.paint(ui, cx, rect, row_h, drum.pos.value());
         response
+    }
+
+    /// `index` as a row of this drum: held to the last row when open, rolled round when joined.
+    fn onto_drum(&self, index: usize, count: usize) -> usize {
+        if self.wrap {
+            index.checked_rem(count).unwrap_or(0)
+        } else {
+            index.min(count.saturating_sub(1))
+        }
+    }
+
+    /// The drum position that shows row `to`, starting from position `pos`: the row itself on an
+    /// open drum, the nearer way round on a joined one (23 to 00 is one row, not twenty-three).
+    fn turn_to(&self, pos: f32, to: usize, count: usize) -> f32 {
+        if !self.wrap {
+            return as_f32(to);
+        }
+        let from = index_at(pos, count, true);
+        let ahead = if to >= from {
+            to - from
+        } else {
+            count - (from - to)
+        };
+        let steps = if ahead <= count / 2 {
+            as_f32(ahead)
+        } else {
+            -as_f32(count - ahead)
+        };
+        pos.round() + steps
     }
 
     /// The rows within reach of the window at drum position `pos`: one row past the half shown
     /// on each side, so a row turning in is drawn before it shows.
     fn rows_at(&self, rect: Rect, row_h: f32, pos: f32) -> Vec<WheelRow> {
-        let half = f32::from(self.rows.max(1) / 2);
-        let reach = half + 1.0;
+        let half = self.rows.max(1) / 2;
+        let reach = f32::from(half) + 1.0;
         let count = self.options.len();
+        let first = (pos - reach).floor();
         let mut rows = Vec::new();
-        let mut k = (pos - reach).floor();
-        while k <= pos + reach {
+        // At most `2 · reach + 1` rows are in reach. Counting them, rather than stepping a float
+        // until it passes the far side, ends even where adding one no longer moves the float.
+        for step in 0..u16::from(half).saturating_mul(2).saturating_add(3) {
+            let k = first + f32::from(step);
+            if k > pos + reach {
+                break;
+            }
             if let Some(index) = Row::at(k, count, self.wrap) {
                 let y = (k - pos).mul_add(row_h, rect.center().y);
                 rows.push(WheelRow {
@@ -172,12 +232,12 @@ impl<'a> WheelPicker<'a> {
                     distance: (k - pos).abs(),
                 });
             }
-            k += 1.0;
         }
         rows
     }
 
     /// The finger's say: a drag follows it, a release settles on a row, a tap turns to a row.
+    /// Whether the finger moved the drum this frame.
     fn steer(
         &self,
         ui: &egui::Ui,
@@ -186,8 +246,9 @@ impl<'a> WheelPicker<'a> {
         rect: Rect,
         row_h: f32,
         drum: &mut Animated<f32>,
-    ) {
+    ) -> bool {
         let count = self.options.len();
+        let mut moved = false;
         let last = as_f32(count.saturating_sub(1));
         if response.dragged() {
             // Up moves the drum to later rows, the way a page scrolls.
@@ -197,11 +258,13 @@ impl<'a> WheelPicker<'a> {
             }
             let velocity = -ui.input(|i| i.pointer.velocity().y) / row_h;
             drum.drag(pos, velocity);
+            moved = true;
         }
         if response.drag_stopped() {
             let target = landing(drum.value(), drum.velocity(), count, self.wrap);
             // The settle decision is in px; the value is in rows.
             drum.release_scaled(target, cx.theme.motion.spring, 1.0 / row_h);
+            moved = true;
         }
         if response.clicked() {
             if let Some(at) = response.interact_pointer_pos() {
@@ -212,9 +275,11 @@ impl<'a> WheelPicker<'a> {
                 }
                 if (target - drum.value()).abs() > 0.01 {
                     drum.to(target, cx.theme.motion.switch);
+                    moved = true;
                 }
             }
         }
+        moved
     }
 
     /// The window, then every row within reach of it, faded with its distance — a painter's
@@ -250,30 +315,28 @@ impl<'a> WheelPicker<'a> {
             ink.window,
         );
         let font = egui::FontId::proportional(cx.theme.metrics.type_scale.heading);
-        let half = f32::from(self.rows.max(1) / 2);
-        let reach = half + 1.0;
-        let count = self.options.len();
-        let first = (pos - reach).floor();
-        let mut k = first;
-        while k <= pos + reach {
-            let row = Row::at(k, count, self.wrap);
-            if let Some(index) = row {
-                let d = (k - pos).abs();
-                let alpha = (1.0 - d / reach).clamp(EDGE_ALPHA, 1.0);
-                let colour = ink.label.gamma_multiply(alpha);
-                let y = (k - pos).mul_add(row_h, centre.y);
-                let text = self.options.get(index).copied().unwrap_or_default();
-                painter.text(
-                    egui::pos2(centre.x, y),
-                    egui::Align2::CENTER_CENTER,
-                    text,
-                    font.clone(),
-                    colour,
-                );
-            }
-            k += 1.0;
+        let reach = f32::from(self.rows.max(1) / 2) + 1.0;
+        for row in self.rows_at(rect, row_h, pos) {
+            let alpha = (1.0 - row.distance / reach).clamp(EDGE_ALPHA, 1.0);
+            let text = self.options.get(row.index).copied().unwrap_or_default();
+            painter.text(
+                row.rect.center(),
+                egui::Align2::CENTER_CENTER,
+                text,
+                font.clone(),
+                ink.label.gamma_multiply(alpha),
+            );
         }
     }
+}
+
+/// The drum's memory between frames, in egui's memory under the widget's id.
+#[derive(Debug, Clone, Copy)]
+struct Drum {
+    /// The position in rows.
+    pos: Animated<f32>,
+    /// Turning to a value the caller set, not one the finger chose.
+    caller: bool,
 }
 
 /// A row's index for a drum position: the position modulo the count with `wrap`, and only the

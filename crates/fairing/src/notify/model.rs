@@ -160,10 +160,10 @@ impl Notification {
         self
     }
 
-    /// Progress.
+    /// Progress, clamped to 0..=1. NaN (a `0.0 / 0.0` from a job with no steps) counts as 0.
     #[must_use]
     pub fn progress(mut self, p: f32) -> Self {
-        self.progress = Some(p.clamp(0.0, 1.0));
+        self.progress = Some(if p.is_nan() { 0.0 } else { p.clamp(0.0, 1.0) });
         self
     }
 
@@ -189,7 +189,8 @@ pub struct Toast {
     pub text: String,
     /// Severity (the colour).
     pub level: Level,
-    /// How long it shows. `Duration::ZERO` means `[notify] toast_ms`.
+    /// How long it shows. `Duration::ZERO` means `[notify] toast_ms`; a duration too long for the
+    /// clock to count (`Duration::MAX`) holds it until it is tapped.
     pub duration: Duration,
     /// The icon.
     pub icon: Option<IconRef>,
@@ -214,7 +215,7 @@ impl Toast {
         self
     }
 
-    /// How long it shows.
+    /// How long it shows. `Duration::MAX` keeps it up until it is tapped.
     #[must_use]
     pub fn duration(mut self, duration: Duration) -> Self {
         self.duration = duration;

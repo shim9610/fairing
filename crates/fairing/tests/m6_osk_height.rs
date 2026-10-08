@@ -120,9 +120,12 @@ fn the_floor_wins_over_the_cap() -> fairing::Result<()> {
         Shell::builder(config).metrics_spec(spec).build(ctx)
     })?;
     let height = h.shell.osk().height();
+    // The floor is the key: 120 du each, with the gaps between and round the rows on top.
+    let gap = h.shell.theme().metrics.osk_key_gap;
+    let floor = ROWS.mul_add(120.0, gap * (ROWS + 1.0));
     assert!(
-        (height - ROWS * 120.0).abs() < 0.01,
-        "the floor did not win: {height}, not {ROWS} rows of 120 du"
+        (height - floor).abs() < 0.01,
+        "the floor did not win: {height}, not {ROWS} keys of 120 du and their gaps ({floor})"
     );
     Ok(())
 }

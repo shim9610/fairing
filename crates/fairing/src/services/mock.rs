@@ -369,9 +369,11 @@ impl Backend for MockWifi {
             match msg {
                 WifiMsg::Networks(list) => self.latest.networks = list,
                 WifiMsg::State(state) => self.latest.state = state,
+                // As `set_enabled`: what was in flight is called off.
                 WifiMsg::Enabled(on) => {
                     self.latest.enabled = on;
                     self.latest.state = if on { WifiState::Idle } else { WifiState::Off };
+                    self.pending = None;
                 }
             }
         }
@@ -381,7 +383,11 @@ impl Backend for MockWifi {
         if due.is_some_and(|due| now >= due) {
             if let Some((_, pending)) = self.pending.take() {
                 self.latest.state = match pending {
-                    Pending::Scan => WifiState::Idle,
+                    // A scan from a connected radio left the connection standing.
+                    Pending::Scan => match &self.latest.state {
+                        WifiState::Scanning => WifiState::Idle,
+                        other => other.clone(),
+                    },
                     Pending::Connect { ssid } => {
                         if let Some(reason) = wifi_failure_reason(&ssid) {
                             WifiState::Failed {
@@ -441,7 +447,10 @@ impl WifiBackend for MockWifi {
         if self.pending.is_some() {
             return Err(ServiceError::new(super::ErrorKind::Busy, "busy"));
         }
-        self.latest.state = WifiState::Scanning;
+        // A connected radio scans without dropping its connection.
+        if !matches!(self.latest.state, WifiState::Connected { .. }) {
+            self.latest.state = WifiState::Scanning;
+        }
         self.pending = Some((Deadline::new(self.scan_delay, self.now), Pending::Scan));
         Ok(())
     }
@@ -549,6 +558,16 @@ impl MockBluetooth {
     pub fn control(&self) -> MockControl<BtMsg> {
         self.control.clone()
     }
+
+    /// The radio on or off. Off stops discovery: nothing more is found until it is on and
+    /// discovering again.
+    fn switch(&mut self, on: bool) {
+        self.latest.enabled = on;
+        if !on {
+            self.latest.discovering = false;
+            self.discover_due = None;
+        }
+    }
 }
 
 impl Default for MockBluetooth {
@@ -567,7 +586,7 @@ impl Backend for MockBluetooth {
         while let Ok(msg) = self.rx.try_recv() {
             match msg {
                 BtMsg::Devices(list) => self.latest.devices = list,
-                BtMsg::Enabled(on) => self.latest.enabled = on,
+                BtMsg::Enabled(on) => self.switch(on),
             }
         }
         // Once the deadline has passed it **must** be tidied away — combining the two conditions would
@@ -608,11 +627,14 @@ impl BluetoothBackend for MockBluetooth {
     }
 
     fn set_enabled(&mut self, on: bool) -> ServiceResult {
-        self.latest.enabled = on;
+        self.switch(on);
         Ok(())
     }
 
     fn set_discovering(&mut self, on: bool) -> ServiceResult {
+        if on && !self.latest.enabled {
+            return Err(ServiceError::new(super::ErrorKind::Denied, "bluetooth off"));
+        }
         self.latest.discovering = on;
         self.discover_due = (on && !self.undiscovered.is_empty())
             .then(|| Deadline::new(self.discover_delay, self.now));

@@ -54,10 +54,12 @@ pub enum PanelAction {
         /// The tile id.
         id: String,
     },
-    /// A locked tile was tapped → an unlock request.
+    /// A locked tile was tapped → an unlock request for its gate.
     TileLocked {
         /// The tile id.
         id: String,
+        /// The gate the tile sits behind — what the unlock asks for.
+        gate: crate::access::Gate,
     },
     /// A notification was tapped.
     NotificationTapped(NotificationId),
@@ -619,6 +621,7 @@ fn tile_tap(
     if !allowed {
         return Some(PanelAction::TileLocked {
             id: quick.id.clone(),
+            gate: quick.gate.clone(),
         });
     }
     if !live {
@@ -629,6 +632,8 @@ fn tile_tap(
             key.clone(),
             SettingValue::Bool(state != TileState::On),
         ))),
+        // A Gauges tile with no rows has nothing to open.
+        TileKind::Gauges { rows, .. } if rows.is_empty() => None,
         // The kinds that open an expansion row. They share the same place, so one opening closes another.
         TileKind::Slider(_) | TileKind::Panel { .. } | TileKind::Gauges { .. } => {
             *expanded = if *expanded == Some(index) {
@@ -1120,6 +1125,9 @@ fn expanded_row(
             // A drag started in this row is not taken by the shade — a slider can be put inside it.
             rect: draw_panel_row(ui, parts, row, &quick.id, row_rect),
         }),
+        // Empty, the row does not open (a tile whose rows were taken away while it was open
+        // folds back).
+        TileKind::Gauges { rows, .. } if rows.is_empty() => None,
         TileKind::Gauges { rows, label_width } => Some(draw_gauges_row(
             ui,
             parts,
@@ -2026,7 +2034,8 @@ fn clear_all_button(
     center: &NotificationCenter,
     action: &mut Option<PanelAction>,
 ) {
-    if center.is_empty() {
+    // Persistent notifications survive "clear all", so a list of only those has nothing to clear.
+    if center.iter().all(|n| n.persistent) {
         return;
     }
     let Some(g) = galley(row.texts, TextKey::ClearAll) else {

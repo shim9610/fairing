@@ -55,11 +55,11 @@ const BADGE_RATIO: f32 = 1.75;
 
 /// **The least a row can be and still hold its own text**, from the live `Ui`'s resolved styles.
 ///
-/// `row_height`, `touch_target` and `type_scale` all derive from `finger_mm` in the default spec,
-/// so at every panel size they move together and this floor never binds. It binds when an
-/// integrator raises the text on its own - rung 2 of the override ladder, which is what a
-/// low-vision setting is - and without it a two-line row kept the finger's height while its title
-/// and subtitle grew straight through the bottom of the card.
+/// `row_height` and `type_scale` both derive from the viewing distance in the default spec, so at
+/// every panel size they move together and this floor never binds. It binds when an integrator
+/// raises the text on its own - rung 2 of the override ladder, which is what a low-vision setting
+/// is - and without it a two-line row kept its height while its title and subtitle grew straight
+/// through the bottom of the card.
 fn text_floor(ui: &egui::Ui, cx: &Cx<'_>, two_line: bool) -> f32 {
     let body = ui.text_style_height(&egui::TextStyle::Body);
     let block = if two_line {
@@ -567,11 +567,11 @@ impl ListRow {
     pub fn show_with_long_press(mut self, ui: &mut egui::Ui, cx: &mut Cx<'_>) -> RowPress {
         let m = &cx.theme.metrics;
         // **The row is floored against its own text, not only against the finger.** `row_height`
-        // and `touch_target` both derive from `finger_mm`, and so does `type_scale`, so at every
-        // panel size the three move together and this floor never binds. It binds when an
-        // integrator raises the text on its own - rung 2 of the override ladder, which is exactly
-        // what a low-vision setting does - and without it a two-line row kept the finger's height
-        // while its title and subtitle grew straight through the bottom of the card.
+        // and `type_scale` both derive from the viewing distance, so at every panel size the two
+        // move together and this floor never binds. It binds when an integrator raises the text
+        // on its own - rung 2 of the override ladder, which is exactly what a low-vision setting
+        // does - and without it a two-line row kept its height while its title and subtitle grew
+        // straight through the bottom of the card.
         let height = self
             .height
             .unwrap_or_else(|| m.row_height.max(m.widget_height))

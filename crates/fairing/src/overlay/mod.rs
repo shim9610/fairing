@@ -998,7 +998,13 @@ impl Overlay {
                         self.edge_active = true;
                         self.shade.drag(progress, velocity);
                     }
-                    Phase::Ended | Phase::Cancelled => {
+                    // Taken by a higher priority (the prompt, the lock screen): the pull
+                    // commits to nothing and the shade goes back up.
+                    Phase::Cancelled => {
+                        self.edge_active = false;
+                        self.shade.close(tokens);
+                    }
+                    Phase::Ended => {
                         self.edge_active = false;
                         let opened = self.shade.release(velocity, tokens);
                         // The peek: not opened, and moved ≥ half the status bar's height, leaves the status row up for a moment.
@@ -1481,8 +1487,11 @@ impl Overlay {
             ));
         }
         if self.shade.y() <= 0.5 {
+            // A removal the operator already confirmed is not lost to the shade closing over
+            // its animation: what was flying out (or done and waiting) is raised now.
+            let owed = self.pending.take().or_else(|| self.flying.take());
             self.reset_panel_state();
-            return None;
+            return owed;
         }
         self.settle_swipe(center, &tokens);
         self.refresh_tile_states(

@@ -228,6 +228,18 @@ impl Instance {
             .is_some_and(|since| now.saturating_duration_since(since) >= after)
     }
 
+    /// When [`Instance::evict_due`] comes true, for a spawned instance resting `Stopped` with an
+    /// `evict_after` — what the shell arms an idle wake for. `None` for one that will not be
+    /// evicted as things stand.
+    #[must_use]
+    pub(crate) fn evict_at(&self) -> Option<Instant> {
+        let after = self.evict_after?;
+        if !self.is_owned() || self.last == Some(Lifecycle::Destroyed) {
+            return None;
+        }
+        self.stopped_at?.checked_add(after)
+    }
+
     /// The chrome policy.
     #[must_use]
     pub fn chrome(&self) -> ChromePolicy {
@@ -298,16 +310,46 @@ impl Instance {
     ///    to be filled **here** for `Created` to ride the first `ui` (the flush is at the end of the
     ///    frame, which is too late).
     ///
+    /// 4. **Only the latest size counts.** A `Resized` still waiting in a queue takes the new size
+    ///    in its place, so content that keeps changing size while the screen is not drawn leaves
+    ///    it one `Resized`, not one per change.
+    ///
     /// The closure queue builds up while nothing is drawn (which is how a `Stopped` instance coming
-    /// back receives the backlog in order). Thanks to the merge rule it does not grow when the same
-    /// event repeats.
+    /// back receives the backlog in order). Thanks to the merge rules it does not grow when the same
+    /// event repeats, or when the size keeps changing.
     pub fn queue(&mut self, event: Lifecycle) {
         let previous = self.pending.back().copied().or(self.last);
-        if previous == Some(Lifecycle::Destroyed) || previous == Some(event) {
+        if previous == Some(Lifecycle::Destroyed) {
             return;
         }
-        self.pending.push_back(event);
-        self.for_closure.push_back(event);
+        let (in_pending, in_closure) = if matches!(event, Lifecycle::Resized(_)) {
+            (
+                replace_resize(&mut self.pending, event),
+                replace_resize(&mut self.for_closure, event),
+            )
+        } else {
+            (false, false)
+        };
+        if previous == Some(event) {
+            return;
+        }
+        if !in_pending {
+            self.pending.push_back(event);
+        }
+        if !in_closure {
+            self.for_closure.push_back(event);
+        }
+    }
+
+    /// It runs a screen its declaration owns.
+    pub(crate) const fn is_resident(&self) -> bool {
+        matches!(self.screen, InstanceScreen::Resident)
+    }
+
+    /// Take over the resident screen of a declaration that is going away: the instance owns it
+    /// from now on, so its last events — `Destroyed` above all — reach it.
+    pub(crate) fn adopt(&mut self, screen: Box<dyn Screen>) {
+        self.screen = InstanceScreen::Owned(screen);
     }
 
     /// Call the screen this instance runs.
@@ -368,6 +410,20 @@ impl Instance {
     /// Deliver a child's result.
     pub fn on_result(&mut self, from: &str, value: crate::screen::ScreenValue, cx: &mut Cx<'_>) {
         self.with_screen(cx, |screen, cx| screen.on_result(from, value, cx));
+    }
+}
+
+/// Give a `Resized` waiting in `queue` the size `event` carries. `true` if there was one.
+fn replace_resize(queue: &mut VecDeque<Lifecycle>, event: Lifecycle) -> bool {
+    match queue
+        .iter_mut()
+        .find(|waiting| matches!(waiting, Lifecycle::Resized(_)))
+    {
+        Some(waiting) => {
+            *waiting = event;
+            true
+        }
+        None => false,
     }
 }
 
@@ -447,9 +503,10 @@ mod tests {
         );
     }
 
-    /// A `Resized` at a different size is a separate event.
+    /// A size still waiting takes the newer one in its place; once delivered, a different size
+    /// is a separate event.
     #[test]
-    fn queue_treats_different_resizes_as_different_events() {
+    fn queue_keeps_only_the_latest_waiting_size() {
         let mut decl = generated_decl("a");
         let mut instance = spawn_instance(&mut decl, 1);
         let a = Lifecycle::Resized(egui::vec2(10.0, 10.0));
@@ -457,7 +514,9 @@ mod tests {
         instance.queue(a);
         instance.queue(a);
         instance.queue(b);
-        assert_eq!(drain_closure(&mut instance), vec![Lifecycle::Created, a, b]);
+        assert_eq!(drain_closure(&mut instance), vec![Lifecycle::Created, b]);
+        instance.queue(a);
+        assert_eq!(drain_closure(&mut instance), vec![a]);
     }
 
     /// `Destroyed` is the last notification — nothing after it goes into the queue.

@@ -147,18 +147,81 @@ impl ShellConfig {
                 "[nav_bar] height must be a number greater than 0".to_owned(),
             ));
         }
+        self.validate_finite()?;
         self.validate_motion()?;
         self.validate_chrome()?;
         self.workspace.axis().map(|_| ())
     }
 
+    /// Every float key is a number. `nan` and `inf` are valid TOML floats, and a range check
+    /// written `v < 0.0` lets `nan` through; refused here once, the range checks after this see
+    /// finite values only.
+    fn validate_finite(&self) -> Result<()> {
+        let m = &self.motion;
+        let a = &self.desktop.abyss;
+        let keys = [
+            ("[motion.spring] k", m.spring.k),
+            ("[motion.spring] c", m.spring.c),
+            ("[motion] snap_ratio", m.snap_ratio),
+            ("[motion] fling_px_s", m.fling_px_s),
+            ("[motion] slop_px", m.slop_px),
+            ("[motion.push] parallax", m.push.parallax),
+            ("[motion.push] dim", m.push.dim),
+            ("[motion.home] desktop_scale", m.home.desktop_scale),
+            ("[motion.press] scale", m.press.scale),
+            ("[motion.shade.spring] k", m.shade.spring.k),
+            ("[motion.shade.spring] c", m.shade.spring.c),
+            ("[motion.shade] snap_ratio", m.shade.snap_ratio),
+            ("[motion.shade] rubber", m.shade.rubber),
+            ("[motion.shade] rubber_max_px", m.shade.rubber_max_px),
+            ("[motion.page.spring] k", m.page.spring.k),
+            ("[motion.page.spring] c", m.page.spring.c),
+            ("[motion.page] fling_px_s", m.page.fling_px_s),
+            ("[motion.page] rubber", m.page.rubber),
+            ("[motion.page] rubber_max", m.page.rubber_max),
+            (
+                "[desktop] dock_band",
+                self.desktop.dock_band.unwrap_or_default(),
+            ),
+            ("[desktop] rail_width", self.desktop.rail_width),
+            ("[desktop.abyss] light_x", a.light_x),
+            ("[desktop.abyss] veil_top", a.veil_top),
+            ("[desktop.abyss] veil_field", a.veil_field),
+            ("[desktop.abyss] veil_bottom", a.veil_bottom),
+            ("[desktop.abyss] bake_budget_ms", a.bake_budget_ms),
+            ("[overlay] max_height_ratio", self.overlay.max_height_ratio),
+            ("[overlay] card_width_ratio", self.overlay.card_width_ratio),
+            ("[overlay] split_ratio", self.overlay.split_ratio),
+            ("[overlay] card_glass", self.overlay.card_glass),
+            ("[overlay] card_relief", self.overlay.card_relief),
+            ("[osk] height_ratio", self.osk.height_ratio),
+            ("[osk] min_key_px", self.osk.min_key_px),
+            (
+                "[gesture] emergency_corner_px",
+                self.gesture.emergency_corner_px,
+            ),
+        ];
+        match keys.iter().find(|(_, v)| !v.is_finite()) {
+            Some((key, v)) => Err(Error::Config(format!(
+                "{key} must be a finite number, not {v}"
+            ))),
+            None => Ok(()),
+        }
+    }
+
     /// Validate the `[motion]` ranges.
     fn validate_motion(&self) -> Result<()> {
         let m = &self.motion;
-        if m.spring.k <= 0.0 || m.spring.c < 0.0 {
-            return Err(Error::Config(
-                "[motion.spring] k must be greater than 0 and c at least 0".to_owned(),
-            ));
+        for (table, spring) in [
+            ("[motion.spring]", &m.spring),
+            ("[motion.shade.spring]", &m.shade.spring),
+            ("[motion.page.spring]", &m.page.spring),
+        ] {
+            if spring.k <= 0.0 || spring.c < 0.0 {
+                return Err(Error::Config(format!(
+                    "{table} k must be greater than 0 and c at least 0"
+                )));
+            }
         }
         if !(0.0..=1.0).contains(&m.snap_ratio) {
             return Err(Error::Config(
@@ -834,7 +897,8 @@ pub struct OskConfig {
     /// [`ShellBuilder::metrics_spec`](crate::ShellBuilder::metrics_spec), or set it to `None`
     /// there to lift it and let this ratio alone decide.
     pub height_ratio: f32,
-    /// The minimum key height (du). It wins over the cap where the two cross.
+    /// The minimum key height (du), the gaps between rows not counted. It wins over the cap
+    /// where the two cross; the room above the nav bar still bounds the keyboard.
     pub min_key_px: f32,
     /// The default layout: `"qwerty"`, `"numpad"`, or `"hangul"` (= `"ko"`, the dubeolsik).
     ///
@@ -846,7 +910,7 @@ pub struct OskConfig {
     pub layout: String,
     /// A decimal point key on the numpad.
     pub numpad_decimal: bool,
-    /// A ± key on the numpad.
+    /// A `-` key on the numpad, which types a minus sign.
     pub numpad_sign: bool,
 }
 

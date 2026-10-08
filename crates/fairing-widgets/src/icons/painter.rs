@@ -4,7 +4,7 @@
 //! # The per-frame cost
 //!
 //! The expensive part (flattening the curves) is done once by [`IconCache`], keyed on
-//! `(name, rounded pixel size)`. The drawing path only translates the cached polylines into the
+//! the icon's path and its rounded pixel size. The drawing path only translates the cached polylines into the
 //! target `Rect`. A two-point subpath goes out as an [`egui::Shape::LineSegment`] with **no heap
 //! allocation** (about 47 % of the subpaths across the 51 built-ins). With three or more points,
 //! `epaint` wants an owned `Vec<Pos2>` (`PathShape`), so one `Vec` appears per subpath — that is
@@ -187,14 +187,14 @@ pub fn flatten(def: &IconDef, size_px: f32) -> Flattened {
     }
 }
 
-/// The polyline cache per `(name, pixel size)`. Owned by the shell.
+/// The polyline cache per icon path and pixel size. Owned by the shell.
 ///
-/// The key's name is [`IconDef::name`], so an integrator who calls
-/// [`super::IconSet::register`] with a name that collides with a built-in mixes up the cache.
-/// `register` warns about that case.
+/// The key is the path itself — where its segments live, how many there are, and whether it
+/// fills — not [`IconDef::name`], so two icons that share a name (two registrations, or a
+/// registration and a built-in) still draw as themselves.
 #[derive(Debug, Default)]
 pub struct IconCache {
-    entries: HashMap<(&'static str, u32), Rc<Flattened>>,
+    entries: HashMap<(usize, usize, bool, u32), Rc<Flattened>>,
 }
 
 impl IconCache {
@@ -206,10 +206,11 @@ impl IconCache {
 
     /// Take it from the cache, or flatten and insert it. The key's size is the rounded integer pixel size.
     pub fn get(&mut self, def: &IconDef, size_px: f32) -> Rc<Flattened> {
-        let key = (def.name, size_px.round().max(1.0) as u32);
+        let px = size_px.round().max(1.0) as u32;
+        let key = (def.segs.as_ptr().addr(), def.segs.len(), def.fill, px);
         self.entries
             .entry(key)
-            .or_insert_with(|| Rc::new(flatten(def, key.1 as f32)))
+            .or_insert_with(|| Rc::new(flatten(def, px as f32)))
             .clone()
     }
 
@@ -510,8 +511,14 @@ mod tests {
                 def.name
             );
         }
-        // There is only the one size, so there are as many cache entries as icons.
-        assert_eq!(cache.len(), ICONS.len());
+        // There is only the one size, so there is at most one entry per icon (two icons with the
+        // same path share one), and drawing them all again adds none.
+        let filled = cache.len();
+        assert!(filled > 0 && filled <= ICONS.len());
+        for def in ICONS {
+            let _ = cache.get(def, 32.0);
+        }
+        assert_eq!(cache.len(), filled);
     }
 
     #[test]

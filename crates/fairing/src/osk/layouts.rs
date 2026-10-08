@@ -1,4 +1,4 @@
-//! The OSK layouts: `NumPad` (0–9, ⌫, ✓, an optional decimal point and ±),
+//! The OSK layouts: `NumPad` (0–9, ⌫, ✓, an optional decimal point and minus sign),
 //! `Qwerty(en)` (three faces — lowercase, uppercase, symbols — plus space, ⌫, ↵, ⏮/⏭), and
 //! `Custom(KeyLayout)`.
 //!
@@ -9,7 +9,8 @@
 //!
 //! **A span** is a multiple of "one default key". Every row in a face divides up
 //! [`KeyFace::max_span`] as its reference width, so keys stay the same size even when rows have
-//! different key counts. Every row of the built-in qwerty is fitted to 10.
+//! different key counts. Every row of the built-in qwerty is fitted to 10. A span is held to
+//! `0.5..=6` ([`KeyDef::special`]).
 // The caps lock (a ⇧ double tap) needs the time, so it is held by [`Osk`](super::Osk) rather than by the table.
 // UI geometry: small integer counts and pixel values crossing to f32. The loss is meaningless in this
 // range, so the cast lints are lifted for the whole file (the rest of clippy's pedantic set stays).
@@ -70,7 +71,7 @@ pub struct KeyDef {
     pub action: KeyAction,
     /// The label.
     pub label: Cow<'static, str>,
-    /// The width multiplier (1.0 = one default key).
+    /// The width multiplier in tenths (10 = one default key).
     pub span_x10: u8,
 }
 
@@ -85,7 +86,9 @@ impl KeyDef {
         }
     }
 
-    /// A special key.
+    /// A special key. `span` is its width in default keys, held to `0.5..=6` and rounded to a
+    /// tenth: narrower than half a key is not a target a finger can hit, and a single key wider
+    /// than six squeezes every other key on its face.
     #[must_use]
     pub fn special(action: KeyAction, label: &'static str, span: f32) -> Self {
         Self {
@@ -143,7 +146,7 @@ pub enum OskLayout {
     NumPad {
         /// The decimal point key.
         decimal: bool,
-        /// The ± key.
+        /// A `-` key, which types a minus sign.
         sign: bool,
     },
     /// English qwerty.

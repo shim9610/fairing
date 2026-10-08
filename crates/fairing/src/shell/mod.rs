@@ -138,6 +138,9 @@ pub struct Shell {
     script_checked: Option<String>,
     handle: ShellHandle,
     rx: crate::inbox::Inbox<Command>,
+    /// The first command past the per-frame cap, taken off the queue to learn whether any were
+    /// left. It runs first next frame.
+    held_command: Option<Command>,
     events: Vec<ShellEvent>,
     requests: Vec<CxRequest>,
     layout: Layout,
@@ -150,6 +153,8 @@ pub struct Shell {
     mono: Instant,
     /// How many frames `next_wake` has pointed into the past in a row (for diagnosing a backend fault).
     stale_wake_frames: u64,
+    /// How many passes before the first frame were skipped waiting for the font families.
+    font_waits: u32,
     /// The integrator painter drawing the whole status bar. With one, [`StatusBar::ui`] is never called.
     status_bar_painter: Option<BarPainter>,
     /// The integrator painter drawing the whole nav bar.
@@ -301,6 +306,10 @@ const MIN_WAKE: Duration = Duration::from_millis(1);
 /// is. So that the only symptom of 100 % idle CPU is not "it is just slow".
 const STALE_WAKE_FRAMES: u64 = 120;
 
+/// How many more times stage 14 handles the requests that `on_lifecycle` handlers made while it
+/// was flushing, before leaving the rest to the next frame.
+const LIFECYCLE_ROUNDS: usize = 4;
+
 /// Stage 7: draw the status bar into a panel (or, under `BarMode::Overlay`, a `Foreground` Area).
 ///
 /// Where there is an integrator painter, the item list is filled and handed over and the built-in
@@ -434,8 +443,6 @@ struct FrameWake {
     now: Instant,
     /// Whether the command queue hit the cap and left some (they are carried on next frame).
     commands_pending: bool,
-    /// This frame's `ctx.egui_wants_keyboard_input()` (for scheduling the OSK debounce).
-    wants_keyboard: bool,
 }
 
 /// The stage 10–13 output (stage 14 handles it).
@@ -507,8 +514,20 @@ impl Shell {
         if matches!(decl, Decl::NavItem(_)) && !self.nav_item_checks.contains(&id) {
             self.nav_item_checks.push(id.clone());
         }
-        if self.registry.add(decl).is_some() {
+        if let Some(replaced) = self.registry.add(decl) {
+            self.retire_decl(replaced);
             self.close_decl_instances(&id);
+        }
+    }
+
+    /// A declaration replaced or removed: its resident screen goes to its open instance, which is
+    /// closing, so that `Destroyed` reaches the screen that instance ran.
+    fn retire_decl(&mut self, decl: Decl) {
+        if let Decl::Screen(decl) = decl {
+            let id = decl.id.clone();
+            if let Some(screen) = decl.into_resident() {
+                self.workspace.adopt_resident(&id, screen);
+            }
         }
     }
 
@@ -550,7 +569,7 @@ impl Shell {
     /// as a registry declaration — an integrator has to be able to tidy up external state from one
     /// event ("the built-in items share the id scheme").
     pub fn remove(&mut self, id: &str) -> bool {
-        if self.registry.remove(id).is_none() {
+        let Some(removed) = self.registry.remove(id) else {
             // The registry → the status bar → **the quick-settings tiles**, in that order. A built-in
             // tile comes from the `[overlay] tiles` list rather than from a declaration, so the first
             // two could never catch it (once a defect: `shell.remove("tile.wifi")` quietly returned
@@ -560,7 +579,8 @@ impl Shell {
             }
             self.events.push(ShellEvent::DeclRemoved(id.to_owned()));
             return true;
-        }
+        };
+        self.retire_decl(removed);
         self.close_decl_instances(id);
         self.events.push(ShellEvent::DeclRemoved(id.to_owned()));
         true
@@ -925,6 +945,8 @@ impl Shell {
         }
         let change = self.notifications.push(notification.clone());
         if change != crate::notify::CenterChange::Added {
+            // No new banner for an update, but one already up for it shows what it now says.
+            self.heads_up.update(&notification);
             return;
         }
         // The cue is the audio backend's to sound; `ui.silent` keeps it quiet and leaves the banner.
@@ -980,6 +1002,9 @@ impl Shell {
             return;
         }
         self.theme.dark = dark;
+        // egui's `Visuals` follow the flag even where the palette does not move (equal sides
+        // of the pair give the crossfade nothing to yield).
+        self.theme_dirty = true;
         let target = if dark {
             self.palettes.0
         } else {
@@ -1182,8 +1207,12 @@ impl Shell {
     fn refresh_hidden_remaining(&mut self) {
         self.hidden_remaining.clear();
         for entry in &self.hidden {
-            // A trigger with nothing to count has no hint either — `Cx::knock_remaining` becomes `None`.
-            if let Some(left) = entry.trigger.remaining() {
+            // A trigger with nothing to count has no hint either, and an entry is quiet until the
+            // count falls to its `hint_from` — `Cx::knock_remaining` is `None` until then.
+            let Some(from) = entry.hint_from else {
+                continue;
+            };
+            if let Some(left) = entry.trigger.remaining().filter(|left| *left <= from) {
                 self.hidden_remaining.insert(entry.id.clone(), left);
             }
         }
@@ -1475,12 +1504,14 @@ impl Shell {
                 // Nothing is known. `Scale::resolve` folds to the policy's assumption and changes the source to Fallback.
                 (None, None, None) => (f32::NAN, ScaleSource::Fallback, ScaleConfidence::Assumed),
             };
+        // `root` is in du at the committed ppp; `Scale::resolve` takes physical pixels and divides
+        // by the ppp it settles on, so the `frac_*` reference is right on a frame the ppp changes too.
         let scale = Scale::resolve(
             px_per_mm,
             &self.scale_policy,
             source,
             confidence,
-            root.size(),
+            root.size() * self.committed_ppp,
         );
 
         if (scale.pixels_per_point - self.committed_ppp).abs() > 1e-4 {
@@ -1599,7 +1630,21 @@ impl Shell {
         // Skipping is allowed **only before the first frame**, which is the only moment the window
         // can legitimately be open. Later, an unbound family is the integrator's own `set_fonts`
         // clobbering ours, and a blank screen forever would hide it far worse than epaint saying so.
+        //
+        // One pass is all the builder's own `set_fonts` needs. Still unbound after that, the
+        // integrator's `set_fonts` replaced ours between `build` and the first frame: the two
+        // families are bound again on top of what is there now (said once in the log), rather than
+        // waiting for ever on a blank panel.
         if self.frame_no == 0 && !crate::fonts::families_are_live(&ctx) {
+            self.font_waits = self.font_waits.saturating_add(1);
+            if self.font_waits > 1 {
+                if self.font_waits == 2 {
+                    log::warn!(
+                        "[fonts] the font definitions were replaced after ShellBuilder::build and before the first frame, which unbinds fairing's strong and display families; they are bound again with the regular faces. Pass fonts with ShellBuilder::font / ShellBuilder::fonts instead of Context::set_fonts"
+                    );
+                }
+                rebind_font_families(&ctx);
+            }
             ctx.request_repaint();
             return;
         }
@@ -1663,14 +1708,19 @@ impl Shell {
         }
         self.open_rail_home(app);
         let layout = self.layout;
+        let was_home = self.workspace.is_home();
         // 7–9.
         let (out, nav_action, status_action) = self.draw_chrome(ui, &layout, now, app);
-        // The screens the overview closed (a card thrown away, "Close all").
+        // The screens the overview closed (a card thrown away, "Close all"), and home where that
+        // ended the last task.
         for (id, instance) in &out.closed {
             self.events.push(ShellEvent::ScreenClosed {
                 id: id.clone(),
                 instance: *instance,
             });
+        }
+        if !out.closed.is_empty() {
+            self.note_went_home(was_home);
         }
         // 10–13.
         let late = self.draw_late(&ctx, &layout, screen, now, app);
@@ -1688,7 +1738,6 @@ impl Shell {
                 next_wake,
                 now,
                 commands_pending,
-                wants_keyboard,
             },
             app,
         );
@@ -1795,8 +1844,18 @@ impl Shell {
         } else {
             policy.osk
         };
-        // The row cap is in millimetres, so it is this frame's resolved value.
-        self.osk.set_max_key(self.theme.metrics.osk_max_key);
+        // The row cap is in millimetres, so it is this frame's resolved value. The keyboard sits
+        // above the nav bar, so the room it has is the screen less that bar.
+        let nav = if self.nav_bar.enabled && policy.nav_bar != BarMode::Hide {
+            self.nav_bar.height
+        } else {
+            0.0
+        };
+        self.osk.set_bounds(
+            self.theme.metrics.osk_max_key,
+            self.theme.metrics.osk_key_gap,
+            screen.height() - nav,
+        );
         self.osk
             .update(wants_keyboard, osk_mode, screen.height(), now, dt, &tokens);
         // Advance the animations and transitions.
@@ -1942,6 +2001,7 @@ impl Shell {
         let covered = !closed || self.prompt.is_open();
         if covered != self.focus_covered {
             self.focus_covered = covered;
+            self.workspace.set_covered(covered);
             // Under the cards the screens stay paused when the shade or the prompt goes — the
             // overview resumes them itself, when it goes.
             if covered || !self.workspace.is_overview_open() {
@@ -2096,9 +2156,15 @@ impl Shell {
 
     /// Up and a pause: the recent screens, as the recents button — reported, gated, and only
     /// where `[workspace] overview` is on — the lifted screen carrying on into its card. A pause
-    /// too low down is not one yet: the swipe may still pause again further up.
+    /// too low down is not one yet: the swipe may still pause again further up. At home and
+    /// over a screen that did not lift, "how far up" is the finger's, over the lift's travel.
     fn bottom_hold(&mut self) {
-        if self.workspace.is_lifting() && self.workspace.lift_progress() < LIFT_HOLD_MIN {
+        let up = if self.workspace.is_lifting() {
+            self.workspace.lift_progress()
+        } else {
+            self.gestures.swipe_progress().unwrap_or(0.0) / self.lift_travel()
+        };
+        if up < LIFT_HOLD_MIN {
             return;
         }
         if self.bottom_held || self.workspace.is_overview_open() {
@@ -2247,34 +2313,32 @@ impl Shell {
             return;
         }
         let w = width.max(1.0);
-        // A3 "taking hold again mid-cancel": the new press's `dx / W` is added to the `p` the
-        // workspace caught — and the release decision goes by that sum (the real progress) too.
-        let p = (self.workspace.gesture_back_grab() + progress / w).clamp(0.0, 1.0);
+        // The new press's own `dx / W`: the workspace adds the `p` it caught a returning screen at
+        // (A3 "taking hold again mid-cancel") itself.
+        let dx = progress / w;
         match phase {
             Phase::Started => {
                 if !self.workspace.begin_gesture_back() {
                     self.gestures.cancel();
                     return;
                 }
-                self.workspace.drag_gesture_back(p, velocity / w);
+                self.workspace.drag_gesture_back(dx, velocity / w);
             }
-            Phase::Moved => self.workspace.drag_gesture_back(p, velocity / w),
+            Phase::Moved => self.workspace.drag_gesture_back(dx, velocity / w),
             Phase::Ended | Phase::Cancelled => {
+                // The release goes by the real progress: the caught `p` and the new `dx / W`.
+                let p = (self.workspace.gesture_back_grab() + dx).clamp(0.0, 1.0);
                 let tokens = self.theme.motion;
                 let rule = ReleaseRule {
                     snap_ratio: tokens.snap_ratio,
                     fling: tokens.fling_px_s,
                 };
                 let confirm = phase == Phase::Ended && rule.confirm(p, velocity);
-                let closing = self
-                    .workspace
-                    .focused()
-                    .map(|i| (i.decl_id().to_owned(), i.id()));
-                self.workspace.release_gesture_back(confirm, &tokens);
-                if confirm {
-                    if let Some((id, instance)) = closing {
-                        self.events.push(ShellEvent::ScreenClosed { id, instance });
-                    }
+                // Only what the release itself took off the stack is closed: where the gesture
+                // was already ended under the finger, the screen now on show stays open.
+                if let Some((id, instance)) = self.workspace.release_gesture_back(confirm, &tokens)
+                {
+                    self.events.push(ShellEvent::ScreenClosed { id, instance });
                 }
             }
         }
@@ -2536,6 +2600,7 @@ impl Shell {
             now,
             parts.icons,
             parts.strings,
+            parts.access,
         );
         let anchor = toast_anchor(layout, parts.theme);
         late.toast = toasts.ui(ctx, anchor, parts.theme, parts.icons, parts.strings);
@@ -2629,8 +2694,8 @@ impl Shell {
                     self.launch_in(action, app);
                 }
             }
-            Some(OverlaySlotAction::TileLocked(id)) => {
-                self.request_unlock(Gate::from(id), None);
+            Some(OverlaySlotAction::TileLocked(gate)) => {
+                self.request_unlock(gate, None);
             }
             Some(OverlaySlotAction::NotificationTapped(id)) => self.notification_tapped(id, app),
             Some(OverlaySlotAction::Dismiss(id)) => {
@@ -2657,6 +2722,16 @@ impl Shell {
         }
         self.process_requests(app);
         self.flush_lifecycle(app);
+        // A screen's `on_lifecycle` can make requests of its own (saving its state on
+        // `Destroyed`, say); they are carried out this frame too, for a few rounds. Whatever a
+        // handler that keeps asking leaves is the next frame's, and stage 15 asks for one.
+        for _ in 0..LIFECYCLE_ROUNDS {
+            if self.requests.is_empty() {
+                break;
+            }
+            self.process_requests(app);
+            self.flush_lifecycle(app);
+        }
         self.schedule_repaint(ctx, wake);
         // 16. The events go out through poll_events.
     }
@@ -2670,6 +2745,7 @@ impl Shell {
         //     is scheduled at all — idle at 0 fps.
         let animating = self.is_animating()
             || wake.commands_pending
+            || !self.requests.is_empty()
             || self.config.shell.repaint == RepaintMode::Continuous;
         if animating {
             ctx.request_repaint();
@@ -2710,22 +2786,26 @@ impl Shell {
         let at = |t: Option<Instant>| t.map(|t| t.saturating_duration_since(wake.now));
         deadline(at(self.access.next_deadline()));
         deadline(at(self.prompt.next_deadline(wake.now)));
+        // A stopped screen's `evict_after` running out (checked at stage 5).
+        deadline(at(self.workspace.next_eviction()));
         if self.prompt.is_lock_screen() {
             // The lock screen's clock, at the next minute.
             deadline(Some(Duration::from_secs(
                 self.services.clock.now().secs_to_next_minute(),
             )));
         }
-        if self.osk.is_shown() && !wake.wants_keyboard {
-            deadline(Some(self.theme.motion.osk_hide_debounce));
-        }
-        if self.gestures.hold().is_some() || self.gestures.is_active() || self.toasts.pending() > 0
+        // An automatic keyboard counting down to hide after the focus left.
+        deadline(at(self.osk.hide_deadline(&self.theme.motion)));
+        if self.gestures.hold().is_some()
+            || self.gestures.is_active()
+            || self.toasts.has_room_for_next()
         {
             // While something is held, the timers are re-evaluated every frame (long presses, the
             // emergency gesture) — and while an edge swipe or a touch in a region is under way: a
             // finger standing still on it sends nothing, and its pause (`SwipeHold`, the recent
             // screens in the gesture navigation, a gesture handle's long gesture,
-            // a region's own) is only seen by frames that keep coming.
+            // a region's own) is only seen by frames that keep coming. A waiting toast with a free
+            // slot comes in on the next frame.
             deadline(Some(Duration::from_millis(16)));
         }
         if let Some(after) = after {
@@ -2783,20 +2863,12 @@ impl Shell {
         if !self.stale_wake_frames.is_multiple_of(STALE_WAKE_FRAMES) {
             return;
         }
-        let names = [
-            ("clock", self.services.clock.next_wake()),
-            ("power", self.services.power.next_wake()),
-            ("wifi", self.services.wifi.next_wake()),
-            ("bluetooth", self.services.bluetooth.next_wake()),
-        ];
-        for (name, at) in names {
-            if at.is_some_and(|at| at <= now) {
-                log::warn!(
-                    "backend `{name}` has had next_wake in the past for {} frames - the shell cannot go idle (guide 06 §1)",
-                    self.stale_wake_frames
-                );
-            }
-        }
+        let frames = self.stale_wake_frames;
+        self.services.for_each_stale(now, |name| {
+            log::warn!(
+                "backend `{name}` has had next_wake in the past for {frames} frames - the shell cannot go idle (guide 06 §1)"
+            );
+        });
     }
 
     /// So that the event list does not grow without bound where an integrator never calls
@@ -3278,7 +3350,7 @@ impl Shell {
     fn drain_commands(&mut self, app: &mut AppRef<'_>) -> bool {
         for _ in 0..MAX_COMMANDS_PER_FRAME {
             // `Inbox` has no blocking call to reach for, so this loop cannot become one.
-            let Ok(command) = self.rx.try_recv() else {
+            let Some(command) = self.held_command.take().or_else(|| self.rx.try_recv().ok()) else {
                 return false;
             };
             match command {
@@ -3320,6 +3392,11 @@ impl Shell {
                 Command::ToggleOverlay => self.toggle_overlay(app),
                 Command::SetMotion(tokens) => self.set_motion(*tokens),
             }
+        }
+        // Exactly the cap leaves nothing behind: one more is looked at to tell, and kept.
+        self.held_command = self.rx.try_recv().ok();
+        if self.held_command.is_none() {
+            return false;
         }
         log::warn!(
             "the command queue went over the per-frame limit ({MAX_COMMANDS_PER_FRAME}) - the rest run next frame"
@@ -3383,7 +3460,7 @@ impl Shell {
         let hint = self.access.hint(&gate);
         if !self.prompt.is_open() {
             // Whatever was being dragged ends here (A9).
-            self.gestures.cancel();
+            self.gestures.cancel_held_over();
             let now = self.mono;
             if let Some(auth) = self.access.authenticator_mut() {
                 auth.begin(&gate, now);
@@ -3519,7 +3596,7 @@ impl Shell {
         if !self.overlay.is_closed() {
             self.overlay.close(&self.theme.motion);
         }
-        self.gestures.cancel();
+        self.gestures.cancel_held_over();
         if let Some(auth) = self.access.authenticator_mut() {
             auth.begin(&crate::access::prompt::LOCK_GATE, now);
         }
@@ -3579,7 +3656,8 @@ impl Shell {
                 let level = subject.level;
                 // A level the table does not have would pass every gate; and on the unlock
                 // prompt a grant at or below the session's own level opens nothing — it must not
-                // lower the session (closing what it has open) either.
+                // lower the session (closing what it has open) either. The lock screen takes the
+                // session's own level (the start, where the lock left it), never one below it.
                 let unknown = self.access.table().get(level).is_none();
                 if unknown {
                     log::warn!(
@@ -3587,11 +3665,29 @@ impl Shell {
                         level.0
                     );
                 }
-                if unknown || (!lock && level <= self.access.session().subject.level) {
-                    self.events
-                        .push(ShellEvent::Access(AccessEvent::Denied { gate }));
-                    let text = crate::access::prompt::labels::NOT_ENOUGH.to_owned();
-                    self.prompt.denied(text, now);
+                let held = self.access.session().subject.level;
+                let worthless = if lock { level < held } else { level <= held };
+                if unknown || worthless {
+                    // Not a way in, so not a right answer either: the authenticator counts it,
+                    // and a lockout it reaches is applied as one.
+                    let counted = self
+                        .access
+                        .authenticator_mut()
+                        .and_then(|auth| auth.refused(now));
+                    match counted {
+                        Some(locked @ AuthOutcome::Locked { .. }) => {
+                            self.apply_outcome(locked, app);
+                        }
+                        Some(AuthOutcome::Denied { message }) => {
+                            self.apply_outcome(AuthOutcome::Denied { message }, app);
+                        }
+                        _ => {
+                            self.events
+                                .push(ShellEvent::Access(AccessEvent::Denied { gate }));
+                            let text = crate::access::prompt::labels::NOT_ENOUGH.to_owned();
+                            self.prompt.denied(text, now);
+                        }
+                    }
                     return;
                 }
                 let purpose = self.prompt.close(now);
@@ -3922,14 +4018,22 @@ impl Shell {
                     // first, so "this pane" and "the other pane" are its own and the other.
                     let user = self.workspace.focused_pane();
                     let from_pane = self.workspace.pane_holding(from);
+                    let on_its_own = from_pane.is_some_and(|p| p != user);
+                    // A back swipe the user is dragging in their pane carries on through it.
+                    let held = if on_its_own {
+                        self.workspace.hold_back_gesture()
+                    } else {
+                        None
+                    };
                     self.workspace.focus_pane_of(from);
                     self.launch_in(LaunchAction::Open { id, in_other_pane }, app);
                     // No press put the focus there (a press would have): the screen opened on
                     // its own, and what it opened landed in its pane — the user keeps theirs.
-                    if from_pane.is_some_and(|p| p != user)
-                        && Some(self.workspace.focused_pane()) == from_pane
-                    {
+                    if on_its_own && Some(self.workspace.focused_pane()) == from_pane {
                         self.workspace.return_focus(user);
+                    }
+                    if let Some(held) = held {
+                        self.workspace.resume_back_gesture(held);
                     }
                 }
                 CxRequest::Finish { instance, value } => self.close_instance(instance, value, app),
@@ -4034,6 +4138,27 @@ impl Shell {
         };
         f(workspace, registry, &mut parts)
     }
+}
+
+/// Bind this crate's strong and display families onto the font definitions egui has now, each
+/// seeded with the regular faces where it is missing — for definitions that replaced the ones
+/// [`ShellBuilder::build`] installed. What is already there is kept.
+fn rebind_font_families(ctx: &egui::Context) {
+    let mut defs = ctx.fonts(|f| f.definitions().clone());
+    let regular = defs
+        .families
+        .get(&egui::FontFamily::Proportional)
+        .cloned()
+        .unwrap_or_default();
+    let strong = defs
+        .families
+        .entry(crate::fonts::strong_family())
+        .or_insert(regular)
+        .clone();
+    defs.families
+        .entry(crate::fonts::display_family())
+        .or_insert(strong);
+    ctx.set_fonts(defs);
 }
 
 /// Whether an input event is a person — the idle timers start again on these. A

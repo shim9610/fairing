@@ -47,6 +47,20 @@ fn percent(value: f32) -> u8 {
     value.round().clamp(0.0, 100.0) as u8
 }
 
+/// A stored percentage as the shell applies it to a backend: a number clamped into 0..=100.
+/// `None` for a value that is not a number.
+fn stored_percent(value: &SettingValue) -> Option<u8> {
+    match value {
+        SettingValue::Int(v) => Some(u8::try_from((*v).clamp(0, 100)).unwrap_or(100)),
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "it is after clamp(0,100), so it fits an f32"
+        )]
+        SettingValue::Float(v) => Some(percent(v.clamp(0.0, 100.0) as f32)),
+        SettingValue::Bool(_) | SettingValue::Text(_) => None,
+    }
+}
+
 /// Every screen id this module produces. [`SettingsConfig::only`](super::SettingsConfig::only)
 /// uses it to work out the complement.
 pub const ALL: &[&str] = &[
@@ -584,12 +598,11 @@ pub fn sound_body(ui: &mut Ui, cx: &mut Cx<'_>) {
         |ui, cx| {
             let mut volume = match live {
                 Some(audio) => f32::from(audio.level),
-                None => match cx.settings.get(&keys::AUDIO_VOLUME.into()) {
-                    Some(SettingValue::Int(v)) => {
-                        f32::from(u8::try_from(*v).unwrap_or(50).min(100))
-                    }
-                    _ => 50.0,
-                },
+                None => cx
+                    .settings
+                    .get(&keys::AUDIO_VOLUME.into())
+                    .and_then(stored_percent)
+                    .map_or(50.0, f32::from),
             };
             if ui::slider_row(
                 ui,
@@ -869,11 +882,53 @@ pub fn wifi_body(ui: &mut Ui, cx: &mut Cx<'_>) {
 /// held in egui's memory (the body is a plain `fn`, as `settings.power`'s is) and checked with
 /// `std::net` before anything reaches the backend; what the backend then says — `Unsupported`
 /// included — is shown on the form rather than dropped.
+///
+/// The form is the drawing screen's alone and lives only while it is drawn for the session that
+/// opened it and that session still passes `settings.network.edit`: closed, covered, drawn for
+/// another subject or below the gate, the form is gone, and the next person starts from the list.
 pub fn network_body(ui: &mut Ui, cx: &mut Cx<'_>) {
-    let key = egui::Id::new("fairing.settings.network.form");
-    let mut form: Option<NetworkForm> = ui.data(|d| d.get_temp(key)).flatten();
-    network_rows(ui, cx, &mut form);
-    ui.data_mut(|d| d.insert_temp(key, form));
+    held(ui, cx, "fairing.settings.network.form", |ui, cx, form| {
+        if !cx.allows(NETWORK_EDIT) {
+            *form = None;
+        }
+        network_rows(ui, cx, form);
+    });
+}
+
+/// The gate an edit on `settings.network` sits behind.
+const NETWORK_EDIT: &str = "settings.network.edit";
+
+/// A body's state between frames: what it holds, the frame it was last drawn on and whom for.
+#[derive(Clone)]
+struct Held<T> {
+    value: Option<T>,
+    drawn: u64,
+    subject: crate::access::Subject,
+}
+
+/// Run `body` with a value kept in egui's memory for the drawing screen instance, and dropped the
+/// first frame the body is not drawn (closed, covered, another entry on the settings home's
+/// right) or is drawn for another subject. A plain-`fn` body uses this for what a screen struct
+/// would keep in a field, so nothing carries over to the next person or the next visit.
+fn held<T: Clone + Send + Sync + 'static>(
+    ui: &mut Ui,
+    cx: &mut Cx<'_>,
+    salt: &'static str,
+    body: impl FnOnce(&mut Ui, &mut Cx<'_>, &mut Option<T>),
+) {
+    let key = egui::Id::new((salt, cx.pane.instance.0));
+    let frame = cx.frame();
+    let kept: Option<Held<T>> = ui.data(|d| d.get_temp(key));
+    let mut value = kept
+        .filter(|kept| frame.saturating_sub(kept.drawn) <= 1 && kept.subject == cx.session.subject)
+        .and_then(|kept| kept.value);
+    body(ui, cx, &mut value);
+    let state = Held {
+        value,
+        drawn: frame,
+        subject: cx.session.subject.clone(),
+    };
+    ui.data_mut(|d| d.insert_temp(key, state));
 }
 
 /// An edit in progress on `settings.network`.
@@ -951,7 +1006,7 @@ fn network_rows(ui: &mut Ui, cx: &mut Cx<'_>, form: &mut Option<NetworkForm>) {
         return;
     }
 
-    let editable = cx.allows("settings.network.edit");
+    let editable = cx.allows(NETWORK_EDIT);
     let ifaces = cx.services.network.interfaces();
     if ifaces.is_empty() {
         ui::status_card(
@@ -1447,12 +1502,9 @@ fn pairing_card(ui: &mut Ui, cx: &mut Cx<'_>, snapshot: &crate::services::BtSnap
 /// will not scroll.
 pub fn power_body(ui: &mut Ui, cx: &mut Cx<'_>) {
     // The request awaiting confirmation. **It is kept in egui's memory** — the body has to be a plain
-    // `fn` for `settings.home` to draw the same function into the right column on a wide screen. It is
-    // wrapped in an inner function so that it is saved once at the end however many branches `return`.
-    let key = egui::Id::new("fairing.settings.power.pending");
-    let mut pending: Option<PowerRequest> = ui.data(|d| d.get_temp(key)).flatten();
-    power_rows(ui, cx, &mut pending);
-    ui.data_mut(|d| d.insert_temp(key, pending));
+    // `fn` for `settings.home` to draw the same function into the right column on a wide screen —
+    // and it goes when the screen does: a question left open is not there on the next visit.
+    held(ui, cx, "fairing.settings.power.pending", power_rows);
 }
 
 /// The one question `settings.power` asks before it acts: the request, its confirm row and Cancel.

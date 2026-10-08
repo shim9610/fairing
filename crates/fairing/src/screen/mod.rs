@@ -224,6 +224,7 @@ pub struct ScreenDecl {
     pub(crate) split: SplitSupport,
     pub(crate) chrome: ChromePolicy,
     pub(crate) keep_awake: bool,
+    pub(crate) osk: Option<OskMode>,
     pub(crate) evict_after: Option<Duration>,
     pub(crate) background: Option<ColorRole>,
     pub(crate) source: ScreenSource,
@@ -327,6 +328,7 @@ impl ScreenDecl {
             split: SplitSupport::Yes,
             chrome: ChromePolicy::default(),
             keep_awake: false,
+            osk: None,
             evict_after: None,
             background: None,
             source,
@@ -427,23 +429,43 @@ impl ScreenDecl {
         self
     }
 
-    /// The preset that hides the status bar and the nav bar.
-    #[must_use]
-    pub fn fullscreen(mut self) -> Self {
-        self.chrome = ChromePolicy::fullscreen();
-        self
+    /// A resident screen, out of a declaration that is going away (`None` for a factory, or for
+    /// one out on loan).
+    pub(crate) fn into_resident(self) -> Option<Box<dyn Screen>> {
+        match self.source {
+            ScreenSource::Resident(screen) => screen,
+            ScreenSource::Factory(_) => None,
+        }
     }
 
-    /// Set the chrome policy in detail.
+    /// The preset that hides the status bar and the nav bar. What [`osk`](Self::osk),
+    /// [`keep_awake`](Self::keep_awake) and [`background`](Self::background) set stays, whichever
+    /// comes first.
+    #[must_use]
+    pub fn fullscreen(self) -> Self {
+        self.chrome(ChromePolicy::fullscreen())
+    }
+
+    /// Set the chrome policy in detail. What [`osk`](Self::osk), [`keep_awake`](Self::keep_awake)
+    /// and [`background`](Self::background) set is kept over the policy's own fields, whichever
+    /// comes first.
     #[must_use]
     pub fn chrome(mut self, policy: ChromePolicy) -> Self {
         self.chrome = policy;
+        if let Some(mode) = self.osk {
+            self.chrome.osk = mode;
+        }
+        self.chrome.keep_awake |= self.keep_awake;
+        if self.background.is_some() {
+            self.chrome.background = self.background;
+        }
         self
     }
 
     /// The on-screen keyboard mode (M2).
     #[must_use]
     pub fn osk(mut self, mode: OskMode) -> Self {
+        self.osk = Some(mode);
         self.chrome.osk = mode;
         self
     }

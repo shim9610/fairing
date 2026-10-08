@@ -83,6 +83,10 @@ impl<'a> NumberField<'a> {
     }
 
     /// How much one press of an end moves it. Non-finite or non-positive is taken as 1.
+    ///
+    /// A press lands on the step's grid, counted from the range's low end: the next line up or
+    /// down, so a value typed between two lines moves to the nearer one in that direction. Ten
+    /// presses of `0.1` from `0.0` then read exactly `1.0`, not a float error short of it.
     #[must_use]
     pub fn step(mut self, step: f64) -> Self {
         if step.is_finite() && step > 0.0 {
@@ -136,7 +140,13 @@ impl<'a> NumberField<'a> {
 
         let (ends, moved) = self.ends(ui, cx, track, response.id);
         if moved != 0.0 {
-            *self.value = clamp(*self.value + moved, &self.range);
+            // A figure typed when an end was pressed is taken first and the press steps from it.
+            // Left in the store, it would be committed over the stepped value when the edit lets go.
+            let typed = ui.data_mut(|d| d.remove_temp::<Draft>(response.id.with("buf")));
+            if let Some(typed) = typed.and_then(|d| d.typed()) {
+                *self.value = clamp(typed, &self.range);
+            }
+            *self.value = clamp(self.stepped(moved > 0.0), &self.range);
             response.mark_changed();
         }
         let [minus, plus] = ends;
@@ -157,7 +167,7 @@ impl<'a> NumberField<'a> {
             .and_then(|p| p.number_field.as_mut());
         let painted = custom.is_some();
         if let Some(custom) = custom {
-            let figure = format!("{:.*}", self.decimals, *self.value);
+            let figure = figure(*self.value, self.decimals);
             custom(
                 ui.painter(),
                 &mut NumberFieldLook {
@@ -206,9 +216,12 @@ impl<'a> NumberField<'a> {
             pressed: false,
             press: 0.0,
         }; 2];
+        // Within a hair of an end counts as at it: a value a float error short of the top
+        // reads as the top, and its `+` is spent.
+        let hair = self.step * GRID_EPS;
         for (slot, (delta, spent)) in [
-            (-self.step, *self.value <= *self.range.start()),
-            (self.step, *self.value >= *self.range.end()),
+            (-self.step, *self.value <= *self.range.start() + hair),
+            (self.step, *self.value >= *self.range.end() - hair),
         ]
         .into_iter()
         .enumerate()
@@ -266,18 +279,22 @@ impl<'a> NumberField<'a> {
         ink: Ink,
     ) -> bool {
         let key = id.with("buf");
-        let shown = format!("{:.*}", self.decimals, *self.value);
+        let shown = figure(*self.value, self.decimals);
         if !self.enabled {
             if !painted {
                 paint_figure(ui.painter(), cx, cell, &shown, ink.figure);
             }
             return false;
         }
-        let mut buf = ui
-            .data(|d| d.get_temp::<String>(key))
-            .unwrap_or_else(|| shown.clone());
+        let mut draft = ui
+            .data(|d| d.get_temp::<Draft>(key))
+            .unwrap_or_else(|| Draft {
+                seed: shown.clone(),
+                text: shown.clone(),
+            });
+        let buf = &mut draft.text;
         let font = egui::FontId::proportional(cx.theme.metrics.type_scale.body);
-        let edit = egui::TextEdit::singleline(&mut buf)
+        let edit = egui::TextEdit::singleline(buf)
             .id(id.with("edit"))
             .horizontal_align(egui::Align::Center)
             .font(font.clone())
@@ -298,22 +315,73 @@ impl<'a> NumberField<'a> {
         // Selecting the figure is a drag the field owns, and it says so.
         crate::drag::claim_if_held(&response);
         if response.has_focus() {
-            ui.data_mut(|d| d.insert_temp(key, buf.clone()));
+            ui.data_mut(|d| d.insert_temp(key, draft));
             return false;
         }
         // Not focused: the store is stale by definition, so it goes, and whatever was typed is
-        // committed once. A figure that does not parse reverts — see the module doc.
-        let had = ui.data_mut(|d| d.remove_temp::<String>(key));
-        let Some(typed) = had else { return false };
-        match typed.trim().parse::<f64>() {
-            Ok(parsed) if parsed.is_finite() => {
-                let next = clamp(parsed, &self.range);
-                let moved = (next - *self.value).abs() > f64::EPSILON;
-                *self.value = next;
-                moved
-            }
-            _ => false,
+        // committed once. Nothing typed commits nothing — the figure is the value rounded to
+        // the decimals shown, and parsing it back would round the setpoint. A figure that
+        // does not parse reverts — see the module doc.
+        let had = ui.data_mut(|d| d.remove_temp::<Draft>(key));
+        let Some(typed) = had.and_then(|d| d.typed()) else {
+            return false;
+        };
+        let next = clamp(typed, &self.range);
+        let moved = (next - *self.value).abs() > f64::EPSILON;
+        *self.value = next;
+        moved
+    }
+}
+
+/// How close to a grid line or an end, in steps, counts as on it. Far below anything a figure
+/// shows, far above the error a few hundred float additions gather.
+const GRID_EPS: f64 = 1e-9;
+
+/// The figure being typed, and the figure it started from — so a field focused and left
+/// untouched commits nothing.
+#[derive(Debug, Clone, Default)]
+struct Draft {
+    seed: String,
+    text: String,
+}
+
+impl Draft {
+    /// The number typed: `None` when the figure is untouched, or does not parse as a finite
+    /// number (the field then reverts).
+    fn typed(&self) -> Option<f64> {
+        if self.text == self.seed {
+            return None;
         }
+        self.text
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|v| v.is_finite())
+    }
+}
+
+impl NumberField<'_> {
+    /// The value one press of an end moves it to, before the range holds it: the next line of
+    /// the step's grid above (`up`) or below, the grid counted from the range's low end.
+    fn stepped(&self, up: bool) -> f64 {
+        let lo = *self.range.start();
+        let at = (*self.value - lo) / self.step;
+        let line = if up {
+            (at + GRID_EPS).floor() + 1.0
+        } else {
+            (at - GRID_EPS).ceil() - 1.0
+        };
+        line.mul_add(self.step, lo)
+    }
+}
+
+/// `value` with `decimals` places, never `-0.0`: a value a float error below zero is zero on a
+/// machine's panel.
+fn figure(value: f64, decimals: usize) -> String {
+    let text = format!("{value:.decimals$}");
+    match text.strip_prefix('-') {
+        Some(rest) if rest.chars().all(|c| c == '0' || c == '.') => rest.to_owned(),
+        _ => text,
     }
 }
 

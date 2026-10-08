@@ -50,8 +50,9 @@ pub struct ActiveToast {
     pub lift: Animated<f32>,
     /// The phase.
     pub phase: ToastPhase,
-    /// When the hold expires.
-    pub until: Instant,
+    /// When the hold expires. `None` for a hold too long for the clock to represent (a
+    /// `Duration::MAX` "until tapped"): it never expires on its own.
+    pub until: Option<Instant>,
     /// Last frame's rect.
     pub rect: Rect,
     /// The text galley cache — it is not re-laid out while the width is unchanged.
@@ -184,7 +185,9 @@ impl ToastQueue {
                 t,
                 lift: Animated::new(0.0),
                 phase: ToastPhase::Entering,
-                until: now + tokens.toast_in.duration + duration,
+                until: now
+                    .checked_add(tokens.toast_in.duration)
+                    .and_then(|t| t.checked_add(duration)),
                 rect: Rect::NOTHING,
                 text_h: 0.0,
                 wrap: 0.0,
@@ -204,7 +207,7 @@ impl ToastQueue {
             } else {
                 item.toast.duration
             };
-            item.until = now + duration;
+            item.until = now.checked_add(duration);
             if item.phase == ToastPhase::Leaving {
                 item.phase = ToastPhase::Entering;
                 item.t.to(1.0, tokens.toast_in);
@@ -223,7 +226,7 @@ impl ToastQueue {
             animating |= item.lift.tick(dt);
             match item.phase {
                 ToastPhase::Entering if !item.t.is_animating() => item.phase = ToastPhase::Holding,
-                ToastPhase::Holding if now >= item.until => {
+                ToastPhase::Holding if item.until.is_some_and(|until| now >= until) => {
                     item.phase = ToastPhase::Leaving;
                     item.t.to(0.0, tokens.toast_out);
                     animating = true;
@@ -259,6 +262,14 @@ impl ToastQueue {
         self.queue.len()
     }
 
+    /// Whether the next `tick` brings a waiting toast in: one is queued and a slot is free. A
+    /// toast waiting behind full slots moves only when one of them leaves, which its hold's
+    /// deadline or its exit animation already wakes the shell for.
+    #[must_use]
+    pub(crate) fn has_room_for_next(&self) -> bool {
+        !self.queue.is_empty() && self.visible.len() < self.max_visible
+    }
+
     /// Whether anything is moving.
     #[must_use]
     pub fn is_animating(&self) -> bool {
@@ -273,7 +284,7 @@ impl ToastQueue {
         self.visible
             .iter()
             .filter(|i| i.phase == ToastPhase::Holding)
-            .map(|i| i.until)
+            .filter_map(|i| i.until)
             .min()
     }
 

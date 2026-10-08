@@ -38,7 +38,7 @@ pub(crate) struct OverlayOut {
 #[cfg_attr(not(feature = "overlay"), allow(dead_code))]
 pub(crate) enum OverlaySlotAction {
     Launch(crate::screen::LaunchAction),
-    TileLocked(String),
+    TileLocked(crate::access::Gate),
     TileLongPressed(String),
     NotificationTapped(crate::notify::NotificationId),
     Dismiss(crate::notify::NotificationId),
@@ -143,7 +143,7 @@ mod with_overlay {
                 .ui(ctx, parts, screen, center, tiles)
                 .map(|a| match a {
                     PanelAction::Launch(l) => OverlaySlotAction::Launch(l),
-                    PanelAction::TileLocked { id } => OverlaySlotAction::TileLocked(id),
+                    PanelAction::TileLocked { gate, .. } => OverlaySlotAction::TileLocked(gate),
                     PanelAction::TileLongPressed { id } => OverlaySlotAction::TileLongPressed(id),
                     PanelAction::NotificationTapped(id) => {
                         OverlaySlotAction::NotificationTapped(id)
@@ -260,6 +260,10 @@ mod with_osk {
         pub(crate) fn is_shown(&self) -> bool {
             self.0.is_shown()
         }
+        /// When an automatic keyboard hides after losing focus, while that is counting down.
+        pub(crate) fn hide_deadline(&self, tokens: &MotionTokens) -> Option<Instant> {
+            self.0.hide_deadline(tokens)
+        }
         /// The fully extended height — where the keys stop once they are up.
         pub(crate) fn height(&self) -> f32 {
             self.0.height()
@@ -276,8 +280,8 @@ mod with_osk {
         pub(crate) fn raise(&mut self, above: bool) {
             self.0.raise(above);
         }
-        pub(crate) fn set_max_key(&mut self, du: f32) {
-            self.0.set_max_key(du);
+        pub(crate) fn set_bounds(&mut self, max_key: f32, key_gap: f32, room: f32) {
+            self.0.set_bounds(max_key, key_gap, room);
         }
         pub(crate) fn update(
             &mut self,
@@ -332,6 +336,9 @@ mod without_osk {
         pub(crate) fn is_shown(&self) -> bool {
             false
         }
+        pub(crate) fn hide_deadline(&self, _tokens: &MotionTokens) -> Option<Instant> {
+            None
+        }
         pub(crate) fn height(&self) -> f32 {
             0.0
         }
@@ -341,7 +348,7 @@ mod without_osk {
         pub(crate) fn hide(&mut self) {}
         pub(crate) fn toggle(&mut self) {}
         pub(crate) fn raise(&mut self, _above: bool) {}
-        pub(crate) fn set_max_key(&mut self, _du: f32) {}
+        pub(crate) fn set_bounds(&mut self, _max_key: f32, _key_gap: f32, _room: f32) {}
         #[allow(clippy::unused_self)]
         pub(crate) fn update(
             &mut self,

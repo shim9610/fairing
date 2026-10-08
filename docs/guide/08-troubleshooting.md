@@ -66,8 +66,9 @@ With `[shell] repaint = "reactive"` (the default), the shell never calls
    ```
 
    At `RUST_LOG=fairing=warn` or looser, that line means the named backend
-   (`ClockSource`, `PowerBackend`, `WifiBackend`, `BluetoothBackend`) is not
-   updating `next_wake` properly — see [06 Services](06-services.md).
+   (`clock`, `power`, `wifi`, `bluetooth`, `display`, `audio`, `network`, `info`, or a
+   custom backend by its type name) is not updating `next_wake` properly — see
+   [06 Services](06-services.md).
 
 With an `hms` clock (seconds shown), waking on a 500 ms cadence around each second
 boundary is normal. Idle 0 fps does not mean "never repaints" — it means "nothing
@@ -239,7 +240,6 @@ regression.
 |---|---|
 | **Idle desktop p50** | It is the proxy for per-frame heap allocation. A counting allocator needs `unsafe impl GlobalAlloc` and the workspace is `unsafe_code = "forbid"`, so this cannot be measured directly — if idle p50 moves, something in the render path started allocating |
 | **How many fonts you loaded** | Every font added through `egui::Context::set_fonts` adds first-rasterisation and atlas-rebuild cost. If one Korean font is enough, do not stack several |
-| **Icon cache collisions** | A name registered with `register_icon` that collides with a built-in warns (``register_icon: `…` collides with a built-in icon name``) and mixes the `IconCache` keys, so more redraws |
 | **Known render allocations** | `icons::paint` allocates one `Vec<Pos2>` per sub-path with three or more points (epaint's `PathShape` wants an owned Vec), plus one each for the parametric bluetooth and volume icons. On the M1 baseline (51 icons then), 69 of 146 sub-paths were allocation-free `LineSegment`s — worth knowing when you add custom icons |
 | **Debug versus release** | Debug numbers are a different order of magnitude (x86 baseline idle p95: 0.042 ms release, 0.75 ms debug). Always bench and compare with `--release` |
 
@@ -376,11 +376,16 @@ Everywhere: `[status_bar] enabled = false`. For one screen only, that screen's
 
 **Q5. Can I change the theme at runtime?**
 Dark ↔ light, yes: `Shell::set_theme_dark(bool)` crossfades over 200 ms, and
-`tile.theme` and its `SettingKey` both go through it. But that method **returns to
-`Palette::dark()` / `Palette::light()`** — a custom palette from `[theme.palette]`
-or an injected `.theme(Theme)` disappears on the switch. Metrics and motion tokens
-are untouched by it. There is no API for swapping a whole `Theme` while running;
-that is decided once, at start-up, through `ShellBuilder::theme`.
+`tile.theme` and its `SettingKey` both go through it. It picks from the dark/light
+pair settled at start-up, and **custom colours survive the switch**: a
+`[theme.palette]` override lies over both sides of the pair, and an injected
+`.theme(Theme)` makes both sides its own palette, so only the `dark` flag and egui's
+`Visuals` change. `ShellBuilder::palettes` (or `Shell::set_palettes` while running)
+hands over a pair of your own; `Shell::set_palettes(Palette::dark(), Palette::light())`
+gives back the neutral one. `Shell::apply_palette` crossfades to any palette at once.
+Metrics and motion tokens are untouched by all of these. There is no API for swapping
+a whole `Theme` while running; that is decided once, at start-up, through
+`ShellBuilder::theme`.
 
 **Q6. What are the limits on desktop icons, rows, columns and the dock?**
 The grid caps at `columns` 12 and `rows` 8 (`0` means auto,

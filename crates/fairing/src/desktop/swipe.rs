@@ -15,7 +15,7 @@
 //! drawn at [`PageSwipe::visible`]'s x offsets, and the indicator at [`PageSwipe::dot_weight`].
 //! The width `W` is the grid's width.
 
-use crate::motion::{DragSpring, RubberBand};
+use crate::motion::{DragSpring, RubberBand, Spring};
 use crate::theme::PageTokens;
 
 /// The page-swipe state.
@@ -32,6 +32,9 @@ pub struct PageSwipe {
     width: f32,
     /// The rubber band (in page units — `max × width` to use it in px).
     rubber: RubberBand,
+    /// The spring of the last release or move, for one under way to carry on across a width
+    /// change.
+    spring: Spring,
 }
 
 /// A page-unit rubber band in px (the excess factor is dimensionless; only the cap is multiplied by the width).
@@ -52,6 +55,7 @@ impl PageSwipe {
             pages: pages.max(1),
             width: 1.0,
             rubber: tokens.rubber,
+            spring: tokens.spring,
         }
     }
 
@@ -72,14 +76,21 @@ impl PageSwipe {
 
     /// Refresh the page count and the width (after a rebuild or a layout). Calling it every frame
     /// does not shake the value — the px driving value is re-anchored **only on a frame where the
-    /// width actually changed** (and then a drag or spring in progress stops where it is; a rare
-    /// event, like a screen rotation or a split).
+    /// width actually changed** (a rare event, like a screen rotation or a split). A drag in
+    /// progress then stops where it is; a spring in progress carries on to its page at the new
+    /// width, rather than leaving the desktop parked between two pages.
     pub fn configure(&mut self, pages: usize, width: f32) {
         let width = width.max(1.0);
         self.pages = pages.max(1);
         let max = self.pages.saturating_sub(1) as f32;
         if (width - self.width).abs() > 0.5 {
             let page_pos = self.pos.value() / self.width;
+            let heading = (self.pos.is_animating() && !self.pos.is_dragging()).then(|| {
+                (
+                    (self.pos.target() / self.width).clamp(0.0, max),
+                    self.pos.velocity() / self.width,
+                )
+            });
             self.pos = DragSpring::new(
                 page_pos * width,
                 0.0,
@@ -87,6 +98,12 @@ impl PageSwipe {
                 band_px(self.rubber, width),
             );
             self.width = width;
+            if let Some((page, velocity)) = heading {
+                // Through a zero-length drag, so the spring starts with the velocity it had.
+                self.pos.begin();
+                self.pos.drag(0.0, velocity * width);
+                self.pos.release(page * width, self.spring);
+            }
         } else {
             self.pos.set_range(0.0, max * self.width);
         }
@@ -117,6 +134,7 @@ impl PageSwipe {
             pos.round()
         }
         .clamp(0.0, max);
+        self.spring = tokens.spring;
         self.pos.release(target * self.width, tokens.spring);
         target as usize
     }
@@ -124,6 +142,7 @@ impl PageSwipe {
     /// An imperative move, such as an indicator tap.
     pub fn go_to(&mut self, page: usize, tokens: &PageTokens) {
         let max = self.pages.saturating_sub(1) as f32;
+        self.spring = tokens.spring;
         self.pos
             .release((page as f32).min(max) * self.width, tokens.spring);
     }

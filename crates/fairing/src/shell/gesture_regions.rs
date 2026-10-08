@@ -308,7 +308,10 @@ impl Shell {
             let Ok(tag) = u8::try_from(index) else {
                 break;
             };
-            if let Some(rect) = slot.region().place(&cx).filter(Rect::is_positive) {
+            // Clipped to the glass: a region that says it is everywhere is the whole glass, and
+            // the guard area under it gets a finite rect.
+            let placed_at = slot.region().place(&cx).map(|r| r.intersect(screen));
+            if let Some(rect) = placed_at.filter(|r| r.is_positive() && r.is_finite()) {
                 placed.push(rect, tag);
             }
         }

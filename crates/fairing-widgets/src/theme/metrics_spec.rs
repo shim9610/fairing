@@ -236,9 +236,6 @@ impl Default for MetricsSpec {
                 .min(Dim::du(72.0)),
             edge_px: Span::fixed(Dim::finger(0.5)).min(Dim::du(24.0)),
             osk_max_key: Some(Span::fixed(Dim::finger(1.5)).min(Dim::du(72.0))),
-            // **Text tracks the finger, like the rows do.** See the field's own docs for why the
-            // fractions are what they are; the `du` floor is exactly the old fixed value, so a panel
-            // of unknown density renders identically to before.
             // **Adoption step 5: the text hangs off the eye, not the hand.** Each of these was
             // `Dim::finger(k)` — 0.271 / 0.334 / 0.355 / 0.459 — because `ScalePolicy` had no knob
             // for the viewing distance and the finger was the only physical term going. Divided

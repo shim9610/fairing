@@ -872,6 +872,9 @@ pub struct DesktopView {
     auto_columns: bool,
     /// `rows = 0` → automatic.
     auto_rows: bool,
+    /// The automatic grid's two candidates (on the whole area, and with the indicator taken out)
+    /// it was last fitted from — fitted again only when one changes, or the entries do.
+    fitted: Option<((u8, u8), (u8, u8))>,
     entries: Vec<SlotEntry>,
     pages: Vec<Page>,
     dock: Dock,
@@ -992,6 +995,7 @@ impl DesktopView {
             rows: if cfg.rows == 0 { 3 } else { cfg.rows },
             auto_columns: cfg.columns == 0,
             auto_rows: cfg.rows == 0,
+            fitted: None,
             entries: Vec::new(),
             pages: Vec::new(),
             dock: Dock {
@@ -1074,6 +1078,7 @@ impl DesktopView {
         apply_overrides(&mut entries, cfg);
         apply_dock_order(&mut entries, cfg);
         self.entries = entries;
+        self.fitted = None;
         self.place_all();
         self.swipe.configure(self.pages.len(), self.swipe_width());
         self.swipe
@@ -1363,11 +1368,29 @@ impl DesktopView {
     /// Work the automatic grid (`columns` / `rows = 0`) out from the content's width and height. A
     /// change in the value places everything again from the same declaration list — which happens once,
     /// on a screen rotation or a split.
-    fn fit_grid(&mut self, grid: Rect, cell: f32) {
+    ///
+    /// One page needs no indicator, so the grid is first fitted to the whole area; only where that
+    /// still takes two pages or more is the indicator's room taken out. Fitted the other way round,
+    /// a desktop that once had two pages would keep a second page one page could hold.
+    fn fit_grid(&mut self, rect: Rect, metrics: &Metrics) {
         if !self.auto_columns && !self.auto_rows {
             return;
         }
-        let cell = cell.max(1.0);
+        let cell = metrics.icon_cell.max(1.0);
+        let alone = self.grid_size(self.grid_rect_with(rect, metrics, false), cell);
+        let shared = self.grid_size(self.grid_rect_with(rect, metrics, true), cell);
+        if self.fitted == Some((alone, shared)) {
+            return;
+        }
+        self.fitted = Some((alone, shared));
+        self.set_grid_size(alone);
+        if self.pages.len() > 1 {
+            self.set_grid_size(shared);
+        }
+    }
+
+    /// The automatic grid's `(columns, rows)` on `grid`, a fixed count kept as it is.
+    fn grid_size(&self, grid: Rect, cell: f32) -> (u8, u8) {
         let columns = if self.auto_columns {
             ((grid.width() / cell).floor() as i32).clamp(1, i32::from(MAX_COLUMNS)) as u8
         } else {
@@ -1378,6 +1401,11 @@ impl DesktopView {
         } else {
             self.rows
         };
+        (columns, rows)
+    }
+
+    /// Take `(columns, rows)` on, placing everything again where it changed.
+    fn set_grid_size(&mut self, (columns, rows): (u8, u8)) {
         if (columns, rows) != (self.columns, self.rows) {
             self.columns = columns;
             self.rows = rows;
@@ -1403,7 +1431,7 @@ impl DesktopView {
         let metrics = cx.theme.metrics;
         // The automatic grid is reckoned on the area with the dock and the indicator taken out. A change
         // of placement can change the page count, so the area is worked out once more.
-        self.fit_grid(self.grid_rect(rect, &metrics), metrics.icon_cell);
+        self.fit_grid(rect, &metrics);
         // Advance the press animation. No repaint is requested here — the shell's stage 15 decides it
         // together, through `DesktopView::is_animating`.
         self.press.tick(cx.now);
@@ -1607,7 +1635,12 @@ impl DesktopView {
     /// The area the grid may use (with the dock and the indicator taken out). The indicator takes space
     /// only with **two or more pages**.
     fn grid_rect(&self, rect: Rect, metrics: &Metrics) -> Rect {
-        let indicator = if self.pages.len() > 1 {
+        self.grid_rect_with(rect, metrics, self.pages.len() > 1)
+    }
+
+    /// [`Self::grid_rect`] with the indicator's room taken out or not, whatever the page count.
+    fn grid_rect_with(&self, rect: Rect, metrics: &Metrics, indicator: bool) -> Rect {
+        let indicator = if indicator {
             metrics.page_indicator_height
         } else {
             0.0
@@ -2574,7 +2607,9 @@ fn label_row_h(ctx: &egui::Context, theme: &Theme) -> f32 {
 
 /// `[desktop] dock_edge` · `dock_band` → [`DockPlacement`].
 fn dock_placement(cfg: &DesktopConfig) -> DockPlacement {
-    if let Some(at) = cfg.dock_band {
+    // `ShellConfig::validate` refuses a band that is not a number; one that got past it anyway is
+    // the edge's dock, rather than a dock drawn nowhere.
+    if let Some(at) = cfg.dock_band.filter(|at| at.is_finite()) {
         // A crossing row's direction is settled by the edge name — `left` / `right` makes it vertical.
         let axis = match cfg.dock_edge.as_str() {
             "left" | "right" => Axis::Vertical,
@@ -2787,4 +2822,26 @@ fn paint_rail_item(
 )]
 fn rail_radius(corner: f32) -> u8 {
     (corner * RAIL_RADIUS).round().clamp(0.0, 255.0) as u8
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{dock_placement, DockPlacement};
+    use crate::config::DesktopConfig;
+    use crate::gesture::Edge;
+
+    /// A `dock_band` that is not a number leaves the dock on its edge rather than drawn nowhere.
+    #[test]
+    fn a_nan_dock_band_is_the_edges_dock() {
+        let cfg = DesktopConfig {
+            dock_band: Some(f32::NAN),
+            ..DesktopConfig::default()
+        };
+        assert_eq!(dock_placement(&cfg), DockPlacement::Edge(Edge::Bottom));
+        let cfg = DesktopConfig {
+            dock_band: Some(0.5),
+            ..DesktopConfig::default()
+        };
+        assert!(matches!(dock_placement(&cfg), DockPlacement::Band { .. }));
+    }
 }

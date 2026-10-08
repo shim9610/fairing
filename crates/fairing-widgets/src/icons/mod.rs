@@ -113,7 +113,8 @@ impl IconColor {
             // Both `#RRGGBB` and **`#RRGGBBAA`** are taken. Without an alpha there is no way to change
             // [`ColorRole::Scrim`] or [`ColorRole::Pressed`] from the config — and being translucent is
             // those two roles' reason to exist. Caught while putting the brand palette onto the kiosk.
-            if hex.len() != 6 && hex.len() != 8 {
+            // Hex digits only: `from_str_radix` would also take a leading `+`.
+            if (hex.len() != 6 && hex.len() != 8) || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
                 return None;
             }
             let value = u32::from_str_radix(hex, 16).ok()?;
@@ -254,15 +255,10 @@ impl IconSet {
     /// Register a vector icon.
     ///
     /// A filled icon's (`def.fill`) subpaths have to be convex — `epaint`'s fan fill draws a
-    /// concave polygon wrong (see the [`paint`] docs). A name colliding with a
-    /// built-in icon mixes up the [`IconCache`] keys, so it warns.
+    /// concave polygon wrong (see the [`paint`] docs). The name is a label: the icon is drawn by
+    /// the id this returns, and the [`IconCache`] keys on the path, so a name shared with
+    /// another icon draws nothing but this one.
     pub fn register(&mut self, def: IconDef) -> CustomIconId {
-        if find(def.name).is_some() {
-            log::warn!(
-                "register_icon: `{}` collides with a built-in icon name. Pick another one so the caches do not mix",
-                def.name
-            );
-        }
         self.custom.push(def);
         CustomIconId(u32::try_from(self.custom.len() - 1).unwrap_or(u32::MAX))
     }
