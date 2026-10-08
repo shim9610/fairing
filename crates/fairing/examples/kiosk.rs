@@ -2372,15 +2372,16 @@ const TOUR_PORTRAIT: &[common::Act] = &[
     common::Act::Wait(4),
     common::Act::Shot("03-menu.png"),
     // Add to the cart — with the press frame and the release frame adjacent, the click does not register.
+    // Cold Brew, then Cappuccino and Vanilla Latte on the row below.
     common::Act::Press(300.0, 1000.0),
     common::Act::Wait(2),
     common::Act::Release,
     common::Act::Settle,
-    common::Act::Press(300.0, 1000.0),
+    common::Act::Press(300.0, 1640.0),
     common::Act::Wait(2),
     common::Act::Release,
     common::Act::Settle,
-    common::Act::Press(780.0, 1000.0),
+    common::Act::Press(780.0, 1640.0),
     common::Act::Wait(2),
     common::Act::Release,
     common::Act::Settle,

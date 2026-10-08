@@ -354,7 +354,7 @@ the one before, however long it took to draw, so a software rasteriser records a
 smoothly as a GPU. The animated stretches of the script are written as frames, 30 a
 second, each into a folder of its own (`demo-desktop/0000.png`, …). Stitch them into
 a GIF or a video with any tool. `tools/make_gif.py` turns one folder into a GIF (it
-needs Pillow), and `tools/readme-gifs.sh` rebuilds the animations in the repository's
+needs Pillow), and `tools/readme-gifs.sh` rebuilds the images in the repository's
 README that way, end to end.
 
 ## 6. Testing your UI headless

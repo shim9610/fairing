@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rebuild the README's animations (docs/images/*.gif) from the example tours.
+# Rebuild the README's animations and stills (docs/images/*.gif, *.png) from the example tours.
 #
 #   tools/readme-gifs.sh
 #
@@ -35,3 +35,31 @@ tour kiosk 1280x2700 --size=1080x2560 --panel-mm=380x900
 python3 tools/make_gif.py "$out/demo/demo-desktop" docs/images/demo.gif 640
 python3 tools/make_gif.py "$out/console/console-shade" docs/images/console-shade.gif 640
 python3 tools/make_gif.py "$out/kiosk/kiosk-language" docs/images/kiosk-language.gif 360
+
+# The stills: the demo's and the console's in a 256-colour palette, the kiosk's photos in full colour
+# at 480 wide. social-preview.png is tools/social_preview.py's.
+python3 - "$out" <<'PY'
+import sys
+from PIL import Image
+
+out = sys.argv[1]
+def still(shot, name, width=None, bottom=None, palette=True):
+    im = Image.open(f"{out}/{shot}").convert("RGB")
+    if bottom:
+        im = im.crop((0, im.height - bottom, im.width, im.height))
+    if width:
+        im = im.resize((width, round(im.height * width / im.width)), Image.LANCZOS)
+    if palette:
+        im = im.quantize(256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    im.save(f"docs/images/{name}", optimize=True)
+    print(f"docs/images/{name}: {im.width}x{im.height}")
+
+still("demo/10-shade-open.png", "shade-curtain.png")
+still("demo/16-settings-wifi.png", "settings.png")
+still("demo/11a-osk-compose.png", "hangul-keyboard.png", bottom=452)
+still("demo/32-unlock-prompt.png", "unlock-pin.png")
+still("demo/32e-pattern-drawn.png", "unlock-pattern.png")
+still("console/01-overview.png", "console.png")
+still("kiosk/04-menu-filled.png", "kiosk-menu.png", width=480, palette=False)
+still("kiosk/05-cart.png", "kiosk-cart.png", width=480, palette=False)
+PY

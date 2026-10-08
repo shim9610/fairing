@@ -47,6 +47,14 @@ repaint policy.
     <td>Two-set Hangul with composition on the on-screen keyboard (<code>demo</code>)</td>
     <td>One of the built-in settings screens (<code>demo</code>)</td>
   </tr>
+  <tr>
+    <td><img src="docs/images/unlock-pin.png" alt="The unlock prompt over the desktop: a PIN and Pattern switch, four empty PIN dots and a number pad with backspace and confirm keys"></td>
+    <td><img src="docs/images/unlock-pattern.png" alt="The unlock prompt's pattern method: a three-by-three grid of dots with a Z-shaped pattern drawn through seven of them"></td>
+  </tr>
+  <tr>
+    <td>The unlock prompt asks for a PIN before a protected screen opens (<code>demo</code>)</td>
+    <td>The same prompt with the pattern method, a pattern drawn (<code>demo</code>)</td>
+  </tr>
 </table>
 
 ```rust
@@ -275,7 +283,7 @@ take `--size=WxH`. All of them but `hello` and `motion_lab` take `--tour <dir>`,
 example through a script and writes a PNG at each step. Add `--record` and the tour
 runs on a fixed 60 Hz clock, however slowly the machine draws, and writes the frames
 of its animated stretches as well. The screenshots and animations on this page come
-from those tours, and `tools/readme-gifs.sh` rebuilds the animations. `bench` is
+from those tours, and `tools/readme-gifs.sh` rebuilds them all. `bench` is
 headless.
 
 | Example | What it shows |

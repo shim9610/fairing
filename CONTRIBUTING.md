@@ -60,7 +60,7 @@ line disable the audit itself.
 
 ## Rebuilding the README's animations
 
-The GIFs in `docs/images/` are recorded from the `demo`, `console` and `kiosk` tours. If a change
+The GIFs and screenshots in `docs/images/` come from the `demo`, `console` and `kiosk` tours. If a change
 alters what one of them shows, rebuild them and commit the result:
 
 ```sh
