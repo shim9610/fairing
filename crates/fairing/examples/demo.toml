@@ -1,0 +1,115 @@
+# The config for examples/demo.rs. The demo's code and the headless regression test
+# (`demo_config_keeps_status_bar_visible` in `tests/m1_headless.rs`) read **the same file** —
+# so the test catches the "status bar (the clock, the Mock Wi-Fi and the battery) plus the integrator's items"
+# the demo promises disappearing outright because a gate assignment was left out.
+
+# A 4 × 2 grid — the desktop's 12 icons, three of them in the dock, make two pages, so the page swipe (A4) can be seen.
+[desktop]
+columns = 4
+# `rows = 0` is **automatic** — it divides the content height by the icon cell (`fit_grid`).
+# Pinning it leaves the top and bottom of a portrait panel empty outright: 2 rows at 1200 px tall drives the grid
+# into a single band across the middle of the screen (measured). At 1024 × 600 landscape, automatic gives 2 rows too.
+rows = 0
+dock = ["dashboard", "progress", "dropdowns"]
+
+# The tour's (`--tour`) mid-transition frames need the tweens alive — it is the default, but it is stated here.
+[motion]
+reduce = false
+
+# The shade stops at the tiles on the first pull and goes on to the notifications on a second:
+# the instrument-panel default; one pull to the bottom is the crate default.
+[overlay]
+two_step = true
+
+# The default right slot, with the padlock on the end: it shows while the session is unlocked and a
+# tap on it drops back to viewer. Not unlocked, it takes no room at all.
+[status_bar]
+right = ["status.notifications", "status.bluetooth", "status.wifi", "status.battery", "status.lock"]
+
+[access]
+levels = ["viewer", "maintainer"]
+default_gate = "top"
+# The shell's own prompt: a granted PIN makes the session maintainer for two minutes, and then it
+# goes back to viewer by itself.
+unlock_mode = "temporary"
+temporary_secs = 120
+
+# `default_gate = "top"`, so every gate not here is maintainer. The status bar's built-in items and the
+# integrator's item (`temp`) carry gates too (a status bar item is usually assigned bottom) — leaving
+# one out empties the status bar outright. Only `admin` is locked on purpose: opening it brings up the keypad
+# (the PIN is in `[access.pin_table]` below).
+[access.gates]
+dashboard = "viewer"
+progress = "viewer"
+painter = "viewer"
+icons = "viewer"
+fullscreen = "viewer"
+form = "viewer"
+widgets = "viewer"
+dropdowns = "viewer"
+notify = "viewer"
+icons2 = "viewer"
+"scan-wifi" = "viewer"
+# The screen the hidden entry point opens. **The gate is separate** — a successful knock still does not open
+# it at too low a level. The demo leaves it at viewer to show it off; on a real device this is locked.
+service = "viewer"
+# The built-in settings screens. Mostly viewer, but **power and accounts stay maintainer** — a mis-touched
+# shutdown and editing accounts are not for anyone on a device: the levels are the integrator's to settle.
+"settings.home" = "viewer"
+"settings.wifi" = "viewer"
+"settings.bluetooth" = "viewer"
+"settings.display" = "viewer"
+"settings.sound" = "viewer"
+"settings.datetime" = "viewer"
+"settings.locale" = "viewer"
+"settings.about" = "viewer"
+# viewer **because it is a demo**. On a real device these two stay locked — a mis-touched shutdown and editing
+# accounts are not for anyone (guide 09 §8.3). The `admin` icon has been left locked.
+"settings.power" = "viewer"
+"settings.about.details" = "viewer"
+"status.clock" = "bottom"
+"status.wifi" = "bottom"
+"status.bluetooth" = "bottom"
+"status.battery" = "bottom"
+"status.notifications" = "bottom"
+"status.lock" = "bottom"
+temp = "bottom"
+# M2: the shade, the emergency gesture, the default tiles and the settings keys the tiles use. `default_gate = "top"`,
+# so leaving one out has the shade raise only `UnlockRequested` and the tiles drawn with a padlock.
+"overlay.open" = "viewer"
+"chrome.emergency" = "viewer"
+"tile.wifi" = "viewer"
+"tile.bluetooth" = "viewer"
+"tile.brightness" = "viewer"
+"tile.volume" = "viewer"
+"tile.lock" = "viewer"
+"tile.theme" = "viewer"
+"wifi.enabled" = "viewer"
+"bluetooth.enabled" = "viewer"
+"display.brightness" = "viewer"
+"audio.volume" = "viewer"
+"theme.dark" = "viewer"
+
+# **A demo PIN, in the clear** — the reference authenticator, `PinTable`. On a device the file it sits in
+# is the integrator's to protect, or an `Authenticator` of their own takes its place (guide 05 §5). Five wrong
+# PINs in a row grey the keypad for half a minute.
+[access.pin_table]
+maintainer = "2468"
+attempt_limit = 5
+lock_secs = 30
+
+# The same level by pattern as well — a Z across the 3 × 3 dots (the stroke from 3 to 7 crosses 5,
+# so 5 is in the path). With both tables the prompt has a PIN tab and a Pattern tab.
+[access.pattern_table]
+maintainer = "1-2-3-5-7-8-9"
+
+# The lock tile (`tile.lock`) brings up the lock screen in `prompt` mode. Continue lets a demo out of it
+# without the PIN — as viewer, which is where the lock already put the session.
+[access.lock_screen]
+allow_continue = true
+
+[osk]
+# The demo opens on the English qwerty. "hangul" opens on two-set Hangul (dubeolsik) instead, whose bottom
+# row carries a `한/영` key crossing to the qwerty and back; the tour switches to it to show composition.
+# That key is on the hangul layout alone: a German kiosk has no reason to carry one.
+layout = "qwerty"

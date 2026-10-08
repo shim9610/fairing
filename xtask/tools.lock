@@ -1,0 +1,6 @@
+# The single source for the external cargo plugins the audit gates use.
+# Format: "<crate> <exact-version>", one per line. Lines starting with '#' and blank lines are ignored.
+# CI installs them with `cargo install <crate> --locked --version <version>`, and
+# xtask warns where the installed version differs from this file (a failure under --strict).
+cargo-audit 0.22.2
+cargo-deny 0.20.2

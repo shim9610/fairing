@@ -1,0 +1,12 @@
+# Rust build output
+target/
+**/*.rs.bk
+*.pdb
+
+# Cargo.lock is tracked (the audit gates have to reproduce the exact tree, so it is not ignored).
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/

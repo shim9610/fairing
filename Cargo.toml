@@ -1,0 +1,64 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/fairing",
+    "crates/fairing-widgets",
+    "xtask",
+]
+
+[workspace.package]
+# 0.1.0 is the M6 tag on the 08 roadmap. The M0 scaffold stage uses 0.0.1.
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.95"
+license = "MIT"
+repository = "https://github.com/shim9610/fairing"
+
+# The approved direct dependencies. A crate not here cannot be added as a direct dependency.
+# The versions and features are pinned here as the single source, and the members refer to them with `.workspace = true` alone.
+#
+# egui and eframe ask for the minor, not the patch: an integrator's tree may hold other egui
+# crates, and an exact `=0.36.x` here would fail their resolution over one patch release. This
+# repository's own tree stays exact all the same — Cargo.lock holds the patch, and deps.allow's
+# `=X.Y.Z` lines make a patch update an approval diff.
+[workspace.dependencies]
+egui = { version = "0.36", default-features = false, features = ["default_fonts"] }
+serde = { version = "1", features = ["derive"] }
+toml = { version = "1" }
+log = { version = "0.4" }
+# Optional (turned on only through fairing's features)
+eframe = { version = "0.36", default-features = false, features = ["glow", "wayland", "default_fonts"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# **dev only** (approved 2026-09-08). The library does not decode images —
+# it is used only by the demos and tests to show a decoder wired into the `ShellBuilder::image_loader`
+# hook. Being a dev-dependency, it does not enter an integrator's tree.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+# Workspace-internal path dependencies. Dropping the version trips cargo-deny's `wildcards = "deny"`,
+# so [workspace.package]'s value is repeated here. `cargo xtask integrity` (audit stage 0) compares the
+# two so they cannot drift apart. The members use version.workspace = true.
+fairing = { path = "crates/fairing", version = "0.0.1", default-features = false }
+
+# The workspace lints, applied to every member.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+indexing_slicing = "warn"
+# The counterpart of the root clippy.toml's disallowed-types. It blocks the lock types at compile time.
+# An aliased use, parking_lot and blocking calls on the UI thread are looked at by `xtask sync-check`.
+disallowed_types = "deny"
+disallowed_methods = "deny"
+
+# No [profile.release] at the root. The profile is settled by the root package, so it
+# does not propagate to an integrator's binary, and `panic = "abort"` breaks `cargo test --release`.
+# The recommended profile for a device binary is written down in crates/fairing/README.md.

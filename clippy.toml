@@ -1,0 +1,38 @@
+# The blocking/sync ban, enforced at compile time.
+# Its counterpart lint is the root Cargo.toml's `[workspace.lints.clippy] disallowed_types = "deny"`,
+# and the forms not here (an aliased use, parking_lot, recv/join/sleep on the UI thread) are caught by
+# `xtask sync-check` scanning the source.
+disallowed-types = [
+  { path = "std::sync::Mutex", reason = "no blocking sync. Use channels and atomics" },
+  { path = "std::sync::RwLock", reason = "the same" },
+  { path = "std::sync::Condvar", reason = "the same" },
+  { path = "std::sync::Barrier", reason = "the same" },
+  { path = "std::sync::OnceLock", reason = "it blocks on an initialisation race. Use a const or an atomic" },
+  { path = "std::sync::LazyLock", reason = "the same" },
+  { path = "std::sync::Once", reason = "the same race, without the value attached" },
+  { path = "std::sync::ReentrantLock", reason = "no blocking sync" },
+  { path = "std::cell::LazyCell", reason = "single-threaded, but it panics where the initialiser re-enters. Use a const or OnceCell" },
+  { path = "std::cell::UnsafeCell", reason = "unreachable under unsafe_code = \"forbid\" anyway. Named so the intent is on record" },
+  { path = "std::sync::mpsc::SyncSender", reason = "a bounded channel's send blocks; at capacity 0 it is a rendezvous. Use the unbounded channel" },
+  { path = "std::sync::mpsc::Receiver", reason = "its receiving half blocks. Use fairing::inbox::Inbox, which owns one and only lends out try_recv" },
+  { path = "std::sync::mpsc::Iter", reason = "iterating a Receiver blocks" },
+  { path = "std::sync::mpsc::IntoIter", reason = "the same" },
+]
+
+# The type list above cannot reach a **function**, so the constructor is named here. `disallowed_methods`
+# is denied in the root Cargo.toml alongside `disallowed_types`.
+#
+# The blocking receive and thread calls are **not** here: they are banned on the UI thread only,
+# and clippy.toml is workspace-wide, so a backend running on its own thread would be caught
+# with them. `xtask sync-check` holds that rule instead, because it can scope by crate.
+disallowed-methods = [
+  { path = "std::sync::mpsc::sync_channel", reason = "it makes a SyncSender, whose send blocks" },
+  # The receiving half, **resolved by type** — so an alias or a re-export cannot walk past it, which
+  # is what the `xtask sync-check` text scan could not promise. `for msg in rx` is the one
+  # form no lint can reach: it desugars to `IntoIterator::into_iter`, and banning that bans every
+  # `for` loop. `fairing::inbox::Inbox` closes that one by construction instead.
+  { path = "std::sync::mpsc::Receiver::recv", reason = "it blocks the UI thread. Use Inbox::try_recv / Inbox::drain" },
+  { path = "std::sync::mpsc::Receiver::recv_timeout", reason = "the same, with a deadline" },
+  { path = "std::sync::mpsc::Receiver::recv_deadline", reason = "the same, unstable", allow-invalid = true },
+  { path = "std::sync::mpsc::Receiver::iter", reason = "it waits for the next message. Use Inbox::drain, which ends at the end of the queue" },
+]

@@ -1,0 +1,100 @@
+[package]
+name = "fairing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+description = "A general-purpose touchscreen shell for devices — a status bar, gestures, screens and settings, laid over egui"
+readme = "README.md"
+documentation = "https://docs.rs/fairing"
+keywords = ["egui", "touchscreen", "kiosk", "embedded", "shell"]
+categories = ["gui", "embedded"]
+# Left out of the package: the examples read the repository's fonts and images under
+# `assets/`, and the held guide gate `src/guide_probe.rs` reads `docs/guide/`, so neither builds
+# from a downloaded crate. The examples live in the repository. `examples/demo.toml` stays, for a
+# test reads it.
+exclude = ["examples/*.rs", "examples/common/", "examples/kiosk.toml", "src/guide_probe.rs"]
+
+[dependencies]
+fairing-widgets = { path = "../fairing-widgets", version = "0.0.1" }
+egui = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+log = { workspace = true }
+eframe = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+
+# The library does not decode images (guide 09 §1). `image` is used only by **the demos and tests** to
+# show a decoder wired into `ShellBuilder::image_loader` — being a dev-dependency, it does not enter an
+# integrator's tree.
+[dev-dependencies]
+image = { workspace = true }
+
+[features]
+# A large subsystem comes out whole behind a feature — on by default, compiled out when off.
+# `overlay` = the shade, the quick-settings tiles and the scrim; `osk` = the on-screen keyboard.
+default = ["mock", "overlay", "osk", "brand", "settings"]
+mock = []
+overlay = []
+osk = []
+# `brand` = the manta mark, the Abyss procedural background, the app tile and the splash (12). **Only the
+# drawing code** is inside — the palette presets, `AbyssTier` and the `Wallpaper` variants are outside the gate.
+brand = []
+# `settings` = the 11 built-in settings **screens**. The value model (`SettingKey`,
+# `SettingValue`, `SettingsView`, `keys`) is outside the gate — `Cx::settings` always has to be there.
+# Turned off, only the screens are compiled out and an integrator can register their own under the same ids.
+settings = []
+runner = ["dep:eframe"]
+runner-x11 = ["runner", "eframe/x11"]
+# `chrono` = a `ChronoClock` that follows the system time zone and DST. The default `SystemClock`
+# has its offset as a config value and so knows nothing of summer time. On, it measures at +3 crates.
+chrono = ["dep:chrono"]
+
+# The smallest complete app, standing alone (no `mod common`) so it can be copied. It runs on
+# the null backends, so it needs no `mock`; `settings` is stated for the screens it adds.
+[[example]]
+name = "hello"
+required-features = ["runner", "settings"]
+
+# Every other example uses the Mock backends. `mock` is a default feature, but it is stated explicitly
+# so that a `--no-default-features` build skips them quietly rather than failing to compile.
+
+[[example]]
+name = "demo"
+required-features = ["runner", "mock"]
+
+# M2a: the example of an integrator redrawing the chrome, the cells, the wallpaper and the theme without touching the crate.
+[[example]]
+name = "kiosk"
+required-features = ["runner", "mock"]
+
+# The bench console. Declared, like the two above, so a build without the runner skips it.
+[[example]]
+name = "console"
+required-features = ["runner", "mock"]
+
+[[example]]
+name = "custom_chrome"
+required-features = ["runner-x11", "mock", "overlay"]
+
+[[example]]
+name = "bench"
+required-features = ["mock"]
+
+# The tuning tool: it replays the shade, the pages, push/pop and the icon zoom while the [motion] tokens are adjusted on sliders.
+[[example]]
+name = "motion_lab"
+required-features = ["runner-x11", "mock", "overlay", "osk"]
+
+# One frame with the whole control vocabulary on it, for comparing palettes.
+[[example]]
+name = "palette_sheet"
+required-features = ["runner-x11", "mock"]
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

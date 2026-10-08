@@ -1,0 +1,21 @@
+# A file that affects the dependencies, the licences, a tool version or the build inputs needs an owner's review.
+# See the approval procedure in CONTRIBUTING.md.
+#
+# The list below has to hold every path that can change "what gets compiled".
+# Guarding Cargo.toml and Cargo.lock alone still leaves .cargo/config.toml's source replacement, or vendor/,
+# able to compile a different source under the same name and version (xtask audit's stage 0 refuses that
+# mechanically too, but the review is needed separately).
+Cargo.toml             @shim9610
+**/Cargo.toml          @shim9610
+Cargo.lock             @shim9610
+deps.allow             @shim9610
+deny.toml              @shim9610
+rust-toolchain.toml    @shim9610
+xtask/tools.lock       @shim9610
+xtask/**               @shim9610
+.cargo/**              @shim9610
+vendor/**              @shim9610
+.github/**             @shim9610
+**/build.rs            @shim9610
+assets/**/LICENSE-*    @shim9610
+THIRD_PARTY.md         @shim9610

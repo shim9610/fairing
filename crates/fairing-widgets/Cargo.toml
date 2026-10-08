@@ -1,0 +1,20 @@
+[package]
+name = "fairing-widgets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+description = "The element layer behind the fairing shell — units, theme tokens, icons and touch widgets for egui"
+readme = "README.md"
+documentation = "https://docs.rs/fairing-widgets"
+keywords = ["egui", "touchscreen", "widgets", "theme", "gui"]
+categories = ["gui"]
+
+[lints]
+workspace = true
+
+[dependencies]
+egui = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true }

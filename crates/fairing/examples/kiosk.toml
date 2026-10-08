@@ -1,0 +1,48 @@
+# The config for the in-store payment kiosk. The three layouts share this file, and what differs per layout
+# `build()` overrides in code (turning the indicator's nav bar off).
+
+[shell]
+locale = "ko"
+theme = "dark"
+
+[status_bar]
+enabled = true
+
+[nav_bar]
+enabled = true
+# Home comes out — a customer has no reason to go to the desktop. The screens drive the flow.
+items = ["back"]
+
+[desktop]
+# It uses neither a rail nor a grid. It boots straight into the idle screen and the customer never sees a desktop.
+rail = "none"
+
+[access]
+# Two levels. The customer is `guest` and a staff member is `staff` — with only one level, anyone would pass
+# the `staff` gate.
+levels = ["guest", "staff"]
+default_gate = "guest"
+
+# ── The brand palette ────────────────────────────────────────────────────────
+#
+# The crate's default accent is a cool blue (#4C8DFF), and with the shop's photography a warm amber, leaving it
+# as it is has the buttons alone lift off the screen. The brand goes on **by overriding the role colours alone** —
+# not one line of the layout or the widgets changes (guide 04 §2).
+[theme.palette]
+background      = "#120E0A"   # a deep brown-black, close to roasting beans
+surface         = "#1C1611"
+surface_variant = "#2A2119"
+on_surface      = "#F2E8DC"   # the same cream as the wordmark
+muted           = "#9C8E7E"
+primary         = "#D99A4E"   # key-light amber — the same colour as the photograph's highlights
+on_primary      = "#1A1209"
+outline         = "#3B2F24"
+scrim           = "#0A0704E0"   # 8-digit alpha — the shade scrim's deepest
+success         = "#7FBF8A"
+warning         = "#E0A94E"
+danger          = "#D9634E"
+pressed         = "#FFFFFF14"
+
+[motion]
+# The mid-transition frames have to show the tweens, so it is not reduced. Turn it on if a real device makes anyone queasy.
+reduce = false

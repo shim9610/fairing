@@ -1,0 +1,14 @@
+# Xtask has no direct dependencies (std alone) — so that the audit tool does not grow what it audits.
+[package]
+name = "xtask"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+# No dependencies. Adding anything here goes through the approval procedure in CONTRIBUTING.md.
+[dependencies]

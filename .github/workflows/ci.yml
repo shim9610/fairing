@@ -1,0 +1,96 @@
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request:
+  schedule: [{ cron: "0 3 * * 1" }] # every Monday at 03:00 UTC: check for new advisories
+
+# This workflow only reads the repository. GITHUB_TOKEN is given no default permission.
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    # **No debug info in CI**. The audit reads exit codes, not backtraces, and debug info
+    # is the bulk of what the build writes: one integration test binary measured 222 MB with it and
+    # 33 MB without, and the workspace links 42 of them against the whole eframe tree. Without this
+    # the runner ran out of room and `rust-lld` died with a bus error mid-link, which reads as a
+    # compiler crash and is not one.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      # TODO(security): pin the two actions to a commit SHA rather than a tag. A tag can be moved.
+      - uses: actions/checkout@v4
+
+      # A hosted runner ships some 25 GB of toolchains this job never touches. Deleting them takes
+      # about half a minute and is the difference between a build that fits and one that does not.
+      - name: Free the runner's disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
+          df -h /
+
+      - name: Show the disk before the build
+        run: df -h /
+
+      - name: Show toolchain (rust-toolchain.toml installs it)
+        run: rustup show
+
+      - name: Add components and target
+        run: |
+          rustup component add clippy rustfmt
+          rustup target add aarch64-unknown-linux-gnu
+
+      # The cache path is **the two audit plugin binaries alone**. Caching the whole of ~/.cargo/bin would
+      # overwrite the runner's cargo, rustc and rustup proxies on restore.
+      - name: Cache audit plugins
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-audit
+            ~/.cargo/bin/cargo-deny
+          key: tools-${{ runner.os }}-${{ hashFiles('xtask/tools.lock') }}
+
+      # **`v2` is the debug-info generation.** The key is bumped rather than left alone because a
+      # `v1` cache holds a `target` built *with* debug info — restoring it would put the ten
+      # gigabytes back before the first line compiles, and the disk would be spent again.
+      - name: Cache cargo registry and target dir
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            target
+          key: cargo-v2-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-v2-${{ runner.os }}-
+
+      # A binary that is already there is not simply trusted. Where the version differs from tools.lock it is installed again.
+      - name: Install audit tools from xtask/tools.lock
+        run: |
+          set -euo pipefail
+          while read -r name version; do
+            [ -z "${name:-}" ] && continue
+            case "$name" in \#*) continue ;; esac
+            sub="${name#cargo-}"
+            found="$(cargo "$sub" --version 2>/dev/null | head -n1 | awk '{print $NF}' || true)"
+            if [ "$found" = "$version" ]; then
+              echo "skip $name: $version already installed"
+              continue
+            fi
+            echo "install $name $version (installed: ${found:-none})"
+            cargo install "$name" --locked --version "$version" --force
+          done < xtask/tools.lock
+
+      # It calls the real binary rather than the alias. `cargo xtask` goes through .cargo/config.toml's
+      # [alias], so one line inside the repository could disable the audit itself.
+      - name: Audit
+        run: cargo run -p xtask --locked -- audit --strict
+
+      # **Always**, so a failed run says whether the disk was the limit. A build that dies in the
+      # linker gives no clue on its own, and the answer is one line.
+      - name: Show the disk after the build
+        if: always()
+        run: |
+          df -h /
+          du -sh target 2>/dev/null || true

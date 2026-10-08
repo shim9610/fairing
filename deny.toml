@@ -1,0 +1,95 @@
+# The cargo-deny config: licences, duplicate versions and sources.
+# Verified against cargo-deny 0.20.2 (xtask/tools.lock is the single source).
+# `cargo deny check` = advisories + bans + licenses + sources.
+
+[graph]
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "aarch64-unknown-linux-gnu" },
+]
+# The graph checked has every feature of the workspace members turned on (runner, runner-x11, chrono, mock).
+all-features = true
+
+[output]
+feature-depth = 1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Security advisories
+[advisories]
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "deny"
+# "all" = it catches unmaintained in both the workspace's direct and its transitive dependencies.
+unmaintained = "all"
+# Each entry leaves its reason and expiry as { id = "RUSTSEC-…", reason = "… (expires: YYYY-MM-DD)" }.
+ignore = []
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Licences. Permissive licences only. GPL/AGPL/LGPL/SSPL/BUSL/CC-BY-NC are not on the
+# allowlist and so are refused automatically (the allow list is the whitelist).
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "Unlicense",
+    "Unicode-3.0",
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
+    "CC0-1.0",
+]
+confidence-threshold = 0.9
+# A per-crate exception is added only after going through the approval procedure in CONTRIBUTING.md.
+exceptions = []
+
+[licenses.private]
+ignore = false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Banned crates · duplicate versions
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+
+deny = [
+    { crate = "openssl-sys", reason = "no native TLS. The shell has no networking" },
+    { crate = "tokio", reason = "no async runtime. The backends are std threads" },
+    { crate = "rusqlite", reason = "no DB (constraint 2)" },
+    { crate = "wgpu", reason = "GL (glow) only. It doubles the tree" },
+]
+
+# The nine measured duplicate pairs. They arise only from winit-ecosystem drift with the runner
+# feature on; with the core alone (egui/serde/toml/log) there are zero duplicates.
+# The policy: empty this list each release branch and confirm it is still needed.
+skip = [
+    { crate = "calloop@0.13", reason = "winit 0.30 ↔ smithay-client-toolkit 0.20 drift. Tracking upstream" },
+    { crate = "calloop-wayland-source@0.3", reason = "winit 0.30 ↔ smithay-client-toolkit 0.20 drift" },
+    { crate = "smithay-client-toolkit@0.19", reason = "winit ↔ smithay-clipboard(arboard)" },
+    { crate = "rustix@0.38", reason = "a generation gap between winit and smithay-client-toolkit" },
+    { crate = "linux-raw-sys@0.4", reason = "the older generation rustix 0.38 drags in" },
+    { crate = "miniz_oxide@0.8", reason = "flate2 ↔ png" },
+    { crate = "syn@2", reason = "a proc-macro generation change (syn 2 ↔ 3). It affects compile time only" },
+    { crate = "thiserror@1", reason = "a proc-macro generation change (thiserror 1 ↔ 2)" },
+    { crate = "thiserror-impl@1", reason = "thiserror 1's macro crate" },
+]
+skip-tree = []
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Source restrictions. crates.io only. No git and no alternative registry.
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[sources.allow-org]
+github = []
+gitlab = []
+bitbucket = []
