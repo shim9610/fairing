@@ -1446,7 +1446,7 @@ fn draw_slider_row(ui: &mut egui::Ui, parts: &mut CxParts<'_>, slot: SliderSlot<
         (
             muted.gamma_multiply(0.55),
             muted.gamma_multiply(0.22),
-            theme.color(ColorRole::Surface),
+            theme.color(ColorRole::ShadeSurface),
         )
     };
     let grow = parts.animations.animate(
@@ -1727,7 +1727,11 @@ fn draw_notification_row(
         ),
         Vec2::splat(puck_d),
     );
-    painter.circle_filled(puck.center(), puck_d * 0.5, theme.color(ColorRole::Surface));
+    painter.circle_filled(
+        puck.center(),
+        puck_d * 0.5,
+        theme.color(ColorRole::ShadeSurface),
+    );
     let icon_px = puck_d * 0.52;
     let icon_style = IconStyle {
         color: IconColor::Role(if allowed {

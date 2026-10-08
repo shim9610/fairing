@@ -1504,7 +1504,7 @@ impl Overlay {
         self.frost_backdrop(
             ctx,
             prev.panel.is_none(),
-            parts.theme.color(ColorRole::Surface),
+            parts.theme.color(ColorRole::ShadeSurface),
         );
         let plate = self.plate(screen, &pointer, parts.theme, prev.panel.is_none());
         self.last_plate = Some(plate);
@@ -1828,7 +1828,7 @@ impl Overlay {
         let h = self.shade.height();
         // Only while the rubber band has `y > H` does the content come down with it (by the excess).
         let over = (y - h).max(0.0);
-        let surface = theme.color(ColorRole::Surface);
+        let surface = theme.color(ColorRole::ShadeSurface);
         // The curtain: the panel's **content** is pinned to the top of the screen and only
         // the visible area is clipped to `[top, top + y]` — so the tile row is revealed from
         // the top mid-pull too.
@@ -1879,7 +1879,7 @@ impl Overlay {
         let h = self.shade.height();
         // Only while the rubber band has `y > H` does the card come down with it (by the excess).
         let over = (y - h).max(0.0);
-        let surface = theme.color(ColorRole::Surface);
+        let surface = theme.color(ColorRole::ShadeSurface);
         let style = CardStyle::new(&theme.metrics, theme.components.shade);
         // The side is settled on the frame the card first shows and kept until it has gone.
         // Only a finger that is still down has a side: a shade opened by a tap or by
@@ -2104,7 +2104,7 @@ fn paint_ground(
     painter: Option<&mut ShadePanelPainter>,
     (panel, reveal, leaving): (OverlayPanel, OverlayReveal, bool),
 ) -> egui::Color32 {
-    let surface = theme.color(ColorRole::Surface);
+    let surface = theme.color(ColorRole::ShadeSurface);
     let Some(painter) = painter else {
         paint_plate(ui, plate, theme, relief);
         return surface;

@@ -55,7 +55,7 @@ theme, the shell resolves both — and `status_icon_size` — from its metrics s
 `[status_bar] icon_size` · `[nav_bar] height` pin ([07 §2](07-config-reference.md)). An injected
 theme is used as it stands: its metrics win, and those three keys are ignored with a warning.
 
-### 1.1 The sixteen palette roles
+### 1.1 The palette roles
 
 Colours are used by role, not by name. `Theme::color(ColorRole::Surface)` is the lookup, and the
 config file uses the snake_case name.
@@ -78,8 +78,9 @@ config file uses the snake_case name.
 | `ControlEdge` | `control_edge` | `#70707b` | `#85858e` | The boundary that makes a control a control — a switch's track, a checkbox, a radio, a segmented strip. Gated at 3:1 against the surface, where `Outline` is decoration |
 | `Pressed` | `pressed` | white α28 | black α24 | Press tint (nav items, icons, keys, buttons, list rows) |
 | `Shadow` | `shadow` | white α14 | black α14 | The cast shadow of a floating container in light mode, its rim in dark mode. Figure-ground help, not a boundary |
+| `ShadeSurface` | `shade_surface` | = `surface` | = `surface` | The pull-down shade's face: the curtain, the floating card and the tile pucks on it. Unset, it follows `surface`; set it to colour the shade alone. Text on it stays `on_surface`, so keep the two readable together |
 
-Switching dark ↔ light interpolates all sixteen roles per channel over 200 ms. So a new palette
+Switching dark ↔ light interpolates every role per channel over 200 ms. So a new palette
 that fills in one or two roles and leaves the rest looks wrong mid-transition. Fill the rest with
 `..Palette::dark()`.
 
@@ -346,7 +347,7 @@ surface = "#0d1f18"
 
 | Rule | Detail |
 |---|---|
-| Keys | The sixteen config names from §1.1. Anything else is a **config error at startup** |
+| Keys | The config names from §1.1. Anything else is a **config error at startup** |
 | Values | `"#RRGGBB"` or `"#RRGGBBAA"`. `#RGB` shorthand and colour names are errors |
 | Alpha | The `AA` of `#RRGGBBAA`. `scrim`, `pressed` and `shadow` are translucent by default; the rest are opaque |
 | Precedence | Injecting a theme ignores this whole section (with a warning) |

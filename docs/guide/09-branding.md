@@ -21,7 +21,7 @@ Where you reach depends on how far you want to go. **Cheap at the top, free at t
 | "Pick one of the crate's presets" | `[theme] preset = "base"` \| `"abyss"` \| `"linen"` (**those three**) | none | 1 min |
 | **"Just use a crate default set"** | `.preset(Preset::Abyss)` — palette + background in one line (§8.1) | none | 1 min |
 | "Settings menus in our colours and layout" | `settings::add_all` + `SettingsConfig` (§8.3) | none | 10 min |
-| "Our whole colour system" | The sixteen `[theme.palette]` roles, or `ShellBuilder::palettes(dark, light)` | none | 30 min |
+| "Our whole colour system" | The `[theme.palette]` roles, or `ShellBuilder::palettes(dark, light)` | none | 30 min |
 | **"Our typeface"** | `ShellBuilder::fonts` (§3) — the crate carries no fonts | none | 1 hour |
 | "Change the feel of the layout" | `set_dock_placement` — a left rail, a floating band across the screen (§6.3) | none | 10 min |
 | **"Our own status bar and nav bar"** | `ShellBuilder::status_bar_painter` / `nav_bar_painter` (§6.2) | none | half a day |
@@ -685,7 +685,7 @@ colours and keep our background.
 
 | # | What the crate produces | How to override it | Where |
 |---|---|---|---|
-| 1 | The palette (sixteen roles) | `[theme.palette]`, or `.palettes(dark, light)` | §0 |
+| 1 | The palette (its roles) | `[theme.palette]`, or `.palettes(dark, light)` | §0 |
 | 2 | Metrics | `.metrics_spec(..)` · `.scale_policy(..)` | §0 |
 | 3 | Motion tokens | `[motion]`, or `Shell::set_motion` | 04 §8 |
 | 4 | Type | `.fonts(FontSet)` — **the crate carries no fonts** | §3 |

@@ -159,6 +159,7 @@ fn console_palette() -> fairing::theme::Palette {
         control_edge: Color32::from_rgb(0xb6, 0xb8, 0xc6),
         pressed: Color32::from_black_alpha(20),
         shadow: Color32::from_black_alpha(12),
+        shade_surface: None,
     }
 }
 

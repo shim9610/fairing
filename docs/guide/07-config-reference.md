@@ -396,7 +396,7 @@ after `slop_px`.
 | Key | Type | Default | Meaning | Validation |
 |---|---|---|---|---|
 | `preset` | `String` | `"base"` | Palette preset: `"base"` (neutral), `"abyss"` (pulled from the manta artwork) or `"linen"` (warm neutrals and a sage accent, built light-first for an appliance in a room). **Orthogonal** to `[shell] theme` — the preset picks the colours, `theme` picks which side | An unknown name is an **error**. Swallowing a typo would leave you hunting for why the brand never turned on |
-| `palette` | `BTreeMap<String, String>` | `{}` | Role name → `"#RRGGBB"` or `"#RRGGBBAA"`. Overrides land on **both** the dark and light palettes the preset built | A role outside the sixteen ([04 §1.1](04-customization.md#11-the-sixteen-palette-roles)) is an **error**. A value that is not `"#RRGGBB"` or `"#RRGGBBAA"` is an **error** — no short form, no colour names |
+| `palette` | `BTreeMap<String, String>` | `{}` | Role name → `"#RRGGBB"` or `"#RRGGBBAA"`. Overrides land on **both** the dark and light palettes the preset built | A name that is not a role ([04 §1.1](04-customization.md#11-the-palette-roles)) is an **error**. A value that is not `"#RRGGBB"` or `"#RRGGBBAA"` is an **error** — no short form, no colour names |
 
 Injecting `.theme(Theme)` in code makes this whole section irrelevant, with a
 warning ([04 §2](04-customization.md#2-changing-only-the-colours-with-themepalette)).
@@ -796,7 +796,7 @@ Who may use them is a matter of gates, not of this section: `nav.recents` and `w
 
 | Topic | Page |
 |---|---|
-| The sixteen palette roles, `Metrics`, `MotionTokens` in code | [04 Customization](04-customization.md) |
+| The palette roles, `Metrics`, `MotionTokens` in code | [04 Customization](04-customization.md) |
 | Gate and level naming, `Authenticator` | [05 Access control](05-access-control.md) |
 | `Services` and `ShellHandle::set_setting` | [06 Services](06-services.md) |
 | Diagnosing typos and bad references | [08 Troubleshooting](08-troubleshooting.md) |

@@ -86,6 +86,13 @@ pub enum ColorRole {
     /// sighted reader in bright light and not a boundary that identifies anything. What identifies
     /// a card stays its fill step and, where a real boundary is wanted, [`Self::Outline`].
     Shadow,
+    /// **The face of the pull-down shade** — the curtain, or the floating card with
+    /// `[overlay] reveal = "card"`, and the tile pucks on it. Unset, it is [`Self::Surface`], so a
+    /// palette that does not name it looks as it always did; set it (`shade_surface` under
+    /// `[theme.palette]`, or [`Palette::shade_surface`]) to give the shade a colour of its own
+    /// without touching every screen's surface. Text on it stays [`Self::OnSurface`], so keep the
+    /// two readable together.
+    ShadeSurface,
 }
 
 impl ColorRole {
@@ -109,6 +116,7 @@ impl ColorRole {
             "control_edge" => Self::ControlEdge,
             "pressed" => Self::Pressed,
             "shadow" => Self::Shadow,
+            "shade_surface" => Self::ShadeSurface,
             _ => return None,
         })
     }
@@ -116,7 +124,7 @@ impl ColorRole {
 
 /// The colour per role.
 ///
-/// Fourteen `Color32`s (56 bytes), so it is `Copy` — the places that hold a pair
+/// One `Color32` per role, and an optional face for the shade, so it is `Copy` — the places that hold a pair
 /// and the crossfade pass it by value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Palette {
@@ -152,6 +160,9 @@ pub struct Palette {
     pub pressed: Color32,
     /// [`ColorRole::Shadow`].
     pub shadow: Color32,
+    /// [`ColorRole::ShadeSurface`]. `None` follows [`Self::surface`], including a `surface` changed
+    /// later by an override.
+    pub shade_surface: Option<Color32>,
 }
 
 /// A hairline border — the thinnest thing the eye still catches. Unrelated to touch targets, so not a token.
@@ -172,7 +183,7 @@ const TEXT_EDIT_SPAN: f32 = 7.5;
 /// A palette preset.
 ///
 /// Adding one costs a variant, two arms in [`Preset::parse`] / [`Preset::as_str`], and one entry
-/// in the [`Preset::ALL`] slice. It is outside the brand feature — a palette is only sixteen
+/// in the [`Preset::ALL`] slice. It is outside the brand feature — a palette is only a handful of
 /// `Color32`s, so it survives `brand` being off.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 // **No `#[non_exhaustive]`**. It carried one until the element layer became its own
@@ -267,6 +278,7 @@ impl Palette {
             control_edge: Color32::from_rgb(0x8a, 0x83, 0x73),
             pressed: Color32::from_black_alpha(24),
             shadow: Color32::from_black_alpha(14),
+            shade_surface: None,
         }
     }
 
@@ -300,6 +312,7 @@ impl Palette {
             // **White, not black.** On a dark palette height is a rim inside the silhouette,
             // and a black rim on a near-black page measures 1.00 — no boundary at all.
             shadow: Color32::from_white_alpha(14),
+            shade_surface: None,
         }
     }
 
@@ -337,6 +350,7 @@ impl Palette {
             control_edge: Color32::from_rgb(0x56, 0x7d, 0x9a),
             pressed: Color32::from_white_alpha(26),
             shadow: Color32::from_white_alpha(14),
+            shade_surface: None,
         }
     }
 
@@ -365,6 +379,7 @@ impl Palette {
             control_edge: Color32::from_rgb(0x64, 0x83, 0xa0),
             pressed: Color32::from_black_alpha(24),
             shadow: Color32::from_black_alpha(14),
+            shade_surface: None,
         }
     }
 
@@ -416,6 +431,7 @@ impl Palette {
             control_edge: Color32::from_rgb(0x70, 0x70, 0x7b),
             pressed: Color32::from_white_alpha(28),
             shadow: Color32::from_white_alpha(14),
+            shade_surface: None,
         }
     }
 
@@ -473,6 +489,7 @@ impl Palette {
             control_edge: Color32::from_rgb(0x85, 0x85, 0x8e),
             pressed: Color32::from_black_alpha(24),
             shadow: Color32::from_black_alpha(14),
+            shade_surface: None,
         }
     }
 
@@ -496,6 +513,7 @@ impl Palette {
             ColorRole::ControlEdge => self.control_edge,
             ColorRole::Pressed => self.pressed,
             ColorRole::Shadow => self.shadow,
+            ColorRole::ShadeSurface => self.shade_surface.unwrap_or(self.surface),
         }
     }
 
@@ -518,6 +536,10 @@ impl Palette {
             ColorRole::ControlEdge => &mut self.control_edge,
             ColorRole::Pressed => &mut self.pressed,
             ColorRole::Shadow => &mut self.shadow,
+            ColorRole::ShadeSurface => {
+                self.shade_surface = Some(color);
+                return;
+            }
         };
         *slot = color;
     }
@@ -550,7 +572,7 @@ impl Palette {
     }
 
     /// Interpolate between two palettes (A7, the theme switch: called every frame for
-    /// 200 ms and applied to `Visuals`). All fourteen roles are interpolated per channel with
+    /// 200 ms and applied to `Visuals`). Every role is interpolated per channel with
     /// `Color32::lerp_to_gamma`, so dark and light join with no colour jump.
     #[must_use]
     pub fn lerp(&self, other: &Self, t: f32) -> Self {
@@ -572,6 +594,14 @@ impl Palette {
             control_edge: self.control_edge.lerp_to_gamma(other.control_edge, t),
             pressed: self.pressed.lerp_to_gamma(other.pressed, t),
             shadow: self.shadow.lerp_to_gamma(other.shadow, t),
+            // Only a palette that names it carries its own; otherwise the shade keeps following
+            // `surface`, which is interpolated above.
+            shade_surface: (self.shade_surface.is_some() || other.shade_surface.is_some()).then(
+                || {
+                    self.get(ColorRole::ShadeSurface)
+                        .lerp_to_gamma(other.get(ColorRole::ShadeSurface), t)
+                },
+            ),
         }
     }
 }
@@ -1365,6 +1395,37 @@ pub(crate) fn contrast(a: egui::Color32, b: egui::Color32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::{ColorRole, Metrics, MotionTokens, Palette, Preset, Theme, ThemeInputs};
+
+    /// The shade's role follows `surface` until it is named, even when `surface` itself is
+    /// overridden later; named, it keeps its own colour and survives an interpolation.
+    #[test]
+    fn the_shade_surface_follows_the_surface_until_it_is_named() -> crate::Result<()> {
+        use egui::Color32;
+        use std::collections::BTreeMap;
+        let mut p = Palette::dark();
+        assert_eq!(p.get(ColorRole::ShadeSurface), p.surface);
+        let mut over = BTreeMap::new();
+        over.insert("surface".to_owned(), "#202020".to_owned());
+        p.apply_overrides(&over)?;
+        assert_eq!(
+            p.get(ColorRole::ShadeSurface),
+            Color32::from_rgb(0x20, 0x20, 0x20)
+        );
+        assert_eq!(
+            ColorRole::parse("shade_surface"),
+            Some(ColorRole::ShadeSurface)
+        );
+        let shade = Color32::from_rgb(0x12, 0x34, 0x56);
+        p.set(ColorRole::ShadeSurface, shade);
+        assert_eq!(p.get(ColorRole::ShadeSurface), shade);
+        assert_eq!(p.surface, Color32::from_rgb(0x20, 0x20, 0x20));
+        let mut q = Palette::light();
+        q.set(ColorRole::ShadeSurface, shade);
+        assert_eq!(p.lerp(&q, 0.5).get(ColorRole::ShadeSurface), shade);
+        let plain = Palette::dark().lerp(&Palette::light(), 0.5);
+        assert_eq!(plain.shade_surface, None, "an unnamed role stays unnamed");
+        Ok(())
+    }
     use crate::config::MotionConfig;
 
     use super::contrast;
@@ -1548,6 +1609,7 @@ mod tests {
             ColorRole::Outline,
             ColorRole::Pressed,
             ColorRole::Shadow,
+            ColorRole::ShadeSurface,
         ] {
             let a = dark.get(role);
             let b = light.get(role);
