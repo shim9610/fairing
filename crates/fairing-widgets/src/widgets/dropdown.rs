@@ -1507,10 +1507,9 @@ fn chevron_at(ui: &egui::Ui, cx: &mut Cx<'_>, t: &Tokens, at: Pos2, open: bool, 
 
 /// One glyph, `side` square, centred on `at`.
 fn icon_at(ui: &egui::Ui, cx: &mut Cx<'_>, icon: &IconRef, at: Pos2, side: f32, colour: Color32) {
-    let style = IconStyle {
-        color: IconColor::Fixed(colour),
-        ..IconStyle::default()
-    };
+    // Sized to the glyph it draws: the stroke follows the size, and `default()` is 24 whatever
+    // the glyph is.
+    let style = IconStyle::sized(side).color(IconColor::Fixed(colour));
     let rect = Rect::from_center_size(at, Vec2::splat(side));
     cx.icons.paint(ui.painter(), rect, icon, &style, cx.theme);
 }

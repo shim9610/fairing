@@ -882,9 +882,16 @@ enum Shape {
     Compact,
 }
 
+/// The diagonal under which a panel is the customer-facing display (mm): a 4.3" display is
+/// 109 mm across, a 10.1" POS 256 mm. Between them is nothing this kiosk ships on.
+const COMPACT_DIAGONAL_MM: f32 = 160.0;
+
 impl Shape {
-    /// `--layout=portrait|counter|compact`, or from the screen's aspect ratio.
-    fn pick(args: &[String], size: Option<(f32, f32)>) -> Self {
+    /// `--layout=portrait|counter|compact`, or from **the panel's size in millimetres**: a
+    /// small panel is the customer display whichever way it stands, a larger one is portrait or
+    /// the counter by its orientation. Without `--panel-mm` the shell is running its
+    /// density-unaware fallback anyway, and the pixel count has to stand in for the size.
+    fn pick(args: &[String], size: Option<(f32, f32)>, panel_mm: Option<(f32, f32)>) -> Self {
         let forced = args
             .iter()
             .find_map(|a| a.strip_prefix("--layout="))
@@ -902,11 +909,22 @@ impl Shape {
         if let Some(shape) = forced {
             return shape;
         }
+        if let Some((w_mm, h_mm)) = panel_mm {
+            if w_mm.hypot(h_mm) < COMPACT_DIAGONAL_MM {
+                return Self::Compact;
+            }
+            return if w_mm < h_mm {
+                Self::Portrait
+            } else {
+                Self::Counter
+            };
+        }
         let (w, h) = size.unwrap_or((1024.0, 600.0));
-        if w / h.max(1.0) < 1.0 {
-            Self::Portrait
-        } else if w < 640.0 {
+        log::warn!("no --panel-mm: the layout is picked from the pixel size, {w}x{h}");
+        if w.min(h) < 400.0 {
             Self::Compact
+        } else if w < h {
+            Self::Portrait
         } else {
             Self::Counter
         }
@@ -2480,10 +2498,10 @@ fn main() -> fairing::Result<()> {
         // With no tour and no window size given, it is fullscreen as on a real device.
         fullscreen: size.is_none() && common::arg_tour(&args).is_none(),
     };
-    let shape = Shape::pick(&args, size);
+    let panel_mm = common::arg_panel_mm(&args);
+    let shape = Shape::pick(&args, size, panel_mm);
     let opts = Opts::parse(&args);
     log::info!("layout {shape:?} - language {:?} - {opts:?}", lang());
-    let panel_mm = common::arg_panel_mm(&args);
     let finger_mm = common::arg_finger_mm(&args);
     if panel_mm.is_none() {
         log::warn!("no --panel-mm given - running the density-unaware fallback");

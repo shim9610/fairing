@@ -3180,6 +3180,11 @@ pub fn status_card(
 ) {
     let m = &cx.theme.metrics;
     let height = m.row_height * if detail.is_some() { 1.45 } else { 1.1 };
+    // The title in body, the detail in small — type sizes are the scale's, never a share of the
+    // row (a gloved row made the words half as big again). The two lines sit either side of the
+    // card's centre, a line gap apart.
+    let (title_size, detail_size) = (m.type_scale.body, m.type_scale.small);
+    let line_gap = cx.theme.control.line_gap;
     // As in `slider_row`: a card's content starts where a row's content starts.
     let inset = m.content_inset;
     let radius = card_radius(m, &cx.theme.control);
@@ -3199,7 +3204,7 @@ pub fn status_card(
     let painter = ui.painter();
     painter.rect_filled(rect, egui::CornerRadius::same(round_u8(radius)), fill);
     let title_y = if detail.is_some() {
-        rect.center().y - m.row_height * 0.22
+        rect.center().y - f32::midpoint(detail_size, line_gap)
     } else {
         rect.center().y
     };
@@ -3207,15 +3212,18 @@ pub fn status_card(
         egui::pos2(rect.left() + inset, title_y),
         egui::Align2::LEFT_CENTER,
         title,
-        egui::FontId::proportional(m.row_height * 0.34),
+        egui::FontId::proportional(title_size),
         cx.theme.color(ColorRole::OnSurface),
     );
     if let Some(detail) = detail {
         painter.text(
-            egui::pos2(rect.left() + inset, rect.center().y + m.row_height * 0.26),
+            egui::pos2(
+                rect.left() + inset,
+                rect.center().y + f32::midpoint(title_size, line_gap),
+            ),
             egui::Align2::LEFT_CENTER,
             detail,
-            egui::FontId::proportional(m.row_height * 0.23),
+            egui::FontId::proportional(detail_size),
             cx.theme.color(ColorRole::Muted),
         );
     }

@@ -43,6 +43,12 @@ impl<T: Copy + PartialEq> ParamFade<T> {
         }
     }
 
+    /// Change how long a crossing takes from now on — for a fade made before its theme was known
+    /// (the status bar's are made from the config and follow `motion.crossfade` each frame).
+    pub fn set_duration(&mut self, duration: Duration) {
+        self.duration = duration;
+    }
+
     /// A new value. If it changed, the fade starts at `now`. Mid-fade it leaves the outgoing
     /// value and the start time alone and only changes the incoming one (see "on consecutive
     /// changes" in the module docs).

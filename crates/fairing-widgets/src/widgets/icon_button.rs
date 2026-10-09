@@ -305,8 +305,10 @@ struct Held {
     progress: f32,
 }
 
-/// The long press the arc tracks: linear `0 → 1` while held, 180 ms back on a release before the
-/// end. Returns the progress and whether the hold is complete.
+/// The long press the arc tracks: linear `0 → 1` while held, back on the `press_release` tween
+/// on a release before the end — the same reverse as `Button`'s ring, from the same token, so
+/// the two agree and both go instant under `reduce`. Returns the progress and whether the hold
+/// is complete.
 fn hold(cx: &mut Cx<'_>, id: egui::Id, pressed: bool, duration: Duration) -> (f32, bool) {
     let tween = if pressed {
         Tween {
@@ -314,7 +316,7 @@ fn hold(cx: &mut Cx<'_>, id: egui::Id, pressed: bool, duration: Duration) -> (f3
             easing: crate::motion::Easing::Linear,
         }
     } else {
-        Tween::cubic_out(Duration::from_millis(180))
+        cx.theme.motion.press_release
     };
     let progress = cx.animate(id.with("ring"), if pressed { 1.0 } else { 0.0 }, tween);
     (progress, pressed && progress >= 1.0 - 1e-4)

@@ -3307,7 +3307,8 @@ struct HomeFrame {
 struct CardFrame {
     rect: Rect,
     radius: f32,
-    icon_size: f32,
+    /// The icon's size as a multiple of `metrics.icon_size` (`transition::A2Mapping::icon_grow`).
+    icon_grow: f32,
     icon_opacity: f32,
 }
 
@@ -3344,7 +3345,7 @@ impl HomeFrame {
             card: Some(CardFrame {
                 rect: m.card_rect,
                 radius: m.card_radius,
-                icon_size: m.icon_size,
+                icon_grow: m.icon_grow,
                 icon_opacity: m.icon_opacity,
             }),
         }
@@ -3830,7 +3831,8 @@ fn draw_instance(
                 painter.rect_filled(rect, card.radius / k, background);
                 if card.icon_opacity > 0.0 {
                     if let Some(icon) = card_icon.or_else(|| instance.icon()) {
-                        let size = (card.icon_size / CARD_ICON_STEP).round() * CARD_ICON_STEP / k;
+                        let icon_size = draw.parts.theme.metrics.icon_size * card.icon_grow;
+                        let size = (icon_size / CARD_ICON_STEP).round() * CARD_ICON_STEP / k;
                         let icon_rect =
                             Rect::from_center_size(rect.center(), egui::Vec2::splat(size));
                         let mut faded = painter.clone();
@@ -3865,16 +3867,16 @@ fn draw_instance(
                 }
                 let mut cx = draw.parts.cx_in(pane, event, Some(&mut *draw.registry));
                 instance.ui(&mut child, &mut cx);
+                // The dim and the band take the palette's `Scrim` hue with their own alpha, as
+                // the desktop's shadows do — a plain black on a warm or tinted palette is a hole.
+                let scrim = draw.parts.theme.color(ColorRole::Scrim);
                 if params.dim > 0.0 {
-                    backdrop.rect_filled(
-                        content,
-                        0.0,
-                        Color32::from_black_alpha(alpha_u8(params.dim)),
-                    );
+                    backdrop.rect_filled(content, 0.0, scrim_alpha(scrim, params.dim));
                 }
             }
             if params.shadow > 0.0 {
-                paint_shadow_band(ctx, layer, content, params.shadow, clip);
+                let scrim = draw.parts.theme.color(ColorRole::Scrim);
+                paint_shadow_band(ctx, layer, content, params.shadow, scrim, clip);
             }
         });
 }
@@ -3890,6 +3892,7 @@ fn paint_shadow_band(
     layer: egui::LayerId,
     content: Rect,
     strength: f32,
+    scrim: Color32,
     clip: Rect,
 ) {
     let band = Rect::from_min_max(
@@ -3904,13 +3907,14 @@ fn paint_shadow_band(
             egui::pos2(x0, band.min.y),
             egui::pos2(x0 + SHADOW_STEP_PX, band.max.y),
         );
-        painter.rect_filled(
-            rect,
-            0.0,
-            Color32::from_black_alpha(alpha_u8(alpha * strength)),
-        );
+        painter.rect_filled(rect, 0.0, scrim_alpha(scrim, alpha * strength));
         x0 += SHADOW_STEP_PX;
     }
+}
+
+/// The scrim's hue at `alpha` (0..=1) — the palette's shade, not a black.
+fn scrim_alpha(scrim: Color32, alpha: f32) -> Color32 {
+    Color32::from_rgba_unmultiplied(scrim.r(), scrim.g(), scrim.b(), alpha_u8(alpha))
 }
 
 #[cfg(test)]

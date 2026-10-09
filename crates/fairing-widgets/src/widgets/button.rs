@@ -45,12 +45,10 @@ use egui::{Color32, CornerRadius, Rect, Response, Sense, Stroke, StrokeKind, Vec
 use std::sync::Arc;
 use std::time::Duration;
 
-// Every length here is `theme.metrics` or `theme.control` (vocabulary). The two times below
-// are not lengths: they belong to `[motion]`'s family and stay in the file that uses them.
-/// The completion pop's length (A7).
-const POP_MS: u64 = 120;
-/// The cancel reverse's length (A7).
-const CANCEL_MS: u64 = 80;
+// Every length here is `theme.metrics` or `theme.control`, and every time is `theme.motion`:
+// the long press's completion pop runs on the `press` tween and the cancel reverse on
+// `press_release`, so both follow `[motion.press]` and go instant under `reduce`. They were
+// literals once (120 ms and 80 ms) and kept animating with reduce on.
 /// Long-press ring state: released.
 const RING_IDLE: u8 = 0;
 /// Long-press ring state: being held (not yet 100 %).
@@ -576,7 +574,7 @@ fn hold(ui: &egui::Ui, cx: &mut Cx<'_>, id: egui::Id, pressed: bool, duration: D
             easing: Easing::Linear,
         }
     } else {
-        Tween::cubic_out(Duration::from_millis(CANCEL_MS))
+        cx.theme.motion.press_release
     };
     let progress = cx.animate(ring_id, if pressed { 1.0 } else { 0.0 }, tween);
     let full = progress >= 1.0 - 1e-4;
@@ -597,10 +595,7 @@ fn hold(ui: &egui::Ui, cx: &mut Cx<'_>, id: egui::Id, pressed: bool, duration: D
             id.with("ring.pop"),
             if done { 1.0 } else { 0.0 },
             if done {
-                Tween {
-                    duration: Duration::from_millis(POP_MS),
-                    easing: Easing::Linear,
-                }
+                cx.theme.motion.press
             } else {
                 Tween::instant()
             },

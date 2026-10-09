@@ -22,11 +22,10 @@ pub(crate) const FALLBACK_SCALE: f32 = 0.96;
 /// The placeholder card's starting corner radius (px, A2 "12 → 0").
 pub(crate) const CARD_RADIUS: f32 = 12.0;
 
-/// The icon size at the centre of the card — the start (px, A2 "48 → 96").
-pub(crate) const CARD_ICON_FROM: f32 = 48.0;
-
-/// The icon size at the centre of the card — the end (px).
-pub(crate) const CARD_ICON_TO: f32 = 96.0;
+/// How much the icon at the centre of the card grows by the end — A2's "48 → 96" as a ratio of
+/// the desktop icon it zooms from (`metrics.icon_size`), so an icon of any size starts the
+/// animation at its own size rather than jumping to 48 px on the first frame.
+pub(crate) const CARD_ICON_GROW: f32 = 2.0;
 
 /// The width of the shadow band down the A3 incoming layer's left edge (px, A3 "an 8 px shadow band").
 pub(crate) const SHADOW_BAND_PX: f32 = 8.0;
@@ -182,8 +181,9 @@ pub(crate) struct A2Mapping {
     pub(crate) card_rect: Rect,
     /// The card's corner radius.
     pub(crate) card_radius: f32,
-    /// The icon size at the centre of the card (px).
-    pub(crate) icon_size: f32,
+    /// The icon at the centre of the card, as a multiple of the desktop icon's size: `1` at the
+    /// icon's own size, [`CARD_ICON_GROW`] at the end of the opening.
+    pub(crate) icon_grow: f32,
     /// The card icon's opacity.
     pub(crate) icon_opacity: f32,
     /// The real screen's opacity (0 = not drawn while `t < 0.5`).
@@ -213,7 +213,7 @@ fn window(t: f32, from: f32, to: f32) -> f32 {
 /// `lerp(icon, pane, CubicOut(0.5))`). The windows are reckoned on the raw `t`. A3's [`a3_push`] /
 /// [`a3_pop`] take the opposite — an **eased** value. Do not mix the two conventions.
 ///
-/// The card: Rect `lerp(icon, pane, s)`, corners `12 → 0`, the icon `48 → 96 px` (all at
+/// The card: Rect `lerp(icon, pane, s)`, corners `12 → 0`, the icon `1× → 2×` its size (all at
 /// `s = ease(t)`), with the icon fading out over `t ∈ [0.5, 0.8]`. The real screen runs from
 /// `t ≥ 0.5` at `(t − 0.5) / 0.5`. The card's colour (the declaration's `background`, or surface)
 /// and the drawing are `Workspace`'s. With no icon Rect it is `a2_fallback_open` instead of this
@@ -231,7 +231,7 @@ pub(crate) fn a2_open(
         desktop_opacity: 1.0 - window(t, 0.0, 0.6),
         card_rect: icon_rect.lerp_towards(&pane_rect, s),
         card_radius: CARD_RADIUS * (1.0 - s),
-        icon_size: CARD_ICON_FROM + (CARD_ICON_TO - CARD_ICON_FROM) * s,
+        icon_grow: 1.0 + (CARD_ICON_GROW - 1.0) * s,
         icon_opacity: 1.0 - window(t, 0.5, 0.8),
         screen_opacity: window(t, 0.5, 1.0),
     }
@@ -239,7 +239,7 @@ pub(crate) fn a2_open(
 
 /// The closing mapping (A2, "the render mapping (closing)"). The argument convention is
 /// [`a2_open`]'s (a raw `t`). Symmetric with opening: the screen `1 → 0` (`t ∈ [0, 0.4]`), the card
-/// `pane → icon`, the corners `0 → 12`, the icon `96 → 48` fading in over `t ∈ [0.5, 0.8]`, and the
+/// `pane → icon`, the corners `0 → 12`, the icon `2× → 1×` fading in over `t ∈ [0.5, 0.8]`, and the
 /// desktop scaling `0.92 → 1` with its opacity over `t ∈ [0.3, 1]`. With no icon Rect,
 /// [`a2_fallback_close`].
 #[must_use]
@@ -255,7 +255,7 @@ pub(crate) fn a2_close(
         desktop_opacity: window(t, 0.3, 1.0),
         card_rect: pane_rect.lerp_towards(&icon_rect, s),
         card_radius: CARD_RADIUS * s,
-        icon_size: CARD_ICON_TO - (CARD_ICON_TO - CARD_ICON_FROM) * s,
+        icon_grow: CARD_ICON_GROW - (CARD_ICON_GROW - 1.0) * s,
         icon_opacity: window(t, 0.5, 0.8),
         screen_opacity: 1.0 - window(t, 0.0, 0.4),
     }
@@ -552,8 +552,8 @@ pub(crate) fn clear_top_alpha(t: f32, tokens: &MotionTokens) -> f32 {
 mod tests {
     use super::{
         a2_close, a2_fallback_close, a2_fallback_open, a2_open, a3_pop, a3_push, home_tween,
-        A3Mapping, HomeTransition, StackTransition, CARD_ICON_FROM, CARD_ICON_TO, CARD_RADIUS,
-        FALLBACK_MS, FALLBACK_SCALE,
+        A3Mapping, HomeTransition, StackTransition, CARD_ICON_GROW, CARD_RADIUS, FALLBACK_MS,
+        FALLBACK_SCALE,
     };
     use crate::motion::{Easing, Tween};
     use crate::theme::MotionTokens;
@@ -589,10 +589,7 @@ mod tests {
             "t = 0.5 is still before the screen"
         );
         assert!(close(m.card_radius, CARD_RADIUS * (1.0 - s)));
-        assert!(close(
-            m.icon_size,
-            CARD_ICON_FROM + (CARD_ICON_TO - CARD_ICON_FROM) * s
-        ));
+        assert!(close(m.icon_grow, 1.0 + (CARD_ICON_GROW - 1.0) * s));
         assert!(close(
             m.desktop_scale,
             1.0 + (tokens.desktop_scale - 1.0) * s
@@ -636,7 +633,7 @@ mod tests {
         assert!(close(at(1.0).screen_opacity, 1.0));
         let end = at(1.0);
         assert!(close(end.card_rect.min.x, pane().min.x) && close(end.card_radius, 0.0));
-        assert!(close(end.icon_size, CARD_ICON_TO));
+        assert!(close(end.icon_grow, CARD_ICON_GROW));
     }
 
     /// Closing is symmetric with opening: at the end the card == the icon, the desktop scale 1, the screen 0.
@@ -648,7 +645,7 @@ mod tests {
         assert!(close(start.desktop_scale, tokens.desktop_scale));
         assert!(close(start.desktop_opacity, 0.0));
         assert!(close(start.card_rect.width(), pane().width()));
-        assert!(close(start.icon_size, CARD_ICON_TO));
+        assert!(close(start.icon_grow, CARD_ICON_GROW));
         let mid = a2_close(0.2, icon(), pane(), &tokens);
         assert!(
             close(mid.screen_opacity, 0.5),
@@ -660,7 +657,7 @@ mod tests {
         assert!(
             close(end.card_rect.min.x, icon().min.x) && close(end.card_rect.max.y, icon().max.y)
         );
-        assert!(close(end.card_radius, CARD_RADIUS) && close(end.icon_size, CARD_ICON_FROM));
+        assert!(close(end.card_radius, CARD_RADIUS) && close(end.icon_grow, 1.0));
         assert!(close(end.icon_opacity, 1.0));
     }
 

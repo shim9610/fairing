@@ -1573,7 +1573,8 @@ fn licences(ui: &mut Ui, cx: &mut Cx<'_>) {
     const NOTICES: &str = include_str!("../../THIRD_PARTY.md");
     let s = cx.strings;
     let m = &cx.theme.metrics;
-    let (inset, size) = (m.screen_inset, m.row_height * 0.23);
+    // Small type from the scale: a share of the row is not a type size.
+    let (inset, size) = (m.screen_inset, m.type_scale.small);
     let color = cx.theme.color(ColorRole::Muted);
     let mut lines = 0usize;
     ui.add_space(m.row_height * 0.2);

@@ -501,10 +501,8 @@ fn paint_end(
         .icon
         .min(d * std::f32::consts::FRAC_1_SQRT_2);
     let at = Rect::from_center_size(cell.center(), Vec2::splat(glyph));
-    let style = IconStyle {
-        color: IconColor::Fixed(ink.glyph.gamma_multiply(alpha)),
-        ..IconStyle::default()
-    };
+    // Sized to the glyph, so the stroke follows it rather than `default()`'s 24.
+    let style = IconStyle::sized(glyph).color(IconColor::Fixed(ink.glyph.gamma_multiply(alpha)));
     cx.icons.paint(ui.painter(), at, icon, &style, cx.theme);
 }
 

@@ -22,6 +22,17 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
 - The built-in settings screens group their rows in filled cards. A title with no actions is as
   tall as its words, a section heading as tall as its text, an explanation wraps at about seventy
   characters, and the wide settings screen's two titles sit on one line.
+- Numbers that belonged to a token: the status card's title and detail are set in the type
+  scale's `body` and `small` (they were 0.34 and 0.23 of the row, so a gloved row made them half
+  as big again), the licences list likewise; the open/close card's icon grows from the desktop
+  icon's own `metrics.icon_size` to twice it (it started at a fixed 48 px); the long-press
+  ring's pop and cancel run on `[motion.press]`'s tweens in `Button` and `IconButton` alike,
+  and the status icons' crossfade on `motion.crossfade`, so all three follow `motion.reduce`
+  and the config; the dim under a pane and the push shadow band take the palette's `Scrim`
+  hue; an icon drawn by a widget is styled at the size it is drawn (`IconStyle::default()` is
+  24, and a feature card's art was getting a list icon's stroke). The kiosk example picks its
+  layout from the panel's size in millimetres, as its own heading says, not from the pixel
+  width.
 - A `Filled` card contrasts with the panel it is on: `SurfaceVariant` on a screen, `Surface`
   on a panel that is already `SurfaceVariant` — the page inside a `layout::Rail`'s elbow, which
   sets its page `Ui`'s `panel_fill` for the purpose. A card there used to be the page's own

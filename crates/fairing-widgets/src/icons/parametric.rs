@@ -11,7 +11,8 @@
 //!
 //! "When the Wi-Fi strength or the battery step changes, crossfade the previous and next icons
 //! over 120 ms" is done by **the caller**. These functions remember no state, so the shell
-//! animates a progress `u ∈ [0, 1]` over [`CROSSFADE`] and draws twice into the same `rect`:
+//! animates a progress `u ∈ [0, 1]` over the theme's `motion.crossfade` and draws twice into the
+//! same `rect`:
 //!
 //! ```no_run
 //! # use fairing_widgets::icons::parametric::{self, ParamStyle};
@@ -39,10 +40,6 @@
 use egui::epaint::{PathShape, PathStroke};
 use egui::{Color32, Painter, Pos2, Rect, Shape, Stroke, StrokeKind, Vec2};
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4, TAU};
-use std::time::Duration;
-
-/// How long the previous and next icons are drawn over each other on a state change (A7, "parametric status icons").
-pub const CROSSFADE: Duration = Duration::from_millis(120);
 
 /// The Bluetooth state (`bluetooth(state)`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

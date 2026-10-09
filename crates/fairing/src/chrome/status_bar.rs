@@ -498,9 +498,21 @@ pub(super) struct StatusFades {
     pub unread: u32,
 }
 
+impl StatusFades {
+    /// Give every fade the theme's crossfade — called each frame before a state is set, since
+    /// the fades are made from the config before the theme is, and the token can change with it.
+    fn follow(&mut self, crossfade: std::time::Duration) {
+        self.wifi.set_duration(crossfade);
+        self.battery.set_duration(crossfade);
+        self.bluetooth.set_duration(crossfade);
+        self.volume.set_duration(crossfade);
+    }
+}
+
 impl Default for StatusFades {
     fn default() -> Self {
-        let d = parametric::CROSSFADE;
+        // A placeholder until `follow` runs with the theme's `motion.crossfade`.
+        let d = std::time::Duration::ZERO;
         Self {
             wifi: ParamFade::new((0, true), d),
             battery: ParamFade::new((0, false), d),
@@ -1629,6 +1641,7 @@ fn draw_builtin(
     let pstyle = style.param_style(theme);
     let icon_rect = Rect::from_center_size(rect.center(), egui::vec2(rect.width(), style.size));
     let now = parts.now;
+    fades.follow(theme.motion.crossfade.duration);
     match spec.item {
         StatusItem::Wifi => {
             // A narrow accessor rather than cloning the snapshot (a heap allocation) — zero heap allocation on the render path.

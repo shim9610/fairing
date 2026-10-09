@@ -298,10 +298,10 @@ impl<'a> FeatureCard<'a> {
             );
         }
         if let Some((art, at)) = art {
-            let style = crate::icons::IconStyle {
-                color: crate::icons::IconColor::Role(ColorRole::Primary),
-                ..crate::icons::IconStyle::default()
-            };
+            // Sized to the art's square: a card's art is several times a list icon, and a
+            // `default()` style would draw it with a list icon's stroke.
+            let style = crate::icons::IconStyle::sized(at.width().min(at.height()))
+                .color(crate::icons::IconColor::Role(ColorRole::Primary));
             cx.icons.paint(ui.painter(), at, art, &style, theme);
         }
         ui.painter().text(
