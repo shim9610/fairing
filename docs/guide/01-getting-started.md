@@ -341,7 +341,7 @@ None of them needs real hardware: `hello` runs on the null backends, the rest on
 | `kiosk` | `cargo run -p fairing --features runner-x11,mock --example kiosk -- --size=1080x2560 --panel-mm=380x900` | A production-shaped café ordering flow, laid out and styled almost entirely by the crate — what it still draws itself is listed in its header. `--layout=portrait\|counter\|compact` puts the same code on three devices, and a switch on its attract screen changes the language of every screen at run time (`--lang=ko` starts it in Korean) |
 | `custom_chrome` | `cargo run -p fairing --features runner-x11 --example custom_chrome -- --size=1024x600` | Replacing the chrome without touching the crate: a `Theme` built in code, a hand-drawn status bar, circular desktop badges, a procedural wallpaper, no nav bar, a gauges tile the crate draws from a declaration, and a jog-pad tile it knows nothing about |
 | `motion_lab` | `cargo run -p fairing --features runner-x11 --example motion_lab -- --size=1024x600` | Every `[motion]` token on a slider, replaying the shade, page swipes, push/pop and icon zoom. A frame-time graph sits top right (p50, p95, a 33 ms rule) and the tuned values export as TOML |
-| `palette_sheet` | `cargo run -p fairing --release --features runner-x11,mock --example palette_sheet -- --tour out/ --size=1440x5800 --panel-mm=305x381` | One frame with every control on it, for comparing palettes (`--preset=base\|abyss\|linen`, `--theme=dark\|light`) |
+| `palette_sheet` | `cargo run -p fairing --release --features runner-x11,mock --example palette_sheet -- --tour out/ --panel-mm=305x381` | One frame with every control on it, for comparing palettes (`--preset=base\|abyss\|linen`, `--theme=dark\|light`) |
 
 Drop `--size` and they open fullscreen; `hello` sets its window in code. Every example but
 `hello` needs `mock`, and `hello` needs `settings`; `custom_chrome` also needs `overlay`, and
@@ -368,8 +368,10 @@ Mid-transition shots read the progress every frame and fire on the closest one, 
 that was last seen — `Act::Tap(Spot::Text("Alerts"))` finds the label on the glass this frame,
 so a row that moves with the type scale or the finger is still the row pressed; a gesture starts
 at an edge (`Spot::Edge(Side::Top, 0.5)`) or at a share of the content area (`Spot::Page(0.5,
-0.8)`), and a drag is a distance (`Act::MoveBy`). There is no way to write a window coordinate:
-that vocabulary is what let a tap go stale when the rows changed height. A script also says what
+0.8)`), and a drag goes to a spot (`Act::DragTo`), never a distance in pixels. There is no way to
+write a window coordinate: that vocabulary is what let a tap go stale when the rows changed
+height. A wait for a span of time is on the clock (`Act::WaitMs`), not a frame count. A script
+also says what
 it expects to be looking at before each picture: `Act::Expect(Expect::Text("Lamp hours"))`,
 `Expect::Screen("settings.wifi")`, `Expect::ShadeOpen`, `Expect::OskUp`; `Act::Until(.., frames)`
 is the same with patience, for what arrives after an animation the shell does not own. A step

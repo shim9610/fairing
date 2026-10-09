@@ -148,15 +148,22 @@ const GRID_ITEMS: [&str; 12] = [
     "Twelve",
 ];
 
+/// A point `fx` across and `fy` down the harness's screen — the scenarios are written as shares
+/// of the glass, so a different `--size` drives the same gestures.
+fn at(h: &Harness, fx: f32, fy: f32) -> egui::Pos2 {
+    let r = h.screen_rect();
+    r.min + egui::vec2(fx * r.width(), fy * r.height())
+}
+
 /// The `layout` screen: idle plus a touch drag scroll.
 fn run_layout(harness: &mut Harness) {
     harness.shell.handle().launch(LaunchAction::open("layout"));
     harness.frames(20);
     measure("layout screen idle", harness, 60, |_, _| {});
     measure("layout drag scroll", harness, 60, |h, i| match i {
-        0 => h.press(egui::pos2(512.0, 500.0)),
-        59 => h.release(egui::pos2(512.0, 28.0)),
-        _ => h.move_to(egui::pos2(512.0, 500.0 - 8.0 * i as f32)),
+        0 => h.press(at(h, 0.5, 0.83)),
+        59 => h.release(at(h, 0.5, 0.05)),
+        _ => h.move_to(at(h, 0.5, 0.83 - 0.013 * i as f32)),
     });
     harness.shell.handle().home();
     harness.frames(20);
@@ -185,9 +192,9 @@ fn run_settings(harness: &mut Harness) {
         .launch(LaunchAction::open("settings.about"));
     harness.frames(20);
     measure("settings.about drag scroll", harness, 60, |h, i| match i {
-        0 => h.press(egui::pos2(700.0, 500.0)),
-        59 => h.release(egui::pos2(700.0, 28.0)),
-        _ => h.move_to(egui::pos2(700.0, 500.0 - 8.0 * i as f32)),
+        0 => h.press(at(h, 0.68, 0.83)),
+        59 => h.release(at(h, 0.68, 0.05)),
+        _ => h.move_to(at(h, 0.68, 0.83 - 0.013 * i as f32)),
     });
     harness.shell.handle().home();
     harness.frames(30);
@@ -206,24 +213,24 @@ fn run_m2(harness: &mut Harness) {
         harness,
         200,
         |h, i| match i {
-            0 => h.press(egui::pos2(10.0, 8.0)),
-            1..=99 => h.move_to(egui::pos2(10.0, 8.0 + 4.0 * i as f32)),
-            100 => h.release(egui::pos2(10.0, 408.0)),
-            130 => h.press(egui::pos2(10.0, 400.0)),
-            131..=169 => h.move_to(egui::pos2(10.0, 400.0 - 10.0 * (i - 130) as f32)),
-            170 => h.release(egui::pos2(10.0, 8.0)),
+            0 => h.press(at(h, 0.01, 0.013)),
+            1..=99 => h.move_to(at(h, 0.01, 0.013 + 0.0067 * i as f32)),
+            100 => h.release(at(h, 0.01, 0.68)),
+            130 => h.press(at(h, 0.01, 0.67)),
+            131..=169 => h.move_to(at(h, 0.01, 0.67 - 0.0167 * (i - 130) as f32)),
+            170 => h.release(at(h, 0.01, 0.013)),
             _ => {}
         },
     );
     harness.frames(30);
     // M2: the page swipe (A4) — a horizontal fling over the grid, there and back.
     measure("page swipe (A4)", harness, 120, |h, i| match i % 60 {
-        0 => h.press(egui::pos2(700.0, 300.0)),
-        1..=10 => h.move_to(egui::pos2(700.0 - 30.0 * (i % 60) as f32, 300.0)),
-        11 => h.release(egui::pos2(400.0, 300.0)),
-        30 => h.press(egui::pos2(300.0, 300.0)),
-        31..=40 => h.move_to(egui::pos2(300.0 + 30.0 * (i % 60 - 30) as f32, 300.0)),
-        41 => h.release(egui::pos2(600.0, 300.0)),
+        0 => h.press(at(h, 0.68, 0.5)),
+        1..=10 => h.move_to(at(h, 0.68 - 0.03 * (i % 60) as f32, 0.5)),
+        11 => h.release(at(h, 0.39, 0.5)),
+        30 => h.press(at(h, 0.29, 0.5)),
+        31..=40 => h.move_to(at(h, 0.29 + 0.03 * (i % 60 - 30) as f32, 0.5)),
+        41 => h.release(at(h, 0.59, 0.5)),
         _ => {}
     });
     harness.frames(30);

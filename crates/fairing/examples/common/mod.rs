@@ -332,8 +332,13 @@ pub fn arg_tour(args: &[String]) -> Option<PathBuf> {
 pub enum Act {
     /// Until the animations and transitions finish (capped at [`SETTLE_MAX`] frames).
     Settle,
-    /// Wait N frames.
+    /// Wait N frames — for the frames a shot or a check needs after a change, never for a
+    /// span of time (a frame is 1/60 s only under `--record`; [`Act::WaitMs`] is the time).
     Wait(u32),
+    /// Wait this long **on the input clock** (`RawInput::time`: the wall clock, or the fixed
+    /// 60 Hz clock under `--record`) — for a long press to complete, a toast to time out, a
+    /// pause to register. A frame count stood in for these and a fast rasteriser ran it short.
+    WaitMs(u32),
     /// Capture this frame.
     Shot(&'static str),
     /// Keep the frame where the A2 (home ↔ task) transition's **raw `t`** is closest to the target.
@@ -357,23 +362,25 @@ pub enum Act {
     Back,
     /// Home (an A2 close).
     Home,
-    /// A synthetic finger down on a [`Spot`], held — for a drag ([`Act::MoveBy`]) or a long press
+    /// A synthetic finger down on a [`Spot`], held — for a drag ([`Act::DragTo`]) or a long press
     /// ([`Act::Wait`], then [`Act::Release`]). It rides the next pass's `RawInput`
     /// ([`SyntheticInput`]). A spot that cannot be found fails the tour and moves on.
     Press(Spot),
-    /// Move the held finger by `(dx, dy)` from where the move starts, in a straight line over
+    /// Drag the held finger to a [`Spot`], found when the drag starts, in a straight line over
     /// `frames` frames (at 60 Hz, `step ≈ distance / frames` px per frame → the release
     /// velocity). A **mid-transition frame** of a shade pull, a page swipe or the back gesture
-    /// puts an [`Act::Shot`] after this. A distance, never a place: the place was the
-    /// [`Act::Press`]'s to find.
-    MoveBy {
-        /// How far across.
-        dx: f32,
-        /// How far down.
-        dy: f32,
+    /// puts an [`Act::Shot`] after this. A place, never a distance: a pull "to the middle of the
+    /// content" is `Spot::Page(0.5, 0.5)` at any window size, where the 255 px it used to be was
+    /// right for one. A spot that cannot be found fails the tour and moves on.
+    DragTo {
+        /// Where the finger ends.
+        to: Spot,
         /// How many frames it takes.
         frames: u32,
     },
+    /// Keep the held finger where it is for `frames` frames, sending it as a move each frame —
+    /// so a release after it carries no speed and is not a fling.
+    Hold(u32),
     /// Release (a `PointerButton` release plus `PointerGone`).
     Release,
     /// A tap on a [`Spot`]: the press, a frame held, the release. A spot that cannot be found
@@ -444,7 +451,7 @@ pub enum Act {
 /// vocabulary has no way to write one: a thing with a label is found by its label this frame
 /// ([`Spot::Text`], [`Spot::Near`]), a gesture starts at an edge of the glass ([`Spot::Edge`]) or
 /// at a share of the content area ([`Spot::Page`]), and every drag is a distance
-/// ([`Act::MoveBy`]). What cannot be found fails the tour.
+/// ([`Act::DragTo`]), never a distance. What cannot be found fails the tour.
 #[derive(Debug, Clone, Copy)]
 pub enum Spot {
     /// The centre of the one text on the glass reading this. The label is matched whole against
@@ -460,6 +467,9 @@ pub enum Spot {
     Page(f32, f32),
     /// Just inside an edge of the glass, `t` of the way along it — where the edge gestures begin.
     Edge(Side, f32),
+    /// `fx` of the way across the content area, at the height the finger already is — for a
+    /// horizontal drag that must not change its line: a row pushed aside, a divider moved.
+    Across(f32),
 }
 
 /// An edge of the glass, for [`Spot::Edge`].
@@ -801,6 +811,10 @@ struct Tour<S> {
     finger: Pos2,
     /// The starting point of the [`Act::MoveTo`] in progress.
     move_from: Option<Pos2>,
+    /// Where an [`Act::DragTo`] is going, found on its first frame.
+    drag_to: Option<Pos2>,
+    /// When an [`Act::WaitMs`] began, on the input clock.
+    wait_from: Option<f64>,
     written: u32,
     /// Whether any step could not do what the script asked. Shared with [`run_tour`], which
     /// turns it into a non-zero exit once the window has closed.
@@ -882,6 +896,8 @@ pub fn run_tour<S: std::any::Any>(
         saw: false,
         finger: Pos2::ZERO,
         move_from: None,
+        drag_to: None,
+        wait_from: None,
         written: 0,
         failed: Rc::clone(&failed),
         done: false,
@@ -1135,6 +1151,8 @@ impl<S: std::any::Any> Tour<S> {
         self.saw = false;
         self.mid = None;
         self.move_from = None;
+        self.drag_to = None;
+        self.wait_from = None;
     }
 
     fn request_shot(&mut self, ctx: &egui::Context) {
@@ -1187,7 +1205,24 @@ impl<S: std::any::Any> Tour<S> {
             Act::Back => self.with_shell(fairing::Shell::back),
             Act::Home => self.with_shell(fairing::Shell::home),
             Act::Press(spot) => self.press_step(ctx, spot),
-            Act::MoveBy { dx, dy, frames } => self.move_by_step(ctx, egui::vec2(dx, dy), frames),
+            Act::DragTo { to, frames } => self.drag_to_step(ctx, to, frames),
+            Act::Hold(frames) => {
+                SyntheticInput::move_to(ctx, self.finger);
+                if self.frames < frames {
+                    return Flow::Wait;
+                }
+                self.next_step();
+                Flow::Next
+            }
+            Act::WaitMs(ms) => {
+                let now = ctx.input(|i| i.time);
+                let since = *self.wait_from.get_or_insert(now);
+                if now - since < f64::from(ms) / 1000.0 {
+                    return Flow::Wait;
+                }
+                self.next_step();
+                Flow::Next
+            }
             Act::Release => {
                 SyntheticInput::release(ctx, self.finger);
                 self.next_step();
@@ -1249,6 +1284,18 @@ impl<S: std::any::Any> Tour<S> {
                     .ok_or_else(|| "the shell has laid out no content area yet".to_owned())?;
                 Ok(content.min + egui::vec2(fx * content.width(), fy * content.height()))
             }
+            Spot::Across(fx) => {
+                let content = self
+                    .shell
+                    .as_ref()
+                    .map(|s| s.layout().content)
+                    .filter(egui::Rect::is_positive)
+                    .ok_or_else(|| "the shell has laid out no content area yet".to_owned())?;
+                Ok(egui::pos2(
+                    content.min.x + fx * content.width(),
+                    self.finger.y,
+                ))
+            }
             Spot::Edge(side, t) => {
                 let r = ctx.content_rect();
                 Ok(match side {
@@ -1302,10 +1349,24 @@ impl<S: std::any::Any> Tour<S> {
         }
     }
 
-    /// [`Act::MoveBy`]: the move's target reckoned from where it starts.
-    fn move_by_step(&mut self, ctx: &egui::Context, by: egui::Vec2, frames: u32) -> Flow {
-        let from = *self.move_from.get_or_insert(self.finger);
-        self.move_step(ctx, from + by, frames)
+    /// [`Act::DragTo`]: the target found on the drag's first frame and kept — a spot found by
+    /// its label would move as the drag moves it.
+    fn drag_to_step(&mut self, ctx: &egui::Context, to: Spot, frames: u32) -> Flow {
+        let target = match self.drag_to {
+            Some(target) => target,
+            None => match self.locate(ctx, to) {
+                Ok(target) => {
+                    self.drag_to = Some(target);
+                    target
+                }
+                Err(why) => {
+                    self.fail(&format!("Act::DragTo({to:?}) - {why}"));
+                    self.next_step();
+                    return Flow::Next;
+                }
+            },
+        };
+        self.move_step(ctx, target, frames)
     }
 
     /// [`Act::Expect`]: one look at the frame.
@@ -1506,7 +1567,7 @@ impl<S: std::any::Any> Tour<S> {
         Flow::Wait
     }
 
-    /// [`Act::MoveBy`]: move to the next point along the line each frame. On the frame it reaches
+    /// [`Act::DragTo`]: move to the next point along the line each frame. On the frame it reaches
     /// the last point, on to the next step (that event applies on the next pass).
     #[allow(clippy::cast_precision_loss)] // A frame count is a small integer.
     fn move_step(&mut self, ctx: &egui::Context, to: Pos2, frames: u32) -> Flow {

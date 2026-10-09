@@ -38,8 +38,9 @@ use fairing::runner::{self, Options};
 use fairing::services::mock::{MockClock, MockPower, MockWifi, WifiMsg};
 use fairing::services::{Services, WallTime, WifiState};
 use fairing::settings::SettingValue;
-use fairing::theme::{Metrics, Palette};
+use fairing::theme::{MetricsSpec, Palette};
 use fairing::time::ClockFormat;
+use fairing::unit::{Dim, Span};
 use fairing::{icon, screen, BarCx, ColorRole, Cx, SlotCx, Theme, Wallpaper};
 
 /// The default window size.
@@ -57,9 +58,8 @@ const PLAN: &[Act] = &[
     Act::Shot("01-custom.png"),
     // Pull the shade down — `tile.hopper` sits between two built-in tiles.
     Act::Press(Spot::Edge(Side::Top, 0.01)),
-    Act::MoveBy {
-        dx: 0.0,
-        dy: 292.0,
+    Act::DragTo {
+        to: Spot::Page(0.01, 0.45),
         frames: 10,
     },
     Act::Release,
@@ -117,16 +117,22 @@ fn theme() -> Theme {
         primary: Color32::from_rgb(0x2f, 0xe0, 0x9b),
         ..Palette::dark()
     };
-    theme.metrics = Metrics {
-        // Thicker chrome: a device screen is pressed with a gloved hand.
-        status_bar_height: 44.0,
-        icon_cell: 132.0,
-        icon_size: 56.0,
-        screen_inset: 20.0,
-        corner_radius: 18.0,
-        ..Metrics::default()
-    };
     theme
+}
+
+/// The chrome's sizes, **in the hand's units**: a bar three quarters of a finger, icons a finger
+/// across in cells of two and a third, a screen inset of three millimetres. Resolved against the
+/// panel's density and the finger policy by the shell, so a gloved finger or a denser panel
+/// gets the same chrome at the same physical size — where a block of `Metrics` literals (44,
+/// 132, 56, 20 du) gave one panel's sizes to every panel.
+fn metrics() -> MetricsSpec {
+    MetricsSpec {
+        status_bar_height: Span::fixed(Dim::finger(0.75)).reanchored(),
+        icon_cell: Span::fixed(Dim::finger(2.3)).reanchored(),
+        icon_size: Span::fixed(Dim::finger(1.0)).reanchored(),
+        screen_inset: Span::fixed(Dim::mm(3.2)).reanchored(),
+        ..MetricsSpec::default()
+    }
 }
 
 /// A config literal — settled in code, with no file. No dock, no nav bar.
@@ -191,6 +197,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
     let wallpaper = grid_wallpaper(&theme);
     let mut shell = fairing::Shell::builder(config())
         .theme(theme)
+        .metrics_spec(metrics())
         .services(services())
         .status_bar_painter(status_bar_painter())
         .slot_painter(slot_painter)

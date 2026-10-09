@@ -186,34 +186,31 @@ const TOUR: &[Act] = &[
     Act::Settle,
     Act::Shot("01-overview.png"),
     // Something for the notifications card to hold. It arrives as a heads-up, and the tour waits
-    // the banner out (4.4 s) so the pull below lands on the shade, not on the banner.
+    // the banner out (4.4 s, on the clock) so the pull below lands on the shade, not on the banner.
     Act::Notify(
         Level::Warning,
         "Chamber door open",
         "Close it to resume the run",
     ),
-    Act::Wait(300),
+    Act::WaitMs(4600),
     Act::Settle,
+    Act::Expect(Expect::NoText("Chamber door open")),
     // The README's animation is this stretch (`--record`): each half of the split shade pulled
     // open as a card on frosted glass, and put away again.
     Act::Record("console-shade"),
     Act::Wait(20),
     // The shade is split and each half is a card, so there is no tiles stop to
-    // land on: a card let go short of the snap ratio (a third of its height, about 250 px here)
-    // sinks back shut. Each pull runs well past it and is held still before the release, because
-    // a release still carrying speed is a fling. The notifications first, from the left.
+    // land on: a card let go short of the snap ratio (a third of its height) sinks back shut.
+    // Each pull runs well past it, to three quarters of the content, and is held still before
+    // the release, because a release still carrying speed is a fling. The notifications first,
+    // from the left.
     Act::Press(Spot::Edge(Side::Top, 0.23)),
     Act::Wait(2),
-    Act::MoveBy {
-        dx: 0.0,
-        dy: 630.0,
+    Act::DragTo {
+        to: Spot::Page(0.23, 0.77),
         frames: 14,
     },
-    Act::MoveBy {
-        dx: 0.0,
-        dy: 0.0,
-        frames: 8,
-    },
+    Act::Hold(8),
     Act::Release,
     Act::Settle,
     Act::Wait(20),
@@ -228,16 +225,11 @@ const TOUR: &[Act] = &[
     Act::Expect(Expect::ShadeClosed),
     Act::Press(Spot::Edge(Side::Top, 0.75)),
     Act::Wait(2),
-    Act::MoveBy {
-        dx: 0.0,
-        dy: 630.0,
+    Act::DragTo {
+        to: Spot::Page(0.75, 0.77),
         frames: 14,
     },
-    Act::MoveBy {
-        dx: 0.0,
-        dy: 0.0,
-        frames: 8,
-    },
+    Act::Hold(8),
     Act::Release,
     Act::Settle,
     Act::Wait(20),
@@ -262,9 +254,8 @@ const TOUR: &[Act] = &[
     // Swipe the arm shut. The fold starts a few frames into the drag, so the frame at the end of
     // the move is the middle of it: the words gone, the icons on their way, the bar half melted.
     Act::Press(Spot::Page(0.09, 0.68)),
-    Act::MoveBy {
-        dx: -96.0,
-        dy: 0.0,
+    Act::DragTo {
+        to: Spot::Across(0.015),
         frames: 10,
     },
     Act::Shot("05a-rail-folding.png"),
@@ -277,9 +268,8 @@ const TOUR: &[Act] = &[
     // Back open with a flick across the page - nowhere near the arm - then along the rail: the
     // three boards that were rows of prose until now.
     Act::Press(Spot::Page(0.5, 0.92)),
-    Act::MoveBy {
-        dx: 260.0,
-        dy: 0.0,
+    Act::DragTo {
+        to: Spot::Across(0.7),
         frames: 3,
     },
     Act::Release,

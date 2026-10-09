@@ -6,7 +6,7 @@
 # Each tour runs with `--record` (a fixed 60 Hz clock, so a software rasteriser records as smoothly
 # as a GPU; guide 01 §5) and the stretch it records is stitched by tools/make_gif.py. The tours run
 # under xvfb-run with Mesa's software rasteriser, as the committed GIFs were made: the kiosk wants a
-# 1080 x 2560 window, which no desktop screen holds, and its taps are written for that size.
+# 1080 x 2560 window, which no desktop screen holds.
 #
 # Every tour is also a check (tools/tours.sh): a step that cannot find what it names, or an
 # expectation that does not hold, exits the example non-zero and stops this script before an

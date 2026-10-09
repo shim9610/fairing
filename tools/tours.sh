@@ -2,7 +2,7 @@
 # Run the example tours as **checks**, stills only, and fail if any step of any script failed.
 #
 #   tools/tours.sh            # every tour, into target/tours/<name>/
-#   tools/tours.sh console    # one of: demo console kiosk counter compact chrome palette
+#   tools/tours.sh console    # one of: demo gesture console kiosk counter compact chrome palette
 #
 # A tour presses what its script names (`Act::Tap(Spot::Text(..))`, `Act::Pin`, …) and says what it expects to
 # see (`Act::Expect`) before each picture. A step that cannot find its target, or an expectation
@@ -19,6 +19,12 @@ command -v xvfb-run >/dev/null || { echo "tours.sh needs xvfb-run (the xvfb pack
 
 out=${TOURS_OUT:-target/tours}
 only=${1:-}
+tours="demo gesture console kiosk counter compact chrome palette"
+# A name that is not a tour runs nothing, and nothing passing is not a pass.
+if [ -n "$only" ] && ! echo " $tours " | grep -q " $only "; then
+    echo "tours.sh: no tour named '$only' (one of: $tours)" >&2
+    exit 2
+fi
 cargo build -p fairing --features runner-x11 --example demo --example console --example kiosk \
     --example custom_chrome --example palette_sheet || exit 1
 mkdir -p "$out"
@@ -47,12 +53,16 @@ tour() {
 }
 
 tour demo    demo    1280x800  --size=1024x600
+# The same demo with the gesture navigation bar: the lift, the hold, the fling home, the switch.
+tour gesture demo    1280x800  --size=1024x600 --nav=gesture
 tour console console 1280x800  --size=1280x800
 tour kiosk   kiosk   1280x2700 --size=1080x2560 --panel-mm=380x900
-tour counter kiosk   1400x1000 --size=1280x800  --panel-mm=345x215 --layout=counter
-tour compact kiosk   1400x1000 --size=480x320   --panel-mm=108x65  --layout=compact
+# The kiosk's three devices as its heading lists them; the layout follows the panel's size.
+tour counter kiosk   1400x1000 --size=1280x800  --panel-mm=217x136
+tour compact kiosk   1400x1000 --size=480x800   --panel-mm=56x94
 tour chrome  custom_chrome 1280x800 --size=1024x600
-tour palette palette_sheet 1500x5900 --size=1440x5800 --panel-mm=305x381
+# The sheet's own size (`palette_sheet::SIZE`); the virtual screen only has to hold it.
+tour palette palette_sheet 1500x5900 --panel-mm=305x381
 
 if [ "$failed" -ne 0 ]; then
     echo "some tours failed - the logs are under $out/" >&2

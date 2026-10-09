@@ -1895,15 +1895,13 @@ const GESTURE_PLAN: &[Act] = &[
     Act::Shot("36-gesture-bar.png"),
     // The demo keeps the recent screens behind `nav.recents` (maintainer): a pause asks for the
     // PIN first, the screen going back down, and the cards come up once it is in.
-    // (A pause is 150 ms of stillness, and frames under the tour come faster than 60 Hz: the
-    // waits for one are long.)
+    // (A pause is 150 ms of stillness; the wait is on the clock, not in frames.)
     Act::Press(Spot::Edge(Side::Bottom, 0.5)),
-    Act::MoveBy {
-        dx: 0.0,
-        dy: -106.0,
+    Act::DragTo {
+        to: Spot::Page(0.5, 0.91),
         frames: 8,
     },
-    Act::Wait(60),
+    Act::WaitMs(400),
     Act::Release,
     Act::Settle,
     Act::Pin("2468"),
@@ -1914,15 +1912,14 @@ const GESTURE_PLAN: &[Act] = &[
     // Up from the bottom edge: the screen follows the finger, shrinking as it rises, the point
     // pressed staying under it.
     Act::Press(Spot::Edge(Side::Bottom, 0.5)),
-    Act::MoveBy {
-        dx: 48.0,
-        dy: -106.0,
+    Act::DragTo {
+        to: Spot::Page(0.55, 0.91),
         frames: 12,
     },
     Act::Wait(1),
     Act::Shot("36a-lift.png"),
     // Held there: the overview comes up, the screen carried on into its card.
-    Act::Wait(60),
+    Act::WaitMs(400),
     Act::Shot("36b-lift-held.png"),
     Act::Release,
     Act::Settle,
@@ -1934,9 +1931,8 @@ const GESTURE_PLAN: &[Act] = &[
     // Flung up and let go: home, the screen carrying on from where the finger left it into its
     // icon.
     Act::Press(Spot::Edge(Side::Bottom, 0.5)),
-    Act::MoveBy {
-        dx: 0.0,
-        dy: -266.0,
+    Act::DragTo {
+        to: Spot::Page(0.5, 0.58),
         frames: 5,
     },
     Act::Release,
@@ -1950,9 +1946,8 @@ const GESTURE_PLAN: &[Act] = &[
     Act::Settle,
     Act::Wait(2),
     Act::Press(Spot::Edge(Side::Bottom, 0.29)),
-    Act::MoveBy {
-        dx: 420.0,
-        dy: 0.0,
+    Act::DragTo {
+        to: Spot::Edge(Side::Bottom, 0.7),
         frames: 10,
     },
     Act::Wait(1),
@@ -2021,21 +2016,19 @@ const PLAN: &[Act] = &[
     Act::Notify(Level::Success, "Backup done", "12 files, 3.2 MB"),
     Act::Notify(Level::Error, "Sensor 3 offline", "check wiring"),
     Act::Wait(30),
-    // 09 · 10: the top edge pull. H = min(the content's 512, 0.85 × 600 = 510) = 510 → y ≈ H/2 is
-    // a finger 255 px down from the edge. The render mapping being a curtain (A1), the mid frame
-    // shows the panel's **head** (the tile row plus the front of the notification list) with the
-    // handle and the scrim at the curtain's end, and the footer still outside it.
+    // 09 · 10: the top edge pull, to the middle of the content — about half the curtain's full
+    // drop. The render mapping being a curtain (A1), the mid frame shows the panel's **head**
+    // (the tile row plus the front of the notification list) with the handle and the scrim at
+    // the curtain's end, and the footer still outside it; then on to four fifths, past the snap.
     Act::Press(Spot::Edge(Side::Top, 0.01)),
-    Act::MoveBy {
-        dx: 0.0,
-        dy: 255.0,
+    Act::DragTo {
+        to: Spot::Page(0.01, 0.44),
         frames: 12,
     },
     Act::Wait(2),
     Act::Shot("09-shade-mid.png"),
-    Act::MoveBy {
-        dx: 0.0,
-        dy: 177.0,
+    Act::DragTo {
+        to: Spot::Page(0.01, 0.8),
         frames: 8,
     },
     Act::Release,
@@ -2054,18 +2047,16 @@ const PLAN: &[Act] = &[
     // The finger lands on the row, found by its title and pressed well into its body: a push
     // from the title's own place has no room to go left before the glass ends.
     Act::Press(Spot::Near("Sensor 3 offline", 350.0, 0.0)),
-    Act::MoveBy {
-        dx: -182.0,
-        dy: 0.0,
+    Act::DragTo {
+        to: Spot::Across(0.21),
         frames: 10,
     },
     Act::Wait(2),
     Act::Shot("10c-shade-swipe.png"),
     // Pushed past the confirmation line (a third of the width) — releasing here really removes it, and
     // the script goes on through the row below rising to fill the gap.
-    Act::MoveBy {
-        dx: -210.0,
-        dy: 0.0,
+    Act::DragTo {
+        to: Spot::Across(0.0),
         frames: 6,
     },
     Act::Release,
@@ -2077,7 +2068,7 @@ const PLAN: &[Act] = &[
     // 10d: press and hold the Wi-Fi tile to go to the Wi-Fi settings (the shade goes up). With nothing
     // attached it only raises a `TileLongPressed` and goes nowhere.
     Act::Press(Spot::Text("Wi-Fi")),
-    Act::Wait(60),
+    Act::WaitMs(700),
     Act::Release,
     Act::Settle,
     Act::Wait(6),
@@ -2118,17 +2109,16 @@ const PLAN: &[Act] = &[
     Act::Notify(Level::Success, "Job finished", "3 files exported"),
     Act::Wait(20),
     Act::Shot("12-toast.png"),
-    // Wait for the toasts' 3 s and the heads-up's 4.4 s to pass (a software rasteriser's frame interval
-    // can be shorter than 60 Hz, so generously).
+    // The toasts' 3 s and the heads-up's 4.4 s pass, on the clock.
     Act::Settle,
-    Act::Wait(420),
-    // 13: mid page swipe (A4) — a horizontal drag over the grid. `pos = dx / W` (W = the grid's width =
-    // the content width of 1024), and each page's cells (96 px at most) are centred within it, so both
-    // pages are in view only once it is dragged to pos ≈ 0.5 (dx ≈ −510).
+    Act::WaitMs(4600),
+    Act::Expect(Expect::NoText("Job finished")),
+    // 13: mid page swipe (A4) — a horizontal drag over the grid. `pos = dx / W`, and each page's
+    // cells are centred within it, so both pages are in view only once it is dragged half the
+    // width: from two thirds across to a fifth.
     Act::Press(Spot::Page(0.68, 0.5)),
-    Act::MoveBy {
-        dx: -510.0,
-        dy: 0.0,
+    Act::DragTo {
+        to: Spot::Page(0.18, 0.5),
         frames: 12,
     },
     Act::Wait(2),
@@ -2143,9 +2133,8 @@ const PLAN: &[Act] = &[
     Act::Settle,
     Act::Wait(4),
     Act::Press(Spot::Edge(Side::Left, 0.5)),
-    Act::MoveBy {
-        dx: 356.0,
-        dy: 0.0,
+    Act::DragTo {
+        to: Spot::Page(0.35, 0.5),
         frames: 12,
     },
     Act::Wait(2),
@@ -2181,9 +2170,8 @@ const PLAN: &[Act] = &[
     Act::Shot("18-settings-about.png"),
     // The list is longer than the screen — push it up to see whether the open-source notices really come out.
     Act::Press(Spot::Page(0.5, 0.77)),
-    Act::MoveBy {
-        dx: 0.0,
-        dy: -310.0,
+    Act::DragTo {
+        to: Spot::Page(0.5, 0.14),
         frames: 10,
     },
     Act::Release,
@@ -2232,9 +2220,8 @@ const PLAN: &[Act] = &[
     // The Choice card - checkbox, segmented - sits below the fold on a 1024 x 600 panel, and a
     // control nobody photographs is a control nobody checks.
     Act::Press(Spot::Page(0.5, 0.85)),
-    Act::MoveBy {
-        dx: 0.0,
-        dy: -350.0,
+    Act::DragTo {
+        to: Spot::Page(0.5, 0.14),
         frames: 10,
     },
     Act::Release,
@@ -2244,18 +2231,16 @@ const PLAN: &[Act] = &[
     // The Expandable card and the accordion sit at the end of the page: two dead-stop scrolls
     // reach it, and the page's end is where it always lands.
     Act::Press(Spot::Page(0.5, 0.87)),
-    Act::MoveBy {
-        dx: 0.0,
-        dy: -420.0,
+    Act::DragTo {
+        to: Spot::Page(0.5, 0.02),
         frames: 10,
     },
     Act::Wait(15),
     Act::Release,
     Act::Settle,
     Act::Press(Spot::Page(0.5, 0.87)),
-    Act::MoveBy {
-        dx: 0.0,
-        dy: -420.0,
+    Act::DragTo {
+        to: Spot::Page(0.5, 0.02),
         frames: 10,
     },
     Act::Wait(15),
@@ -2264,9 +2249,8 @@ const PLAN: &[Act] = &[
     // At a one-finger row the page's end starts below the Display row: a short pull back down
     // brings the whole expandable card into view, held still so it does not fling.
     Act::Press(Spot::Page(0.5, 0.21)),
-    Act::MoveBy {
-        dx: 0.0,
-        dy: 230.0,
+    Act::DragTo {
+        to: Spot::Page(0.5, 0.68),
         frames: 10,
     },
     Act::Wait(15),
@@ -2286,18 +2270,16 @@ const PLAN: &[Act] = &[
     Act::Shot("25d-widgets-expanded.png"),
     // The end of the page: the Advanced row and the accordion.
     Act::Press(Spot::Page(0.5, 0.87)),
-    Act::MoveBy {
-        dx: 0.0,
-        dy: -420.0,
+    Act::DragTo {
+        to: Spot::Page(0.5, 0.02),
         frames: 10,
     },
     Act::Wait(15),
     Act::Release,
     Act::Settle,
     Act::Press(Spot::Page(0.5, 0.87)),
-    Act::MoveBy {
-        dx: 0.0,
-        dy: -420.0,
+    Act::DragTo {
+        to: Spot::Page(0.5, 0.02),
         frames: 10,
     },
     Act::Wait(15),
@@ -2345,9 +2327,8 @@ const PLAN: &[Act] = &[
     // keeps moving after the shot. The openers are then pressed by their captions, so where the
     // card came to rest does not matter.
     Act::Press(Spot::Page(0.5, 0.87)),
-    Act::MoveBy {
-        dx: 0.0,
-        dy: -420.0,
+    Act::DragTo {
+        to: Spot::Page(0.5, 0.02),
         frames: 10,
     },
     Act::Wait(15),
@@ -2409,11 +2390,11 @@ const PLAN: &[Act] = &[
     Act::Settle,
     // The keyboard is solid now and takes a while to slide away: a press on it would not
     // scroll the page.
-    Act::Wait(30),
+    Act::Until(Expect::OskDown, 120),
+    Act::Settle,
     Act::Press(Spot::Page(0.5, 0.87)),
-    Act::MoveBy {
-        dx: 0.0,
-        dy: -420.0,
+    Act::DragTo {
+        to: Spot::Page(0.5, 0.02),
         frames: 10,
     },
     Act::Wait(15),
@@ -2486,9 +2467,8 @@ const PLAN: &[Act] = &[
     Act::Shot("34-split.png"),
     // The divider under a finger: both panes lay themselves out again as it moves.
     Act::GrabDivider,
-    Act::MoveBy {
-        dx: -132.0,
-        dy: 0.0,
+    Act::DragTo {
+        to: Spot::Across(0.37),
         frames: 10,
     },
     Act::Wait(2),
@@ -2499,9 +2479,8 @@ const PLAN: &[Act] = &[
     // Pushed to the end, it squeezes the gallery under its minimum (dimmed) — and let go there, the
     // gallery's pane closes and the dashboard fills the content again.
     Act::GrabDivider,
-    Act::MoveBy {
-        dx: 610.0,
-        dy: 0.0,
+    Act::DragTo {
+        to: Spot::Across(1.1),
         frames: 12,
     },
     Act::Wait(2),
@@ -2520,9 +2499,8 @@ const PLAN: &[Act] = &[
     Act::Shot("35-overview.png"),
     // A drag across the cards scrolls them.
     Act::Press(Spot::Page(0.68, 0.5)),
-    Act::MoveBy {
-        dx: -440.0,
-        dy: 0.0,
+    Act::DragTo {
+        to: Spot::Page(0.25, 0.5),
         frames: 14,
     },
     Act::Release,
@@ -2543,10 +2521,10 @@ const PLAN: &[Act] = &[
     Act::Settle,
     Act::Wait(2),
     // ── An icon's info popover ──
-    // A finger held on an icon: what it is, before anyone opens it. Frames under the tour come
-    // faster than 60 Hz, so the wait for the 500 ms long press is long.
+    // A finger held on an icon: what it is, before anyone opens it — the 500 ms long press,
+    // waited on the clock.
     Act::PressIcon("dashboard"),
-    Act::Wait(150),
+    Act::WaitMs(800),
     Act::Release,
     Act::Settle,
     Act::Wait(2),
@@ -2559,7 +2537,7 @@ const PLAN: &[Act] = &[
     Act::Logout,
     Act::Settle,
     Act::PressIcon("admin"),
-    Act::Wait(150),
+    Act::WaitMs(800),
     Act::Release,
     Act::Settle,
     Act::Wait(2),

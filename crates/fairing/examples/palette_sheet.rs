@@ -1,7 +1,7 @@
 //! **One frame with every control on it, for looking at a palette.**
 //!
 //! `cargo run -p fairing --release --example palette_sheet --features "runner-x11 mock" --
-//! --tour out/ --size=1440x5800 --panel-mm=305x381 --preset=base --theme=dark`
+//! --tour out/ --panel-mm=305x381 --preset=base --theme=dark`
 //!
 //! **`--panel-mm` matters here more than anywhere else.** Without it the shell runs the
 //! density-unaware fallback, which lands `du` roughly twice the size it takes on a real panel — and
@@ -32,13 +32,14 @@ use std::rc::Rc;
 #[path = "common/mod.rs"]
 mod common;
 
-use common::Act;
+use common::{Act, Expect};
 
 /// The panel the sheet is drawn at. Wide enough for two columns of controls and tall enough that
-/// **one screenshot holds all of it** — which is the whole point of the sheet, and stops being true
-/// silently as controls are added. If a render comes back with a section cut off at the bottom, this
-/// is the number to raise; the columns are balanced by hand in [`sheet`].
-const SIZE: (f32, f32) = (1440.0, 7100.0);
+/// **one screenshot holds all of it** — which is the whole point of the sheet, and the tour
+/// checks it: the last section's last row has to be on the glass. If that check fails, this is
+/// the number to raise (and `tools/tours.sh`'s virtual screen with it); the columns are
+/// balanced by hand in [`sheet`].
+const SIZE: (f32, f32) = (1440.0, 5800.0);
 
 /// The one frame the tour takes.
 ///
@@ -53,6 +54,9 @@ const PLAN: &[Act] = &[
     Act::Open("sheet"),
     Act::Settle,
     Act::Wait(20), // the font atlas and the first repaint
+    // The whole sheet is on the glass: the last section's last row, or the frame is too short.
+    Act::Expect(Expect::Text("Severity")),
+    Act::Expect(Expect::Text("Error")),
     Act::Shot("sheet.png"),
 ];
 

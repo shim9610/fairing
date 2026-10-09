@@ -2410,11 +2410,12 @@ const TOUR_PORTRAIT: &[common::Act] = &[
     common::Act::Settle,
     common::Act::Wait(30),
     common::Act::Shot("07-progress.png"),
-    // Once the approval finishes it goes on to the receipt by itself. **Wait generously** — set to the
-    // dwell (2 500 ms) exactly, a day when `Settle` spends more frames under load captures the progress
-    // screen instead of the receipt. It really did fool us once.
-    common::Act::Wait(300),
+    // Once the approval finishes it goes on to the receipt by itself: the dwell (2 500 ms) on
+    // the clock, and the receipt checked for rather than assumed — a frame count once ran short
+    // under load and the picture was of the progress screen.
+    common::Act::WaitMs(2800),
     common::Act::Settle,
+    common::Act::Expect(common::Expect::Screen("pay.receipt")),
     common::Act::Wait(6),
     common::Act::Shot("08-receipt.png"),
 ];
@@ -2426,11 +2427,17 @@ const TOUR_COUNTER: &[common::Act] = &[
     common::Act::Settle,
     common::Act::Wait(6),
     common::Act::Shot("01-pos.png"),
+    // Three tiles by their names — each a name not yet in the cart beside them, where it would
+    // be drawn a second time — and the pay button's sum says they went in. The first two are
+    // on the menu's first row; the third is further down, pressed once the column has scrolled.
+    common::Act::Tap(common::Spot::Text("Americano")),
+    common::Act::Settle,
+    common::Act::Tap(common::Spot::Text("Caffè Latte")),
+    common::Act::Settle,
     // The menu column scrolls: a drag up on it, held still before the release.
     common::Act::Press(common::Spot::Page(0.23, 0.75)),
-    common::Act::MoveBy {
-        dx: 0.0,
-        dy: -350.0,
+    common::Act::DragTo {
+        to: common::Spot::Page(0.23, 0.29),
         frames: 10,
     },
     common::Act::Wait(15),
@@ -2438,22 +2445,15 @@ const TOUR_COUNTER: &[common::Act] = &[
     common::Act::Settle,
     common::Act::Wait(4),
     common::Act::Shot("01b-pos-scrolled.png"),
+    common::Act::Tap(common::Spot::Text("Cold Brew")),
+    common::Act::Settle,
     common::Act::Press(common::Spot::Page(0.23, 0.31)),
-    common::Act::MoveBy {
-        dx: 0.0,
-        dy: 350.0,
+    common::Act::DragTo {
+        to: common::Spot::Page(0.23, 0.77),
         frames: 10,
     },
     common::Act::Wait(15),
     common::Act::Release,
-    common::Act::Settle,
-    // Three tiles by their names — each a name not yet in the cart beside them, where it would
-    // be drawn a second time — and the pay button's sum says they went in.
-    common::Act::Tap(common::Spot::Text("Americano")),
-    common::Act::Settle,
-    common::Act::Tap(common::Spot::Text("Cold Brew")),
-    common::Act::Settle,
-    common::Act::Tap(common::Spot::Text("Caffè Latte")),
     common::Act::Settle,
     common::Act::Wait(4),
     common::Act::Expect(common::Expect::Text("Pay ₩15,000")),

@@ -22,6 +22,15 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
 - The built-in settings screens group their rows in filled cards. A title with no actions is as
   tall as its words, a section heading as tall as its text, an explanation wraps at about seventy
   characters, and the wide settings screen's two titles sit on one line.
+- The example tours have no pixel distance and no frame count standing for a time: a drag goes
+  to a `Spot` (`Act::DragTo`, with `Spot::Across` for a drag that keeps its line), a finger
+  held still is `Act::Hold`, and a long press or a toast's lifetime is waited on the input clock
+  (`Act::WaitMs`). The palette sheet checks its last row is on the glass; the gesture navigation
+  tour runs in `tools/tours.sh` and CI; the kiosk's counter and compact tours run on the devices
+  the example's heading lists, and the layout is picked from the panel's millimetres; a tour
+  name `tools/tours.sh` does not know is an error, not an empty pass. `custom_chrome` sizes its
+  chrome through `MetricsSpec` in the hand's units rather than a block of du literals, and
+  `bench` drives its gestures as shares of the screen.
 - Sizes that assumed a bare finger now follow the finger: the emergency ring and corner zone,
   the rail's collapsed arm and its grip strip (the edge zone), the quick-tile gap and the tile
   row's insets (`screen_inset`), a toast's and a banner's narrowest and widest and their
