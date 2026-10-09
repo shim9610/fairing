@@ -581,6 +581,15 @@ impl AnimationStore {
         entry.anim.value()
     }
 
+    /// **Something outside the store is mid-motion this frame** — a page transit timed off
+    /// egui's clock, a list refilling over several frames. It counts as animating until the next
+    /// `tick`, so the shell's repaint policy and a tour's wait for rest see it as they see a
+    /// tween here; without it a motion the store did not own was invisible to both, and a
+    /// picture taken "once everything had settled" caught a page half faded in.
+    pub fn keep_animating(&mut self) {
+        self.animating = true;
+    }
+
     /// Whether anything moved on the last `tick` (for the repaint policy).
     #[must_use]
     pub fn is_animating(&self) -> bool {

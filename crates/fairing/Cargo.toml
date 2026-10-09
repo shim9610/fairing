@@ -72,7 +72,7 @@ required-features = ["runner", "mock"]
 # The bench console. Declared, like the two above, so a build without the runner skips it.
 [[example]]
 name = "console"
-required-features = ["runner", "mock"]
+required-features = ["runner", "mock", "settings"]
 
 [[example]]
 name = "custom_chrome"

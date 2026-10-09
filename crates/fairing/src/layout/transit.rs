@@ -400,7 +400,11 @@ pub fn transit<K: Transit>(
             body(ui, cx, cue.page);
         }
         Some((motion, far, entering)) => {
+            // Both: the repaint for the next frame of it, and the word to the shell that this
+            // one is not at rest — `Shell::is_animating` is what a tour's `Settle` and a test
+            // wait on, and a transit timed off egui's clock was invisible to it.
             ctx.request_repaint();
+            cx.keep_animating();
             draw_moved(ui, cx, id, cue.page, motion, far, entering, body);
         }
     }

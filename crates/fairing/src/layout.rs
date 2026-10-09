@@ -152,7 +152,7 @@ use egui::{Response, Ui};
 ///
 /// | | draws | says |
 /// |---|---|---|
-/// | [`Filled`](Self::Filled) | `SurfaceVariant`, `card_radius`, raised | **a thing you act on** — a group of settings rows, a stat strip, a media tile, a bar you press |
+/// | [`Filled`](Self::Filled) | `SurfaceVariant` — or `Surface` on a panel that is already `SurfaceVariant` — `card_radius`, raised | **a thing you act on** — a group of settings rows, a stat strip, a media tile, a bar you press |
 /// | [`Outlined`](Self::Outlined) | a hairline, no fill, `corner_radius`, flat | **a thing you read** — a chart, a reading, a result |
 /// | [`Divided`](Self::Divided) | nothing, and a full-width rule under it | **a plain list** — rows that run edge to edge with no box |
 ///
@@ -166,6 +166,12 @@ use egui::{Response, Ui};
 ///
 /// `Divided` is full-bleed — no side margin — because a rule that stops short of the screen's edge
 /// reads as the bottom of a card that forgot to draw the rest of itself.
+///
+/// **A `Filled` card contrasts with whatever it is on.** Its fill is `SurfaceVariant`, one step
+/// in from the `Surface` a screen is drawn on; on a panel that is itself `SurfaceVariant` — the
+/// page inside a [`Rail`]'s elbow — the same card would be the panel's own colour and vanish, so
+/// there it takes `Surface`, the step the other way. The panel says what it is through the
+/// `Ui`'s `panel_fill`, which the rail sets for its page; a card never has to be told.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Container {
     /// A filled card. The default, and what every container in the crate was.
@@ -178,10 +184,10 @@ pub enum Container {
     /// **A wash of the accent** at `control.fill_alpha`, with no edge — the same tint a lit
     /// `FeatureCard` carries, as a container.
     ///
-    /// For a group on a page that is *itself* `SurfaceVariant`, which is what `layout::Rail` puts
-    /// inside its elbow: there a [`Self::Filled`] box is the page's own colour and has no edge at
-    /// all, and [`Self::Outlined`] gives it a hairline but leaves a white box on a white page.
-    /// A tint separates the two without adding a line to a screen that has just had one removed.
+    /// For a group that should read as **lit** rather than merely raised — a selection, a live
+    /// section — or on a panel where neither surface step is wanted. (A [`Self::Filled`] card on
+    /// a `SurfaceVariant` panel takes `Surface` of its own accord, so this is no longer the only
+    /// way to put a card on a rail's page.)
     ///
     /// It is the accent and not a grey because the accent is the one colour a palette guarantees
     /// stands off every surface role — a grey a shade from `SurfaceVariant` works in the palette it
@@ -415,11 +421,20 @@ impl Deco {
         })
     }
 
-    /// Resolve the background colour against the theme.
-    fn fill_of(self, cx: &Cx<'_>) -> egui::Color32 {
+    /// Resolve the background colour against the theme — and, for a `Filled` card, against the
+    /// panel it is on: `ui`'s `panel_fill` is what the panel was painted (a [`Rail`] sets it for
+    /// its page), and a card the panel's own colour takes the other surface step instead.
+    fn fill_of(self, ui: &Ui, cx: &Cx<'_>) -> egui::Color32 {
         self.fill.map_or_else(
             || match self.kind {
-                Container::Filled => cx.theme.color(ColorRole::SurfaceVariant),
+                Container::Filled => {
+                    let variant = cx.theme.color(ColorRole::SurfaceVariant);
+                    if ui.visuals().panel_fill == variant {
+                        cx.theme.color(ColorRole::Surface)
+                    } else {
+                        variant
+                    }
+                }
                 Container::Tinted => cx
                     .theme
                     .color(ColorRole::Primary)
@@ -612,8 +627,10 @@ const RAIL_MIN: f32 = 132.0;
 /// `deco` paints the **page panel**, not the chrome: the chrome is the bar's own colour by
 /// definition, and a rail that did not match it would not be an L. The default fill is
 /// [`ColorRole::SurfaceVariant`], a step in from `Surface` in every palette the crate ships,
-/// light and dark. Cards on such a page want [`Container::Outlined`] or a tint — a `Filled` card is
-/// `SurfaceVariant` too and would disappear into the panel under it.
+/// light and dark. The page `Ui` carries that fill as its `panel_fill`, so a
+/// [`Container::Filled`] card on it — a [`group`], a [`Grid`]'s tiles, an [`action_bar`] —
+/// takes `Surface` and stands off the panel, where it would otherwise have been the panel's
+/// own colour and vanished.
 ///
 /// # What the rail hands back
 ///
@@ -932,6 +949,7 @@ impl Rail {
         // An arm thinner than the radius flattens it, so a rail folding away leaves the page square
         // against the glass on that side too rather than showing the chrome through the corner.
         let radius = self.deco.radius_of(cx).min(round_u8(arm));
+        let page_fill = self.deco.fill_of(ui, cx);
         ui.painter().rect_filled(
             page_rect,
             egui::CornerRadius {
@@ -940,7 +958,7 @@ impl Rail {
                 sw: radius,
                 se: 0,
             },
-            self.deco.fill_of(cx),
+            page_fill,
         );
 
         // A hidden rail reads no gesture: not the swipe, and not the grip strip a folded-away
@@ -969,6 +987,8 @@ impl Rail {
 
         let mut page_ui = ui.new_child(egui::UiBuilder::new().max_rect(page_rect));
         page_ui.set_clip_rect(page_rect);
+        // What the page was painted, for the cards on it to contrast with (`Deco::fill_of`).
+        page_ui.visuals_mut().panel_fill = page_fill;
         RailPick {
             picked,
             page: page(&mut page_ui, cx),
@@ -1462,7 +1482,7 @@ pub fn action_bar_with<R>(
     let m = &cx.theme.metrics;
     let height = m.row_height * bar_rows.max(1.0);
     let radius = deco.radius_of(cx);
-    let fill = deco.fill_of(cx);
+    let fill = deco.fill_of(ui, cx);
     let inset = m.screen_inset;
     // When the OSK comes up the bar hides below it — screens where confirm has to be pressed with the
     // keyboard up are common.
@@ -1803,7 +1823,7 @@ impl<'a, T> Grid<'a, T> {
         if self.fill_aspect.is_some() && lead > 0.0 {
             ui.add_space(lead);
         }
-        let base = self.deco.fill_of(cx);
+        let base = self.deco.fill_of(ui, cx);
         let pressed = cx.theme.color(ColorRole::Pressed);
         let inset = self.deco.visual_inset.unwrap_or(0.0);
 
@@ -2165,7 +2185,8 @@ pub fn group_with(
     // Why the default background is **`SurfaceVariant`**: a screen Pane's default background is already
     // `Surface` (`workspace::draw_pane`), so with the cards at `Surface` too the colours match and the
     // group disappears whole — which is how it was built at first, and measuring pixels caught it.
-    let fill = deco.fill_of(cx);
+    // On a panel that is `SurfaceVariant` itself the card takes `Surface` — see `Container`.
+    let fill = deco.fill_of(ui, cx);
     let radius = deco.radius_of(cx);
     // `visual_inset` narrows **the card only** — the place stays and the drawing is inset, making a
     // "floating" card. To shrink the place itself, `screen_inset` is the one.

@@ -51,6 +51,8 @@ struct Console {
     brightness: f32,
     /// How far the rail folds: `--fold=away` hides it whole, the default keeps the icons.
     fold: layout::Fold,
+    /// The settings screen open in the page — its tile's label and its id. `None` is the board.
+    settings: Option<(&'static str, &'static str)>,
 }
 
 impl Default for Console {
@@ -61,6 +63,7 @@ impl Default for Console {
             verbose: false,
             brightness: 62.0,
             fold: layout::Fold::Icons,
+            settings: None,
         }
     }
 }
@@ -299,9 +302,19 @@ const TOUR: &[Act] = &[
     Act::Tap(Spot::Text("Settings")),
     Act::Settle,
     // The page's own transit is the example's, not the shell's, so `Settle` cannot wait for it.
-    Act::Until(Expect::Text("Security"), 120),
+    Act::Until(Expect::Text("Language"), 120),
     Act::Settle,
     Act::Shot("08-settings.png"),
+    // A tile opens the crate's own settings screen in the page, under a row back to the tiles.
+    Act::Tap(Spot::Text("Display")),
+    Act::Settle,
+    Act::Until(Expect::Text("Brightness"), 120),
+    Act::Settle,
+    Act::Shot("09-settings-display.png"),
+    Act::Tap(Spot::Text("All settings")),
+    Act::Settle,
+    Act::Until(Expect::Text("Language"), 120),
+    Act::Expect(Expect::NoText("Brightness")),
 ];
 
 /// The brand block, as a **status item** rather than a whole-bar painter.
@@ -482,6 +495,12 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
         .desktop(),
     );
     shell.add(brand_item());
+    // The built-in settings screens, for the Settings page's tiles to open. No desktop icon:
+    // this console has no desktop, and the rail is the only way in.
+    fairing::settings::add_all(
+        &mut shell,
+        &fairing::settings::SettingsConfig::default().without_home_icon(),
+    );
     shell.launch(fairing::LaunchAction::open("console"));
     Ok(shell)
 }
@@ -540,15 +559,9 @@ fn page(ui: &mut egui::Ui, cx: &mut Cx<'_>, open: Page, state: &mut Console) {
         Page::Controls => controls(ui, cx, state),
         Page::Alerts => alerts(ui, cx),
         Page::Storage => storage(ui, cx),
-        Page::Settings => settings(ui, cx),
+        Page::Settings => settings(ui, cx, state),
     }
 }
-
-/// **The wash the groups take.** The page inside the rail's elbow is `SurfaceVariant`, and so is a
-/// `Filled` container — so a group there is the page's own colour and has no edge at all. A
-/// hairline would give it one and leave a white box on a white page; the accent at `fill_alpha`
-/// separates the two without putting a line back on a screen that has just had one taken off.
-const TINT: layout::Deco = layout::Deco::new().container(layout::Container::Tinted);
 
 /// **The page is symbol-led.** A rail that is one word an entry does not want a wall of prose
 /// beside it: the eye has already been told where it is, so the page's job is to show the state and
@@ -574,17 +587,15 @@ fn tile(ui: &mut egui::Ui, cx: &mut Cx<'_>, cell: &layout::Cell<'_, Tile>, lit: 
     let style = crate_icon_style(glyph, ink);
     cx.icons
         .paint(ui.painter(), at, &cell.item.icon, &style, cx.theme);
+    // The word in the same ink as the glyph. A quiet tile is a thing to press, not a thing
+    // turned off: in `Muted` the eight unlit toggles of the controls page read as disabled.
     let label_y = at.bottom() + m.screen_inset;
     ui.painter().text(
         egui::pos2(cell.visual.center().x, label_y),
         egui::Align2::CENTER_TOP,
         cell.item.label,
         egui::FontId::proportional(m.type_scale.body),
-        cx.theme.color(if lit {
-            ColorRole::Primary
-        } else {
-            ColorRole::Muted
-        }),
+        cx.theme.color(ink),
     );
     // The reading goes under the word, in the display face: on a console the number is the thing
     // being looked at and the word is only there to say what it is.
@@ -607,6 +618,7 @@ fn crate_icon_style(side: f32, role: ColorRole) -> fairing::icons::IconStyle {
 }
 
 /// A tile: a glyph, a word, and — where the tile is reporting rather than offering — a value.
+#[derive(Clone)]
 struct Tile {
     label: &'static str,
     icon: IconRef,
@@ -656,14 +668,11 @@ fn overview(ui: &mut egui::Ui, cx: &mut Cx<'_>) {
         let ui = &mut ui;
         run_block(ui, cx);
         ui.add_space(cx.theme.metrics.screen_inset);
-        layout::Grid::new(3.4, 2.0).max_columns(3).deco(TINT).show(
-            ui,
-            cx,
-            &tiles,
-            |ui, cx, cell| {
+        layout::Grid::new(3.4, 2.0)
+            .max_columns(3)
+            .show(ui, cx, &tiles, |ui, cx, cell| {
                 tile(ui, cx, &cell, cell.item.label == "Start run");
-            },
-        );
+            });
     });
 }
 
@@ -672,7 +681,7 @@ fn run_block(ui: &mut egui::Ui, cx: &mut Cx<'_>) {
     use fairing::widgets::{LampState, Limit, Meter, ProgressBar, ProgressRing};
     let m = &cx.theme.metrics;
     let diameter = m.row_height * 3.6;
-    layout::group_with(ui, cx, TINT, |ui, cx| {
+    layout::group(ui, cx, |ui, cx| {
         ui.horizontal(|ui| {
             ui.add_space(cx.theme.metrics.content_inset);
             let _ = ProgressRing::determinate(0.63)
@@ -753,7 +762,6 @@ fn controls(ui: &mut egui::Ui, cx: &mut Cx<'_>, state: &mut Console) {
         let mut hit = None;
         layout::Grid::new(2.6, 2.0)
             .max_columns(4)
-            .deco(TINT)
             .fill_height(1.15)
             .show(ui, cx, &toggles, |ui, cx, cell| {
                 let lit = match cell.item.label {
@@ -772,7 +780,7 @@ fn controls(ui: &mut egui::Ui, cx: &mut Cx<'_>, state: &mut Console) {
             _ => {}
         }
         ui.add_space(cx.theme.metrics.screen_inset);
-        layout::group_with(ui, cx, TINT, |ui, cx| {
+        layout::group(ui, cx, |ui, cx| {
             let _ = layout::slider_row(
                 ui,
                 cx,
@@ -803,7 +811,7 @@ fn alerts(ui: &mut egui::Ui, cx: &mut Cx<'_>) {
         Tile::reading("Firmware", icon::DOWNLOAD, "2.4.1"),
     ];
     // Calibration is due and the network is down: those two are lit, the rest are quiet.
-    board(ui, cx, "alerts", &items, |t| {
+    let _ = board(ui, cx, "alerts", &items, |t| {
         matches!(t.label, "Calibration" | "Network")
     });
 }
@@ -821,23 +829,51 @@ fn storage(ui: &mut egui::Ui, cx: &mut Cx<'_>) {
         Tile::reading("Backup", icon::SHIELD, "Nightly"),
         Tile::reading("Total", icon::GAUGE, "128 GB"),
     ];
-    board(ui, cx, "storage", &items, |t| t.label == "Free");
+    let _ = board(ui, cx, "storage", &items, |t| t.label == "Free");
 }
 
-/// The settings: the places to go, as places rather than as a list of words.
-fn settings(ui: &mut egui::Ui, cx: &mut Cx<'_>) {
-    let items = [
-        Tile::new("Network", icon::WIFI),
-        Tile::new("Bluetooth", icon::SIGNAL),
-        Tile::new("Display", icon::DISPLAY),
-        Tile::new("Input", icon::KEYBOARD),
-        Tile::new("Power", icon::BATTERY),
-        Tile::new("Printer", icon::PRINTER),
-        Tile::new("Service", icon::WRENCH),
-        Tile::new("Security", icon::SHIELD),
-        Tile::new("About", icon::INFO),
-    ];
-    board(ui, cx, "settings", &items, |_| false);
+/// **The settings tiles, each the crate's own screen behind it.** The nine are the built-in
+/// settings screens (`settings::add_all`), one tile a screen; a tile opens its screen *in the
+/// page*, under a row that leads back to the tiles, rather than on the stack — this console has
+/// no nav bar and no back button, so a pushed screen would have had no way home. `Cx::draw_screen`
+/// lends the screen for the frame; it is the same screen the demo opens, cards and all.
+const SETTINGS: &[(Tile, &str)] = &[
+    (Tile::new("Wi-Fi", icon::WIFI), "settings.wifi"),
+    (Tile::new("Network", icon::ETHERNET), "settings.network"),
+    (
+        Tile::new("Bluetooth", icon::BLUETOOTH),
+        "settings.bluetooth",
+    ),
+    (Tile::new("Display", icon::DISPLAY), "settings.display"),
+    (Tile::new("Sound", icon::VOLUME), "settings.sound"),
+    (Tile::new("Date & time", icon::CLOCK), "settings.datetime"),
+    (Tile::new("Language", icon::LANGUAGE), "settings.locale"),
+    (Tile::new("Power", icon::BATTERY), "settings.power"),
+    (Tile::new("About", icon::INFO), "settings.about"),
+];
+
+/// The settings: the places to go, as places rather than as a list of words — and, once one is
+/// chosen, the place itself.
+fn settings(ui: &mut egui::Ui, cx: &mut Cx<'_>, state: &mut Console) {
+    if let Some((label, id)) = state.settings {
+        // The way back first, as a rail-style row, then the screen's name — a lent screen draws
+        // no chrome of its own — and the screen itself in what is left.
+        if layout::list_item(ui, cx, icon::BACK, "All settings", false).clicked() {
+            state.settings = None;
+        }
+        layout::title(ui, cx, label);
+        if !cx.draw_screen(ui, id) {
+            layout::note(ui, cx, "That screen is not registered.");
+        }
+        return;
+    }
+    let items: Vec<Tile> = SETTINGS.iter().map(|(tile, _)| tile.clone()).collect();
+    if let Some(hit) = board(ui, cx, "settings", &items, |_| false) {
+        state.settings = SETTINGS
+            .iter()
+            .find(|(tile, _)| tile.label == hit)
+            .map(|(tile, id)| (tile.label, *id));
+    }
 }
 
 /// **The page shape these three share**: a full-bleed board of tiles and nothing else.
@@ -848,13 +884,16 @@ fn settings(ui: &mut egui::Ui, cx: &mut Cx<'_>) {
 ///
 /// One shape, but **one page id each**: the id is the scroll position's identity, and the three
 /// boards under one id shared one offset — scrolled halfway on Alerts, Storage opened halfway.
+///
+/// The label of the tile pressed this frame, where one was.
 fn board(
     ui: &mut egui::Ui,
     cx: &mut Cx<'_>,
     id: &str,
     items: &[Tile],
     lit: impl Fn(&Tile) -> bool,
-) {
+) -> Option<&'static str> {
+    let mut hit = None;
     layout::page(ui, cx, ("board", id), |ui, cx| {
         let inset = cx.theme.metrics.content_inset;
         let band = ui
@@ -863,11 +902,14 @@ fn board(
         let mut ui = ui.new_child(egui::UiBuilder::new().max_rect(band));
         layout::Grid::new(5.4, 2.0)
             .max_columns(3)
-            .deco(TINT)
             .fill_height(1.15)
             .show(&mut ui, cx, items, |ui, cx, cell| {
+                if cell.response.clicked() {
+                    hit = Some(cell.item.label);
+                }
                 let on = lit(cell.item);
                 tile(ui, cx, &cell, on);
             });
     });
+    hit
 }

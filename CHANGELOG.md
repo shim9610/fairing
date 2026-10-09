@@ -22,6 +22,15 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
 - The built-in settings screens group their rows in filled cards. A title with no actions is as
   tall as its words, a section heading as tall as its text, an explanation wraps at about seventy
   characters, and the wide settings screen's two titles sit on one line.
+- A `Filled` card contrasts with the panel it is on: `SurfaceVariant` on a screen, `Surface`
+  on a panel that is already `SurfaceVariant` — the page inside a `layout::Rail`'s elbow, which
+  sets its page `Ui`'s `panel_fill` for the purpose. A card there used to be the page's own
+  colour and vanish.
+- `layout::transit` tells the shell it is mid-motion, so `Shell::is_animating` — and anything
+  waiting for rest on it — covers a page on its way; `Cx::keep_animating` is the call, for a
+  screen with a motion of its own.
+- The console example's Settings page opens the built-in settings screens in its page
+  (`Cx::draw_screen` under a row back to the tiles), and a quiet tile's word is in `OnSurface`.
 - The pull-down shade has a colour role of its own, `ColorRole::ShadeSurface` (`shade_surface`
   under `[theme.palette]`). Unset, it follows `surface`; set, it colours the curtain, the floating
   card and the tile pucks without touching any other surface.

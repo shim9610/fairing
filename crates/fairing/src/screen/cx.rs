@@ -735,6 +735,16 @@ impl Cx<'_> {
             .animate(scope_id(id, self.pane.instance), target, tween, self.frame)
     }
 
+    /// **Say that this screen is mid-motion this frame** without a value from [`Cx::animate`] —
+    /// a transition it times itself, a list that refills over several frames. The shell then
+    /// counts the frame as animating (`Shell::is_animating`), which keeps the repaint policy
+    /// awake and tells a wait-for-rest (the tours' `Settle`, a test's) that it is not at rest
+    /// yet. [`crate::layout::transit`] calls it while a page is on its way; a screen with a
+    /// motion of its own should too.
+    pub fn keep_animating(&mut self) {
+        self.animations.keep_animating();
+    }
+
     /// Lend a [`WidgetCx`](fairing_widgets::WidgetCx) — what a control needs, and nothing else.
     ///
     /// The widgets live in [`fairing_widgets`] and take only the theme, the icons and one
