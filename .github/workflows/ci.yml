@@ -123,10 +123,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Xvfb and Mesa's software rasteriser
+      # The examples open a real window: winit loads libxkbcommon and libxkbcommon-x11 at run
+      # time and glutin a GL through GLX or EGL, none of which the runner image is promised to
+      # carry. Missing, the example exits before its first step with nothing but Rust's error.
+      - name: Install Xvfb, Mesa's software rasteriser and the libraries winit loads
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri libegl1
+          sudo apt-get install -y --no-install-recommends xvfb libgl1 libglx-mesa0 libegl1 \
+            libegl-mesa0 libgl1-mesa-dri libgbm1 libxkbcommon0 libxkbcommon-x11-0 \
+            libxcursor1 libxi6 libxrandr2 libxinerama1
 
       - name: Cache cargo registry and target dir
         uses: actions/cache@v4

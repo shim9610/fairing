@@ -37,8 +37,12 @@ tour() {
     else
         failed=1
         echo "FAIL  $name"
-        # winit's BadWindow on the way out under Xvfb is noise, not a step that failed.
+        # The steps that failed, then the end of the log: an example that could not open a window
+        # or load a library says so there, in Rust's own words, before any step ran. winit's
+        # BadWindow on the way out under Xvfb is noise, not a step that failed.
         grep -E '\[ERROR\]' "$log" | grep -v 'X11 error' | sed 's/^/      /'
+        echo "      --- the last lines of $log:"
+        tail -n 12 "$log" | sed 's/^/      /'
     fi
 }
 
