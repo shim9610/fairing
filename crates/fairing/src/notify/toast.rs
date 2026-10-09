@@ -88,9 +88,6 @@ pub(crate) enum ToastAction {
     Tapped(usize),
 }
 
-/// The gap between the stack's lowest toast and the bottom of its anchor.
-const STACK_MARGIN: f32 = 16.0;
-
 /// The toast queue.
 #[doc(hidden)]
 pub struct ToastQueue {
@@ -291,7 +288,7 @@ impl ToastQueue {
     /// The room one toast needs under the top of `anchor`: the floor of its height and the margin
     /// below it. The shell keeps at least this much when the keyboard narrows the anchor.
     pub(crate) fn room(theme: &Theme) -> f32 {
-        theme.metrics.widget_height + STACK_MARGIN
+        theme.metrics.widget_height + theme.components.toast.stack_gap
     }
 
     /// Stage 13: draw at the bottom centre (`Area(Order::Tooltip)`), or where the integrator's
@@ -312,8 +309,8 @@ impl ToastQueue {
         let width = theme
             .metrics
             .toast_width
-            .min(anchor.width() - 24.0)
-            .max(96.0);
+            .min(anchor.width() - 2.0 * theme.metrics.screen_inset)
+            .max(theme.metrics.touch_target * 2.0);
         // The same rule as a panel tile (half of `icon_size` = 24 px) — the in-chrome icon size.
         let icon_size = theme.metrics.icon_size * 0.5;
         let m = theme.components.toast;
@@ -322,9 +319,10 @@ impl ToastQueue {
         // row does is the same defect the settings screens had, just on a smaller surface.
         let inset = theme.metrics.content_inset;
         let text_x = inset + icon_size + m.icon_gap;
-        let wrap = (width - text_x - inset).max(24.0);
-        // The stack at rest: from the bottom centre up, the oldest first.
-        let mut bottom = anchor.max.y - STACK_MARGIN;
+        let wrap = (width - text_x - inset).max(theme.metrics.touch_target * 0.5);
+        // The stack at rest: from the bottom centre up, the oldest first, a stack gap above the
+        // anchor's bottom — the same gap as between two toasts.
+        let mut bottom = anchor.max.y - m.stack_gap;
         self.rests.clear();
         for item in &self.visible {
             let height = Self::row_height(item, theme);
@@ -395,8 +393,10 @@ impl ToastQueue {
     /// The row height: what a painter asked for, or the text height plus its padding — at least
     /// `widget_height` either way.
     fn row_height(item: &ActiveToast, theme: &Theme) -> f32 {
+        // The toast's own `pad_x` above and below the words (half each side); a one-line toast
+        // is a control tall anyway.
         item.height
-            .unwrap_or(item.text_h + 24.0)
+            .unwrap_or(item.text_h + theme.components.toast.pad_x)
             .max(theme.metrics.widget_height)
     }
 }

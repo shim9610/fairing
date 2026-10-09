@@ -719,7 +719,9 @@ fn draw_item(
     });
     if !drawn {
         let color = style.resolve_color(parts.theme);
-        let font = egui::FontId::proportional(18.0 * scale);
+        // Three quarters of the icon size, as a glyph in an icon's place: the fallback follows
+        // the nav icon token rather than a fixed 18 pt.
+        let font = egui::FontId::proportional(theme.metrics.nav_icon_size * 0.75 * scale);
         let key = (
             (font.size * 4.0).round() as u32,
             u32::from_le_bytes(color.to_array()),

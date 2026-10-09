@@ -107,13 +107,14 @@ pub struct Gauge {
     /// The unit after the value (`"%"`, `"°C"`). Empty draws no value readout at all.
     pub unit: String,
     /// The value column's width (du). Unused when `unit` is empty.
-    pub value_width: f32,
+    pub value_width: Option<f32>,
     /// Read-only — it cannot be touched and only shows its value.
     pub read_only: bool,
 }
 
-/// The default for [`Gauge::value_width`] — the width `100 %` fits in.
-const GAUGE_VALUE_WIDTH: f32 = 56.0;
+/// The default for [`Gauge::value_width`] as a multiple of the body type size — the width
+/// `100 %` fits in at any type scale (it was a fixed 56 du, which a larger scale overran).
+pub(crate) const GAUGE_VALUE_EM: f32 = 3.5;
 
 impl Gauge {
     /// Draw the `key` setting under the name `label`. Defaults: the `Primary` colour, a `%` unit, and touchable.
@@ -124,7 +125,7 @@ impl Gauge {
             label: label.into(),
             color: ColorRole::Primary,
             unit: "%".to_owned(),
-            value_width: GAUGE_VALUE_WIDTH,
+            value_width: None,
             read_only: false,
         }
     }
@@ -146,7 +147,7 @@ impl Gauge {
     /// The value column's width (du).
     #[must_use]
     pub const fn value_width(mut self, width: f32) -> Self {
-        self.value_width = width;
+        self.value_width = Some(width);
         self
     }
 

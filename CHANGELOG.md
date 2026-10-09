@@ -22,6 +22,14 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
 - The built-in settings screens group their rows in filled cards. A title with no actions is as
   tall as its words, a section heading as tall as its text, an explanation wraps at about seventy
   characters, and the wide settings screen's two titles sit on one line.
+- Sizes that assumed a bare finger now follow the finger: the emergency ring and corner zone,
+  the rail's collapsed arm and its grip strip (the edge zone), the quick-tile gap and the tile
+  row's insets (`screen_inset`), a toast's and a banner's narrowest and widest and their
+  margins, the nav bar's fallback glyph (`nav_icon_size`), and the gauge tile's value column
+  (3.5 × the body size — `Gauge::value_width` is now `Option`, `None` for that default). Hairlines
+  are `control.stroke_hairline` everywhere; the heads-up fling is `motion.fling_px_s`, the
+  credentials screen's held Remove is `motion.long_press`, the shade's progress bar
+  `heads_up.progress_h`.
 - Numbers that belonged to a token: the status card's title and detail are set in the type
   scale's `body` and `small` (they were 0.34 and 0.23 of the row, so a gloved row made them half
   as big again), the licences list likewise; the open/close card's icon grows from the desktop

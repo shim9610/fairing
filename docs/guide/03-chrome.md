@@ -891,7 +891,7 @@ shell.add(
 | `Gauge::new(key, label)` | The setting key the value lives in · that row's name | — |
 | `.color(role)` | That row's track colour (a palette role) | `Primary` |
 | `.unit("%")` | The unit after the value. **An empty string draws no value readout** | `"%"` |
-| `.value_width(du)` | The value column's width | `56.0` |
+| `.value_width(du)` | The value column's width | 3.5 × the body type size (`100 %` fits) |
 | `.read_only(true)` | Untouchable — drawn dimmed and refuses drags | `false` |
 
 Values live in settings as integers in `0..=100`. It is the same contract as the built-in

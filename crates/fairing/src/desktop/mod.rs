@@ -2219,7 +2219,10 @@ fn draw_dock(
             ui.painter().rect_stroke(
                 plate,
                 radius,
-                egui::Stroke::new(1.0, cx.theme.color(ColorRole::Outline)),
+                egui::Stroke::new(
+                    cx.theme.control.stroke_hairline,
+                    cx.theme.color(ColorRole::Outline),
+                ),
                 egui::StrokeKind::Inside,
             );
         }
@@ -2683,7 +2686,10 @@ impl DesktopView {
         ui.painter().vline(
             border_x,
             rect.top()..=rect.bottom(),
-            egui::Stroke::new(1.0, cx.theme.color(ColorRole::Outline)),
+            egui::Stroke::new(
+                cx.theme.control.stroke_hairline,
+                cx.theme.color(ColorRole::Outline),
+            ),
         );
 
         let mut action = None;

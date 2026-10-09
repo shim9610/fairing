@@ -2,7 +2,8 @@
 //! it goes into the shade.
 //!
 //! `y: −H → 0` over 220 ms `CubicOut`; a 4 s hold (paused while held); leaving `0 → −H` over
-//! 200 ms `CubicIn`. Dragging up is 1:1, and on release `dy < −H/3` or `v < −600` springs it
+//! 200 ms `CubicIn`. Dragging up is 1:1, and on release `dy < −H/3` or a fling past
+//! `motion.fling_px_s` springs it
 //! away, otherwise it returns. A tap runs the action and then leaves. Opening the shade absorbs
 //! it immediately (it disappears with no exit).
 //!
@@ -20,10 +21,10 @@ use crate::theme::{ColorRole, MotionTokens, Theme};
 use egui::{Color32, Rect};
 use std::time::{Duration, Instant};
 
-/// The release velocity threshold (A6: `v < −600` leaves).
-const FLING_UP: f32 = 600.0;
 /// The release distance threshold (A6: `dy < −H/3`).
 const SNAP_RATIO: f32 = 1.0 / 3.0;
+/// The banner's widest, as a multiple of `metrics.toast_width` (it was a fixed 560 du).
+const HEADS_UP_OVER_TOAST: f32 = 4.0 / 3.0;
 /// The rubber band when pulled down (up is 1:1; down resists).
 const DOWN_RUBBER: RubberBand = RubberBand {
     factor: 0.25,
@@ -235,7 +236,8 @@ impl HeadsUp {
         }
     }
 
-    /// Release: `dy < −H/3` or `v < −600` leaves, otherwise it returns. `true` if it was dismissed.
+    /// Release: `dy < −H/3` or a fling past `motion.fling_px_s` leaves, otherwise it returns.
+    /// `true` if it was dismissed.
     pub fn release(&mut self, vy: f32, now: Instant, tokens: &MotionTokens) -> bool {
         let h = self.h();
         let hold = tokens.heads_up_hold;
@@ -247,9 +249,10 @@ impl HeadsUp {
         b.pressed = false;
         // The fraction of the distance travelled upwards. Pulled down (the rubber band) it is 0.
         let progress = (-b.y.value() / h).clamp(0.0, 1.0);
+        // The fling threshold is the motion token's, as every other release rule's is.
         let rule = ReleaseRule {
             snap_ratio: SNAP_RATIO,
-            fling: FLING_UP,
+            fling: tokens.fling_px_s,
         };
         if rule.confirm(progress, -vy) {
             b.phase = HeadsUpPhase::Leaving;
@@ -369,13 +372,19 @@ impl HeadsUp {
             .map(|b| b.until)
     }
 
-    /// Where the banner rests, `h` tall: centred at the top of `screen` and at most 560 wide, or
-    /// where the integrator's layout moves it. A layout sets the place and the width, not
-    /// the height; a rect it leaves no width (`Rect::NOTHING`) keeps the banner out.
+    /// Where the banner rests, `h` tall: centred at the top of `screen`, a screen inset in from
+    /// its sides and at most a third wider than a toast, or where the integrator's layout moves
+    /// it. A layout sets the place and the width, not the height; a rect it leaves no width
+    /// (`Rect::NOTHING`) keeps the banner out.
     fn at_rest(&mut self, screen: Rect, theme: &Theme, h: f32) -> Rect {
-        let width = (screen.width() - 32.0).clamp(48.0, 560.0);
+        let m = &theme.metrics;
+        let width = (screen.width() - 2.0 * m.screen_inset)
+            .clamp(m.touch_target, m.toast_width * HEADS_UP_OVER_TOAST);
         let mut place = Rect::from_min_size(
-            egui::pos2(screen.center().x - width / 2.0, screen.min.y + 8.0),
+            egui::pos2(
+                screen.center().x - width / 2.0,
+                screen.min.y + m.screen_inset * 0.5,
+            ),
             egui::vec2(width, h),
         );
         let Some(layout) = self.layout.as_mut() else {
@@ -561,7 +570,10 @@ fn paint_banner(
     painter.rect_stroke(
         rect,
         metrics.corner_radius,
-        egui::Stroke::new(1.0, theme.color(ColorRole::Outline)),
+        egui::Stroke::new(
+            theme.control.stroke_hairline,
+            theme.color(ColorRole::Outline),
+        ),
         egui::StrokeKind::Inside,
     );
     // The in-chrome icon size rule (half of `icon_size` = 24 px) — the same as a panel tile's.
@@ -574,7 +586,7 @@ fn paint_banner(
     });
     let inset = metrics.content_inset;
     let text_x = rect.min.x + inset + icon_size + m.icon_gap;
-    let wrap = (rect.max.x - inset - text_x).max(24.0);
+    let wrap = (rect.max.x - inset - text_x).max(metrics.touch_target * 0.5);
     banner.wrap = wrap;
     // The galleys are not held across frames — a growing atlas throws the UVs out.
     let title = painter.layout(
@@ -756,12 +768,22 @@ mod tests {
         );
         assert_eq!(hu.phase(), Some(HeadsUpPhase::Holding));
 
+        // The velocity rule is the motion token's fling threshold, as every other release is.
+        let fast = -(t.fling_px_s + 100.0);
         let (mut hu, now) = settled(90.0, &t);
         hu.begin_drag();
-        hu.drag(-5.0, -700.0);
+        hu.drag(-5.0, fast);
         assert!(
-            hu.release(-700.0, now, &t),
-            "velocity −700 < −600 → it leaves"
+            hu.release(fast, now, &t),
+            "velocity {fast} past the fling threshold → it leaves"
+        );
+        let slow = -(t.fling_px_s - 100.0);
+        let (mut hu, now) = settled(90.0, &t);
+        hu.begin_drag();
+        hu.drag(-5.0, slow);
+        assert!(
+            !hu.release(slow, now, &t),
+            "velocity {slow} short of the fling threshold → it comes back"
         );
     }
 

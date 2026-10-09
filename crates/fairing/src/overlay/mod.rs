@@ -345,6 +345,8 @@ pub struct Overlay {
     card_h: f32,
     /// The air a card keeps under its tiles at the stop — the same as above them.
     card_air: f32,
+    /// The gap between quick tiles this frame (`panel::tile_gap`), kept for `tiles_bottom`.
+    tile_gap: f32,
     /// **How far the card has arrived, as drawn** — the pull's share trailed by
     /// [`card::LAG_S`] on the way in, so a flick still shows the arrival.
     card_p: f32,
@@ -511,6 +513,7 @@ impl Overlay {
             card_side: None,
             card_h: 1.0,
             card_air: 0.0,
+            tile_gap: 0.0,
             card_p: 0.0,
             card_lagging: false,
             dt: 0.0,
@@ -813,7 +816,7 @@ impl Overlay {
         // The gap below the tiles is the one that sits *between* them, so the stop does not cut the
         // block off flush against the fold. A card keeps the air it has above them.
         let air = match self.reveal {
-            OverlayReveal::Curtain => panel::TILE_GAP * 2.0,
+            OverlayReveal::Curtain => self.tile_gap * 2.0,
             OverlayReveal::Card => self.card_air,
         };
         (bottom.is_finite() && bottom > top).then_some(bottom - top + air)
@@ -1904,8 +1907,8 @@ impl Overlay {
         }
         let cols = self.tile_columns as f32;
         // Never narrower than the tile row at one touch target a tile.
-        let min_w =
-            cols * theme.metrics.touch_target + panel::TILE_GAP * (cols + 1.0) + style.extra * 2.0;
+        let gap = panel::tile_gap(&theme.metrics);
+        let min_w = cols * theme.metrics.touch_target + gap * (cols + 1.0) + style.extra * 2.0;
         // A split card fills the height: from under the status bar down to its
         // inset above the bottom of the content area.
         let tall = if self.layout == OverlayLayout::Split {
@@ -1946,6 +1949,7 @@ impl Overlay {
             egui::vec2(full.width(), self.card_h.min(full.height())),
         );
         self.card_air = style.extra + theme.metrics.corner_radius * theme.components.shade.pad;
+        self.tile_gap = panel::tile_gap(&theme.metrics);
         self.frame.panel = Some(visible);
         // On its frosted backdrop the card is glass: the frost comes in with
         // the card, and the plate lets `1 − card_glass` of it through. With no backdrop
@@ -2176,7 +2180,10 @@ fn paint_plate(ui: &egui::Ui, plate: &Plate, theme: &Theme, relief: &mut relief:
         bg.hline(
             plate.visible.min.x..=plate.visible.max.x,
             plate.visible.max.y - 0.5,
-            egui::Stroke::new(1.0, theme.color(ColorRole::Outline)),
+            egui::Stroke::new(
+                theme.control.stroke_hairline,
+                theme.color(ColorRole::Outline),
+            ),
         );
     }
 }

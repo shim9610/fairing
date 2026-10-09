@@ -403,7 +403,10 @@ fn two_pane(ui: &mut Ui, cx: &mut Cx<'_>, list_width: f32, entries: &[SettingsEn
     ui.painter().vline(
         split,
         full.top()..=full.bottom(),
-        egui::Stroke::new(1.0, cx.theme.color(ColorRole::Outline)),
+        egui::Stroke::new(
+            cx.theme.control.stroke_hairline,
+            cx.theme.color(ColorRole::Outline),
+        ),
     );
 
     let mut right = ui.new_child(egui::UiBuilder::new().max_rect(egui::Rect::from_min_max(
@@ -1997,7 +2000,7 @@ fn credential_form(ui: &mut Ui, cx: &mut Cx<'_>, form: &mut CredentialForm) -> b
         // Removing is the one change that cannot be taken back, so it is held, not tapped.
         let remove = crate::widgets::BigButton::new(tr!(s, "Remove"))
             .kind(crate::widgets::ButtonKind::Danger)
-            .long_press(std::time::Duration::from_secs(1))
+            .long_press(cx.theme.motion.long_press)
             .show(ui, &mut cx.widgets());
         if remove.completed && form.sent.is_none() {
             form.send(ui, cx, vec![CredentialOp::Remove { id: entry.id }]);

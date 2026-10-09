@@ -176,8 +176,11 @@ impl PanelText {
     }
 }
 
-/// The gap between two quick tiles, and the panel's own side inset either side of the row.
-pub(crate) const TILE_GAP: f32 = 12.0;
+/// The gap between two quick tiles, and the panel's own side inset either side of the row —
+/// `screen_inset`, which follows the finger (it was a fixed 12 du).
+pub(crate) fn tile_gap(metrics: &crate::theme::Metrics) -> f32 {
+    metrics.screen_inset
+}
 
 /// **One quick tile's width** for a panel this wide.
 ///
@@ -190,9 +193,10 @@ pub(crate) const TILE_GAP: f32 = 12.0;
 )]
 pub(super) fn tile_width(panel_w: f32, columns: usize, metrics: &crate::theme::Metrics) -> f32 {
     let cols = columns.max(1) as f32;
-    ((panel_w - TILE_GAP * 2.0 - TILE_GAP * (cols - 1.0)) / cols)
+    let gap = tile_gap(metrics);
+    ((panel_w - gap * 2.0 - gap * (cols - 1.0)) / cols)
         .min(metrics.tile_size)
-        .max(24.0)
+        .max(metrics.touch_target * 0.5)
 }
 
 /// The galley cache's key. The top 8 bits are the kind, the rest the entry (a tile index, or a notification id).
@@ -892,9 +896,10 @@ fn place_tiles(
     for index in 0..count {
         let (line, col) = (index / cols, index % cols);
         let in_line = (count - line * cols).min(cols);
-        let line_w = in_line as f32 * (tile_px + TILE_GAP) - TILE_GAP;
-        let x = rect.center().x - line_w / 2.0 + col as f32 * (tile_px + TILE_GAP);
-        let y = top + line as f32 * (tile_px + TILE_GAP);
+        let gap = tile_gap(&theme.metrics);
+        let line_w = in_line as f32 * (tile_px + gap) - gap;
+        let x = rect.center().x - line_w / 2.0 + col as f32 * (tile_px + gap);
+        let y = top + line as f32 * (tile_px + gap);
         homes.push(Rect::from_min_size(egui::pos2(x, y), Vec2::splat(tile_px)));
     }
     let rows_n = count.div_ceil(cols).max(1);
@@ -902,7 +907,7 @@ fn place_tiles(
         egui::pos2(rect.min.x, top),
         egui::pos2(
             rect.max.x,
-            top + rows_n as f32 * (tile_px + TILE_GAP) - TILE_GAP,
+            top + rows_n as f32 * (tile_px + tile_gap(&theme.metrics)) - tile_gap(&theme.metrics),
         ),
     );
     let expanded = row.expanded.filter(|i| *i < count);
@@ -945,10 +950,11 @@ fn row_width(
 ) -> f32 {
     let mut total = 0.0;
     for i in range.clone() {
-        total += (tile_px + TILE_GAP) * (1.0 - tile_out(parts, i, expanded, tween));
+        total += (tile_px + tile_gap(&parts.theme.metrics))
+            * (1.0 - tile_out(parts, i, expanded, tween));
     }
     if let Some(last) = range.last() {
-        total -= TILE_GAP * (1.0 - tile_out(parts, last, expanded, tween));
+        total -= tile_gap(&parts.theme.metrics) * (1.0 - tile_out(parts, last, expanded, tween));
     }
     total
 }
@@ -967,7 +973,7 @@ fn draw_tiles(
     let mut action = None;
     let mut expanded = row.expanded.filter(|i| *i < row.tiles.len());
     let cols = row.columns.max(1);
-    let gap = TILE_GAP;
+    let gap = tile_gap(&metrics);
     let tile_px = tile_width(rect.width(), cols, &metrics);
     let n = row.tiles.len();
     let rows_n = n.div_ceil(cols).max(1);
@@ -981,9 +987,10 @@ fn draw_tiles(
     // The **arrival point** of a tile on its way out = the Slider expansion row's icon place on the left.
     // The row count being fixed, it is known before the tiles are drawn.
     let icon_d = metrics.touch_target * parts.theme.components.shade.note_icon;
-    let slider_top = block_bottom + 12.0;
+    // The expansion row sits a tile gap under the tiles and two in from the panel's sides.
+    let slider_top = block_bottom + gap;
     let slot = egui::pos2(
-        rect.min.x + 24.0 + icon_d / 2.0,
+        rect.min.x + 2.0 * gap + icon_d / 2.0,
         slider_top + metrics.widget_height / 2.0,
     );
 
@@ -1047,13 +1054,16 @@ fn draw_tiles(
         }
     }
 
-    let mut bottom = block_bottom + 16.0;
+    let mut bottom = block_bottom + gap;
     let mut slider_rect = Rect::NOTHING;
     let mut slider_value = None;
     // The Slider expansion row ("2–3 rows when expanded").
     let row_rect = Rect::from_min_size(
-        egui::pos2(rect.min.x + 24.0, slider_top),
-        Vec2::new(rect.width() - 48.0, expanded_height(row, expanded, metrics)),
+        egui::pos2(rect.min.x + 2.0 * gap, slider_top),
+        Vec2::new(
+            rect.width() - 4.0 * gap,
+            expanded_height(row, expanded, metrics),
+        ),
     );
     match expanded_row(ui, parts, row, expanded, row_rect) {
         Some(out) => {
@@ -1062,7 +1072,7 @@ fn draw_tiles(
             }
             slider_rect = out.rect;
             slider_value = out.value;
-            bottom = row_rect.max.y + 12.0;
+            bottom = row_rect.max.y + gap;
         }
         None => expanded = None,
     }
@@ -1208,6 +1218,10 @@ fn draw_gauge(
     (line, base_track): (Rect, f32),
 ) -> Option<PanelAction> {
     let theme: &Theme = parts.theme;
+    // The value column: the gauge's own width, or `100 %` at the body size.
+    let value_w = gauge
+        .value_width
+        .unwrap_or(theme.metrics.type_scale.body * super::tiles::GAUGE_VALUE_EM);
     let mid = line.center().y;
     let mut left = line.min.x;
     if spec.label_width > 0.5 {
@@ -1223,14 +1237,14 @@ fn draw_gauge(
     if !gauge.unit.is_empty() {
         if let Some(g) = galley(spec.texts, TextKey::GaugeValue(spec.tile, index)) {
             // The value is **right-aligned** — the track's starting point does not wobble as the digit count changes.
-            let x = left + gauge.value_width - g.size().x - base_track * 0.5;
+            let x = left + value_w - g.size().x - base_track * 0.5;
             ui.painter().galley(
                 egui::pos2(x, mid - g.size().y / 2.0),
                 Arc::clone(g),
                 theme.color(ColorRole::Muted),
             );
         }
-        left += gauge.value_width;
+        left += value_w;
     }
     let track = Rect::from_min_max(egui::pos2(left, line.min.y), line.max);
     if track.width() < base_track * 2.0 {
@@ -1801,7 +1815,7 @@ fn draw_notification_row(
     }
     if allowed {
         if let Some(p) = item.progress {
-            let h = 3.0;
+            let h = theme.components.heads_up.progress_h;
             let bar = Rect::from_min_size(
                 egui::pos2(text_x, card.max.y - style.card_pad * 0.6 - h),
                 Vec2::new((text_right - text_x).max(0.0), h),
@@ -1941,7 +1955,10 @@ fn draw_footer(
     ui.painter().hline(
         footer.min.x..=footer.max.x,
         footer.min.y - style.gap * 0.5,
-        egui::Stroke::new(1.0, theme.color(ColorRole::Outline)),
+        egui::Stroke::new(
+            theme.control.stroke_hairline,
+            theme.color(ColorRole::Outline),
+        ),
     );
 
     // The level's colour dot: Primary at the top level, Muted otherwise. Who is signed in goes with
@@ -2013,7 +2030,8 @@ fn draw_footer(
     // while it is being pulled, and at the panel's bottom once open (the clip is the whole panel). A
     // caller that has set no clip draws it at the panel's bottom.
     let edge = ui.clip_rect().max.y.min(rect.max.y);
-    let handle_h = 4.0;
+    // Four hairlines thick: a bar, not a line, at any density.
+    let handle_h = theme.control.stroke_hairline * 4.0;
     let handle = Rect::from_center_size(
         egui::pos2(rect.center().x, edge - handle_h * 1.6),
         Vec2::new(theme.metrics.shade_handle_width, handle_h),

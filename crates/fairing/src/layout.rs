@@ -687,15 +687,17 @@ pub fn rail_split_with<A, B>(
     (out.picked, out.page)
 }
 
-/// The collapsed arm: wide enough for an icon and its disc, and nothing else.
-const RAIL_COLLAPSED: f32 = 64.0;
+/// The collapsed arm as a multiple of `touch_target`: wide enough for an icon and its disc,
+/// and nothing else, at whatever finger the disc is sized for.
+const RAIL_COLLAPSED: f32 = 1.12;
 
-/// How far a finger has to travel across the arm before it counts as a fold rather than a tap.
-const RAIL_SWIPE_DU: f32 = 24.0;
-
-/// The strip along the left edge that still counts as the arm once it has folded away, so a
-/// [`Fold::Away`] rail can be dragged back out without anything to press.
-const RAIL_GRIP_DU: f32 = 24.0;
+/// How far a finger has to travel across the arm before it counts as a fold rather than a tap,
+/// and the strip along the left edge that still counts as the arm once it has folded away (so a
+/// [`Fold::Away`] rail can be dragged back out without anything to press): both are the edge
+/// zone, `metrics.edge_px`, which follows the finger as the other edge gestures' zones do.
+fn rail_grip(cx: &Cx<'_>) -> f32 {
+    cx.theme.metrics.edge_px
+}
 
 /// Where [`Rail::show`] leaves a [`FoldFrame`] while its rail closure runs, so [`list_item`] can
 /// draw the fold without being told about it.
@@ -909,7 +911,7 @@ impl Rail {
         // fold this frame is, is a tween, and `Cx::animate` is where the crate keeps those so
         // `[motion] reduce` turns it off everywhere at once.
         let shut = match self.fold {
-            Fold::Icons => RAIL_COLLAPSED,
+            Fold::Icons => cx.theme.metrics.touch_target * RAIL_COLLAPSED,
             Fold::Away => 0.0,
         };
         // Hidden by the app, the arm goes all the way off whatever the fold would have left, and
@@ -1005,7 +1007,7 @@ impl Rail {
     /// gesture is read straight off the pointer, which takes part in no hit test at all and leaves
     /// every row's tap exactly as it was.
     ///
-    /// One rule, wherever the press began: a drag past [`RAIL_SWIPE_DU`] with horizontal intent
+    /// One rule, wherever the press began: a drag past the edge zone with horizontal intent
     /// — `|dx| > |dy|`, so a finger scrolling a long rail or page does not fold it on the way
     /// past — folds or opens **at once**, as the drag crosses the threshold. On the arm (or in
     /// the grip strip a folded-away arm leaves behind) that is all; on the page, with
@@ -1073,10 +1075,11 @@ impl Rail {
             return;
         };
         let (dx, dy) = (to.x - from.x, to.y - from.y);
-        if dx.abs() <= RAIL_SWIPE_DU || dx.abs() <= dy.abs() {
+        let grip_w = rail_grip(cx);
+        if dx.abs() <= grip_w || dx.abs() <= dy.abs() {
             return;
         }
-        let grip = band.with_max_x(band.left() + band.width().max(RAIL_GRIP_DU));
+        let grip = band.with_max_x(band.left() + band.width().max(grip_w));
         if grip.contains(from) {
             ctx.data_mut(|d| d.insert_temp(id, dx < 0.0));
             return;
@@ -2142,7 +2145,10 @@ fn card_divider(ui: &mut Ui, cx: &Cx<'_>) {
     ui.painter().hline(
         rect.min.x + pad..=rect.max.x,
         y,
-        egui::Stroke::new(1.0, cx.theme.color(ColorRole::Outline)),
+        egui::Stroke::new(
+            cx.theme.control.stroke_hairline,
+            cx.theme.color(ColorRole::Outline),
+        ),
     );
 }
 
@@ -2835,7 +2841,10 @@ impl<'a> ExpandableRow<'a> {
                 ui.painter().hline(
                     out.rect.min.x + pad..=out.rect.max.x,
                     out.rect.min.y,
-                    egui::Stroke::new(1.0, cx.theme.color(ColorRole::Outline)),
+                    egui::Stroke::new(
+                        cx.theme.control.stroke_hairline,
+                        cx.theme.color(ColorRole::Outline),
+                    ),
                 );
             }
             reveal_body(ui, id, press.response.rect, &out);

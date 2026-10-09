@@ -2,7 +2,7 @@
 //! their own: the status card sized its words as a share of the row (a gloved row made them half
 //! as big again), and the long-press ring's cancel ran on a literal 80 ms that `motion.reduce`
 //! could not turn off.
-#![cfg(feature = "mock")]
+#![cfg(all(feature = "mock", feature = "overlay"))]
 
 use fairing::layout;
 use fairing::testing::{single_level_access, test_shell, Harness};
@@ -10,6 +10,62 @@ use fairing::unit::ScalePolicy;
 use fairing::widgets::BigButton;
 use fairing::{screen, Cx, Shell};
 use std::time::Duration;
+
+/// The shade open at `policy`'s finger, with two tiles on it.
+fn shade_at(policy: ScalePolicy) -> fairing::Result<Harness> {
+    use fairing::settings::SettingKey;
+    use fairing::{tile, TileKind};
+    let mut h = Harness::from_builder(move |ctx| {
+        let mut shell = Shell::builder(single_level_access())
+            .physical_mm(200.0, 120.0)
+            .scale_policy(policy)
+            .build(ctx)?;
+        shell.add(tile("a", TileKind::Toggle(SettingKey::from("app.a"))).label("A"));
+        shell.add(tile("b", TileKind::Toggle(SettingKey::from("app.b"))).label("B"));
+        shell.launch(fairing::LaunchAction::OpenOverlay);
+        Ok(shell)
+    })?;
+    h.frames(60);
+    Ok(h)
+}
+
+/// **The gap between two quick tiles is the finger's `screen_inset`**, so a gloved panel's row
+/// breathes like its rows do; it was a fixed 12 du at any finger.
+#[test]
+fn the_quick_tile_gap_follows_the_finger() -> fairing::Result<()> {
+    let mut gaps = (0.0, 0.0);
+    for (gloved, policy) in [
+        (false, ScalePolicy::default()),
+        (true, ScalePolicy::gloved()),
+    ] {
+        let h = shade_at(policy)?;
+        let (a, b) = (
+            h.shell.overlay().tile_rect("a"),
+            h.shell.overlay().tile_rect("b"),
+        );
+        let (Some(a), Some(b)) = (a, b) else {
+            return Err(fairing::Error::Config("the tiles were not laid out".into()));
+        };
+        let gap = b.min.x - a.max.x;
+        let inset = h.shell.theme().metrics.screen_inset;
+        assert!(
+            (gap - inset).abs() < 0.5,
+            "the gap is {gap}, the finger's screen_inset is {inset}"
+        );
+        if gloved {
+            gaps.1 = gap;
+        } else {
+            gaps.0 = gap;
+        }
+    }
+    assert!(
+        gaps.1 > gaps.0 + 1.0,
+        "the gloved gap ({}) is no wider than the bare one ({})",
+        gaps.1,
+        gaps.0
+    );
+    Ok(())
+}
 
 /// The status card drawn at `policy`'s finger, settled.
 fn status_card_at(policy: ScalePolicy) -> fairing::Result<Harness> {

@@ -1013,9 +1013,14 @@ impl ShellBuilder {
         nav_bar.height = theme.metrics.nav_bar_height;
         let tokens = theme.motion;
         let gestures = gesture_engine(&config, &tokens);
+        // The corner zone is never smaller than the finger: `[gesture] emergency_corner_px` is a
+        // du floor, and a gloved finger's target is larger than its default.
         let guard = PolicyDriver::new(
             Duration::from_millis(config.gesture.emergency_ms),
-            config.gesture.emergency_corner_px,
+            config
+                .gesture
+                .emergency_corner_px
+                .max(theme.metrics.touch_target),
         );
         #[cfg_attr(not(feature = "overlay"), allow(unused_mut))]
         let mut overlay =

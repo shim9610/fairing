@@ -39,8 +39,10 @@ pub const EMERGENCY_GATE: &str = "chrome.emergency";
 /// engine's).
 pub(super) const RING_LAYER: &str = "fairing.chrome.guard";
 
-/// The progress ring's diameter (px). Larger than a finger (≈ 48 px) so it wraps the press.
-pub(super) const RING_SIZE: f32 = 56.0;
+/// The progress ring's diameter as a multiple of `touch_target`: a little larger than the
+/// finger so it wraps the press, at a bare finger and at a gloved one alike (it was a fixed
+/// 56 px, which a gloved press overran).
+const RING_OVER_FINGER: f32 = 1.17;
 
 /// The progress ring's stroke (px).
 const RING_STROKE: f32 = 3.0;
@@ -222,7 +224,8 @@ impl PolicyDriver {
             danger: theme.color(ColorRole::Danger),
             stroke_px: RING_STROKE,
         };
-        let rect = Rect::from_center_size(center, egui::Vec2::splat(RING_SIZE));
+        let ring = theme.metrics.touch_target * RING_OVER_FINGER;
+        let rect = Rect::from_center_size(center, egui::Vec2::splat(ring));
         progress_ring(&painter, rect, self.progress, &style);
         if self.progress < 1.0 {
             ctx.request_repaint();

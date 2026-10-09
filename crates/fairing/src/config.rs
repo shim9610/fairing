@@ -938,7 +938,8 @@ pub struct GestureConfig {
     pub hold_ms: u64,
     /// The emergency gesture: the top-corner long-press duration (ms; 2 s by default).
     pub emergency_ms: u64,
-    /// The emergency corner's side (px).
+    /// The emergency corner's side (du) — a floor: the zone is never smaller than the finger's
+    /// `touch_target`, so a gloved press lands in it too.
     pub emergency_corner_px: f32,
 }
 
