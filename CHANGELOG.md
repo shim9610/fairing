@@ -22,6 +22,11 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
 - The built-in settings screens group their rows in filled cards. A title with no actions is as
   tall as its words, a section heading as tall as its text, an explanation wraps at about seventy
   characters, and the wide settings screen's two titles sit on one line.
+- The status bar's item gap and the user level's dot are component tokens
+  (`components.status_bar.item_gap` · `user_dot`, 10 and 8 du by default, set through
+  `ShellBuilder::component_spec`) rather than constants; the audit's integrity stage checks
+  that the README, CONTRIBUTING and the getting-started table quote `Cargo.toml`'s
+  `rust-version`, so a bump that forgets a sentence fails.
 - One source for what was written in several places: the devices the tours run on are one
   table (`tools/devices.sh`) that `tools/tours.sh` and `tools/readme-gifs.sh` both read; the
   recorder writes its frame rate beside the frames and `tools/make_gif.py` reads it there; the

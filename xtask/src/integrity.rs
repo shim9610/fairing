@@ -13,6 +13,10 @@
 //! - `[target.'cfg(...)'.dependencies]` — a dependency outside the two audited targets appears in
 //!   neither `cargo tree` nor `cargo deny`.
 //!
+//! And one fact that lives in prose as well as in the manifest: the minimum Rust version. The
+//! crates and CI read `rust-version`; the README, the contributing guide and the getting-started
+//! table quote it, and this checks they quote the same number.
+//!
 //! All of it is fail-closed: anything it does not know is not passed.
 
 use crate::tomlish;
@@ -34,9 +38,10 @@ pub(crate) fn check(root: &Path) -> Result<bool> {
     vendor_dir(root, &mut problems);
     manifests(root, &members, &mut problems)?;
     lockfile(root, &members, &mut problems)?;
+    msrv_in_prose(root, &mut problems)?;
 
     println!(
-        "integrity: .cargo/config.toml · vendor/ · [patch]/[replace] · the members' lints · Cargo.lock's provenance ({} members)",
+        "integrity: .cargo/config.toml · vendor/ · [patch]/[replace] · the members' lints · Cargo.lock's provenance · the MSRV the docs quote ({} members)",
         members.len()
     );
     if problems.is_empty() {
@@ -83,6 +88,39 @@ A source replacement, a rustc-wrapper, env or a runner bypasses the audit gates 
                     ));
                 }
             }
+        }
+    }
+    Ok(())
+}
+
+/// The prose that quotes the minimum Rust version — the README's badge and sentence, the
+/// contributing guide, the getting-started table — says what `Cargo.toml`'s `rust-version`
+/// says. The crates and CI read the manifest; a sentence cannot, so this reads both and
+/// compares, and a bump that forgets a sentence fails here.
+fn msrv_in_prose(root: &Path, problems: &mut Vec<String>) -> Result<()> {
+    let manifest = util::read_file(&root.join("Cargo.toml"))?;
+    let Some(msrv) = tomlish::items(&manifest)?
+        .into_iter()
+        .find(|item| item.key == "rust-version")
+        .and_then(|item| item.string())
+    else {
+        problems.push("Cargo.toml has no `rust-version`".to_owned());
+        return Ok(());
+    };
+    for (file, needle) in [
+        ("README.md", format!("rust-{msrv}%2B")),
+        ("README.md", format!("minimum Rust version is {msrv}")),
+        ("CONTRIBUTING.md", format!("minimum Rust version is {msrv}")),
+        (
+            "docs/guide/01-getting-started.md",
+            format!("| Rust | {msrv} or newer"),
+        ),
+    ] {
+        let text = util::read_file(&root.join(file))?;
+        if !text.contains(&needle) {
+            problems.push(format!(
+                "{file} does not say the minimum Rust version is {msrv} (`{needle}` is not in it) — Cargo.toml's `rust-version` is the one source; update the sentence"
+            ));
         }
     }
     Ok(())

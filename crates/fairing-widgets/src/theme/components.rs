@@ -44,6 +44,16 @@ pub struct ToastMetrics {
     pub accent_w: f32,
 }
 
+/// The status bar's own dimensions (2) — the shell lays the bar out, but these two are the
+/// bar's to draw with rather than the screen's to divide by, so they are component tokens.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StatusBarMetrics {
+    /// The gap between two items.
+    pub item_gap: f32,
+    /// The diameter of the user level's colour dot beside the user item.
+    pub user_dot: f32,
+}
+
 /// The heads-up dimensions (3).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HeadsUpMetrics {
@@ -228,6 +238,8 @@ pub struct ComponentMetrics {
     pub popover: PopoverMetrics,
     /// The shade — all ratios.
     pub shade: ShadeMetrics,
+    /// The status bar.
+    pub status_bar: StatusBarMetrics,
 }
 
 impl Default for ComponentMetrics {
@@ -260,6 +272,8 @@ pub struct ComponentSpec {
     pub popover: [Span<Rigid>; 3],
     /// The shade — multiples rather than lengths, so not a `Span` and not scale-resolved.
     pub shade: ShadeMetrics,
+    /// The status bar — `item_gap` · `user_dot`.
+    pub status_bar: [Span<Rigid>; 2],
 }
 
 /// A spec of one `du`.
@@ -296,6 +310,7 @@ impl Default for ComponentSpec {
             ],
             popover: [du(420.0), du(8.0), du(12.0)],
             shade: ShadeMetrics::default(),
+            status_bar: [du(10.0), du(8.0)],
         }
     }
 }
@@ -347,6 +362,10 @@ impl ComponentSpec {
                 icon_gap: self.popover[2].resolve(s),
             },
             shade: self.shade,
+            status_bar: StatusBarMetrics {
+                item_gap: self.status_bar[0].resolve(s),
+                user_dot: self.status_bar[1].resolve(s),
+            },
         }
     }
 
@@ -356,7 +375,7 @@ impl ComponentSpec {
     /// [`crate::Error::Config`] on any violation — the message names the token.
     pub fn validate(&self) -> Result<()> {
         let s = Scale::identity();
-        let named: [(&str, Span<Free>); 24] = [
+        let named: [(&str, Span<Free>); 26] = [
             ("toast.enter_offset", self.toast[0].erased()),
             ("toast.lift_step", self.toast[1].erased()),
             ("toast.stack_gap", self.toast[2].erased()),
@@ -381,6 +400,8 @@ impl ComponentSpec {
             ("popover.max_width", self.popover[0].erased()),
             ("popover.caret", self.popover[1].erased()),
             ("popover.icon_gap", self.popover[2].erased()),
+            ("status_bar.item_gap", self.status_bar[0].erased()),
+            ("status_bar.user_dot", self.status_bar[1].erased()),
         ];
         for (name, span) in named {
             let v = span.resolve(&s);
@@ -465,6 +486,7 @@ mod tests {
             (c.popover.max_width, c.popover.caret, c.popover.icon_gap),
             (420.0, 8.0, 12.0)
         );
+        assert_eq!((c.status_bar.item_gap, c.status_bar.user_dot), (10.0, 8.0));
     }
 
     /// **The switch height follows the finger.** Today's formula (`touch_target × 0.6`) has to

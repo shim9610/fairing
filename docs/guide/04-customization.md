@@ -234,7 +234,7 @@ fn snappy() -> Theme {
 ### 1.6 Widget metrics — `ComponentSpec`
 
 If §1.2's `Metrics` is what the **shell** divides the screen with, `Theme::components`
-(`ComponentMetrics`) is what a **single widget draws itself** with. Twenty-five tokens in eight
+(`ComponentMetrics`) is what a **single widget draws itself** with. Twenty-seven tokens in nine
 groups.
 
 | Group | Tokens | Default (du) |
@@ -247,6 +247,7 @@ groups.
 | `list_row` | `pad` · `two_line_offset` · `chevron_w` | 16 · 11 · 20 |
 | `overview` | `card_gap` · `card_min_width` | 24 · `finger(3.0)` (floor 144) — the recent screens' cards are `0.6 ×` the content, never narrower than this ([03 §2.3](03-chrome.md#23-recent-screens-and-the-split)) |
 | `popover` | `max_width` · `caret` · `icon_gap` | 420 · 8 · 12 — a desktop icon's info popover: the widest it is drawn, how far it stands off the icon, the gap beside its icons ([03 §3.8](03-chrome.md#38-holding-an-icon-the-info-popover)) |
+| `status_bar` | `item_gap` · `user_dot` | 10 · 8 — the gap between two status items, and the diameter of the user level's colour dot. The bar's height, icon size and edge pad are `Metrics` (§1.2); these two are the bar's own |
 | `shade` | **nine multipliers** — separate table below | |
 
 The shade alone uses different units. It does not carry lengths but **multipliers on two axes**,

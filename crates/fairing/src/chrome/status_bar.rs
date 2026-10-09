@@ -38,10 +38,6 @@ use egui::text::Galley;
 use egui::{Color32, Rect, Sense};
 use std::sync::Arc;
 
-/// The gap between items.
-const SPACING: f32 = 10.0;
-/// The diameter of the user level's colour dot.
-const USER_DOT: f32 = 8.0;
 /// The first frame's width estimate for an integrator item (the real width is used from the next frame on).
 const CUSTOM_WIDTH_GUESS: f32 = 72.0;
 
@@ -454,6 +450,9 @@ pub struct StatusBar {
     pub enabled: bool,
     /// The height.
     pub height: f32,
+    /// The gap between two items this frame (`components.status_bar.item_gap`), read from the
+    /// theme at the start of the frame for the stages that lay the bar out without it.
+    item_gap: f32,
     /// Left.
     pub left: Vec<StatusItemSpec>,
     /// Centre.
@@ -597,6 +596,7 @@ impl StatusBar {
             layout: Vec::new(),
             texts: Vec::new(),
             fades: StatusFades::default(),
+            item_gap: 0.0,
             layout_hook: LayoutHook::default(),
             cells: Vec::new(),
         }
@@ -774,6 +774,7 @@ impl StatusBar {
         let inner = rect.shrink2(egui::vec2(parts.theme.metrics.status_edge_pad, 0.0));
 
         self.measure(ui, parts, custom);
+        self.item_gap = parts.theme.components.status_bar.item_gap;
         self.collapse(inner.width());
         self.position(inner);
         self.place_by_layout(rect, inner, parts.theme, custom);
@@ -947,7 +948,7 @@ impl StatusBar {
     /// rightmost. The last one stays — overflowing and clipped still beats an empty bar. A
     /// collapsed item stays in the buffer, not shown, so a layout can still be told of it.
     fn collapse(&mut self, available: f32) {
-        while total_width(&self.layout) > available
+        while total_width(&self.layout, self.item_gap) > available
             && self.layout.iter().filter(|placed| placed.shown).count() > 1
         {
             let Some(victim) = self
@@ -971,17 +972,13 @@ impl StatusBar {
 
     /// Stage 3: the left ones from the left, the right ones from the right end, and the centre ones in the middle of what is left.
     fn position(&mut self, inner: Rect) {
-        let left_span = slot_span(&self.layout, Slot::Left);
-        let right_span = slot_span(&self.layout, Slot::Right);
-        let center_span = slot_span(&self.layout, Slot::Center);
+        let gap = self.item_gap;
+        let left_span = slot_span(&self.layout, Slot::Left, gap);
+        let right_span = slot_span(&self.layout, Slot::Right, gap);
+        let center_span = slot_span(&self.layout, Slot::Center, gap);
         let center_start = (inner.center().x - center_span / 2.0)
-            .max(inner.min.x + left_span + if left_span > 0.0 { SPACING } else { 0.0 })
-            .min(
-                inner.max.x
-                    - right_span
-                    - center_span
-                    - if right_span > 0.0 { SPACING } else { 0.0 },
-            )
+            .max(inner.min.x + left_span + if left_span > 0.0 { gap } else { 0.0 })
+            .min(inner.max.x - right_span - center_span - if right_span > 0.0 { gap } else { 0.0 })
             .max(inner.min.x);
         let mut cursor = [inner.min.x, center_start, inner.max.x - right_span];
         for placed in &mut self.layout {
@@ -996,7 +993,7 @@ impl StatusBar {
                 egui::vec2(placed.width, inner.height()),
             );
             if let Some(slot) = cursor.get_mut(bucket) {
-                *slot = start + placed.width + SPACING;
+                *slot = start + placed.width + gap;
             }
         }
     }
@@ -1154,8 +1151,8 @@ impl StatusBar {
     }
 }
 
-/// The total width the shown items take up (gaps included).
-fn total_width(layout: &[Placed]) -> f32 {
+/// The total width the shown items take up (`gap`s included).
+fn total_width(layout: &[Placed], gap: f32) -> f32 {
     let shown = layout.iter().filter(|p| p.shown).count();
     if shown == 0 {
         return 0.0;
@@ -1165,11 +1162,11 @@ fn total_width(layout: &[Placed]) -> f32 {
         .filter(|p| p.shown)
         .map(|p| p.width)
         .sum::<f32>()
-        + SPACING * (shown - 1) as f32
+        + gap * (shown - 1) as f32
 }
 
-/// The width one slot's shown items take up (gaps included).
-fn slot_span(layout: &[Placed], slot: Slot) -> f32 {
+/// The width one slot's shown items take up (`gap`s included).
+fn slot_span(layout: &[Placed], slot: Slot, gap: f32) -> f32 {
     let mut total = 0.0;
     let mut count = 0usize;
     for placed in layout.iter().filter(|p| p.shown && p.slot == slot) {
@@ -1179,7 +1176,7 @@ fn slot_span(layout: &[Placed], slot: Slot) -> f32 {
     if count == 0 {
         0.0
     } else {
-        total + SPACING * (count - 1) as f32
+        total + gap * (count - 1) as f32
     }
 }
 
@@ -1520,7 +1517,7 @@ fn measure_builtin(
     if spec.item.is_text() {
         let galley = text_galley(spec, painter, parts, texts)?;
         let extra = if spec.item == StatusItem::User {
-            USER_DOT + 4.0
+            parts.theme.components.status_bar.user_dot + 4.0
         } else {
             0.0
         };
@@ -1619,6 +1616,7 @@ fn draw_builtin(
         let mut x = rect.min.x;
         if spec.item == StatusItem::User {
             // The level's colour dot ("the current subject's name plus the level's colour dot").
+            let dot = theme.components.status_bar.user_dot;
             let session = parts.access.session();
             let role = parts
                 .access
@@ -1627,11 +1625,11 @@ fn draw_builtin(
                 .and_then(|def| def.color)
                 .unwrap_or(ColorRole::Primary);
             painter.circle_filled(
-                egui::pos2(x + USER_DOT / 2.0, rect.center().y),
-                USER_DOT / 2.0,
+                egui::pos2(x + dot / 2.0, rect.center().y),
+                dot / 2.0,
                 theme.color(role),
             );
-            x += USER_DOT + 4.0;
+            x += dot + 4.0;
         }
         painter.galley(egui::pos2(x, rect.center().y - size.y / 2.0), galley, color);
         return;

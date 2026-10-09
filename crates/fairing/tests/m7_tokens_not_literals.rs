@@ -143,3 +143,45 @@ fn a_cancelled_long_press_is_instant_under_reduce() -> fairing::Result<()> {
     );
     Ok(())
 }
+
+/// **The gap between status items is `components.status_bar.item_gap`** — a token with a default
+/// (10 du) an integrator can set through `ShellBuilder::component_spec`, where it was a constant.
+#[test]
+fn the_status_bar_gap_is_a_component_token() -> fairing::Result<()> {
+    use fairing::theme::ComponentSpec;
+    use fairing::unit::{Dim, Span};
+    let wide = 31.0;
+    let mut h = Harness::from_builder(move |ctx| {
+        let spec = ComponentSpec {
+            status_bar: [Span::fixed(Dim::du(wide)), Span::fixed(Dim::du(8.0))],
+            ..ComponentSpec::default()
+        };
+        Shell::builder(single_level_access())
+            .services(fairing::services::mock::services())
+            .component_spec(spec)
+            .build(ctx)
+    })?;
+    h.frames(4);
+    let sb = h.shell.status_bar();
+    let mut rects: Vec<egui::Rect> = ["status.notifications", "status.bluetooth", "status.wifi"]
+        .into_iter()
+        .filter_map(|id| sb.item_rect(id))
+        .collect();
+    assert!(
+        rects.len() >= 2,
+        "the right cluster was not laid out: {rects:?}"
+    );
+    rects.sort_by(|a, b| a.min.x.total_cmp(&b.min.x));
+    for pair in rects.windows(2) {
+        let (a, b) = (pair.first(), pair.get(1));
+        let (Some(a), Some(b)) = (a, b) else {
+            continue;
+        };
+        let gap = b.min.x - a.max.x;
+        assert!(
+            (gap - wide).abs() < 0.5,
+            "the gap is {gap}, the spec said {wide}"
+        );
+    }
+    Ok(())
+}
