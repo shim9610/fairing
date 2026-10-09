@@ -477,7 +477,9 @@ impl Screen for Consumer {
     fn ui(&mut self, ui: &mut egui::Ui, _cx: &mut Cx<'_>) {
         ui.add_sized(
             [300.0, 48.0],
-            egui::TextEdit::singleline(&mut self.text).id_salt("consumer"),
+            egui::TextEdit::singleline(&mut self.text)
+                .id_salt("consumer")
+                .hint_text("Consumer"),
         );
     }
 
@@ -510,9 +512,8 @@ fn back_priority_is_overlay_then_osk_then_on_back_then_pop() -> fairing::Result<
     h.shell.launch(LaunchAction::open("b"));
     h.frames(3);
     assert_eq!(depth(&h), 2);
-    // The OSK: tap the TextEdit to take the focus → it shows.
-    let content = h.shell.layout().content;
-    h.tap(content.min + egui::vec2(60.0, 40.0));
+    // The OSK: tap the TextEdit — found by its hint — to take the focus → it shows.
+    h.tap_text("Consumer")?;
     settle(&mut h, 10, |h| h.shell.osk().is_shown())?;
     // Open the shade too.
     open_shade(&mut h)?;

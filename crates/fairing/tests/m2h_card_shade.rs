@@ -171,15 +171,23 @@ fn raised(h: &mut Harness) -> fairing::Result<Raised> {
     Ok(out)
 }
 
-/// A tap well away from any card, low on the page.
-fn tap_beside(h: &mut Harness, panel: egui::Rect) {
+/// A point on the page well away from the card: the other side, half a touch target in from
+/// the glass's edge, at the content's middle height — off the bars and the edge zones.
+fn beside(h: &Harness, panel: egui::Rect) -> egui::Pos2 {
     let screen = h.screen_rect();
+    let in_from_edge = h.shell.theme().metrics.touch_target * 0.5;
     let x = if panel.center().x < screen.center().x {
-        screen.max.x - 24.0
+        screen.max.x - in_from_edge
     } else {
-        screen.min.x + 24.0
+        screen.min.x + in_from_edge
     };
-    h.tap(egui::pos2(x, screen.max.y - 24.0));
+    egui::pos2(x, h.shell.layout().content.center().y)
+}
+
+/// A tap well away from any card.
+fn tap_beside(h: &mut Harness, panel: egui::Rect) {
+    let at = beside(h, panel);
+    h.tap(at);
     h.frames(40);
 }
 
@@ -244,12 +252,13 @@ fn a_card_arrives_from_above_fading_in_with_a_soft_edge() -> fairing::Result<()>
         h.shell.overlay().is_closed(),
         "a tap beside the card closes it"
     );
-    // A short pull, held.
+    // A short pull, held: to a sixth of the card's height, short of the snap at a third.
+    let short = rest.height() / 6.0;
     h.press(egui::pos2(x, 2.0));
     h.frames(1);
     for i in 1..=6 {
         #[expect(clippy::cast_precision_loss, reason = "six steps")]
-        let dy = 12.0 * i as f32;
+        let dy = short * i as f32 / 6.0;
         h.move_to(egui::pos2(x, 2.0 + dy));
         h.frames(1);
     }
@@ -272,7 +281,12 @@ fn a_card_arrives_from_above_fading_in_with_a_soft_edge() -> fairing::Result<()>
         "it is already its full width at its place: {:?} against {rest:?}",
         early.panel
     );
-    h.release(egui::pos2(x, 2.0 + 72.0));
+    // Held still before the release, so what is let go is a distance and not a speed.
+    for _ in 0..4 {
+        h.move_to(egui::pos2(x, 2.0 + short));
+        h.frames(1);
+    }
+    h.release(egui::pos2(x, 2.0 + short));
     h.frames(40);
     assert!(
         h.shell.overlay().is_closed(),
@@ -411,12 +425,8 @@ fn a_card_goes_out_in_a_fraction_of_the_time_it_came() -> fairing::Result<()> {
         "the open settles on the spring: {opening} frames"
     );
     let panel = need(h.shell.overlay().frame().panel, "the card")?;
-    let beside = if panel.center().x < screen.center().x {
-        screen.max.x - 24.0
-    } else {
-        screen.min.x + 24.0
-    };
-    h.tap(egui::pos2(beside, screen.max.y - 24.0));
+    let at = beside(&h, panel);
+    h.tap(at);
     let mut closing = 0;
     while !h.shell.overlay().is_closed() && closing < 120 {
         h.frame();
@@ -448,8 +458,9 @@ fn a_two_step_card_stops_at_the_tiles_and_a_press_on_the_page_closes_it() -> fai
         "at the stop the card is as tall as the stop: {} against {stop}",
         at_stop.height()
     );
-    // A press on the page, low and away from the card.
-    h.tap(egui::pos2(x, screen.max.y - 24.0));
+    // A press on the page, away from the card.
+    let at = beside(&h, at_stop);
+    h.tap(at);
     h.frames(40);
     assert!(
         h.shell.overlay().is_closed(),
@@ -603,11 +614,7 @@ fn a_card_goes_out_the_way_it_came() -> fairing::Result<()> {
     let rest = need(drawn(&mut h), "the plate at rest")?;
     assert_eq!(rest.plate.fill.a(), 255);
     // A tap beside it, pressed and let go by hand so every frame of the way out is seen.
-    let beside = if rest.panel.center().x < screen.center().x {
-        egui::pos2(screen.max.x - 24.0, screen.max.y - 24.0)
-    } else {
-        egui::pos2(screen.min.x + 24.0, screen.max.y - 24.0)
-    };
+    let beside = beside(&h, rest.panel);
     h.press(beside);
     h.frame();
     h.release(beside);

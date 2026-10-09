@@ -154,6 +154,13 @@ fn option_texts(h: &mut Harness, trigger: egui::Rect) -> Vec<(String, egui::Pos2
 }
 
 /// Where the text `word` is drawn this frame, and how wide it is.
+/// Past the open/close/pick motion: the `switch` tween plus the frames the result takes to land,
+/// read from the token rather than counted — ten frames once stood in for 140 ms.
+fn settled(h: &mut Harness) {
+    let switch = h.shell.theme().motion.switch.duration.as_secs_f64();
+    h.run_for(switch + 3.0 * fairing::testing::FRAME_DT);
+}
+
 fn text_at(h: &mut Harness, word: &str) -> Option<(egui::Pos2, f32)> {
     h.frame_shapes().into_iter().find_map(|c| match c.shape {
         egui::Shape::Text(t) if t.galley.job.text == word => Some((t.pos, t.galley.size().x)),
@@ -167,7 +174,7 @@ fn the_open_list_scrolls_under_a_finger() -> fairing::Result<()> {
     let (_, trigger, _, _) = state(&mut h);
     assert!(trigger.width() > 0.0, "no trigger");
     h.tap(trigger.center());
-    h.frames(10);
+    settled(&mut h);
     let before = option_texts(&mut h, trigger);
     assert!(
         before.len() >= 3,
@@ -177,7 +184,7 @@ fn the_open_list_scrolls_under_a_finger() -> fairing::Result<()> {
     // A finger inside the list, dragged up by two rows.
     let inside = egui::pos2(trigger.center().x, trigger.max.y + 60.0);
     h.drag(inside, egui::pos2(inside.x, inside.y - 120.0), 12);
-    h.frames(10);
+    settled(&mut h);
     let after = option_texts(&mut h, trigger);
     let first_after = after
         .iter()
@@ -195,7 +202,7 @@ fn a_tap_outside_closes_the_list_and_lands_on_nothing() -> fairing::Result<()> {
     let mut h = bench()?;
     let (_, trigger, button, _) = state(&mut h);
     h.tap(trigger.center());
-    h.frames(10);
+    settled(&mut h);
     assert!(
         !option_texts(&mut h, trigger).is_empty(),
         "the list did not open"
@@ -219,7 +226,7 @@ fn a_tap_outside_closes_the_list_and_lands_on_nothing() -> fairing::Result<()> {
     // Open again and tap the button while the list is up: the list closes and the button is
     // not pressed — the tap was spent on closing.
     h.tap(trigger.center());
-    h.frames(10);
+    settled(&mut h);
     assert!(
         !option_texts(&mut h, trigger).is_empty(),
         "the list did not reopen"
@@ -262,19 +269,14 @@ fn every_trigger_opens_on_a_tap_and_a_row_picks() -> fairing::Result<()> {
             "{trigger:?}: no trigger"
         );
         h.tap(rect.center());
-        h.frames(10);
+        settled(&mut h);
         let rows = option_texts(&mut h, rect);
         assert!(
             rows.len() >= 3,
             "{trigger:?}: the list did not open: {rows:?}"
         );
-        let charlie = rows
-            .iter()
-            .find(|(t, _)| t == "Charlie")
-            .map(|(_, p)| *p)
-            .unwrap_or_default();
-        h.tap(charlie + egui::vec2(20.0, 8.0));
-        h.frames(10);
+        h.tap_text("Charlie")?;
+        settled(&mut h);
         let (selected, _, _, _) = state(&mut h);
         assert_eq!(selected, 2, "{trigger:?}: tapping Charlie did not pick it");
         assert!(
@@ -294,7 +296,7 @@ fn a_hint_sits_at_the_right_of_its_row() -> fairing::Result<()> {
     })?;
     let (_, trigger, _, _) = state(&mut h);
     h.tap(trigger.center());
-    h.frames(10);
+    settled(&mut h);
     let rows = option_texts(&mut h, trigger);
     let bravo = rows
         .iter()
@@ -327,7 +329,7 @@ fn a_grid_cell_picks_its_option() -> fairing::Result<()> {
     let mut h = bench_with(Spec::opener(Opener::Grid))?;
     let (_, trigger, _, _) = state(&mut h);
     h.tap(trigger.center());
-    h.frames(10);
+    settled(&mut h);
     let cells = option_texts(&mut h, trigger);
     assert!(cells.len() >= 9, "the grid did not open whole: {cells:?}");
     let golf = cells
@@ -340,13 +342,15 @@ fn a_grid_cell_picks_its_option() -> fairing::Result<()> {
         .find(|(t, _)| t == "Alpha")
         .map(|(_, p)| *p)
         .unwrap_or_default();
+    // Six rows of the list's own height — the metrics', not a guess at 40 px a row.
+    let row = h.shell.theme().metrics.row_height;
     assert!(
-        golf.y - alpha.y < 6.0 * 40.0,
+        golf.y - alpha.y < 6.0 * row,
         "Golf is six rows under Alpha, so this is a column and not a grid"
     );
     let (_, width) = text_at(&mut h, "Golf").unwrap_or_default();
     h.tap(golf + egui::vec2(width * 0.5, 8.0));
-    h.frames(10);
+    settled(&mut h);
     assert_eq!(state(&mut h).0, 6, "tapping the Golf cell did not pick it");
     Ok(())
 }
@@ -376,7 +380,7 @@ fn a_sheet_rises_from_the_bottom_and_its_scrim_takes_the_closing_tap() -> fairin
         screen.max.y
     );
     h.tap(button.center());
-    h.frames(10);
+    settled(&mut h);
     assert!(
         option_texts(&mut h, trigger).is_empty(),
         "a tap on the scrim did not close the sheet"
@@ -397,7 +401,7 @@ fn a_search_narrows_the_list_and_forgets_the_query_when_closed() -> fairing::Res
     let (_, trigger, _, _) = state(&mut h);
     let screen = h.screen_rect();
     h.tap(trigger.center());
-    h.frames(10);
+    settled(&mut h);
     let all = option_texts(&mut h, trigger);
     assert!(
         all.len() >= 3,
@@ -424,25 +428,24 @@ fn a_search_narrows_the_list_and_forgets_the_query_when_closed() -> fairing::Res
     );
     // The field is the head, on the trigger: a tap there gives it the keyboard.
     h.tap(trigger.center());
-    h.frames(10);
+    settled(&mut h);
     h.type_text("jul");
-    h.frames(10);
+    settled(&mut h);
     let some = option_texts(&mut h, trigger);
     assert_eq!(
         some.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>(),
         vec!["Juliet"],
         "typing \"jul\" did not narrow the list to Juliet"
     );
-    let juliet = some.first().map(|(_, p)| *p).unwrap_or_default();
-    h.tap(juliet + egui::vec2(20.0, 8.0));
-    h.frames(10);
+    h.tap_text("Juliet")?;
+    settled(&mut h);
     assert_eq!(state(&mut h).0, 9, "tapping Juliet did not pick it");
     assert!(
         option_texts(&mut h, trigger).is_empty(),
         "the search stayed open after a pick"
     );
     h.tap(trigger.center());
-    h.frames(10);
+    settled(&mut h);
     let again = option_texts(&mut h, trigger);
     assert!(
         again.len() >= 3,

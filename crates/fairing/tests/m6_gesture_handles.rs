@@ -859,7 +859,9 @@ fn form_on(
             let mut text = text.borrow_mut();
             ui.add_sized(
                 [300.0, 48.0],
-                egui::TextEdit::singleline(&mut *text).id_salt("t"),
+                egui::TextEdit::singleline(&mut *text)
+                    .id_salt("t")
+                    .hint_text("Type here"),
             );
         }));
         shell.add(stub("batches"));
@@ -875,10 +877,21 @@ fn form_on(
     Ok(h)
 }
 
+/// A point on the page clear of the field: the right-hand third, a screen inset down.
+#[cfg(feature = "osk")]
+fn beside_the_field(h: &Harness) -> egui::Pos2 {
+    let content = h.shell.layout().content;
+    let inset = h.shell.theme().metrics.screen_inset;
+    egui::pos2(content.min.x + content.width() * 0.7, content.min.y + inset)
+}
+
 /// Put a finger on the form's field, so the keyboard starts to come up.
 #[cfg(feature = "osk")]
 fn focus_the_field(h: &mut Harness) {
-    let field = h.shell.layout().content.min + egui::vec2(160.0, 196.0);
+    // By its hint, not at an assumed place under the space.
+    let field = h
+        .text_rect("Type here")
+        .map_or(h.shell.layout().content.center(), |r| r.center());
     h.press(field);
     h.frame();
     h.release(field);
@@ -974,7 +987,7 @@ fn the_strip_stays_off_the_keys_while_they_go_down() -> fairing::Result<()> {
     focus_the_field(&mut h);
     h.frames(30);
     // A tap beside the field takes the focus away, and the keyboard goes.
-    let beside = h.shell.layout().content.min + egui::vec2(700.0, 60.0);
+    let beside = beside_the_field(&h);
     h.tap(beside);
     let mut going = None;
     for _ in 0..120 {
@@ -1050,7 +1063,7 @@ fn the_space_bar_types_under_a_bottom_handle_while_the_keyboard_comes_up() -> fa
                     // Up once and down again: the strip is back at the glass's bottom.
                     focus_the_field(&mut h);
                     h.frames(30);
-                    h.tap(h.shell.layout().content.min + egui::vec2(700.0, 60.0));
+                    h.tap(beside_the_field(&h));
                     h.frames(120);
                     if h.shell.layout().osk.is_some() {
                         return Err(fail("the keyboard did not go down"));

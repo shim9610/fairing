@@ -263,8 +263,24 @@ fn a_header_switch_toggles_without_opening_and_the_row_opens_without_toggling(
 ) -> fairing::Result<()> {
     let mut h = bench(0)?;
     let s = snap(&mut h);
-    // The switch sits at the right, before the chevron: an inset, the chevron, a gap.
-    let on_switch = egui::pos2(s.night_header.max.x - 110.0, s.night_header.center().y);
+    // The switch's knob — the largest circle in the row; the chevron's round caps are circles
+    // too — found where the row drew it rather than at a guessed distance from the row's right
+    // edge (an inset, a chevron and a gap that all follow the tokens).
+    let circles: Vec<(egui::Pos2, f32)> = h
+        .frame_shapes()
+        .into_iter()
+        .filter_map(|c| match c.shape {
+            egui::Shape::Circle(k) if s.night_header.contains(k.center) => {
+                Some((k.center, k.radius))
+            }
+            _ => None,
+        })
+        .collect();
+    let on_switch = circles
+        .iter()
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(c, _)| *c)
+        .ok_or_else(|| fairing::Error::Config("no switch knob on the Night light row".into()))?;
     h.tap(on_switch);
     h.run_for(0.5);
     let after = snap(&mut h);
@@ -276,7 +292,7 @@ fn a_header_switch_toggles_without_opening_and_the_row_opens_without_toggling(
         !after.open[1],
         "a tap on the header's switch opened the row"
     );
-    let on_title = egui::pos2(s.night_header.min.x + 60.0, s.night_header.center().y);
+    let on_title = h.text_rect("Night light")?.center();
     h.tap(on_title);
     h.run_for(1.0);
     let opened = snap(&mut h);

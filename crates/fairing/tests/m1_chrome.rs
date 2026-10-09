@@ -528,8 +528,9 @@ fn status_bar_slots_are_laid_out_left_center_right() -> fairing::Result<()> {
         (left.min.x - screen.min.x) < (screen.max.x - right.max.x) + 1.0,
         "the left sticks to the left margin"
     );
+    let edge_pad = h.shell.theme().metrics.status_edge_pad;
     assert!(
-        (screen.max.x - right.max.x) < 24.0,
+        (screen.max.x - right.max.x) <= edge_pad + 1.0,
         "the right sticks to the right edge"
     );
     let center_offset = (center.center().x - screen.center().x).abs();

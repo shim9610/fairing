@@ -69,8 +69,9 @@ fn same_id_updates_without_second_heads_up() -> fairing::Result<()> {
     let id = NotificationId::of("job");
     h.shell
         .notify(Notification::new(id, "Starting").body("0 %"));
-    // Until the entry (220 ms) is over and it is `Holding`.
-    h.run_for(0.3);
+    // Until the entry is over and it is `Holding`.
+    let entry = h.shell.theme().motion.heads_up_in.duration.as_secs_f64();
+    h.run_for(entry + 0.08);
     assert_eq!(h.shell.heads_up().phase(), Some(HeadsUpPhase::Holding));
     h.shell
         .notify(Notification::new(id, "Running").body("50 %").progress(0.5));
@@ -103,7 +104,13 @@ fn heads_up_timeline() -> fairing::Result<()> {
     h.frame();
     assert_eq!(h.shell.heads_up().phase(), Some(HeadsUpPhase::Entering));
     assert!(h.shell.heads_up().y() < 0.0, "it comes down from above");
-    h.run_for(0.25);
+    let m = h.shell.theme().motion;
+    let (entry, hold, exit) = (
+        m.heads_up_in.duration.as_secs_f64(),
+        m.heads_up_hold.as_secs_f64(),
+        m.heads_up_out.duration.as_secs_f64(),
+    );
+    h.run_for(entry + 0.03);
     assert_eq!(h.shell.heads_up().phase(), Some(HeadsUpPhase::Holding));
     assert!(
         h.shell.heads_up().y().abs() < 0.5,
@@ -114,13 +121,13 @@ fn heads_up_timeline() -> fairing::Result<()> {
         h.shell.heads_up().next_deadline().is_some(),
         "while holding it schedules an expiry time"
     );
-    h.run_for(3.5);
+    h.run_for(hold - 0.5);
     assert_eq!(
         h.shell.heads_up().visible(),
         Some(id),
-        "as it was until 4 s"
+        "as it was until the hold is up"
     );
-    h.run_for(1.0);
+    h.run_for(0.5 + exit + 0.3);
     assert_eq!(
         h.shell.heads_up().visible(),
         None,

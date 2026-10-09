@@ -531,8 +531,9 @@ fn an_eviction_under_the_top_does_not_snap_the_push() -> fairing::Result<()> {
     h.shell.launch(LaunchAction::open("a"));
     h.run_for(0.8);
     h.shell.launch(LaunchAction::open("b"));
-    h.run_for(0.4); // the push has landed: `a` is Stopped under `b`
-    h.run_for(0.5); // ~0.7 s after `a` stopped
+    let push = h.shell.theme().motion.push.duration.as_secs_f64();
+    h.run_for(push + 0.18); // the push has landed: `a` is Stopped under `b`
+    h.run_for(0.5); // about 0.7 s after `a` stopped, inside its 1 s eviction
                     // A long push for `c` (1 s), so that `a`'s deadline falls inside it.
     let mut tokens = h.shell.theme().motion;
     tokens.push.duration = std::time::Duration::from_secs(1);

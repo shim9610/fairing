@@ -22,6 +22,11 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
 - The built-in settings screens group their rows in filled cards. A title with no actions is as
   tall as its words, a section heading as tall as its text, an explanation wraps at about seventy
   characters, and the wide settings screen's two titles sit on one line.
+- The headless tests ask the shell where things are and how long motions take instead of
+  assuming: a field is found by its hint, a row's switch by its knob, a gap between status
+  items by the rects the bar laid out; waits are the motion tokens' lengths; a pull short of
+  the snap is a share of the card's height. A test written for one finger or one token value
+  no longer passes by coincidence.
 - The example tours have no pixel distance and no frame count standing for a time: a drag goes
   to a `Spot` (`Act::DragTo`, with `Spot::Across` for a drag that keeps its line), a finger
   held still is `Act::Hold`, and a long press or a toast's lifetime is waited on the input clock

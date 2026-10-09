@@ -578,7 +578,9 @@ fn a_press_on_the_keyboard_is_the_keyboards() -> fairing::Result<()> {
             let mut text = String::new();
             ui.add_sized(
                 [300.0, 48.0],
-                egui::TextEdit::singleline(&mut text).id_salt("t"),
+                egui::TextEdit::singleline(&mut text)
+                    .id_salt("t")
+                    .hint_text("Type here"),
             );
         }));
         Ok(shell)
@@ -586,9 +588,8 @@ fn a_press_on_the_keyboard_is_the_keyboards() -> fairing::Result<()> {
     h.frames(2);
     h.shell.launch(LaunchAction::open("form"));
     h.frames(3);
-    // The field: under the space, at the screen's left.
-    let content = h.shell.layout().content;
-    h.tap(content.min + egui::vec2(160.0, 196.0));
+    // The field, found by its hint rather than at an assumed place under the space.
+    h.tap_text("Type here")?;
     h.frames(3);
     let keys = h
         .shell

@@ -26,9 +26,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
-/// The OSK's show and hide tween length (`[motion.osk]`'s default).
-const OSK_SHOW: f32 = 0.180;
-/// The long-press length (A7).
+/// The long press the widget harness's button asks for.
 const LONG_PRESS: Duration = Duration::from_millis(500);
 
 /// `Option` → `Result` (the tests do not use `unwrap`).
@@ -241,7 +239,9 @@ fn osk_show_curve_at_frame_five_and_debounce() -> fairing::Result<()> {
     // The tween has advanced once (= 1 frame) here. Four more = 5 frames.
     h.frames(4);
     let osk_h = h.shell.osk().height();
-    let expected = osk_h * Easing::CubicOut.apply(5.0 * FRAME_DT_F32 / OSK_SHOW);
+    // The show tween's length from the token, not a copy of its default.
+    let show = h.shell.theme().motion.osk_show.duration.as_secs_f32();
+    let expected = osk_h * Easing::CubicOut.apply(5.0 * FRAME_DT_F32 / show);
     let got = h.shell.osk().inset_bottom();
     assert!(
         (got - expected).abs() < 1.0,
@@ -699,8 +699,12 @@ fn switch_and_long_press_and_slider() -> fairing::Result<()> {
         assert_eq!(state.changed, 1);
     }
     assert!(h.shell.is_animating(), "the knob tween is running");
-    h.run_for(0.2);
-    assert!(!h.shell.is_animating(), "it is over inside 140 ms");
+    let knob_tween = h.shell.theme().motion.switch.duration.as_secs_f64();
+    h.run_for(knob_tween + 0.06);
+    assert!(
+        !h.shell.is_animating(),
+        "it is over inside the switch tween"
+    );
 
     // Back again by dragging: let go short of half and it stays, past half and it flips.
     let left = switch.left_center() + egui::vec2(2.0, 0.0);
@@ -723,10 +727,11 @@ fn switch_and_long_press_and_slider() -> fairing::Result<()> {
     assert_eq!(w.borrow().completions, 1, "holding on does not repeat it");
     h.release(button.center());
     h.frames(2);
-    h.run_for(0.12);
+    let back = h.shell.theme().motion.press_release.duration.as_secs_f64();
+    h.run_for(back + 0.04);
     assert!(
         w.borrow().progress < 0.01,
-        "letting go makes the ring go inside 80 ms"
+        "letting go makes the ring go inside the release tween"
     );
 
     // Letting go at 300 ms plays back with no completion.
@@ -741,8 +746,11 @@ fn switch_and_long_press_and_slider() -> fairing::Result<()> {
     assert_eq!(w.borrow().completions, 0);
     h.release(button.center());
     h.frames(2);
-    h.run_for(0.12);
-    assert!(w.borrow().progress < 0.01, "80 ms of playing back");
+    h.run_for(back + 0.04);
+    assert!(
+        w.borrow().progress < 0.01,
+        "the release tween of playing back"
+    );
     assert_eq!(w.borrow().completions, 0);
 
     // The slider: the value tracks the finger 1:1 (no easing).

@@ -191,8 +191,10 @@ fn half_pulled_shade_reveals_the_panel_from_the_top() -> fairing::Result<()> {
         panel.contains_rect(tile),
         "the tile row is inside the visible area: {tile:?} ⊄ {panel:?}"
     );
+    // Near the top: within a couple of tile gaps (`screen_inset`), whatever the finger.
+    let gap = h.shell.theme().metrics.screen_inset;
     assert!(
-        tile.min.y - top < 32.0,
+        tile.min.y - top < 2.5 * gap,
         "the tile row is near the panel's top: {tile:?}"
     );
     // Only the head of the notification list shows; its end (and the footer and handle below it) is outside the curtain.

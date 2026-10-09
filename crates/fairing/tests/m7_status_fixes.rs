@@ -61,23 +61,30 @@ fn small_custom_status_item_is_measured_after_a_collapse() -> fairing::Result<()
         "tiny",
     ];
     let mut total = 0.0;
-    let mut n = 0.0_f32;
     let mut tiny_w = 0.0;
+    let mut rects = Vec::new();
     for id in ids {
         if let Some(r) = sb.item_rect(id) {
             total += r.width();
-            n += 1.0;
+            rects.push(r);
             if id == "tiny" {
                 tiny_w = r.width();
             }
         }
     }
+    // The gaps between the items as the bar laid them, not the bar's spacing constant copied.
+    rects.sort_by(|a, b| a.min.x.total_cmp(&b.min.x));
+    let gaps: f32 = rects
+        .iter()
+        .zip(rects.iter().skip(1))
+        .map(|(a, b)| b.min.x - a.max.x)
+        .sum();
     assert!(
         tiny_w > 0.0 && tiny_w < 40.0,
         "precondition: tiny is small ({tiny_w})"
     );
     let pad = wide.shell.theme().metrics.status_edge_pad;
-    let needed = total + 10.0 * (n - 1.0) + 2.0 * pad;
+    let needed = total + gaps + 2.0 * pad;
     // Room for its real width plus a margin, but not for the 72 px guess.
     let width = needed + (72.0 - tiny_w) * 0.5;
     let mut cfg = single_level_access();

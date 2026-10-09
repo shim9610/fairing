@@ -516,10 +516,12 @@ fn a_crossing_never_blinks() -> fairing::Result<()> {
 #[test]
 fn a_pull_whose_first_move_lands_with_the_press_still_opens() -> fairing::Result<()> {
     let mut h = shell("card", (1280.0, 800.0), |_| {})?;
+    // The first move lands past the edge zone, whatever the finger makes it.
+    let past_edge = h.shell.theme().metrics.edge_px * 1.5;
     h.press(egui::pos2(300.0, 2.0));
-    h.move_to(egui::pos2(300.0, 48.0));
+    h.move_to(egui::pos2(300.0, past_edge));
     h.frames(1);
-    let mut y = 48.0_f32;
+    let mut y = past_edge;
     let mut seen = false;
     while y < 650.0 {
         y = (y + 46.0).min(650.0);
