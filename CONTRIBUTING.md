@@ -65,7 +65,7 @@ step of any script could not do what it asked. A script presses what it names
 (`Act::Tap(Spot::Text("Alerts"))` finds the label on the glass; there is no coordinate form) and says what it expects before each
 picture (`Act::Expect(Expect::Text("Lamp hours"))`), so a change that moves a row, renames a
 label or breaks a flow fails here rather than leaving a wrong picture under the right file name.
-CI runs it on every push. When you change what a screen shows, run it; when you add a step to a
+the public repository's CI runs it on every push. When you change what a screen shows, run it; when you add a step to a
 script, name the thing you press and check what you expect to see — a coordinate written down
 is right for one row height only.
 

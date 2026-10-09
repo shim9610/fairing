@@ -377,7 +377,7 @@ it expects to be looking at before each picture: `Act::Expect(Expect::Text("Lamp
 is the same with patience, for what arrives after an animation the shell does not own. A step
 that cannot find its target or an expectation that does not hold is logged with what *was*
 there, the script goes on so one run lists every miss, and the example exits non-zero at the end.
-`tools/tours.sh` runs every tour that way, stills only, and CI runs it on every push.
+`tools/tours.sh` runs every tour that way, stills only, and the public repository's CI runs it on every push.
 
 Add `--record` and the tour runs on a fixed 60 Hz clock: each frame is 1/60 s after
 the one before, however long it took to draw, so a software rasteriser records as

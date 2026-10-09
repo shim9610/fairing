@@ -8,8 +8,13 @@ on:
 permissions:
   contents: read
 
+# **The jobs run on the public repository only.** The development repository is private, and
+# a private repository's Actions minutes are paid for; the public one's are free and it carries
+# the same tree (minus the internal notes), so every push lands there and is checked there. On
+# any other repository every job is skipped, which costs nothing.
 jobs:
   audit:
+    if: github.repository == 'shim9610/fairing'
     runs-on: ubuntu-latest
     # **No debug info in CI**. The audit reads exit codes, not backtraces, and debug info
     # is the bulk of what the build writes: one integration test binary measured 222 MB with it and
@@ -100,6 +105,7 @@ jobs:
   # every feature on, checked with that version itself — read from Cargo.toml, so bumping it is
   # one edit.
   msrv:
+    if: github.repository == 'shim9610/fairing'
     runs-on: ubuntu-latest
     env:
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -124,6 +130,7 @@ jobs:
   # a flow that broke fails here, where before it left a wrong picture under the right file name
   # and nobody looked. Stills only; the README's animations are tools/readme-gifs.sh's.
   tours:
+    if: github.repository == 'shim9610/fairing'
     runs-on: ubuntu-latest
     env:
       CARGO_PROFILE_DEV_DEBUG: "0"
