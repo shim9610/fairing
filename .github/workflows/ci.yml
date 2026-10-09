@@ -95,9 +95,10 @@ jobs:
           df -h /
           du -sh target 2>/dev/null || true
 
-  # The crates declare `rust-version = "1.95"`, and everything else here builds with the newer
+  # The crates declare a `rust-version`, and everything else here builds with the newer
   # toolchain in rust-toolchain.toml. This job keeps the declaration honest: the two libraries,
-  # every feature on, checked with 1.95 itself.
+  # every feature on, checked with that version itself — read from Cargo.toml, so bumping it is
+  # one edit.
   msrv:
     runs-on: ubuntu-latest
     env:
@@ -105,11 +106,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Read the declared minimum from Cargo.toml
+        run: |
+          msrv=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)
+          test -n "$msrv" || { echo "no rust-version in Cargo.toml" >&2; exit 1; }
+          echo "MSRV=$msrv" >> "$GITHUB_ENV"
+
       - name: Install the declared minimum toolchain
-        run: rustup toolchain install 1.95 --profile minimal
+        run: rustup toolchain install "$MSRV" --profile minimal
 
       - name: Check the libraries with it
-        run: cargo +1.95 check --locked -p fairing -p fairing-widgets --all-features
+        run: cargo "+$MSRV" check --locked -p fairing -p fairing-widgets --all-features
 
   # **The example tours, as checks.** Each script presses what it names (`Act::Tap(Spot::Text(..))`, a label
   # found on the glass) and says what it expects to see (`Act::Expect`) before every picture, and

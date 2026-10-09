@@ -40,7 +40,7 @@
 //! ([`build_tour`]).
 //!
 //! ```text
-//! xvfb-run -a -s "-screen 0 1024x600x24" env LIBGL_ALWAYS_SOFTWARE=1 WINIT_UNIX_BACKEND=x11 \
+//! xvfb-run -a -s "-screen 0 1024x600x24" env LIBGL_ALWAYS_SOFTWARE=1 \
 //!   cargo run -p fairing --features runner-x11 --example demo -- --tour target/tour
 //! ```
 
@@ -69,7 +69,10 @@ use std::rc::Rc;
 use std::time::Duration;
 
 /// The default window size. The tour pins it to this size.
-const SIZE: (f32, f32) = (1024.0, 600.0);
+const SIZE: (f32, f32) = (
+    fairing::testing::DEFAULT_SIZE.x,
+    fairing::testing::DEFAULT_SIZE.y,
+);
 
 /// The session's subject as one human-readable line. `{:?}` spits out `Subject { id: None, level:
 /// Level(0), … }` as it stands, which is no good on a screen.
@@ -2092,6 +2095,9 @@ const PLAN: &[Act] = &[
     Act::Key("ㅏ"),
     Act::Wait(4),
     Act::Shot("11a-osk-compose.png"),
+    // The README's keyboard picture: the field being typed into and the keyboard under it,
+    // cut from a fifth of the way down the content.
+    Act::ShotBelow("11a-osk-keyboard.png", Spot::Page(0.0, 0.2)),
     Act::Key("ㄴ"),
     Act::Wait(4),
     // Back on the English qwerty, as the `한/영` key crosses: the syllable stays in the field.

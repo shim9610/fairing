@@ -3,8 +3,12 @@
 use crate::util::{self, Error, Result};
 use std::path::{Path, PathBuf};
 
+/// The host the audit runs on, and the device target it cross-checks.
+pub(crate) const HOST_TARGET: &str = "x86_64-unknown-linux-gnu";
+/// The device target (stage 12's cross build).
+pub(crate) const CROSS_TARGET: &str = "aarch64-unknown-linux-gnu";
 /// The targets audited. The same two as `deny.toml [graph].targets`.
-pub(crate) const TARGETS: [&str; 2] = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"];
+pub(crate) const TARGETS: [&str; 2] = [HOST_TARGET, CROSS_TARGET];
 
 /// One crate appearing in the tree.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]

@@ -386,6 +386,10 @@ pub enum Act {
     /// A tap on a [`Spot`]: the press, a frame held, the release. A spot that cannot be found
     /// fails the tour and moves on.
     Tap(Spot),
+    /// A screenshot cut to the glass **from a [`Spot`]'s height down** — the keyboard and the
+    /// field above it, say, without the rest of the page. The spot is found when the shot is
+    /// asked for.
+    ShotBelow(&'static str, Spot),
     /// A toast (`Shell::toast`).
     Toast(&'static str),
     /// A notification, `(level, title, body)` (`Shell::notify`; the id is the title's FNV). With the
@@ -568,6 +572,21 @@ fn texts_reading(texts: &[(String, egui::Rect)], label: &str) -> Vec<egui::Rect>
     found
 }
 
+/// `image` from the row at `y` (in points; the shot is at the window's scale) to its bottom.
+fn below(image: &egui::ColorImage, y: f32) -> egui::ColorImage {
+    let [w, h] = image.size;
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a row index"
+    )]
+    let top = (y.max(0.0).round() as usize).min(h);
+    let mut cropped = image.clone();
+    cropped.pixels.drain(..top * w);
+    cropped.size = [w, h - top];
+    cropped
+}
+
 /// The texts on the glass, for a message about what was not among them.
 fn seen(texts: &[(String, egui::Rect)]) -> String {
     let mut names: Vec<&str> = texts
@@ -641,6 +660,10 @@ struct VirtualClock {
 /// One frame of [`VirtualClock`] — the 60 Hz the tour scripts are written for (a `MoveTo` over
 /// `frames` frames releases at `distance / frames × 60` px/s).
 const RECORD_STEP: f64 = 1.0 / 60.0;
+/// Every `RECORD_KEEP`th frame of the clock is written: at 60 Hz, 30 frames a second. The rate is
+/// written beside the frames (`fps`) for `tools/make_gif.py`, so it is stated once, here.
+const RECORD_KEEP: u32 = 2;
+
 /// The same step, as `RawInput::predicted_dt` takes it.
 const RECORD_DT: f32 = 1.0 / 60.0;
 
@@ -799,6 +822,8 @@ struct Tour<S> {
     frames: u32,
     /// An ordinary shot: the file name whose screenshot command has been sent and whose image is awaited.
     pending: Option<&'static str>,
+    /// The height an [`Act::ShotBelow`] cuts the pending shot from.
+    crop_below: Option<f32>,
     /// The mid-transition shot in progress.
     mid: Option<Mid>,
     /// How many screenshots have not come back yet.
@@ -838,7 +863,7 @@ struct Film {
 /// An [`Act::Record`] in progress.
 struct Recording {
     dir: PathBuf,
-    /// Frames since it started; every other one is kept, for 30 frames a second.
+    /// Frames since it started; every `RECORD_KEEP`th one is kept.
     tick: u32,
     /// The number the next kept frame is written under.
     next: u32,
@@ -898,6 +923,7 @@ pub fn run_tour<S: std::any::Any>(
         move_from: None,
         drag_to: None,
         wait_from: None,
+        crop_below: None,
         written: 0,
         failed: Rc::clone(&failed),
         done: false,
@@ -994,7 +1020,13 @@ impl<S: std::any::Any> Tour<S> {
                 log::warn!("a screenshot arrived that nobody asked for - dropping it");
                 continue;
             };
-            self.save(name, &image, None, true);
+            match self.crop_below.take() {
+                Some(y) => {
+                    let cropped = below(&image, y);
+                    self.save(name, &cropped, None, true);
+                }
+                None => self.save(name, &image, None, true),
+            }
         }
     }
 
@@ -1007,7 +1039,7 @@ impl<S: std::any::Any> Tour<S> {
             return;
         };
         rec.tick += 1;
-        if rec.tick % 2 == 1 {
+        if rec.tick % RECORD_KEEP == 1 {
             ask_for_frame(ctx, rec.dir.join(format!("{:04}.png", rec.next)));
             rec.next += 1;
             film.inflight += 1;
@@ -1040,7 +1072,10 @@ impl<S: std::any::Any> Tour<S> {
             }
             if let Some(name) = name {
                 let dir = self.dir.join(name);
-                match std::fs::create_dir_all(&dir) {
+                let fps = format!("{}\n", 1.0 / (RECORD_STEP * f64::from(RECORD_KEEP)));
+                match std::fs::create_dir_all(&dir)
+                    .and_then(|()| std::fs::write(dir.join("fps"), fps))
+                {
                     Ok(()) => {
                         log::info!("recording {name}");
                         film.recording = Some(Recording {
@@ -1191,6 +1226,7 @@ impl<S: std::any::Any> Tour<S> {
                 self.next_step();
                 Flow::Wait
             }
+            Act::ShotBelow(name, spot) => self.shot_below_step(ctx, name, spot),
             Act::HomeMid(at, name) | Act::StackMid(at, name) => self.mid_step(ctx, at, name),
             Act::Open(id) => self.with_shell(|shell| shell.launch(LaunchAction::open(id))),
             Act::OpenBeside(id) => self.with_shell(|shell| {
@@ -1214,15 +1250,7 @@ impl<S: std::any::Any> Tour<S> {
                 self.next_step();
                 Flow::Next
             }
-            Act::WaitMs(ms) => {
-                let now = ctx.input(|i| i.time);
-                let since = *self.wait_from.get_or_insert(now);
-                if now - since < f64::from(ms) / 1000.0 {
-                    return Flow::Wait;
-                }
-                self.next_step();
-                Flow::Next
-            }
+            Act::WaitMs(ms) => self.wait_ms_step(ctx, ms),
             Act::Release => {
                 SyntheticInput::release(ctx, self.finger);
                 self.next_step();
@@ -1306,6 +1334,31 @@ impl<S: std::any::Any> Tour<S> {
                 })
             }
         }
+    }
+
+    /// [`Act::ShotBelow`]: the spot found now, the shot asked for, cut when it arrives.
+    fn shot_below_step(&mut self, ctx: &egui::Context, name: &'static str, spot: Spot) -> Flow {
+        match self.locate(ctx, spot) {
+            Ok(at) => {
+                self.crop_below = Some(at.y);
+                self.request_shot(ctx);
+                self.pending = Some(name);
+            }
+            Err(why) => self.fail(&format!("Act::ShotBelow({name:?}, {spot:?}) - {why}")),
+        }
+        self.next_step();
+        Flow::Wait
+    }
+
+    /// [`Act::WaitMs`]: measured on the input clock from the step's first frame.
+    fn wait_ms_step(&mut self, ctx: &egui::Context, ms: u32) -> Flow {
+        let now = ctx.input(|i| i.time);
+        let since = *self.wait_from.get_or_insert(now);
+        if now - since < f64::from(ms) / 1000.0 {
+            return Flow::Wait;
+        }
+        self.next_step();
+        Flow::Next
     }
 
     /// [`Act::Tap`]: the press on the first frame, a frame held, the release on the third.

@@ -18,23 +18,27 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 command -v xvfb-run >/dev/null || { echo "readme-gifs.sh needs xvfb-run (the xvfb package)" >&2; exit 1; }
+# shellcheck source=tools/devices.sh
+. tools/devices.sh
 
 out=target/readme-gifs
 cargo build -p fairing --features runner-x11 --example demo --example console --example kiosk
 
-# tour <example> <virtual screen> <example args...>
+# tour <name> — the device tools/devices.sh lists under that name, recorded.
 tour() {
-    local example=$1 screen=$2
-    shift 2
+    local name=$1 example screen
+    example=$(device_example "$name")
+    screen=$(device_screen "$name")
     rm -rf "${out:?}/$example"
-    echo "recording $example"
+    echo "recording $name ($example)"
+    # shellcheck disable=SC2046 # the example's arguments are meant to split
     LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 ${screen}x24" \
-        "target/debug/examples/$example" --tour "$out/$example" --record "$@"
+        "target/debug/examples/$example" --tour "$out/$example" --record $(device_args "$name")
 }
 
-tour demo 1280x800 --size=1024x600
-tour console 1280x800 --size=1280x800
-tour kiosk 1280x2700 --size=1080x2560 --panel-mm=380x900
+tour demo
+tour console
+tour kiosk
 
 python3 tools/make_gif.py "$out/demo/demo-desktop" docs/images/demo.gif 640
 python3 tools/make_gif.py "$out/console/console-shade" docs/images/console-shade.gif 640
@@ -47,10 +51,8 @@ import sys
 from PIL import Image
 
 out = sys.argv[1]
-def still(shot, name, width=None, bottom=None, palette=True):
+def still(shot, name, width=None, palette=True):
     im = Image.open(f"{out}/{shot}").convert("RGB")
-    if bottom:
-        im = im.crop((0, im.height - bottom, im.width, im.height))
     if width:
         im = im.resize((width, round(im.height * width / im.width)), Image.LANCZOS)
     if palette:
@@ -60,7 +62,7 @@ def still(shot, name, width=None, bottom=None, palette=True):
 
 still("demo/10-shade-open.png", "shade-curtain.png")
 still("demo/16-settings-wifi.png", "settings.png")
-still("demo/11a-osk-compose.png", "hangul-keyboard.png", bottom=452)
+still("demo/11a-osk-keyboard.png", "hangul-keyboard.png")
 still("demo/32-unlock-prompt.png", "unlock-pin.png")
 still("demo/32e-pattern-drawn.png", "unlock-pattern.png")
 still("console/01-overview.png", "console.png")

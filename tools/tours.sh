@@ -2,7 +2,7 @@
 # Run the example tours as **checks**, stills only, and fail if any step of any script failed.
 #
 #   tools/tours.sh            # every tour, into target/tours/<name>/
-#   tools/tours.sh console    # one of: demo gesture console kiosk counter compact chrome palette
+#   tools/tours.sh console    # one tour, by the name tools/devices.sh gives it
 #
 # A tour presses what its script names (`Act::Tap(Spot::Text(..))`, `Act::Pin`, …) and says what it expects to
 # see (`Act::Expect`) before each picture. A step that cannot find its target, or an expectation
@@ -16,17 +16,18 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 command -v xvfb-run >/dev/null || { echo "tours.sh needs xvfb-run (the xvfb package)" >&2; exit 1; }
+# shellcheck source=tools/devices.sh
+. tools/devices.sh
 
 out=${TOURS_OUT:-target/tours}
 only=${1:-}
-tours="demo gesture console kiosk counter compact chrome palette"
 # A name that is not a tour runs nothing, and nothing passing is not a pass.
-if [ -n "$only" ] && ! echo " $tours " | grep -q " $only "; then
-    echo "tours.sh: no tour named '$only' (one of: $tours)" >&2
+if [ -n "$only" ] && [ -z "$(device_example "$only")" ]; then
+    echo "tours.sh: no tour named '$only' (one of: $(device_names | tr '\n' ' '))" >&2
     exit 2
 fi
-cargo build -p fairing --features runner-x11 --example demo --example console --example kiosk \
-    --example custom_chrome --example palette_sheet || exit 1
+# shellcheck disable=SC2046 # the flags are meant to split
+cargo build -p fairing --features runner-x11 $(device_build_flags) || exit 1
 mkdir -p "$out"
 
 failed=0
@@ -52,17 +53,10 @@ tour() {
     fi
 }
 
-tour demo    demo    1280x800  --size=1024x600
-# The same demo with the gesture navigation bar: the lift, the hold, the fling home, the switch.
-tour gesture demo    1280x800  --size=1024x600 --nav=gesture
-tour console console 1280x800  --size=1280x800
-tour kiosk   kiosk   1280x2700 --size=1080x2560 --panel-mm=380x900
-# The kiosk's three devices as its heading lists them; the layout follows the panel's size.
-tour counter kiosk   1400x1000 --size=1280x800  --panel-mm=217x136
-tour compact kiosk   1400x1000 --size=480x800   --panel-mm=56x94
-tour chrome  custom_chrome 1280x800 --size=1024x600
-# The sheet's own size (`palette_sheet::SIZE`); the virtual screen only has to hold it.
-tour palette palette_sheet 1500x5900 --panel-mm=305x381
+for name in $(device_names); do
+    # shellcheck disable=SC2046 # the example's arguments are meant to split
+    tour "$name" "$(device_example "$name")" "$(device_screen "$name")" $(device_args "$name")
+done
 
 if [ "$failed" -ne 0 ]; then
     echo "some tours failed - the logs are under $out/" >&2

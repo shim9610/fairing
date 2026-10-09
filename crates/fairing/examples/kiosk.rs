@@ -55,9 +55,9 @@
 //! [`band_text`] are all the same rule.
 //!
 //! Text alone is the exception and is raised through **tokens** ([`standing_metrics`]). It is the
-//! viewing distance that went from 30 cm to 70 cm, not the screen that grew, so writing it in
-//! physical size (`mm`) rather than a screen fraction is right. The counter POS is tapped from 45 cm
-//! away, so it keeps the defaults.
+//! viewing distance that went from the crate's hand-held 360 mm to 700 mm, not the screen that
+//! grew, so writing it in physical size (`mm`) rather than a screen fraction is right. The counter
+//! POS is tapped from about 45 cm away, so it keeps the defaults.
 //!
 //! ## The language is a setting — and switching it is the harness
 //!
@@ -919,7 +919,10 @@ impl Shape {
                 Self::Counter
             };
         }
-        let (w, h) = size.unwrap_or((1024.0, 600.0));
+        let (w, h) = size.unwrap_or((
+            fairing::testing::DEFAULT_SIZE.x,
+            fairing::testing::DEFAULT_SIZE.y,
+        ));
         log::warn!("no --panel-mm: the layout is picked from the pixel size, {w}x{h}");
         if w.min(h) < 400.0 {
             Self::Compact

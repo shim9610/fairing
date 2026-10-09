@@ -26,8 +26,14 @@ try:
 except ImportError:
     sys.exit("make_gif.py needs Pillow: pip install pillow")
 
-# `--record` keeps every other frame of its 60 Hz clock.
-RECORDED_FPS = 30
+
+
+def recorded_fps(frames: Path) -> float:
+    """The rate the frames were kept at, as the recorder wrote it beside them (`fps`)."""
+    try:
+        return float((frames / "fps").read_text().strip())
+    except (OSError, ValueError):
+        sys.exit(f"no fps file in {frames} - the frames were not written by a tour's --record")
 
 
 def parse_args() -> argparse.Namespace:
@@ -75,7 +81,7 @@ def main() -> None:
     dither = Image.Dither.FLOYDSTEINBERG if a.dither else Image.Dither.NONE
     quantised = [f.quantize(palette=palette, dither=dither) for f in frames]
 
-    frame_ms = round(1000 * max(a.step, 1) / RECORDED_FPS)
+    frame_ms = round(1000 * max(a.step, 1) / recorded_fps(a.frames))
     durations = [frame_ms] * len(quantised)
     durations[-1] = max(frame_ms, round(a.hold_last * 1000))
     a.out.parent.mkdir(parents=True, exist_ok=True)

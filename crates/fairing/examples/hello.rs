@@ -43,7 +43,10 @@ fn main() -> fairing::Result<()> {
     let options = fairing::runner::Options {
         fullscreen: false,
         title: "hello".to_owned(),
-        size: Some((1024.0, 600.0)),
+        size: Some((
+            fairing::testing::DEFAULT_SIZE.x,
+            fairing::testing::DEFAULT_SIZE.y,
+        )),
     };
     fairing::runner::run_shell(options, move |ctx| {
         let mut shell = Shell::builder(config)

@@ -22,6 +22,15 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
 - The built-in settings screens group their rows in filled cards. A title with no actions is as
   tall as its words, a section heading as tall as its text, an explanation wraps at about seventy
   characters, and the wide settings screen's two titles sit on one line.
+- One source for what was written in several places: the devices the tours run on are one
+  table (`tools/devices.sh`) that `tools/tours.sh` and `tools/readme-gifs.sh` both read; the
+  recorder writes its frame rate beside the frames and `tools/make_gif.py` reads it there; the
+  README's keyboard picture is cut by the tour (`Act::ShotBelow`) rather than at a pixel count
+  in the script; CI reads the minimum Rust version from `Cargo.toml`; the examples' default
+  window is `testing::DEFAULT_SIZE`; the audit names its cross target. A test checks that
+  `settings::screens::ALL`, the home entries and the registrations agree, and that every
+  built-in status id round-trips. The guide's metrics table says which numbers are floors under
+  a finger-sized default rather than the default.
 - The headless tests ask the shell where things are and how long motions take instead of
   assuming: a field is found by its hint, a row's switch by its knob, a gap between status
   items by the rects the bar laid out; waits are the motion tokens' lengths; a pull short of

@@ -20,7 +20,7 @@
 //! # Tour mode (`--tour <dir>`)
 //!
 //! ```text
-//! xvfb-run -a -s "-screen 0 1024x600x24" env LIBGL_ALWAYS_SOFTWARE=1 WINIT_UNIX_BACKEND=x11 \
+//! xvfb-run -a -s "-screen 0 1024x600x24" env LIBGL_ALWAYS_SOFTWARE=1 \
 //!   cargo run -p fairing --features runner-x11 --example custom_chrome -- --tour target/tour
 //! ```
 //! It leaves four frames (`01-custom` the desktop · `02-custom-tiles` the shade · `03-custom-gauges`
@@ -44,7 +44,10 @@ use fairing::unit::{Dim, Span};
 use fairing::{icon, screen, BarCx, ColorRole, Cx, SlotCx, Theme, Wallpaper};
 
 /// The default window size.
-const SIZE: (f32, f32) = (1024.0, 600.0);
+const SIZE: (f32, f32) = (
+    fairing::testing::DEFAULT_SIZE.x,
+    fairing::testing::DEFAULT_SIZE.y,
+);
 
 /// The device's name — drawn on the left of the status bar. The on-screen text is English as in the
 /// demo: `default_fonts` has no CJK, so Hangul comes out as □ (an integrator loads a font

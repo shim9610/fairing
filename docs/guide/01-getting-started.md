@@ -356,7 +356,7 @@ write PNGs and close the window. They put the shell into each state through its 
 nobody has to sit and watch.
 
 ```sh
-xvfb-run -a -s "-screen 0 1024x600x24" env LIBGL_ALWAYS_SOFTWARE=1 WINIT_UNIX_BACKEND=x11 \
+xvfb-run -a -s "-screen 0 1024x600x24" env LIBGL_ALWAYS_SOFTWARE=1 \
   cargo run -p fairing --features runner-x11 --example demo -- --tour target/tour
 ```
 

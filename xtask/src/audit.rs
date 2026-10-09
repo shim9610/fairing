@@ -129,10 +129,7 @@ fn gates(root: &Path, strict: bool) -> Vec<Step> {
 
 /// The compiling stages: formatting · lints · tests · docs · the target build.
 fn builds(root: &Path, cargo: &str) -> Vec<Step> {
-    let target = tree::TARGETS
-        .get(1)
-        .copied()
-        .unwrap_or("aarch64-unknown-linux-gnu");
+    let target = tree::CROSS_TARGET;
     vec![
         external(
             1,

@@ -99,7 +99,6 @@ feature sets can share one `fairing.toml`.
 |---|---|
 | A device (Wayland only) | `--features runner` |
 | Desktop development, X11 included | `--features runner-x11` (`runner` plus `eframe/x11`; Wayland still works) |
-| Force a backend where several are available | `WINIT_UNIX_BACKEND=x11` (or `wayland`), read by winit inside eframe |
 | Software rendering in CI or a container with no GPU | `LIBGL_ALWAYS_SOFTWARE=1` (Mesa llvmpipe) |
 | A real window with no display attached | `xvfb-run -a -s "-screen 0 1024x600x24"` for a fake X server |
 
@@ -107,13 +106,12 @@ The `--tour` screenshot mode in [01 §5](01-getting-started.md#5-running-the-bun
 uses exactly that combination:
 
 ```sh
-xvfb-run -a -s "-screen 0 1024x600x24" env LIBGL_ALWAYS_SOFTWARE=1 WINIT_UNIX_BACKEND=x11 \
+xvfb-run -a -s "-screen 0 1024x600x24" env LIBGL_ALWAYS_SOFTWARE=1 \
   cargo run -p fairing --features runner-x11 --example demo -- --size=1024x600
 ```
 
-With only `runner` in an X11 environment — say `WINIT_UNIX_BACKEND=x11` but no
-`eframe/x11` — the window either never appears or you get an initialisation
-`Error::Runner`. Switch to `runner-x11`.
+With only `runner` in an X11 environment — no `eframe/x11` — the window either never
+appears or you get an initialisation `Error::Runner`. Switch to `runner-x11`.
 
 ## 6. Korean renders as tofu
 

@@ -201,8 +201,9 @@ cropping.
 
 > **Cropping is computed against the content ratio, not the panel ratio.** The background is
 > drawn into the **content rect** — the screen minus the status bar and nav bar — not the whole
-> screen. On a 1920×1080 panel with the default bars (status 32, nav 56 du) the content is
-> 1920×992, a ratio of 1.935. A 2560×1440 source (ratio 1.778) therefore loses **another 4 %**
+> screen. On a 1920×1080 panel the two bars take about a tenth of the height between them (their
+> sizes follow the finger and the panel's density), so the content is wider in ratio than the
+> panel — about 1.93 against 1.78 — and a 2560×1440 source (ratio 1.778) loses **another 4 %**
 > off the top and bottom. That is why the safe area is 75 % and not 80 %.
 
 **Strategy B — one per ratio (when you ship instrument panels and portrait panels together)**
