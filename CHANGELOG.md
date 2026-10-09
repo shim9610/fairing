@@ -13,6 +13,12 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
 
 ### `fairing` — the shell
 
+- `testing::Harness` finds a place by its label: `tap_text(label)`, `text_rect(label)` and
+  `texts()` look through what the frame drew, so a test written for today's row height is
+  still right when the finger, the type scale or the density changes — and a label that is not
+  on the glass is an error naming what is, never a tap on nothing. The example tours press the
+  same way (`Act::Tap(Spot::Text(..))`, with `Spot::Edge` and `Spot::Page` for the gestures
+  and `Act::MoveBy` for every drag) and have no coordinate form at all.
 - The built-in settings screens group their rows in filled cards. A title with no actions is as
   tall as its words, a section heading as tall as its text, an explanation wraps at about seventy
   characters, and the wide settings screen's two titles sit on one line.

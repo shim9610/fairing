@@ -46,7 +46,7 @@
 
 mod common;
 
-use common::Act;
+use common::{Act, Expect, Side, Spot};
 use fairing::icons::parametric::{self, BtIconState};
 use fairing::icons::IconStyle;
 use fairing::layout::{self, ExpandableRow};
@@ -1897,10 +1897,10 @@ const GESTURE_PLAN: &[Act] = &[
     // PIN first, the screen going back down, and the cards come up once it is in.
     // (A pause is 150 ms of stillness, and frames under the tour come faster than 60 Hz: the
     // waits for one are long.)
-    Act::Press(512.0, 596.0),
-    Act::MoveTo {
-        x: 512.0,
-        y: 490.0,
+    Act::Press(Spot::Edge(Side::Bottom, 0.5)),
+    Act::MoveBy {
+        dx: 0.0,
+        dy: -106.0,
         frames: 8,
     },
     Act::Wait(60),
@@ -1913,10 +1913,10 @@ const GESTURE_PLAN: &[Act] = &[
     Act::Wait(2),
     // Up from the bottom edge: the screen follows the finger, shrinking as it rises, the point
     // pressed staying under it.
-    Act::Press(512.0, 596.0),
-    Act::MoveTo {
-        x: 560.0,
-        y: 490.0,
+    Act::Press(Spot::Edge(Side::Bottom, 0.5)),
+    Act::MoveBy {
+        dx: 48.0,
+        dy: -106.0,
         frames: 12,
     },
     Act::Wait(1),
@@ -1933,10 +1933,10 @@ const GESTURE_PLAN: &[Act] = &[
     Act::Wait(2),
     // Flung up and let go: home, the screen carrying on from where the finger left it into its
     // icon.
-    Act::Press(512.0, 596.0),
-    Act::MoveTo {
-        x: 512.0,
-        y: 330.0,
+    Act::Press(Spot::Edge(Side::Bottom, 0.5)),
+    Act::MoveBy {
+        dx: 0.0,
+        dy: -266.0,
         frames: 5,
     },
     Act::Release,
@@ -1949,10 +1949,10 @@ const GESTURE_PLAN: &[Act] = &[
     Act::Open("widgets"),
     Act::Settle,
     Act::Wait(2),
-    Act::Press(300.0, 596.0),
-    Act::MoveTo {
-        x: 720.0,
-        y: 596.0,
+    Act::Press(Spot::Edge(Side::Bottom, 0.29)),
+    Act::MoveBy {
+        dx: 420.0,
+        dy: 0.0,
         frames: 10,
     },
     Act::Wait(1),
@@ -2021,60 +2021,67 @@ const PLAN: &[Act] = &[
     Act::Notify(Level::Success, "Backup done", "12 files, 3.2 MB"),
     Act::Notify(Level::Error, "Sensor 3 offline", "check wiring"),
     Act::Wait(30),
-    // 09 · 10: the top edge pull. The status bar is visible, so (10, 8) is in the edge zone. H = min(the
-    // content's 512, 0.85 × 600 = 510) = 510 → y ≈ H/2 is a finger at y ≈ 8 + 255. The render mapping
-    // being a curtain (A1), the mid frame shows the panel's **head** (the tile row plus the front of
-    // the notification list) with the handle and the scrim at the curtain's end, and the footer still
-    // outside it.
-    Act::Press(10.0, 8.0),
-    Act::MoveTo {
-        x: 10.0,
-        y: 263.0,
+    // 09 · 10: the top edge pull. H = min(the content's 512, 0.85 × 600 = 510) = 510 → y ≈ H/2 is
+    // a finger 255 px down from the edge. The render mapping being a curtain (A1), the mid frame
+    // shows the panel's **head** (the tile row plus the front of the notification list) with the
+    // handle and the scrim at the curtain's end, and the footer still outside it.
+    Act::Press(Spot::Edge(Side::Top, 0.01)),
+    Act::MoveBy {
+        dx: 0.0,
+        dy: 255.0,
         frames: 12,
     },
     Act::Wait(2),
     Act::Shot("09-shade-mid.png"),
-    Act::MoveTo {
-        x: 10.0,
-        y: 440.0,
+    Act::MoveBy {
+        dx: 0.0,
+        dy: 177.0,
         frames: 8,
     },
     Act::Release,
     Act::Settle,
     Act::Wait(4),
+    Act::Expect(Expect::ShadeOpen),
+    Act::Expect(Expect::Text("Sensor 3 offline")),
     Act::Shot("10-shade-open.png"),
     // 10b: press a Slider tile to open its expansion row. **This state was missing from the tour**, so
     // nobody saw the track sitting there alone — the icon comes down from the tile and says whose value it is.
-    Act::Tap(453.0, 67.0),
+    Act::Tap(Spot::Text("Brightness")),
     Act::Settle,
     Act::Wait(6),
     Act::Shot("10b-shade-slider.png"),
     // 10c: a notification row being pushed left — the space revealed shows it is **being thrown away**.
-    Act::Press(512.0, 265.0),
-    Act::MoveTo {
-        x: 330.0,
-        y: 265.0,
+    // The finger lands on the row, found by its title and pressed well into its body: a push
+    // from the title's own place has no room to go left before the glass ends.
+    Act::Press(Spot::Near("Sensor 3 offline", 350.0, 0.0)),
+    Act::MoveBy {
+        dx: -182.0,
+        dy: 0.0,
         frames: 10,
     },
     Act::Wait(2),
     Act::Shot("10c-shade-swipe.png"),
     // Pushed past the confirmation line (a third of the width) — releasing here really removes it, and
     // the script goes on through the row below rising to fill the gap.
-    Act::MoveTo {
-        x: 120.0,
-        y: 265.0,
+    Act::MoveBy {
+        dx: -210.0,
+        dy: 0.0,
         frames: 6,
     },
     Act::Release,
-    // The place removed closes by **collapsing** — the row below rises to fill the gap.
+    // The place removed closes by **collapsing** — the row below rises to fill the gap. The
+    // list's own motion is not the shell's `is_animating`, so the check waits for it.
     Act::Settle,
+    Act::Until(Expect::NoText("Sensor 3 offline"), 120),
+    Act::Expect(Expect::Text("Backup done")),
     // 10d: press and hold the Wi-Fi tile to go to the Wi-Fi settings (the shade goes up). With nothing
     // attached it only raises a `TileLongPressed` and goes nowhere.
-    Act::Press(340.0, 86.0),
+    Act::Press(Spot::Text("Wi-Fi")),
     Act::Wait(60),
     Act::Release,
     Act::Settle,
     Act::Wait(6),
+    Act::Expect(Expect::ShadeClosed),
     Act::Shot("10d-tile-long-press.png"),
     Act::Home,
     Act::Settle,
@@ -2118,10 +2125,10 @@ const PLAN: &[Act] = &[
     // 13: mid page swipe (A4) — a horizontal drag over the grid. `pos = dx / W` (W = the grid's width =
     // the content width of 1024), and each page's cells (96 px at most) are centred within it, so both
     // pages are in view only once it is dragged to pos ≈ 0.5 (dx ≈ −510).
-    Act::Press(700.0, 300.0),
-    Act::MoveTo {
-        x: 190.0,
-        y: 300.0,
+    Act::Press(Spot::Page(0.68, 0.5)),
+    Act::MoveBy {
+        dx: -510.0,
+        dy: 0.0,
         frames: 12,
     },
     Act::Wait(2),
@@ -2135,10 +2142,10 @@ const PLAN: &[Act] = &[
     Act::Open("progress"),
     Act::Settle,
     Act::Wait(4),
-    Act::Press(4.0, 300.0),
-    Act::MoveTo {
-        x: 360.0,
-        y: 300.0,
+    Act::Press(Spot::Edge(Side::Left, 0.5)),
+    Act::MoveBy {
+        dx: 356.0,
+        dy: 0.0,
         frames: 12,
     },
     Act::Wait(2),
@@ -2152,10 +2159,13 @@ const PLAN: &[Act] = &[
     Act::Open("settings.home"),
     Act::Settle,
     Act::Wait(4),
+    Act::Expect(Expect::Screen("settings.home")),
     Act::Shot("15-settings-home.png"),
     Act::Open("settings.wifi"),
     Act::Settle,
     Act::Wait(4),
+    Act::Expect(Expect::Screen("settings.wifi")),
+    Act::Expect(Expect::Text("Scan for networks")),
     Act::Shot("16-settings-wifi.png"),
     Act::Back,
     Act::Settle,
@@ -2170,10 +2180,10 @@ const PLAN: &[Act] = &[
     Act::Wait(4),
     Act::Shot("18-settings-about.png"),
     // The list is longer than the screen — push it up to see whether the open-source notices really come out.
-    Act::Press(512.0, 430.0),
-    Act::MoveTo {
-        x: 512.0,
-        y: 120.0,
+    Act::Press(Spot::Page(0.5, 0.77)),
+    Act::MoveBy {
+        dx: 0.0,
+        dy: -310.0,
         frames: 10,
     },
     Act::Release,
@@ -2221,10 +2231,10 @@ const PLAN: &[Act] = &[
     Act::Shot("25-widgets.png"),
     // The Choice card - checkbox, segmented - sits below the fold on a 1024 x 600 panel, and a
     // control nobody photographs is a control nobody checks.
-    Act::Press(512.0, 470.0),
-    Act::MoveTo {
-        x: 512.0,
-        y: 120.0,
+    Act::Press(Spot::Page(0.5, 0.85)),
+    Act::MoveBy {
+        dx: 0.0,
+        dy: -350.0,
         frames: 10,
     },
     Act::Release,
@@ -2233,45 +2243,61 @@ const PLAN: &[Act] = &[
     Act::Shot("25b-widgets-choice.png"),
     // The Expandable card and the accordion sit at the end of the page: two dead-stop scrolls
     // reach it, and the page's end is where it always lands.
-    Act::Press(512.0, 480.0),
-    Act::MoveTo {
-        x: 512.0,
-        y: 60.0,
+    Act::Press(Spot::Page(0.5, 0.87)),
+    Act::MoveBy {
+        dx: 0.0,
+        dy: -420.0,
         frames: 10,
     },
     Act::Wait(15),
     Act::Release,
     Act::Settle,
-    Act::Press(512.0, 480.0),
-    Act::MoveTo {
-        x: 512.0,
-        y: 60.0,
+    Act::Press(Spot::Page(0.5, 0.87)),
+    Act::MoveBy {
+        dx: 0.0,
+        dy: -420.0,
+        frames: 10,
+    },
+    Act::Wait(15),
+    Act::Release,
+    Act::Settle,
+    // At a one-finger row the page's end starts below the Display row: a short pull back down
+    // brings the whole expandable card into view, held still so it does not fling.
+    Act::Press(Spot::Page(0.5, 0.21)),
+    Act::MoveBy {
+        dx: 0.0,
+        dy: 230.0,
         frames: 10,
     },
     Act::Wait(15),
     Act::Release,
     Act::Settle,
     Act::Wait(6),
+    Act::Expect(Expect::Text("Night light")),
     Act::Shot("25c-widgets-expandable.png"),
     // The Display row, open: its body unrolls and Night light moves down.
-    Act::Tap(512.0, 363.0),
+    Act::Expect(Expect::Text("1920 × 1080")),
+    Act::Tap(Spot::Text("Display")),
     Act::Settle,
     Act::Wait(8),
+    // Open, the summary goes and the body's own rows come.
+    Act::Expect(Expect::Text("Orientation")),
+    Act::Expect(Expect::NoText("1920 × 1080")),
     Act::Shot("25d-widgets-expanded.png"),
     // The end of the page: the Advanced row and the accordion.
-    Act::Press(512.0, 480.0),
-    Act::MoveTo {
-        x: 512.0,
-        y: 60.0,
+    Act::Press(Spot::Page(0.5, 0.87)),
+    Act::MoveBy {
+        dx: 0.0,
+        dy: -420.0,
         frames: 10,
     },
     Act::Wait(15),
     Act::Release,
     Act::Settle,
-    Act::Press(512.0, 480.0),
-    Act::MoveTo {
-        x: 512.0,
-        y: 60.0,
+    Act::Press(Spot::Page(0.5, 0.87)),
+    Act::MoveBy {
+        dx: 0.0,
+        dy: -420.0,
         frames: 10,
     },
     Act::Wait(15),
@@ -2315,77 +2341,86 @@ const PLAN: &[Act] = &[
     Act::Settle,
     Act::Wait(6),
     Act::Shot("31-dropdowns.png"),
-    // The openers sit two screens down. Each scroll is held still before the release: a flung
-    // page keeps moving after the shot, and the taps below are written against where a dead
-    // stop puts the Openers card — its two rows of triggers centred at 218 and 325.
-    Act::Press(512.0, 480.0),
-    Act::MoveTo {
-        x: 512.0,
-        y: 60.0,
-        frames: 10,
-    },
-    Act::Wait(15),
-    Act::Release,
-    Act::Settle,
-    Act::Press(512.0, 480.0),
-    Act::MoveTo {
-        x: 512.0,
-        y: 60.0,
+    // The openers sit a screen down. The scroll is held still before the release: a flung page
+    // keeps moving after the shot. The openers are then pressed by their captions, so where the
+    // card came to rest does not matter.
+    Act::Press(Spot::Page(0.5, 0.87)),
+    Act::MoveBy {
+        dx: 0.0,
+        dy: -420.0,
         frames: 10,
     },
     Act::Wait(15),
     Act::Release,
     Act::Settle,
     Act::Wait(6),
+    Act::Expect(Expect::Text("Edit")),
+    Act::Expect(Expect::Text("Device")),
     Act::Shot("31b-dropdowns-openers.png"),
-    // Each opener, open; a tap on the page beside it closes it again.
-    Act::Tap(283.0, 218.0),
+    // Each opener is pressed by its caption and checked by an entry only its list shows; a tap on
+    // the page beside it closes it again, and the entry is checked to be gone.
+    Act::Tap(Spot::Text("Edit")),
     Act::Settle,
     Act::Wait(8),
+    Act::Expect(Expect::Text("Ctrl+X")),
     Act::Shot("31d-dropdown-list-hints.png"),
-    Act::Tap(900.0, 430.0),
+    Act::Tap(Spot::Page(0.88, 0.77)),
     Act::Settle,
-    Act::Tap(741.0, 218.0),
+    Act::Expect(Expect::NoText("Ctrl+X")),
+    Act::Tap(Spot::Text("Unit")),
     Act::Settle,
     Act::Wait(8),
+    Act::Expect(Expect::Text("kHz")),
     Act::Shot("31e-dropdown-grid.png"),
-    Act::Tap(200.0, 430.0),
+    Act::Tap(Spot::Page(0.2, 0.77)),
     Act::Settle,
-    Act::Tap(283.0, 325.0),
+    Act::Expect(Expect::NoText("kHz")),
+    Act::Tap(Spot::Text("Source")),
     Act::Settle,
     Act::Wait(8),
+    Act::Expect(Expect::Text("Laser 2")),
     Act::Shot("31f-dropdown-sheet.png"),
-    Act::Tap(200.0, 60.0),
+    Act::Tap(Spot::Page(0.2, 0.03)),
     Act::Settle,
+    Act::Expect(Expect::NoText("Laser 2")),
     // The search: opened, the list is there to be read; a second tap, on the field the head has
     // become, gives it the keyboard — the qwerty, to type a Latin query.
-    Act::Tap(741.0, 325.0),
+    Act::Tap(Spot::Text("Device")),
     Act::Settle,
-    Act::Tap(741.0, 325.0),
+    Act::Expect(Expect::Text("Amplifier")),
+    // The second tap goes on the field's value half, to the right of its caption: the caption
+    // names the field, the value is what takes the focus.
+    Act::Tap(Spot::Near("Device", 140.0, 0.0)),
     Act::Settle,
     Act::Wait(8),
+    Act::Expect(Expect::OskUp),
     Act::Shot("31g-dropdown-search.png"),
     Act::Wait(4),
     Act::Key("m"),
     Act::Key("o"),
     Act::Settle,
     Act::Wait(8),
+    // "mo" leaves Modulator in the list and takes Attenuator out. (Amplifier is still on the
+    // glass as the field's own value.)
+    Act::Expect(Expect::Text("Modulator")),
+    Act::Expect(Expect::NoText("Attenuator")),
     Act::Shot("31h-dropdown-search-typed.png"),
-    Act::Tap(100.0, 140.0),
+    Act::Tap(Spot::Page(0.1, 0.19)),
     Act::Settle,
     // The keyboard is solid now and takes a while to slide away: a press on it would not
     // scroll the page.
     Act::Wait(30),
-    Act::Press(512.0, 480.0),
-    Act::MoveTo {
-        x: 512.0,
-        y: 60.0,
+    Act::Press(Spot::Page(0.5, 0.87)),
+    Act::MoveBy {
+        dx: 0.0,
+        dy: -420.0,
         frames: 10,
     },
     Act::Wait(15),
     Act::Release,
     Act::Settle,
     Act::Wait(6),
+    Act::Expect(Expect::Text("Ordered values")),
     Act::Shot("31c-dropdowns-drums.png"),
     Act::Home,
     Act::Settle,
@@ -2395,11 +2430,13 @@ const PLAN: &[Act] = &[
     Act::Open("admin"),
     Act::Settle,
     Act::Wait(6),
+    Act::Expect(Expect::Text("Enter PIN")),
     Act::Shot("32-unlock-prompt.png"),
     // A wrong PIN: the table's own words in the title's place, and the card shaking (caught
     // mid-swing).
     Act::Pin("1357"),
     Act::Wait(3),
+    Act::Expect(Expect::Text("Wrong PIN")),
     Act::Shot("32a-wrong-pin.png"),
     Act::Settle,
     Act::Wait(10),
@@ -2422,6 +2459,8 @@ const PLAN: &[Act] = &[
     Act::Release,
     Act::Settle,
     Act::Wait(6),
+    Act::Expect(Expect::Screen("admin")),
+    Act::Expect(Expect::Text("Unlocked")),
     Act::Shot("32b-unlocked.png"),
     // The lock tile's `LaunchAction::Lock`, which the shell carries out in `prompt` mode.
     Act::Lock,
@@ -2447,9 +2486,9 @@ const PLAN: &[Act] = &[
     Act::Shot("34-split.png"),
     // The divider under a finger: both panes lay themselves out again as it moves.
     Act::GrabDivider,
-    Act::MoveTo {
-        x: 380.0,
-        y: 300.0,
+    Act::MoveBy {
+        dx: -132.0,
+        dy: 0.0,
         frames: 10,
     },
     Act::Wait(2),
@@ -2460,9 +2499,9 @@ const PLAN: &[Act] = &[
     // Pushed to the end, it squeezes the gallery under its minimum (dimmed) — and let go there, the
     // gallery's pane closes and the dashboard fills the content again.
     Act::GrabDivider,
-    Act::MoveTo {
-        x: 990.0,
-        y: 300.0,
+    Act::MoveBy {
+        dx: 610.0,
+        dy: 0.0,
         frames: 12,
     },
     Act::Wait(2),
@@ -2480,10 +2519,10 @@ const PLAN: &[Act] = &[
     Act::Wait(4),
     Act::Shot("35-overview.png"),
     // A drag across the cards scrolls them.
-    Act::Press(700.0, 300.0),
-    Act::MoveTo {
-        x: 260.0,
-        y: 300.0,
+    Act::Press(Spot::Page(0.68, 0.5)),
+    Act::MoveBy {
+        dx: -440.0,
+        dy: 0.0,
         frames: 14,
     },
     Act::Release,
@@ -2513,7 +2552,7 @@ const PLAN: &[Act] = &[
     Act::Wait(2),
     Act::Shot("37-icon-info.png"),
     // A press anywhere puts it away, and opens nothing.
-    Act::Tap(512.0, 300.0),
+    Act::Tap(Spot::Page(0.5, 0.5)),
     Act::Settle,
     // The PIN from the unlock above still holds: back to viewer, and a locked icon says which
     // level it needs.
@@ -2525,7 +2564,7 @@ const PLAN: &[Act] = &[
     Act::Settle,
     Act::Wait(2),
     Act::Shot("37a-icon-info-locked.png"),
-    Act::Tap(512.0, 300.0),
+    Act::Tap(Spot::Page(0.5, 0.5)),
     Act::Settle,
     Act::Wait(2),
 ];

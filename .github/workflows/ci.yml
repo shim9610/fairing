@@ -110,3 +110,42 @@ jobs:
 
       - name: Check the libraries with it
         run: cargo +1.95 check --locked -p fairing -p fairing-widgets --all-features
+
+  # **The example tours, as checks.** Each script presses what it names (`Act::Tap(Spot::Text(..))`, a label
+  # found on the glass) and says what it expects to see (`Act::Expect`) before every picture, and
+  # the example exits non-zero when any step could not. A row that moved, a label that changed or
+  # a flow that broke fails here, where before it left a wrong picture under the right file name
+  # and nobody looked. Stills only; the README's animations are tools/readme-gifs.sh's.
+  tours:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Xvfb and Mesa's software rasteriser
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri libegl1
+
+      - name: Cache cargo registry and target dir
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            target
+          key: tours-v1-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            tours-v1-${{ runner.os }}-
+
+      - name: Run every tour
+        run: tools/tours.sh
+
+      # The pictures and each tour's log, for a failure to be looked at rather than guessed at.
+      - name: Keep the tours' output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tours
+          path: target/tours
+          retention-days: 7

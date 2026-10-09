@@ -58,6 +58,17 @@ line disable the audit itself.
    `THIRD_PARTY.md`. That file is generated, but the region between `<!-- assets:begin -->` and
    `<!-- assets:end -->` is hand-written and survives regeneration.
 
+## The example tours are checks
+
+`tools/tours.sh` runs every example's `--tour` script under Xvfb, stills only, and fails if any
+step of any script could not do what it asked. A script presses what it names
+(`Act::Tap(Spot::Text("Alerts"))` finds the label on the glass; there is no coordinate form) and says what it expects before each
+picture (`Act::Expect(Expect::Text("Lamp hours"))`), so a change that moves a row, renames a
+label or breaks a flow fails here rather than leaving a wrong picture under the right file name.
+CI runs it on every push. When you change what a screen shows, run it; when you add a step to a
+script, name the thing you press and check what you expect to see — a coordinate written down
+is right for one row height only.
+
 ## Rebuilding the README's animations
 
 The GIFs and screenshots in `docs/images/` come from the `demo`, `console` and `kiosk` tours. If a change
@@ -67,7 +78,8 @@ alters what one of them shows, rebuild them and commit the result:
 tools/readme-gifs.sh
 ```
 
-It needs `xvfb-run`, Mesa and Pillow (`pip install pillow`). Each tour runs with `--record` on a
+It needs `xvfb-run`, Mesa and Pillow (`pip install pillow`). A tour that fails a check stops
+the script, so the images are never rebuilt from a flow that went wrong. Each tour runs with `--record` on a
 fixed 60 Hz clock, so the frames do not depend on how fast the machine draws, and
 `tools/make_gif.py` stitches them the same way every time: rerun on the machine that made them,
 the script reproduced the committed GIFs byte for byte.

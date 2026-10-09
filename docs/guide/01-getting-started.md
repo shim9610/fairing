@@ -364,6 +364,19 @@ The environment variable `FAIRING_TOUR_DIR` works in place of `--tour <dir>`.
 Mid-transition shots read the progress every frame and fire on the closest one, so
 `motion.reduce` has to be off for those.
 
+**A tour is a check as well as a camera.** A script presses what it names rather than where
+that was last seen — `Act::Tap(Spot::Text("Alerts"))` finds the label on the glass this frame,
+so a row that moves with the type scale or the finger is still the row pressed; a gesture starts
+at an edge (`Spot::Edge(Side::Top, 0.5)`) or at a share of the content area (`Spot::Page(0.5,
+0.8)`), and a drag is a distance (`Act::MoveBy`). There is no way to write a window coordinate:
+that vocabulary is what let a tap go stale when the rows changed height. A script also says what
+it expects to be looking at before each picture: `Act::Expect(Expect::Text("Lamp hours"))`,
+`Expect::Screen("settings.wifi")`, `Expect::ShadeOpen`, `Expect::OskUp`; `Act::Until(.., frames)`
+is the same with patience, for what arrives after an animation the shell does not own. A step
+that cannot find its target or an expectation that does not hold is logged with what *was*
+there, the script goes on so one run lists every miss, and the example exits non-zero at the end.
+`tools/tours.sh` runs every tour that way, stills only, and CI runs it on every push.
+
 Add `--record` and the tour runs on a fixed 60 Hz clock: each frame is 1/60 s after
 the one before, however long it took to draw, so a software rasteriser records as
 smoothly as a GPU. The animated stretches of the script are written as frames, 30 a
@@ -439,7 +452,15 @@ passes as it is.
 | `type_text(text)` | `Event::Text` — the same path the OSK injects on |
 | `press` / `release` / `move_to` / `push_event` | The layer below |
 
-Do not re-derive coordinates. Ask the shell for the rectangle it drew last frame:
+| By label | Meaning |
+|---|---|
+| `tap_text(label)?` | A tap on the one text reading `label` this frame. An error naming what *is* on the glass when nothing does, or where each is when more than one does |
+| `text_rect(label)?` | Where that text is — for a press, a drag or a long press that starts there |
+| `texts()` | Every text drawn this frame with its rectangle (one scrolled out of its area is left out) |
+
+Do not re-derive coordinates, and do not write them down: a number that is right for today's
+row height is wrong the day the rows change, and a tap on nothing is silent. Find a row by
+its label, or ask the shell for the rectangle it drew last frame:
 
 | Ask | Signature |
 |---|---|
@@ -449,7 +470,7 @@ Do not re-derive coordinates. Ask the shell for the rectangle it drew last frame
 | Quick-settings tiles | `shell.overlay().tile_rect(id: &str) -> Option<Rect>` |
 | On-screen keyboard keys | `shell.osk().key_rect(label: &str) -> Option<Rect>` |
 
-Real uses live in `crates/fairing/tests/m1_*.rs` and `m2_*.rs`.
+Real uses live in `crates/fairing/tests/m1_*.rs`, `m2_*.rs` and `m7_tap_by_label.rs`.
 
 ## 7. Measuring your device
 

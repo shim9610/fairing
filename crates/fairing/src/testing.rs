@@ -320,6 +320,65 @@ impl Harness {
         self.pending.push(Event::Text(text.to_owned()));
     }
 
+    /// **Every text drawn in one frame, with where it was drawn** — the frame is run for it.
+    /// A text clipped away whole (scrolled out of its area) is left out: it is not on the glass,
+    /// so a finger cannot land on it. A wrapped or truncated label carries its full text.
+    #[must_use]
+    pub fn texts(&mut self) -> Vec<(String, Rect)> {
+        let mut out = Vec::new();
+        for clipped in self.frame_shapes() {
+            collect_texts(&clipped.shape, clipped.clip_rect, &mut out);
+        }
+        out
+    }
+
+    /// **Where the one text reading `label` is this frame** — the rectangle to press, found by
+    /// what it says rather than where it was last seen, so a row that moves with the type scale
+    /// or the finger size is still the row pressed. The label is matched whole, trimmed. A
+    /// widget that paints its label twice over itself is one place.
+    ///
+    /// # Errors
+    /// [`crate::Error::Config`] with what *is* on the glass when nothing reads `label`, and
+    /// with where each is when more than one text does — name a text that is drawn once.
+    pub fn text_rect(&mut self, label: &str) -> Result<Rect> {
+        let texts = self.texts();
+        let mut found: Vec<Rect> = Vec::new();
+        for (text, rect) in &texts {
+            if text.trim() != label {
+                continue;
+            }
+            let same_place = found
+                .iter()
+                .any(|r| (r.center() - rect.center()).length() < 1.0);
+            if !same_place {
+                found.push(*rect);
+            }
+        }
+        match found.as_slice() {
+            [rect] => Ok(*rect),
+            [] => Err(crate::Error::Config(format!(
+                "no text reads {label:?}; on the glass: {}",
+                texts_seen(&texts)
+            ))),
+            many => Err(crate::Error::Config(format!(
+                "{} texts read {label:?}, at {:?} - name one that is drawn once",
+                many.len(),
+                many.iter().map(Rect::center).collect::<Vec<_>>()
+            ))),
+        }
+    }
+
+    /// **A tap on the text reading `label`**: [`Harness::text_rect`], then [`Harness::tap`] on
+    /// its centre.
+    ///
+    /// # Errors
+    /// As [`Harness::text_rect`].
+    pub fn tap_text(&mut self, label: &str) -> Result<()> {
+        let rect = self.text_rect(label)?;
+        self.tap(rect.center());
+        Ok(())
+    }
+
     /// A drag: press, move over `steps` frames, release.
     pub fn drag(&mut self, from: Pos2, to: Pos2, steps: usize) {
         self.press(from);
@@ -332,6 +391,43 @@ impl Harness {
         }
         self.release(to);
         self.frame();
+    }
+}
+
+/// The texts in `shape`, each cut to `clip`; one clipped away whole is left out.
+fn collect_texts(shape: &egui::Shape, clip: Rect, out: &mut Vec<(String, Rect)>) {
+    match shape {
+        egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| collect_texts(s, clip, out)),
+        egui::Shape::Text(text) => {
+            let rect = text.galley.rect.translate(text.pos.to_vec2());
+            if clip.intersects(rect) {
+                out.push((text.galley.job.text.clone(), rect.intersect(clip)));
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The texts on the glass, for a message about what was not among them.
+fn texts_seen(texts: &[(String, Rect)]) -> String {
+    let mut names: Vec<&str> = texts
+        .iter()
+        .map(|(text, _)| text.trim())
+        .filter(|t| !t.is_empty())
+        .collect();
+    names.sort_unstable();
+    names.dedup();
+    let more = names.len().saturating_sub(60);
+    let list = names
+        .iter()
+        .take(60)
+        .map(|t| format!("{t:?}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if more > 0 {
+        format!("{list} … and {more} more")
+    } else {
+        list
     }
 }
 

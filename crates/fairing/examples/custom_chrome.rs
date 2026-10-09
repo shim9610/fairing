@@ -29,7 +29,7 @@
 
 mod common;
 
-use common::Act;
+use common::{Act, Expect, Side, Spot};
 use egui::{Color32, Rect, Stroke};
 use fairing::config::{DesktopConfig, NavBarConfig, OverlayConfig, ShellConfig, StatusBarConfig};
 use fairing::icons::{IconColor, IconStyle};
@@ -56,24 +56,28 @@ const PLAN: &[Act] = &[
     Act::Wait(15), // time for the font atlas and the first repaint to settle
     Act::Shot("01-custom.png"),
     // Pull the shade down — `tile.hopper` sits between two built-in tiles.
-    Act::Press(10.0, 8.0),
-    Act::MoveTo {
-        x: 10.0,
-        y: 300.0,
+    Act::Press(Spot::Edge(Side::Top, 0.01)),
+    Act::MoveBy {
+        dx: 0.0,
+        dy: 292.0,
         frames: 10,
     },
     Act::Release,
     Act::Settle,
     Act::Wait(6),
     Act::Shot("02-custom-tiles.png"),
-    // Pressing `tile.hopper` opens three gauge rows **exactly as declared** (the row count, the colours, the names, the units).
-    Act::Tap(456.0, 86.0),
+    Act::Expect(Expect::ShadeOpen),
+    // Pressing `tile.hopper` — by its label, wherever the row put it — opens three gauge rows
+    // **exactly as declared** (the row count, the colours, the names, the units).
+    Act::Tap(Spot::Text("Hoppers")),
     Act::Settle,
     Act::Wait(6),
+    Act::Expect(Expect::Text("Resin A")),
+    Act::Expect(Expect::Text("Solvent")),
     Act::Shot("03-custom-gauges.png"),
     // `tile.jog` fits no standard shape, so it takes a whole row. (The hopper has left the row and
     // the tiles left behind have filled the gap, so Jog has come to the middle.)
-    Act::Tap(512.0, 92.0),
+    Act::Tap(Spot::Text("Jog")),
     Act::Settle,
     Act::Wait(6),
     Act::Shot("04-custom-panel.png"),

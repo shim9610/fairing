@@ -13,7 +13,9 @@ use fairing::notify::Level;
 use fairing::runner::{self, Options};
 use fairing::workspace::StackTransition;
 use fairing::{LaunchAction, Notification, NotificationId};
+use std::cell::Cell;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::Arc;
 
 struct StderrLogger;
@@ -345,7 +347,7 @@ pub enum Act {
     /// from two.
     OpenBeside(&'static str),
     /// Press on the split's divider handle, wherever it is — an [`Act::MoveTo`] after this drags it.
-    /// With no split up it only logs and moves on.
+    /// With no split up it fails the tour and moves on.
     GrabDivider,
     /// The recents control — `LaunchAction::OpenOverview`.
     Recents,
@@ -355,33 +357,39 @@ pub enum Act {
     Back,
     /// Home (an A2 close).
     Home,
-    /// A synthetic finger press at `(x, y)` — it rides the next pass's `RawInput` ([`SyntheticInput`]).
-    Press(f32, f32),
-    /// Move in a straight line to `(x, y)` over `frames` frames while held (without releasing). A
-    /// **mid-transition frame** of a shade pull, a page swipe or the back gesture puts an [`Act::Shot`]
-    /// after this.
-    MoveTo {
-        /// The target x.
-        x: f32,
-        /// The target y.
-        y: f32,
-        /// How many frames it takes (at 60 Hz, `step ≈ distance / frames` px per frame → the release velocity).
+    /// A synthetic finger down on a [`Spot`], held — for a drag ([`Act::MoveBy`]) or a long press
+    /// ([`Act::Wait`], then [`Act::Release`]). It rides the next pass's `RawInput`
+    /// ([`SyntheticInput`]). A spot that cannot be found fails the tour and moves on.
+    Press(Spot),
+    /// Move the held finger by `(dx, dy)` from where the move starts, in a straight line over
+    /// `frames` frames (at 60 Hz, `step ≈ distance / frames` px per frame → the release
+    /// velocity). A **mid-transition frame** of a shade pull, a page swipe or the back gesture
+    /// puts an [`Act::Shot`] after this. A distance, never a place: the place was the
+    /// [`Act::Press`]'s to find.
+    MoveBy {
+        /// How far across.
+        dx: f32,
+        /// How far down.
+        dy: f32,
+        /// How many frames it takes.
         frames: u32,
     },
     /// Release (a `PointerButton` release plus `PointerGone`).
     Release,
-    /// A tap at `(x, y)`: press, then release on the next frame.
-    Tap(f32, f32),
+    /// A tap on a [`Spot`]: the press, a frame held, the release. A spot that cannot be found
+    /// fails the tour and moves on.
+    Tap(Spot),
     /// A toast (`Shell::toast`).
     Toast(&'static str),
     /// A notification, `(level, title, body)` (`Shell::notify`; the id is the title's FNV). With the
     /// shade closed it is a heads-up. The level picks the severity shape as well as the colour.
     Notify(Level, &'static str, &'static str),
-    /// Replace the OSK's layout (`"qwerty"` · `"numpad"` · `"hangul"`). An unknown name only logs.
+    /// Replace the OSK's layout (`"qwerty"` · `"numpad"` · `"hangul"`). An unknown name fails the
+    /// tour.
     Osk(&'static str),
     /// Knock one OSK key **by its label** (`"ㅎ"` · `" "` · `"⌫"`). Where it is comes from
     /// `shell.osk().key_rect(label)` — no coordinates are written into the script. Where the key is
-    /// not on the current face it only logs and moves on.
+    /// not on the current face it fails the tour and moves on.
     Key(&'static str),
     /// **Start recording** into `<tour dir>/<name>/`: from here every other frame is written as
     /// `0000.png`, `0001.png`, … on `--record`'s fixed 60 Hz clock ([`VirtualClock`]), so the
@@ -393,10 +401,10 @@ pub enum Act {
     RecordEnd,
     /// Tap a PIN in on the shell's keypad, digit by digit — a press on one frame, the release on
     /// the next. Where each key is comes from `shell.prompt_digit_rect(..)`, so a shuffled keypad
-    /// is tapped right too. With no keypad up it only logs and moves on.
+    /// is tapped right too. With no keypad up it fails the tour and moves on.
     Pin(&'static str),
     /// Tap the prompt's tab for its method `n` (from 0) — PIN, pattern, … in the order the
-    /// authenticator offers them. With no tabs up it only logs and moves on.
+    /// authenticator offers them. With no tabs up it fails the tour and moves on.
     PromptTab(usize),
     /// Draw a pattern on the shell's pattern pad: press on the first dot, slide through the rest
     /// a few frames a stroke, release on the last. The dots count from 1, row by row, as
@@ -411,8 +419,184 @@ pub enum Act {
     Logout,
     /// A finger down on the desktop icon `id`, wherever it is drawn (`shell.desktop().icon_rect`),
     /// held until an [`Act::Release`] — a long press, with an [`Act::Wait`] between. With no such
-    /// icon on screen it only logs and moves on.
+    /// icon on screen it fails the tour and moves on.
     PressIcon(&'static str),
+    /// **Look at the frame, and fail the tour where it is not what the script expects.** A tour
+    /// that only photographs cannot tell a right screen from a wrong one; this is where a script
+    /// says what it should be looking at before it takes the picture. A miss is logged with what
+    /// was there, and the script goes on, so one run reports every miss.
+    Expect(Expect),
+    /// [`Act::Expect`] with patience: looked for on every frame until it holds, and failed once
+    /// `frames` have passed without it. For what arrives after an animation the shell does not
+    /// own — an example's own page transition, a list refilling — where [`Act::Settle`] has
+    /// nothing to wait for.
+    Until(Expect, u32),
+}
+
+/// **Where a finger goes** — named by what is there, never by a number on the window.
+///
+/// # Why there is no `(x, y)` form
+///
+/// There was one. A `Tap(90, 210)` on a rail entry was right for one row height; when the rows
+/// shrank it landed on the entry below, the screenshot showed the wrong page under the right
+/// file name, and nothing said so — a tap on nothing is silent, and a tour only took pictures.
+/// Four scripts carried some fifty such numbers, each right for the day it was written. So the
+/// vocabulary has no way to write one: a thing with a label is found by its label this frame
+/// ([`Spot::Text`], [`Spot::Near`]), a gesture starts at an edge of the glass ([`Spot::Edge`]) or
+/// at a share of the content area ([`Spot::Page`]), and every drag is a distance
+/// ([`Act::MoveBy`]). What cannot be found fails the tour.
+#[derive(Debug, Clone, Copy)]
+pub enum Spot {
+    /// The centre of the one text on the glass reading this. The label is matched whole against
+    /// every text the frame painted (a label drawn truncated still carries its full text); none,
+    /// or more than one, is a failure — name a text that is drawn once.
+    Text(&'static str),
+    /// `(dx, dy)` from the centre of the text reading this: the body of a list row found by its
+    /// title, the value half of a field found by its caption.
+    Near(&'static str, f32, f32),
+    /// A share of the way across and down the content area — the pane between the bars, as the
+    /// shell laid it out this frame. For the geometry that has no label: the middle of a page to
+    /// scroll it, the page beside a card to put the card away.
+    Page(f32, f32),
+    /// Just inside an edge of the glass, `t` of the way along it — where the edge gestures begin.
+    Edge(Side, f32),
+}
+
+/// An edge of the glass, for [`Spot::Edge`].
+#[derive(Debug, Clone, Copy)]
+pub enum Side {
+    /// The top edge; `t` runs left to right.
+    Top,
+    /// The bottom edge; `t` runs left to right.
+    Bottom,
+    /// The left edge; `t` runs top to bottom.
+    Left,
+    /// The right edge; `t` runs top to bottom.
+    Right,
+}
+
+/// How far inside an edge of the glass an edge gesture is pressed (px). Within every edge zone
+/// (`metrics.edge_px` is 24 du and up), and clear of the window's own border.
+const EDGE_IN: f32 = 4.0;
+
+/// What an [`Act::Expect`] checks.
+#[derive(Debug, Clone, Copy)]
+pub enum Expect {
+    /// Some text on the glass this frame reads exactly this.
+    Text(&'static str),
+    /// No text on the glass this frame reads this.
+    NoText(&'static str),
+    /// The screen in front is the declaration `id`.
+    Screen(&'static str),
+    /// The desktop is showing and no screen is.
+    Home,
+    /// The shade is open.
+    ShadeOpen,
+    /// The shade is closed.
+    ShadeClosed,
+    /// The on-screen keyboard is up.
+    OskUp,
+    /// The on-screen keyboard is away.
+    OskDown,
+}
+
+/// Every text painted this frame, with where on the glass — what [`Act::TapText`] and
+/// [`Expect::Text`] look through. The shell has drawn by the time the script runs in a frame, so
+/// this reads the frame being built. A text clipped away whole (scrolled out of its area) is left
+/// out: it is not on the glass, so a finger cannot land on it.
+fn drawn_texts(ctx: &egui::Context) -> Vec<(String, egui::Rect)> {
+    let mut layers = vec![egui::LayerId::background()];
+    ctx.memory(|m| {
+        for id in m.layer_ids() {
+            if !layers.contains(&id) {
+                layers.push(id);
+            }
+        }
+    });
+    let mut out = Vec::new();
+    ctx.graphics(|g| {
+        for layer in &layers {
+            let Some(list) = g.get(*layer) else {
+                continue;
+            };
+            for entry in list.all_entries() {
+                collect_texts(&entry.shape, entry.clip_rect, &mut out);
+            }
+        }
+    });
+    out
+}
+
+fn collect_texts(shape: &egui::Shape, clip: egui::Rect, out: &mut Vec<(String, egui::Rect)>) {
+    match shape {
+        egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| collect_texts(s, clip, out)),
+        egui::Shape::Text(text) => {
+            let rect = text.galley.rect.translate(text.pos.to_vec2());
+            if clip.intersects(rect) {
+                out.push((text.galley.job.text.clone(), rect.intersect(clip)));
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Where the texts reading `label` are this frame. One place is one place: a widget that paints
+/// its label twice over itself (a field's hint under its caption) is one thing to press.
+fn texts_reading(texts: &[(String, egui::Rect)], label: &str) -> Vec<egui::Rect> {
+    let mut found: Vec<egui::Rect> = Vec::new();
+    for (text, rect) in texts {
+        if text.trim() != label {
+            continue;
+        }
+        let same_place = found
+            .iter()
+            .any(|r| (r.center() - rect.center()).length() < 1.0);
+        if !same_place {
+            found.push(*rect);
+        }
+    }
+    found
+}
+
+/// The texts on the glass, for a message about what was not among them.
+fn seen(texts: &[(String, egui::Rect)]) -> String {
+    let mut names: Vec<&str> = texts
+        .iter()
+        .map(|(text, _)| text.trim())
+        .filter(|t| !t.is_empty())
+        .collect();
+    names.sort_unstable();
+    names.dedup();
+    let more = names.len().saturating_sub(60);
+    let list = names
+        .iter()
+        .take(60)
+        .map(|t| format!("{t:?}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if more > 0 {
+        format!("{list} … and {more} more")
+    } else {
+        list
+    }
+}
+
+/// The one text reading `label` this frame, for a finger to land on.
+fn find_text(ctx: &egui::Context, label: &str) -> Result<egui::Rect, String> {
+    let texts = drawn_texts(ctx);
+    let found = texts_reading(&texts, label);
+    match found.as_slice() {
+        [rect] => Ok(*rect),
+        [] => Err(format!(
+            "no text reads {label:?}; on the glass: {}",
+            seen(&texts)
+        )),
+        many => Err(format!(
+            "{} texts read {label:?}, at {:?} - name one that is drawn once",
+            many.len(),
+            many.iter().map(egui::Rect::center).collect::<Vec<_>>()
+        )),
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -618,7 +802,9 @@ struct Tour<S> {
     /// The starting point of the [`Act::MoveTo`] in progress.
     move_from: Option<Pos2>,
     written: u32,
-    failed: bool,
+    /// Whether any step could not do what the script asked. Shared with [`run_tour`], which
+    /// turns it into a non-zero exit once the window has closed.
+    failed: Rc<Cell<bool>>,
     done: bool,
     /// `--record`'s state, `None` without it.
     film: Option<Film>,
@@ -653,8 +839,15 @@ pub type BuildApp<S> = Box<dyn FnOnce(&egui::Context) -> fairing::Result<(fairin
 
 /// Run the script, leaving PNGs behind, and close the window at the end.
 ///
+/// **A tour is a check as well as a camera.** A step that could not do what the script asked —
+/// a label that is not on the glass, an [`Act::Expect`] that does not hold, a shot that could not
+/// be written — is logged as an error, the script goes on so one run lists every miss, and the
+/// run ends in `Err`. The examples return it from `main`, so a tour that went wrong exits
+/// non-zero, and `tools/tours.sh` and CI fail on it.
+///
 /// # Errors
-/// A [`fairing::Error`] where the output directory cannot be made or the runner fails.
+/// A [`fairing::Error`] where the output directory cannot be made, the runner fails, or any step
+/// of the script failed.
 pub fn run_tour<S: std::any::Any>(
     options: Options,
     dir: PathBuf,
@@ -674,6 +867,7 @@ pub fn run_tour<S: std::any::Any>(
     if film.is_some() {
         log::info!("--record: a fixed 60 Hz clock, and frames for every Act::Record");
     }
+    let failed = Rc::new(Cell::new(false));
     let mut tour = Tour {
         dir,
         plan,
@@ -689,12 +883,18 @@ pub fn run_tour<S: std::any::Any>(
         finger: Pos2::ZERO,
         move_from: None,
         written: 0,
-        failed: false,
+        failed: Rc::clone(&failed),
         done: false,
         state: None,
         film,
     };
-    runner::run(options, move |ui| tour.frame(ui))
+    runner::run(options, move |ui| tour.frame(ui))?;
+    if failed.get() {
+        return Err(fairing::Error::Runner(
+            "the tour had failures - see the errors above".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 impl<S: std::any::Any> Tour<S> {
@@ -738,7 +938,7 @@ impl<S: std::any::Any> Tour<S> {
             }
             Err(err) => {
                 log::error!("cannot build the tour shell: {err}");
-                self.failed = true;
+                self.failed.set(true);
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 false
             }
@@ -808,7 +1008,7 @@ impl<S: std::any::Any> Tour<S> {
             match write_png(&path, &image) {
                 Ok(_) => film.written += 1,
                 Err(err) => {
-                    self.failed = true;
+                    self.failed.set(true);
                     log::error!("cannot write {}: {err}", path.display());
                 }
             }
@@ -834,7 +1034,7 @@ impl<S: std::any::Any> Tour<S> {
                         });
                     }
                     Err(err) => {
-                        self.failed = true;
+                        self.failed.set(true);
                         log::error!("cannot create {}: {err}", dir.display());
                     }
                 }
@@ -884,7 +1084,7 @@ impl<S: std::any::Any> Tour<S> {
                 }
             }
             Err(err) => {
-                self.failed = true;
+                self.failed.set(true);
                 log::error!("cannot write {name}: {err}");
             }
         }
@@ -910,7 +1110,7 @@ impl<S: std::any::Any> Tour<S> {
                     let frames = self.film.as_ref().map_or_else(String::new, |film| {
                         format!(", {} recorded frames", film.written)
                     });
-                    if self.failed {
+                    if self.failed.get() {
                         log::error!(
                             "tour finished - {} PNGs{frames}, some shots failed",
                             self.written
@@ -986,30 +1186,14 @@ impl<S: std::any::Any> Tour<S> {
             Act::GrabDivider => self.grab_divider_step(ctx),
             Act::Back => self.with_shell(fairing::Shell::back),
             Act::Home => self.with_shell(fairing::Shell::home),
-            Act::Press(x, y) => {
-                self.finger = egui::pos2(x, y);
-                SyntheticInput::press(ctx, self.finger);
-                self.next_step();
-                Flow::Wait
-            }
-            Act::MoveTo { x, y, frames } => self.move_step(ctx, egui::pos2(x, y), frames),
+            Act::Press(spot) => self.press_step(ctx, spot),
+            Act::MoveBy { dx, dy, frames } => self.move_by_step(ctx, egui::vec2(dx, dy), frames),
             Act::Release => {
                 SyntheticInput::release(ctx, self.finger);
                 self.next_step();
                 Flow::Wait
             }
-            Act::Tap(x, y) => {
-                // The press is this frame (→ the next pass) and the release the frame after.
-                let pos = egui::pos2(x, y);
-                if self.frames == 1 {
-                    self.finger = pos;
-                    SyntheticInput::press(ctx, pos);
-                    return Flow::Wait;
-                }
-                SyntheticInput::release(ctx, pos);
-                self.next_step();
-                Flow::Wait
-            }
+            Act::Tap(spot) => self.tap_step(ctx, spot),
             Act::Toast(text) => self.with_shell(|shell| shell.toast(text)),
             Act::Notify(level, title, body) => self.with_shell(|shell| {
                 shell.notify(
@@ -1019,12 +1203,13 @@ impl<S: std::any::Any> Tour<S> {
                 );
             }),
             Act::Osk(name) => {
-                self.with_shell(
-                    |shell| match fairing::osk::OskLayout::parse(name, true, false) {
-                        Some(layout) => shell.osk_mut().set_layout(layout),
-                        None => log::warn!("Act::Osk(\"{name}\") - unknown layout"),
-                    },
-                )
+                if let Some(layout) = fairing::osk::OskLayout::parse(name, true, false) {
+                    self.with_shell(|shell| shell.osk_mut().set_layout(layout))
+                } else {
+                    self.fail(&format!("Act::Osk({name:?}) - unknown layout"));
+                    self.next_step();
+                    Flow::Next
+                }
             }
             Act::Key(label) => self.key_step(ctx, label),
             Act::Record(name) => self.record_step(Some(name)),
@@ -1036,13 +1221,169 @@ impl<S: std::any::Any> Tour<S> {
             Act::Lock => self.with_shell(|shell| shell.launch(LaunchAction::Lock)),
             Act::Logout => self.with_shell(|shell| shell.launch(LaunchAction::Logout)),
             Act::PressIcon(id) => self.press_icon_step(ctx, id),
+            Act::Expect(check) => self.expect_step(ctx, check),
+            Act::Until(check, frames) => self.until_step(ctx, check, frames),
+        }
+    }
+
+    /// A step that could not do what the script asked: logged, and the run exits non-zero at
+    /// the end. The script goes on, so one run lists every miss.
+    fn fail(&mut self, what: &str) {
+        log::error!("{what}");
+        self.failed.set(true);
+    }
+
+    /// Where a [`Spot`] is this frame, or why it is not.
+    fn locate(&self, ctx: &egui::Context, spot: Spot) -> Result<Pos2, String> {
+        match spot {
+            Spot::Text(label) => find_text(ctx, label).map(|r| r.center()),
+            Spot::Near(label, dx, dy) => {
+                find_text(ctx, label).map(|r| r.center() + egui::vec2(dx, dy))
+            }
+            Spot::Page(fx, fy) => {
+                let content = self
+                    .shell
+                    .as_ref()
+                    .map(|s| s.layout().content)
+                    .filter(egui::Rect::is_positive)
+                    .ok_or_else(|| "the shell has laid out no content area yet".to_owned())?;
+                Ok(content.min + egui::vec2(fx * content.width(), fy * content.height()))
+            }
+            Spot::Edge(side, t) => {
+                let r = ctx.content_rect();
+                Ok(match side {
+                    Side::Top => egui::pos2(r.min.x + t * r.width(), r.min.y + EDGE_IN),
+                    Side::Bottom => egui::pos2(r.min.x + t * r.width(), r.max.y - EDGE_IN),
+                    Side::Left => egui::pos2(r.min.x + EDGE_IN, r.min.y + t * r.height()),
+                    Side::Right => egui::pos2(r.max.x - EDGE_IN, r.min.y + t * r.height()),
+                })
+            }
+        }
+    }
+
+    /// [`Act::Tap`]: the press on the first frame, a frame held, the release on the third.
+    fn tap_step(&mut self, ctx: &egui::Context, spot: Spot) -> Flow {
+        if self.frames == 1 {
+            return match self.locate(ctx, spot) {
+                Ok(pos) => {
+                    self.finger = pos;
+                    SyntheticInput::press(ctx, self.finger);
+                    Flow::Wait
+                }
+                Err(why) => {
+                    self.fail(&format!("Act::Tap({spot:?}) - {why}"));
+                    self.next_step();
+                    Flow::Next
+                }
+            };
+        }
+        if self.frames < 3 {
+            return Flow::Wait;
+        }
+        SyntheticInput::release(ctx, self.finger);
+        self.next_step();
+        Flow::Wait
+    }
+
+    /// [`Act::Press`]: a finger down on the spot, left there.
+    fn press_step(&mut self, ctx: &egui::Context, spot: Spot) -> Flow {
+        match self.locate(ctx, spot) {
+            Ok(pos) => {
+                self.finger = pos;
+                SyntheticInput::press(ctx, self.finger);
+                self.next_step();
+                Flow::Wait
+            }
+            Err(why) => {
+                self.fail(&format!("Act::Press({spot:?}) - {why}"));
+                self.next_step();
+                Flow::Next
+            }
+        }
+    }
+
+    /// [`Act::MoveBy`]: the move's target reckoned from where it starts.
+    fn move_by_step(&mut self, ctx: &egui::Context, by: egui::Vec2, frames: u32) -> Flow {
+        let from = *self.move_from.get_or_insert(self.finger);
+        self.move_step(ctx, from + by, frames)
+    }
+
+    /// [`Act::Expect`]: one look at the frame.
+    fn expect_step(&mut self, ctx: &egui::Context, check: Expect) -> Flow {
+        if let Some(miss) = self.check(ctx, check) {
+            self.fail(&format!("Act::Expect({check:?}) - {miss}"));
+        }
+        self.next_step();
+        Flow::Next
+    }
+
+    /// [`Act::Until`]: the same look, every frame, until it holds or the patience runs out.
+    fn until_step(&mut self, ctx: &egui::Context, check: Expect, frames: u32) -> Flow {
+        match self.check(ctx, check) {
+            None => {
+                self.next_step();
+                Flow::Next
+            }
+            Some(_) if self.frames < frames => Flow::Wait,
+            Some(miss) => {
+                self.fail(&format!(
+                    "Act::Until({check:?}, {frames}) - still, after {frames} frames: {miss}"
+                ));
+                self.next_step();
+                Flow::Next
+            }
+        }
+    }
+
+    /// Why `check` does not hold this frame, or `None` where it does.
+    fn check(&self, ctx: &egui::Context, check: Expect) -> Option<String> {
+        let shell = self.shell.as_ref();
+        match check {
+            Expect::Text(label) => {
+                let texts = drawn_texts(ctx);
+                texts_reading(&texts, label)
+                    .is_empty()
+                    .then(|| format!("no text reads {label:?}; on the glass: {}", seen(&texts)))
+            }
+            Expect::NoText(label) => {
+                let texts = drawn_texts(ctx);
+                let found = texts_reading(&texts, label);
+                (!found.is_empty())
+                    .then(|| format!("{label:?} is still on the glass, at {found:?}"))
+            }
+            Expect::Screen(id) => {
+                let front =
+                    shell.and_then(|s| s.workspace().focused().map(|i| i.decl_id().to_owned()));
+                (front.as_deref() != Some(id))
+                    .then(|| format!("the screen in front is {front:?}, not {id:?}"))
+            }
+            Expect::Home => shell
+                .is_some_and(|s| !s.workspace().is_home())
+                .then(|| "a screen is in front, not the desktop".to_owned()),
+            Expect::ShadeOpen | Expect::ShadeClosed => {
+                let want = matches!(check, Expect::ShadeOpen);
+                #[cfg(feature = "overlay")]
+                let open = shell.is_some_and(|s| s.overlay().is_open());
+                #[cfg(not(feature = "overlay"))]
+                let open = false;
+                (open != want)
+                    .then(|| format!("the shade is {}", if open { "open" } else { "closed" }))
+            }
+            Expect::OskUp | Expect::OskDown => {
+                let want = matches!(check, Expect::OskUp);
+                #[cfg(feature = "osk")]
+                let up = shell.is_some_and(|s| s.osk().is_shown());
+                #[cfg(not(feature = "osk"))]
+                let up = false;
+                (up != want).then(|| format!("the keyboard is {}", if up { "up" } else { "away" }))
+            }
         }
     }
 
     /// [`Act::PressIcon`]: a finger down on the icon, where the desktop drew it.
     fn press_icon_step(&mut self, ctx: &egui::Context, id: &str) -> Flow {
         let Some(icon) = self.shell.as_ref().and_then(|s| s.desktop().icon_rect(id)) else {
-            log::warn!("Act::PressIcon(\"{id}\") - no such icon on screen");
+            self.fail(&format!("Act::PressIcon({id:?}) - no such icon on screen"));
             self.next_step();
             return Flow::Next;
         };
@@ -1059,7 +1400,7 @@ impl<S: std::any::Any> Tour<S> {
             .as_ref()
             .and_then(|s| s.workspace().divider_rect())
         else {
-            log::warn!("Act::GrabDivider - no divider on screen");
+            self.fail("Act::GrabDivider - no divider on screen");
             self.next_step();
             return Flow::Next;
         };
@@ -1073,7 +1414,7 @@ impl<S: std::any::Any> Tour<S> {
     fn tab_step(&mut self, ctx: &egui::Context, index: usize) -> Flow {
         if self.frames == 1 {
             let Some(rect) = self.shell.as_ref().and_then(|s| s.prompt_tab_rect(index)) else {
-                log::warn!("Act::PromptTab({index}) - no such tab on screen");
+                self.fail(&format!("Act::PromptTab({index}) - no such tab on screen"));
                 self.next_step();
                 return Flow::Next;
             };
@@ -1096,7 +1437,9 @@ impl<S: std::any::Any> Tour<S> {
                 .collect()
         });
         let Some(points) = points.filter(|p| !p.is_empty()) else {
-            log::warn!("Act::Pattern({dots:?}) - no pattern pad on screen");
+            self.fail(&format!(
+                "Act::Pattern({dots:?}) - no pattern pad on screen"
+            ));
             self.next_step();
             return Flow::Next;
         };
@@ -1129,7 +1472,9 @@ impl<S: std::any::Any> Tour<S> {
             return Flow::Next;
         };
         let Some(rect) = self.shell.as_ref().and_then(|s| s.prompt_digit_rect(digit)) else {
-            log::warn!("Act::Pin(\"{digits}\") - no key for {digit} on screen");
+            self.fail(&format!(
+                "Act::Pin({digits:?}) - no key for {digit} on screen"
+            ));
             self.next_step();
             return Flow::Next;
         };
@@ -1142,10 +1487,12 @@ impl<S: std::any::Any> Tour<S> {
     }
 
     /// [`Act::Key`]: find the OSK key by label, press it, and release it on the next frame. Where the
-    /// label cannot be found it only logs and moves on, so the script does not stop.
+    /// label cannot be found it fails the tour and moves on, so one run lists every miss.
     fn key_step(&mut self, ctx: &egui::Context, label: &'static str) -> Flow {
         let Some(rect) = self.shell.as_ref().and_then(|s| s.osk().key_rect(label)) else {
-            log::warn!("Act::Key(\"{label}\") - no such key on the current face");
+            self.fail(&format!(
+                "Act::Key({label:?}) - no such key on the current face"
+            ));
             self.next_step();
             return Flow::Next;
         };
@@ -1159,8 +1506,8 @@ impl<S: std::any::Any> Tour<S> {
         Flow::Wait
     }
 
-    /// [`Act::MoveTo`]: move to the next point along the line each frame. On the frame it reaches the
-    /// last point, on to the next step (that event applies on the next pass).
+    /// [`Act::MoveBy`]: move to the next point along the line each frame. On the frame it reaches
+    /// the last point, on to the next step (that event applies on the next pass).
     #[allow(clippy::cast_precision_loss)] // A frame count is a small integer.
     fn move_step(&mut self, ctx: &egui::Context, to: Pos2, frames: u32) -> Flow {
         let from = *self.move_from.get_or_insert(self.finger);

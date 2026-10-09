@@ -34,7 +34,7 @@
 
 mod common;
 
-use common::Act;
+use common::{Act, Expect, Side, Spot};
 use fairing::notify::Level;
 use fairing::runner::{self, Options};
 use fairing::services::mock::{MockBluetooth, MockClock, MockDisplay, MockPower, MockWifi};
@@ -199,59 +199,69 @@ const TOUR: &[Act] = &[
     // land on: a card let go short of the snap ratio (a third of its height, about 250 px here)
     // sinks back shut. Each pull runs well past it and is held still before the release, because
     // a release still carrying speed is a fling. The notifications first, from the left.
-    Act::Press(300.0, 20.0),
+    Act::Press(Spot::Edge(Side::Top, 0.23)),
     Act::Wait(2),
-    Act::MoveTo {
-        x: 300.0,
-        y: 650.0,
+    Act::MoveBy {
+        dx: 0.0,
+        dy: 630.0,
         frames: 14,
     },
-    Act::MoveTo {
-        x: 300.0,
-        y: 650.0,
+    Act::MoveBy {
+        dx: 0.0,
+        dy: 0.0,
         frames: 8,
     },
     Act::Release,
     Act::Settle,
     Act::Wait(20),
     Act::Settle,
+    Act::Expect(Expect::ShadeOpen),
     Act::Shot("02-notifications-card.png"),
     // A tap on the page beside a card puts it away; then the controls, from the right.
-    Act::Tap(1150.0, 760.0),
+    Act::Tap(Spot::Page(0.9, 0.95)),
     Act::Settle,
     Act::Wait(20),
     Act::Settle,
-    Act::Press(960.0, 20.0),
+    Act::Expect(Expect::ShadeClosed),
+    Act::Press(Spot::Edge(Side::Top, 0.75)),
     Act::Wait(2),
-    Act::MoveTo {
-        x: 960.0,
-        y: 650.0,
+    Act::MoveBy {
+        dx: 0.0,
+        dy: 630.0,
         frames: 14,
     },
-    Act::MoveTo {
-        x: 960.0,
-        y: 650.0,
+    Act::MoveBy {
+        dx: 0.0,
+        dy: 0.0,
         frames: 8,
     },
     Act::Release,
     Act::Settle,
     Act::Wait(20),
     Act::Settle,
+    Act::Expect(Expect::ShadeOpen),
     Act::Shot("03-controls-card.png"),
-    Act::Tap(200.0, 760.0),
+    Act::Tap(Spot::Page(0.16, 0.95)),
     Act::Settle,
     Act::Wait(20),
     Act::Settle,
+    Act::Expect(Expect::ShadeClosed),
     Act::RecordEnd,
-    Act::Tap(90.0, 210.0),
+    // The rail's entries are pressed **by their words**, not by where a row once was: the row
+    // height follows the finger and the type scale, and a coordinate written for one of them
+    // lands on the entry below under another. Each page is then checked by a word only it shows.
+    Act::Tap(Spot::Text("Controls")),
+    Act::Settle,
+    // The page's own transit is the example's, not the shell's, so `Settle` cannot wait for it.
+    Act::Until(Expect::Text("Cooling fan"), 120),
     Act::Settle,
     Act::Shot("04-controls.png"),
     // Swipe the arm shut. The fold starts a few frames into the drag, so the frame at the end of
     // the move is the middle of it: the words gone, the icons on their way, the bar half melted.
-    Act::Press(120.0, 560.0),
-    Act::MoveTo {
-        x: 24.0,
-        y: 560.0,
+    Act::Press(Spot::Page(0.09, 0.68)),
+    Act::MoveBy {
+        dx: -96.0,
+        dy: 0.0,
         frames: 10,
     },
     Act::Shot("05a-rail-folding.png"),
@@ -259,26 +269,37 @@ const TOUR: &[Act] = &[
     Act::Settle,
     Act::Wait(20),
     Act::Settle,
+    Act::Expect(Expect::NoText("Overview")),
     Act::Shot("05-rail-folded.png"),
     // Back open with a flick across the page - nowhere near the arm - then along the rail: the
     // three boards that were rows of prose until now.
-    Act::Press(640.0, 740.0),
-    Act::MoveTo {
-        x: 900.0,
-        y: 740.0,
+    Act::Press(Spot::Page(0.5, 0.92)),
+    Act::MoveBy {
+        dx: 260.0,
+        dy: 0.0,
         frames: 3,
     },
     Act::Release,
     Act::Settle,
     Act::Wait(20),
     Act::Settle,
-    Act::Tap(90.0, 276.0),
+    Act::Expect(Expect::Text("Overview")),
+    Act::Tap(Spot::Text("Alerts")),
+    Act::Settle,
+    // The page's own transit is the example's, not the shell's, so `Settle` cannot wait for it.
+    Act::Until(Expect::Text("Lamp hours"), 120),
     Act::Settle,
     Act::Shot("06-alerts.png"),
-    Act::Tap(90.0, 342.0),
+    Act::Tap(Spot::Text("Storage")),
+    Act::Settle,
+    // The page's own transit is the example's, not the shell's, so `Settle` cannot wait for it.
+    Act::Until(Expect::Text("Internal"), 120),
     Act::Settle,
     Act::Shot("07-storage.png"),
-    Act::Tap(90.0, 408.0),
+    Act::Tap(Spot::Text("Settings")),
+    Act::Settle,
+    // The page's own transit is the example's, not the shell's, so `Settle` cannot wait for it.
+    Act::Until(Expect::Text("Security"), 120),
     Act::Settle,
     Act::Shot("08-settings.png"),
 ];
