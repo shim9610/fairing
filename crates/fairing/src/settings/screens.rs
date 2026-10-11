@@ -1845,7 +1845,7 @@ fn secret_words(kind: SecretKind) -> SecretWords {
             keep: tr_key!("Draw nothing to keep the current pattern."),
             needed: tr_key!("A new entry needs a pattern."),
         },
-        SecretKind::Password => SecretWords {
+        SecretKind::Password { .. } => SecretWords {
             new: tr_key!("New password"),
             keep: tr_key!("Leave both empty to keep the current password."),
             needed: tr_key!("A new entry needs a password."),
@@ -1945,7 +1945,9 @@ fn credential_form(ui: &mut Ui, cx: &mut Cx<'_>, form: &mut CredentialForm) -> b
     let kind = kinds
         .get(form.kind)
         .copied()
-        .unwrap_or(SecretKind::Password);
+        .unwrap_or(SecretKind::Password {
+            keys: crate::widgets::Keys::Latin,
+        });
     let s = cx.strings;
     let mut levels = level_labels(cx);
     // Only what the session may give is offered.
@@ -1985,15 +1987,18 @@ fn credential_form(ui: &mut Ui, cx: &mut Cx<'_>, form: &mut CredentialForm) -> b
         SecretKind::Pattern { grid, min_points } => {
             pattern_entry(ui, cx, form, grid, min_points);
         }
+        // A PIN goes in on the keypad's digits, so it is set on the digits too — whatever layout
+        // this app's keyboard runs.
         SecretKind::Pin { len: 0, max_len } => {
             let hint = tr!(s, "Up to {n} digits").replace("{n}", &max_len.to_string());
-            secret_fields(ui, cx, form, &hint);
+            secret_fields(ui, cx, form, &hint, crate::widgets::Keys::Digits);
         }
         SecretKind::Pin { len, .. } => {
             let hint = tr!(s, "{n} digits").replace("{n}", &len.to_string());
-            secret_fields(ui, cx, form, &hint);
+            secret_fields(ui, cx, form, &hint, crate::widgets::Keys::Digits);
         }
-        SecretKind::Password => secret_fields(ui, cx, form, ""),
+        // A password on the keys the prompt asks for.
+        SecretKind::Password { keys } => secret_fields(ui, cx, form, "", keys),
     }
     if let Some(entry) = form.editing.clone() {
         ui::note(ui, cx, s.get(words.keep));
@@ -2072,7 +2077,13 @@ fn credential_foot(
 }
 
 /// The secret and its repeat, typed.
-fn secret_fields(ui: &mut Ui, cx: &mut Cx<'_>, form: &mut CredentialForm, hint: &str) {
+fn secret_fields(
+    ui: &mut Ui,
+    cx: &mut Cx<'_>,
+    form: &mut CredentialForm,
+    hint: &str,
+    keys: crate::widgets::Keys,
+) {
     let again = tr!(cx.strings, "Again");
     for (text, hint, salt) in [
         (&mut form.secret, hint, "cred.secret"),
@@ -2080,6 +2091,7 @@ fn secret_fields(ui: &mut Ui, cx: &mut Cx<'_>, form: &mut CredentialForm, hint: 
     ] {
         crate::widgets::TextField::new(text)
             .password(true)
+            .keys(keys)
             .hint(hint)
             .id_salt(salt)
             .show(ui, &mut cx.widgets());
@@ -2188,7 +2200,7 @@ fn credential_ops(
             }
             (!typed.is_empty()).then(|| Secret::Pin(typed.to_owned()))
         }
-        SecretKind::Password => {
+        SecretKind::Password { .. } => {
             if typed != form.confirm {
                 return Err(tr!(strings, "The two passwords do not match.").to_owned());
             }
@@ -2245,6 +2257,9 @@ mod tests {
     const PIN: SecretKind = SecretKind::Pin {
         len: 0,
         max_len: 16,
+    };
+    const LATIN_PASSWORD: SecretKind = SecretKind::Password {
+        keys: crate::widgets::Keys::Latin,
     };
     const PATTERN: SecretKind = SecretKind::Pattern {
         grid: 3,
@@ -2356,12 +2371,12 @@ mod tests {
             "a letter in a PIN"
         );
         assert!(
-            credential_ops(&add, SecretKind::Password, &existing, &en()).is_ok(),
+            credential_ops(&add, LATIN_PASSWORD, &existing, &en()).is_ok(),
             "but fine in a password"
         );
         add.id = "ada".to_owned();
         assert!(
-            credential_ops(&add, SecretKind::Password, &existing, &en()).is_err(),
+            credential_ops(&add, LATIN_PASSWORD, &existing, &en()).is_err(),
             "a taken id"
         );
     }

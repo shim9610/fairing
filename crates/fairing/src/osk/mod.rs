@@ -68,6 +68,7 @@ use crate::icons::{IconCache, IconDef, IconSet, IconStyle};
 use crate::motion::Animated;
 use crate::screen::OskMode;
 use crate::theme::{ColorRole, MotionTokens, Theme};
+use crate::widgets::Keys;
 use egui::Rect;
 use std::sync::Arc;
 use std::time::Instant;
@@ -200,6 +201,12 @@ pub struct Osk {
     /// This frame's key places in reading order — the built-in ones, then the layout's. A buffer
     /// whose values are overwritten each frame.
     places: Vec<Rect>,
+    /// What the focused field last asked for ([`Osk::follow`]). Only a change is acted on, so a
+    /// `한/영` press inside a field stands until the focus moves.
+    asked: Keys,
+    /// The layout to go back to while a field's keys stand in for it — `None` while the layout on
+    /// show is the device's (or the integrator's last [`Osk::set_layout`]).
+    field_base: Option<OskLayout>,
 }
 
 impl std::fmt::Debug for Osk {
@@ -269,6 +276,8 @@ impl Osk {
             key_layout: None,
             key_painter: None,
             places: Vec::new(),
+            asked: Keys::Any,
+            field_base: None,
         }
     }
 
@@ -276,7 +285,45 @@ impl Osk {
     ///
     /// A composition in progress is committed. Switching to dubeolsik brings the `한/영` key with
     /// it and makes the English qwerty the other side — every other layout is single-language.
+    ///
+    /// It becomes the layout a field that asks for no keys gets: a field that asks for its own
+    /// ([`Keys`]) still gets those while it has the focus.
     pub fn set_layout(&mut self, layout: OskLayout) {
+        self.field_base = None;
+        self.asked = Keys::Any;
+        self.apply_layout(layout);
+    }
+
+    /// Show the keys the focused field asked for ([`Keys`]), standing in for the layout set; a
+    /// field that asks for nothing brings the set layout back. Only a change of what is asked
+    /// does anything. The shell calls it each frame with the focused field's ask, and not at
+    /// all while nothing has the focus — the keyboard going down keeps its keys.
+    pub(crate) fn follow(&mut self, keys: Keys) {
+        if keys == self.asked {
+            return;
+        }
+        self.asked = keys;
+        let base = self
+            .field_base
+            .clone()
+            .unwrap_or_else(|| self.layout.clone());
+        let target = match keys {
+            Keys::Digits => OskLayout::NumPad {
+                decimal: false,
+                sign: false,
+            },
+            Keys::Number { decimal, sign } => OskLayout::NumPad { decimal, sign },
+            // Latin letters over anything else: the qwerty. A Hangul pair keeps its `한/영` key.
+            Keys::Latin if !matches!(base, OskLayout::Qwerty) => OskLayout::Qwerty,
+            _ => base.clone(),
+        };
+        if target != self.layout {
+            self.apply_layout(target.clone());
+        }
+        self.field_base = (target != base).then_some(base);
+    }
+
+    fn apply_layout(&mut self, layout: OskLayout) {
         self.flush_composer();
         // **The pair is not lost.** On dubeolsik a pair goes with it (a German kiosk has no reason for a
         // `한/영` key, so starting on qwerty does not get one), and where it was **already running as a

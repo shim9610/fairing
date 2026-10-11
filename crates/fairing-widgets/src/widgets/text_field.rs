@@ -20,6 +20,55 @@ use crate::unit::round_i8;
 
 use egui::Response;
 
+/// **Which keys a field is typed on** — what it asks the on-screen keyboard for while it has the
+/// focus.
+///
+/// The keyboard's layout is the device's (`[osk] layout`), and that one layout is wrong for some
+/// fields whatever it is: a PIN on a qwerty, a password on a number pad. A field that knows what
+/// it takes says so here, and the shell's keyboard shows those keys while the field has the focus
+/// and goes back to the device's layout when a field that asks for nothing takes it.
+///
+/// The crate's own fields ask for themselves ([`TextField::keys`], [`NumberField`](super::NumberField)
+/// from its range and decimals). A field of an integrator's own — a raw `egui::TextEdit` — asks
+/// with [`Keys::ask`] each frame it is drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum Keys {
+    /// Whatever the device's layout is.
+    #[default]
+    Any,
+    /// The digits 0-9 and nothing else — a PIN.
+    Digits,
+    /// A number pad, with a decimal point key and a minus key where asked for.
+    Number {
+        /// A decimal point key.
+        decimal: bool,
+        /// A `-` key.
+        sign: bool,
+    },
+    /// The English letters, digits and symbols — a password, a user name, a host name. On a
+    /// Hangul device the `한/영` key stays, so a person can still cross over.
+    Latin,
+}
+
+impl Keys {
+    fn slot(id: egui::Id) -> egui::Id {
+        id.with("fairing.keys")
+    }
+
+    /// Ask for these keys for the field `id` (the field's `Response::id`). Called each frame the
+    /// field is drawn; the latest ask stands.
+    pub fn ask(self, ctx: &egui::Context, id: egui::Id) {
+        ctx.data_mut(|d| d.insert_temp(Self::slot(id), self));
+    }
+
+    /// What the field `id` asked for — [`Keys::Any`] if it never asked.
+    #[must_use]
+    pub fn of(ctx: &egui::Context, id: egui::Id) -> Self {
+        ctx.data(|d| d.get_temp(Self::slot(id))).unwrap_or_default()
+    }
+}
+
 /// The field's minimum height = `touch_target × this`. At 1.0 it is exactly one finger.
 const HEIGHT: f32 = 1.0;
 /// The default line count for a multi-line field.
@@ -37,6 +86,7 @@ pub struct TextField<'a> {
     id_salt: Option<&'static str>,
     password: bool,
     enabled: bool,
+    keys: Keys,
 }
 
 impl std::fmt::Debug for TextField<'_> {
@@ -47,6 +97,7 @@ impl std::fmt::Debug for TextField<'_> {
             .field("width", &self.width)
             .field("password", &self.password)
             .field("enabled", &self.enabled)
+            .field("keys", &self.keys)
             .finish_non_exhaustive()
     }
 }
@@ -62,6 +113,7 @@ impl<'a> TextField<'a> {
             id_salt: None,
             password: false,
             enabled: true,
+            keys: Keys::Any,
         }
     }
 
@@ -104,6 +156,13 @@ impl<'a> TextField<'a> {
     #[must_use]
     pub const fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
+        self
+    }
+
+    /// The keys it is typed on — see [`Keys`]. [`Keys::Any`] (the device's layout) by default.
+    #[must_use]
+    pub const fn keys(mut self, keys: Keys) -> Self {
+        self.keys = keys;
         self
     }
 
@@ -185,6 +244,7 @@ impl<'a> TextField<'a> {
         // Selecting text is a drag the field owns, and it says so: the rail's page swipe leaves
         // it alone.
         crate::drag::claim_if_held(&response);
+        self.keys.ask(ui.ctx(), response.id);
         if is_password {
             Self::forget_undo_history(ui, response.id);
         }

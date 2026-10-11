@@ -65,6 +65,12 @@ pub enum AuthMethod {
     Password {
         /// Ask for a user name as well.
         needs_user: bool,
+        /// The keys the secret is typed on — the prompt's field and `settings.credentials`' both
+        /// ask the keyboard for these, so a secret is set on the same keys it is entered on,
+        /// whatever layout each app runs. [`Keys::Latin`](crate::widgets::Keys::Latin) for a
+        /// password, [`Keys::Digits`](crate::widgets::Keys::Digits) for a numeric one typed in a
+        /// field rather than on the keypad.
+        keys: crate::widgets::Keys,
     },
     /// Something off the screen — a card reader, a key, a fingerprint sensor. The prompt shows
     /// `label` and waits; the answer arrives through [`Authenticator::poll`].
@@ -847,7 +853,10 @@ mod tests {
             pin(16, 0),
             pattern(3, 4),
             pattern(5, 25),
-            AuthMethod::Password { needs_user: true },
+            AuthMethod::Password {
+                needs_user: true,
+                keys: crate::widgets::Keys::Latin,
+            },
         ] {
             assert_eq!(fits.unhonoured(), Vec::<String>::new(), "{fits:?}");
         }

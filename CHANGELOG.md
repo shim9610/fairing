@@ -13,6 +13,17 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
 
 ### `fairing` — the shell
 
+- A field asks for the keys it is typed on: `widgets::Keys` (`Digits`, `Number { decimal, sign }`,
+  `Latin`, or `Any` for the device's layout), through `TextField::keys` or `Keys::ask` for a raw
+  `TextEdit`. The keyboard shows them while the field has the focus and goes back to the
+  device's layout after; a `NumberField` asks for a number pad from its range and decimals.
+- `AuthMethod::Password` carries `keys`, and the prompt's secret field and `settings.credentials`
+  both ask for them, so a password is set on the same keys it is entered on whatever layout each
+  app runs. A PIN set in `settings.credentials` is typed on the digits.
+- A refused password gives the secret field the focus back with the keyboard up (and so does the
+  end of a lockout); before, the field lost the focus with the submit and the next try needed a
+  tap on it first.
+
 - `testing::Harness` finds a place by its label: `tap_text(label)`, `text_rect(label)` and
   `texts()` look through what the frame drew, so a test written for today's row height is
   still right when the finger, the type scale or the density changes — and a label that is not

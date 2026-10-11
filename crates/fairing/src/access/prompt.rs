@@ -72,7 +72,7 @@ use crate::i18n::{LabelKey, Strings};
 use crate::screen::LaunchAction;
 use crate::theme::{control_height, paint_elevation, ColorRole, Elevation, Theme};
 use crate::widgets::{
-    BigButton, ButtonKind, PatternPad, PinPad, ProgressRing, SegmentedControl, TextField,
+    BigButton, ButtonKind, Keys, PatternPad, PinPad, ProgressRing, SegmentedControl, TextField,
 };
 use egui::emath::TSTransform;
 use egui::{Align, Color32, CornerRadius, Layout, Pos2, Rect, Sense, UiBuilder, Vec2};
@@ -488,6 +488,9 @@ impl Prompt {
             open.message = Some((message, Tone::Refused));
             open.awaiting = false;
             open.shake_from = Some(now);
+            // The field went out of focus with the submit (Enter, or the Unlock press), and the
+            // keyboard with it: the next try starts where the first did, typing.
+            open.fresh = true;
         }
     }
 
@@ -573,6 +576,8 @@ impl Prompt {
             if open.locked_until.is_some_and(|until| now >= until) {
                 open.locked_until = None;
                 open.message = None;
+                // Out of the lockout as out of a refusal: the field takes the focus back.
+                open.fresh = true;
             }
             let look = Look::coming(open, now, reduce);
             let action = draw(ctx, screen, bottom, cx, open, look, &mut self.painters);
@@ -1080,7 +1085,7 @@ fn method_size(method: &AuthMethod, cx: &WidgetCx<'_>, room: Vec2) -> Vec2 {
     match method {
         AuthMethod::Pin { .. } => PinPad::measure(cx, room),
         AuthMethod::Pattern { grid, .. } => PatternPad::measure(cx, room, *grid),
-        AuthMethod::Password { needs_user } => {
+        AuthMethod::Password { needs_user, .. } => {
             let fields = if *needs_user { 2.0 } else { 1.0 };
             Vec2::new(room.x, (target + gap) * fields + target)
         }
@@ -1176,8 +1181,8 @@ fn method_column(
                 now,
             );
         }
-        Some(AuthMethod::Password { needs_user }) => {
-            action = password_body(&mut slot, cx, open, needs_user, live, now);
+        Some(AuthMethod::Password { needs_user, keys }) => {
+            action = password_body(&mut slot, cx, open, (needs_user, keys), live, now);
         }
         Some(AuthMethod::External { label }) => {
             action = external_body(&mut slot, cx, open, &label, live, now);
@@ -1299,15 +1304,17 @@ fn pattern_body(
     None
 }
 
-/// A user field (where asked for), the secret, and Unlock. Enter in the secret submits too.
+/// A user field (where asked for), the secret on the method's keys, and Unlock. Enter in the
+/// secret submits too. `method` is the method's `(needs_user, keys)`.
 fn password_body(
     ui: &mut egui::Ui,
     cx: &mut PromptCx<'_>,
     open: &mut Open,
-    needs_user: bool,
+    method: (bool, Keys),
     live: bool,
     now: Instant,
 ) -> Option<PromptAction> {
+    let (needs_user, keys) = method;
     let strings = cx.strings;
     let mut first = None;
     if needs_user {
@@ -1318,6 +1325,7 @@ fn password_body(
     }
     let secret = TextField::new(&mut open.secret)
         .password(true)
+        .keys(keys)
         .hint(strings.get(labels::PASSWORD))
         .show(ui, &mut cx.widgets);
     if open.fresh && live {

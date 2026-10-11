@@ -283,6 +283,9 @@ mod with_osk {
         pub(crate) fn set_bounds(&mut self, max_key: f32, key_gap: f32, room: f32) {
             self.0.set_bounds(max_key, key_gap, room);
         }
+        pub(crate) fn follow(&mut self, keys: crate::widgets::Keys) {
+            self.0.follow(keys);
+        }
         pub(crate) fn update(
             &mut self,
             wants: bool,
@@ -349,6 +352,7 @@ mod without_osk {
         pub(crate) fn toggle(&mut self) {}
         pub(crate) fn raise(&mut self, _above: bool) {}
         pub(crate) fn set_bounds(&mut self, _max_key: f32, _key_gap: f32, _room: f32) {}
+        pub(crate) fn follow(&mut self, _keys: crate::widgets::Keys) {}
         #[allow(clippy::unused_self)]
         pub(crate) fn update(
             &mut self,

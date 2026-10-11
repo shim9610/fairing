@@ -472,8 +472,11 @@ pub(crate) enum SecretKind {
         /// The fewest dots.
         min_points: u8,
     },
-    /// A password.
-    Password,
+    /// A password, typed on `keys`.
+    Password {
+        /// The method's [`AuthMethod::Password::keys`].
+        keys: crate::widgets::Keys,
+    },
 }
 
 #[cfg(feature = "settings")]
@@ -499,7 +502,7 @@ impl SecretKind {
                     grid: (*grid).clamp(crate::widgets::MIN_GRID, crate::widgets::MAX_GRID),
                     min_points: *min_points,
                 },
-                AuthMethod::Password { .. } => Self::Password,
+                AuthMethod::Password { keys, .. } => Self::Password { keys: *keys },
                 // A badge is enrolled at its reader, not typed here.
                 AuthMethod::External { .. } => continue,
             };
@@ -520,7 +523,9 @@ impl SecretKind {
             }
         }
         if kinds.is_empty() {
-            kinds.push(Self::Password);
+            kinds.push(Self::Password {
+                keys: crate::widgets::Keys::Latin,
+            });
         }
         kinds
     }
@@ -530,7 +535,7 @@ impl SecretKind {
         match self {
             Self::Pin { .. } => tr_key!("PIN"),
             Self::Pattern { .. } => tr_key!("Pattern"),
-            Self::Password => tr_key!("Password"),
+            Self::Password { .. } => tr_key!("Password"),
         }
     }
 }
@@ -1326,7 +1331,19 @@ mod tests {
             SecretKind::of(&[AuthMethod::External {
                 label: "Badge".into()
             }]),
-            vec![SecretKind::Password]
+            vec![SecretKind::Password {
+                keys: crate::widgets::Keys::Latin
+            }]
+        );
+        // A password is set on the keys it is entered on: the method's, carried to the form.
+        assert_eq!(
+            SecretKind::of(&[AuthMethod::Password {
+                needs_user: false,
+                keys: crate::widgets::Keys::Digits,
+            }]),
+            vec![SecretKind::Password {
+                keys: crate::widgets::Keys::Digits
+            }]
         );
     }
 
@@ -1425,7 +1442,10 @@ mod tests {
     #[cfg(feature = "settings")]
     impl super::Authenticator for Admin {
         fn methods(&self) -> Vec<super::AuthMethod> {
-            vec![super::AuthMethod::Password { needs_user: false }]
+            vec![super::AuthMethod::Password {
+                needs_user: false,
+                keys: crate::widgets::Keys::Latin,
+            }]
         }
         fn submit(&mut self, _: super::Credential, _: Instant) -> super::AuthOutcome {
             super::AuthOutcome::Pending

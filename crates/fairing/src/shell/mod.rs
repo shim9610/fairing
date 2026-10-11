@@ -1856,6 +1856,12 @@ impl Shell {
             self.theme.metrics.osk_key_gap,
             screen.height() - nav,
         );
+        // The keys the focused field asked for — a PIN field gets the digits, a password the
+        // letters, whatever the device's layout is. Nothing focused leaves the keys as they are,
+        // so a keyboard going down does not change under the finger.
+        if let Some(id) = ctx.memory(egui::Memory::focused) {
+            self.osk.follow(crate::widgets::Keys::of(ctx, id));
+        }
         self.osk
             .update(wants_keyboard, osk_mode, screen.height(), now, dt, &tokens);
         // Advance the animations and transitions.

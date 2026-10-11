@@ -1244,6 +1244,21 @@ fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
 
 To change it at runtime, use `shell.osk_mut().set_layout(..)`.
 
+**A field can ask for its own keys.** One layout per device is wrong for some field whatever it
+is — a PIN on a qwerty, a password on a number pad — so a field says what it takes with
+[`widgets::Keys`](#65-text-fields--widgetstextfield), and the keyboard shows those keys while the
+field has the focus and goes back to the layout above when a field that asks for nothing takes
+it. A `Latin` field on a Hangul device opens on the English side and keeps the `한/영` key.
+
+| `Keys` | The keyboard shows |
+|---|---|
+| `Any` (default) | The device's layout |
+| `Digits` | `NumPad { decimal: false, sign: false }` |
+| `Number { decimal, sign }` | `NumPad { decimal, sign }` — what a `NumberField` asks for, from its decimals and range |
+| `Latin` | `Qwerty` |
+
+A raw `egui::TextEdit` asks with `Keys::Digits.ask(ui.ctx(), response.id)` each frame it is drawn.
+
 ```rust
 use fairing::osk::{KeyAction, KeyDef, KeyFace, KeyLayout, KeyRow, OskLayout};
 use fairing::Shell;
@@ -1373,6 +1388,7 @@ is `touch_target` and the text is centred vertically inside it.
 | `password(bool)` | Masking |
 | `width(f32)` | A fixed width. The default is the remaining width |
 | `enabled(bool)` | Locks it |
+| `keys(Keys)` | The keys it is typed on — `Digits`, `Latin`, a `Number` pad; `Any` (the device's) by default. See [§6.2](#62-layouts) |
 | `id_salt(&'static str)` | For several fields on one screen |
 
 ```rust

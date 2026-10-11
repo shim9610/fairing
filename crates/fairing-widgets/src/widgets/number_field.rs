@@ -314,6 +314,12 @@ impl<'a> NumberField<'a> {
         let response = ui.put(band, edit);
         // Selecting the figure is a drag the field owns, and it says so.
         crate::drag::claim_if_held(&response);
+        // A number pad, with the point and the sign this field can take.
+        super::Keys::Number {
+            decimal: self.decimals > 0,
+            sign: *self.range.start() < 0.0,
+        }
+        .ask(ui.ctx(), response.id);
         if response.has_focus() {
             ui.data_mut(|d| d.insert_temp(key, draft));
             return false;

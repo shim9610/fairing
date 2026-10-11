@@ -689,7 +689,10 @@ struct Accounts(Rc<RefCell<Seen>>);
 
 impl Authenticator for Accounts {
     fn methods(&self) -> Vec<AuthMethod> {
-        vec![AuthMethod::Password { needs_user: true }]
+        vec![AuthMethod::Password {
+            needs_user: true,
+            keys: fairing::widgets::Keys::Latin,
+        }]
     }
 
     fn submit(&mut self, credential: Credential, _now: Instant) -> AuthOutcome {
@@ -715,8 +718,17 @@ impl Authenticator for Accounts {
 }
 
 fn custom(authenticator: impl Authenticator + 'static) -> fairing::Result<Harness> {
+    custom_with(authenticator, |_| {})
+}
+
+/// [`custom`], with `tweak` over the config first.
+fn custom_with(
+    authenticator: impl Authenticator + 'static,
+    tweak: impl FnOnce(&mut ShellConfig),
+) -> fairing::Result<Harness> {
     let mut config = access_config(&["viewer", "operator", "maintainer"], Some("top"));
     config.motion.reduce = true;
+    tweak(&mut config);
     let mut h = Harness::from_builder(|ctx| {
         fairing::Shell::builder(config)
             .services(
@@ -1058,8 +1070,24 @@ fn an_authenticator_that_manages_its_entries_gets_the_credentials_screen() -> fa
     h.frames(2);
     tap_text(&mut h, "operator-2")?;
     h.type_text("bob");
+    #[cfg(feature = "osk")]
+    assert_eq!(
+        *h.shell.osk().layout(),
+        fairing::osk::OskLayout::Qwerty,
+        "the id field asks for nothing: the device's keys"
+    );
     // The hint says how long a PIN may be — the authenticator's `max_len`, 16 when it gives none.
     tap_text(&mut h, "Up to 16 digits")?;
+    h.frames(1);
+    // A PIN is set on the digits it goes in on, whatever this app's keyboard is.
+    #[cfg(feature = "osk")]
+    assert_eq!(
+        *h.shell.osk().layout(),
+        fairing::osk::OskLayout::NumPad {
+            decimal: false,
+            sign: false
+        }
+    );
     h.type_text("5555");
     tap_text(&mut h, "Again")?;
     h.type_text("5555");
@@ -1350,7 +1378,10 @@ fn a_second_request_keeps_the_countdown_on_show() -> fairing::Result<()> {
 #[test]
 fn a_password_waits_out_a_lockout() -> fairing::Result<()> {
     let (mut h, asked) = scripted(
-        vec![AuthMethod::Password { needs_user: false }],
+        vec![AuthMethod::Password {
+            needs_user: false,
+            keys: fairing::widgets::Keys::Latin,
+        }],
         &[Answer::Lock],
     )?;
     h.frames(2);
@@ -1805,7 +1836,10 @@ fn nobody_changes_more_than_they_have() -> fairing::Result<()> {
 #[test]
 fn every_way_in_works_while_an_answer_is_awaited() -> fairing::Result<()> {
     let (mut h, asked) = scripted(
-        vec![AuthMethod::Password { needs_user: false }],
+        vec![AuthMethod::Password {
+            needs_user: false,
+            keys: fairing::widgets::Keys::Latin,
+        }],
         &[Answer::Wait],
     )?;
     h.frames(2);
@@ -1972,5 +2006,73 @@ fn the_shell_follows_what_poll_reports() -> fairing::Result<()> {
         h.shell.workspace().find("admin").is_some(),
         "applied all the same"
     );
+    Ok(())
+}
+
+// ── A refused password, and the keys it is typed on ──────────────────────────────────
+
+/// A refused password does not leave the prompt mute: the field has the focus back and the
+/// keyboard is up, so the next try is typed straight in — after Enter and after the Unlock
+/// button alike, with no tap on the field first.
+#[test]
+fn a_refused_password_is_typed_again_without_a_tap() -> fairing::Result<()> {
+    let (mut h, asked) = scripted(
+        vec![AuthMethod::Password {
+            needs_user: false,
+            keys: fairing::widgets::Keys::Latin,
+        }],
+        &[],
+    )?;
+    h.frames(2);
+    h.type_text("first");
+    h.frames(1);
+    h.key(egui::Key::Enter);
+    h.frames(3);
+    assert_eq!(asked.borrow().submitted, vec!["first".to_owned()]);
+    assert!(h.shell.unlock_prompt_visible(), "refused, still up");
+    #[cfg(feature = "osk")]
+    assert!(h.shell.osk().is_shown(), "the keyboard is back up");
+    h.type_text("second");
+    h.frames(1);
+    tap_text(&mut h, "Unlock")?;
+    h.frames(3);
+    h.type_text("third");
+    h.frames(1);
+    h.key(egui::Key::Enter);
+    h.frames(2);
+    assert_eq!(
+        asked.borrow().submitted,
+        vec!["first".to_owned(), "second".to_owned(), "third".to_owned()],
+        "each try went in without a tap on the field"
+    );
+    Ok(())
+}
+
+/// The password's keys are the method's, not the device's: on an app whose keyboard is a number
+/// pad, the prompt's field brings up the letters — and the number pad comes back after.
+#[cfg(feature = "osk")]
+#[test]
+fn a_password_is_typed_on_its_own_keys_whatever_the_device_layout() -> fairing::Result<()> {
+    let asked = Rc::new(RefCell::new(Asked::default()));
+    let mut h = custom_with(
+        Scripted {
+            methods: vec![AuthMethod::Password {
+                needs_user: false,
+                keys: fairing::widgets::Keys::Latin,
+            }],
+            answers: [Answer::Grant(2)].into_iter().collect(),
+            asked: Rc::clone(&asked),
+        },
+        |config| config.osk.layout = "numpad".to_owned(),
+    )?;
+    h.frames(3);
+    assert!(h.shell.osk().is_shown());
+    assert_eq!(*h.shell.osk().layout(), fairing::osk::OskLayout::Qwerty);
+    h.type_text("hunter2");
+    h.frames(1);
+    h.key(egui::Key::Enter);
+    h.frames(3);
+    assert!(!h.shell.unlock_prompt_visible());
+    assert_eq!(asked.borrow().submitted, vec!["hunter2".to_owned()]);
     Ok(())
 }

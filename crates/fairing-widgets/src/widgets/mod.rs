@@ -102,7 +102,7 @@ pub use slider::{
 };
 pub use stepper::Stepper;
 pub use switch::Switch;
-pub use text_field::TextField;
+pub use text_field::{Keys, TextField};
 pub use unroll::{unroll, Unroll, Unrolled};
 pub use wheel::WheelPicker;
 
