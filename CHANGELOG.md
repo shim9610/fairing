@@ -23,6 +23,11 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
 - A refused password gives the secret field the focus back with the keyboard up (and so does the
   end of a lockout); before, the field lost the focus with the submit and the next try needed a
   tap on it first.
+- A single-line `TextField::password` field has an eye at its right end that shows what was
+  typed and hides it again (`TextField::reveal(false)` takes it away). The eye is part of the
+  field, so a tap on it keeps the focus and the keyboard; a shown field that leaves the screen
+  comes back masked. The prompt's secret field and `settings.credentials` have it.
+  `TextFieldLook::reveal` tells a painter; the built-in icons gain `eye` and `eye-off` (80).
 
 - `testing::Harness` finds a place by its label: `tap_text(label)`, `text_rect(label)` and
   `texts()` look through what the frame drew, so a test written for today's row height is
@@ -286,7 +291,7 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
   with `metrics.split_divider` and `components.overview` for the shell's two panes and recent
   screens, `metrics.nav_indicator_length` and `nav_indicator_thickness` for the home indicator,
   and `components.popover` for a desktop icon's info popover.
-- The `du` / `mm` / finger unit system, 78 vector icons and parametric icons.
+- The `du` / `mm` / finger unit system, 80 vector icons and parametric icons.
 - `metrics.osk_max_key`, the tallest a row of on-screen keyboard keys gets, resolved in
   millimetres like the other touch sizes.
 

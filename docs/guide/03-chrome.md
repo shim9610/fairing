@@ -1385,7 +1385,8 @@ is `touch_target` and the text is centred vertically inside it.
 |---|---|
 | `hint(impl Into<String>)` | Dimmed guidance shown when empty |
 | `multiline(bool)` | Three rows high. Notes, addresses |
-| `password(bool)` | Masking |
+| `password(bool)` | Masking. A single-line one carries an eye at its right end: a tap shows what was typed, another hides it. The eye is part of the field, so the tap keeps the focus and the keyboard up; a field that leaves the screen comes back masked |
+| `reveal(bool)` | The eye on a password field — on by default; `false` leaves it masked with no way to look |
 | `width(f32)` | A fixed width. The default is the remaining width |
 | `enabled(bool)` | Locks it |
 | `keys(Keys)` | The keys it is typed on — `Digits`, `Latin`, a `Number` pad; `Any` (the device's) by default. See [§6.2](#62-layouts) |
@@ -1478,7 +1479,7 @@ of dots — are what the unlock prompt draws, and yours for a login screen of yo
 
 ## 8. Icons
 
-### 8.1 The 78 built-ins
+### 8.1 The 80 built-ins
 
 ```rust
 use fairing::{icon, IconRef};
@@ -1491,7 +1492,7 @@ fn pick() -> IconRef {
 `fairing::icon` is an alias for `icons::builtin`. The constant names are SCREAMING_SNAKE and the
 real name is the file name in `assets/icons/<name>.svg` (so `icon::CHEVRON_UP` = `"chevron-up"`).
 The full list of names is in `fairing::icons::builtin::NAMES`, and the count has a single source
-of truth in `assert_eq!(NAMES.len(), 78)` in `crates/fairing-widgets/src/icons/builtin.rs`.
+of truth in `assert_eq!(NAMES.len(), 80)` in `crates/fairing-widgets/src/icons/builtin.rs`.
 
 To refer to one by string, use `IconRef::Builtin("wifi")`. An unknown name draws nothing and
 passes quietly (`IconSet::paint` returns `false`).

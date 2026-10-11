@@ -14,7 +14,7 @@ real panel: sizes resolve through millimetres and the viewing distance, not pixe
 | `widgets` | Button, icon button, switch, checkbox, radio group, segmented control, slider, stepper, number field, text field, dropdown, wheel picker, chip row, list row, progress bar and ring, meter, status lamp, count badge, media and feature cards, PIN pad, pattern pad |
 | `theme` | Palette roles, metric and component tokens, elevation, motion tokens, light and dark presets |
 | `unit` | The `du` / `mm` / finger units and the `Scale` that resolves them for a panel |
-| `icons` | 78 built-in vector icons, parametric ones (Wi-Fi strength, battery level) and a polyline cache |
+| `icons` | 80 built-in vector icons, parametric ones (Wi-Fi strength, battery level) and a polyline cache |
 | `motion` | Tweens, springs and drag arithmetic |
 | `fonts` | Font installation, including the bold face the weight axis needs |
 

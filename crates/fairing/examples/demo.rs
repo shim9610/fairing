@@ -26,6 +26,8 @@
 //! being thrown away) · `11-osk` (the `TextEdit` screen on the English qwerty, with the inset
 //! applied) · `11a-osk-compose` (switched to dubeolsik, mid-composition — `ㅎ`+`ㅏ` with the active
 //! underline) · `11b-osk-latin` (back on the qwerty, the syllable left in the field) ·
+//! `11c-osk-password` (a password field typed into, masked, with its eye) ·
+//! `11d-osk-password-shown` (the eye tapped: the text shows and the keyboard stays) ·
 //! `12-toast` (two toasts plus a heads-up) · `13-page-swipe-mid` (a two-page desktop) ·
 //! `14-back-gesture-mid` (the left-edge back gesture).
 //!
@@ -1064,7 +1066,7 @@ fn add_m2_icons_screen(shell: &mut fairing::Shell) {
                 layout::note(
                     ui,
                     cx,
-                    "The base set is 78 icons; the 27 below were added in M2. Every one of \
+                    "The built-in set is 80 icons; the 27 below were added in M2. Every one of \
                      them is a single `IconRef::Builtin(\"name\")` - the colour comes \
                      from a palette role and the stroke width is derived from the \
                      size.",
@@ -1140,12 +1142,12 @@ const M2_ICONS: [&str; 27] = [
     "hard-drive",
 ];
 
-/// `form`: two `TextEdit`s. On the frame it opens (`Created` / `Resumed`) the first field takes focus
+/// `form`: three `TextEdit`s — a name, a password with its eye, a note. On the frame it opens (`Created` / `Resumed`) the first field takes focus
 /// and the OSK comes up by itself — the reproducibility of the tour's `11-osk.png`.
 fn add_form_screen(shell: &mut fairing::Shell) {
     // A screen closure is `FnMut`, so its own state is just a `mut` capture — no cell needed for
     // something only this screen touches.
-    let mut form = (String::new(), String::new());
+    let mut form = (String::new(), String::new(), String::new());
     shell.add(
         screen("form", move |ui: &mut egui::Ui, cx: &mut Cx| {
             ui.heading("Form (OSK)");
@@ -1160,6 +1162,12 @@ fn add_form_screen(shell: &mut fairing::Shell) {
             let a = TextField::new(&mut f.0)
                 .id_salt("name")
                 .hint("device name")
+                .show(ui, &mut cx.widgets());
+            TextField::new(&mut f.2)
+                .id_salt("secret")
+                .hint("password")
+                .password(true)
+                .keys(fairing::widgets::Keys::Latin)
                 .show(ui, &mut cx.widgets());
             TextField::new(&mut f.1)
                 .id_salt("note")
@@ -2104,6 +2112,24 @@ const PLAN: &[Act] = &[
     Act::Osk("qwerty"),
     Act::Wait(6),
     Act::Shot("11b-osk-latin.png"),
+    // A password field: masked as it is typed, with the eye at its end; a tap on the eye shows it
+    // and the keyboard stays up.
+    Act::Tap(Spot::Text("password")),
+    Act::Wait(6),
+    Act::Key("h"),
+    Act::Key("u"),
+    Act::Key("n"),
+    Act::Key("t"),
+    Act::Wait(4),
+    Act::Shot("11c-osk-password.png"),
+    Act::Tap(Spot::FocusEnd),
+    Act::Wait(4),
+    Act::Key("e"),
+    Act::Key("r"),
+    Act::Wait(4),
+    Act::Expect(Expect::Text("hunter")),
+    Act::Expect(Expect::OskUp),
+    Act::Shot("11d-osk-password-shown.png"),
     Act::Back, // close the OSK (the priority)
     Act::Settle,
     Act::Back, // a root pop → home

@@ -549,6 +549,124 @@ fn a_password_field_is_masked_single_line_and_multi_line() -> TestResult {
     Ok(())
 }
 
+/// One frame of a password field: its rect, whether it has the focus, and the text drawn.
+fn secret_frame(
+    rig: &mut Rig,
+    secret: &mut String,
+    reveal: bool,
+) -> TestResult<(Rect, bool, Vec<String>)> {
+    let (response, shapes) = rig.run_full(|ui, cx| {
+        TextField::new(secret)
+            .password(true)
+            .reveal(reveal)
+            .show(ui, cx)
+    })?;
+    Ok((response.rect, response.has_focus(), texts(&shapes)))
+}
+
+/// A tap — press on one frame, release on the next — then a quiet frame.
+fn tap_secret(rig: &mut Rig, secret: &mut String, reveal: bool, at: Pos2) -> TestResult {
+    rig.press(at);
+    secret_frame(rig, secret, reveal)?;
+    rig.release(at);
+    secret_frame(rig, secret, reveal)?;
+    Ok(())
+}
+
+/// Where the eye is: the middle of the square at the field's right end.
+fn eye_of(rect: Rect) -> Pos2 {
+    Pos2::new(rect.right() - rect.height() / 2.0, rect.center().y)
+}
+
+/// Guards the reveal button: a tap on the eye shows the password and a second hides it, and
+/// neither takes the focus off the field — a separate button would, and the keyboard would drop.
+#[test]
+fn a_password_field_eye_shows_and_hides_without_losing_the_focus() -> TestResult {
+    let mut rig = Rig::new();
+    let mut secret = String::from("hunter2-secret");
+    let (rect, _, drawn) = secret_frame(&mut rig, &mut secret, true)?;
+    assert!(!drawn.iter().any(|t| t.contains("hunter2")), "{drawn:?}");
+    tap_secret(
+        &mut rig,
+        &mut secret,
+        true,
+        rect.left_center() + Vec2::X * 10.0,
+    )?;
+    let (_, focused, _) = secret_frame(&mut rig, &mut secret, true)?;
+    assert!(focused, "a tap on the text did not focus the field");
+
+    tap_secret(&mut rig, &mut secret, true, eye_of(rect))?;
+    let (_, focused, drawn) = secret_frame(&mut rig, &mut secret, true)?;
+    assert!(
+        drawn.iter().any(|t| t.contains("hunter2")),
+        "a tap on the eye did not show the password: {drawn:?}"
+    );
+    assert!(focused, "a tap on the eye took the focus off the field");
+
+    tap_secret(&mut rig, &mut secret, true, eye_of(rect))?;
+    let (_, focused, drawn) = secret_frame(&mut rig, &mut secret, true)?;
+    assert!(
+        !drawn.iter().any(|t| t.contains("hunter2")),
+        "a second tap did not hide it: {drawn:?}"
+    );
+    assert!(focused, "the second tap took the focus off the field");
+    assert_eq!(
+        secret, "hunter2-secret",
+        "a tap on the eye changed the text"
+    );
+    Ok(())
+}
+
+/// Guards that a shown password does not outlive the field: undrawn for a frame (the prompt
+/// closed), it comes back masked for the next person.
+#[test]
+fn a_shown_password_is_masked_again_once_the_field_goes_away() -> TestResult {
+    let mut rig = Rig::new();
+    let mut secret = String::from("hunter2-secret");
+    let (rect, _, _) = secret_frame(&mut rig, &mut secret, true)?;
+    tap_secret(&mut rig, &mut secret, true, eye_of(rect))?;
+    let (_, _, drawn) = secret_frame(&mut rig, &mut secret, true)?;
+    assert!(drawn.iter().any(|t| t.contains("hunter2")), "{drawn:?}");
+    rig.run(|_, _| ())?;
+    let (_, _, drawn) = secret_frame(&mut rig, &mut secret, true)?;
+    assert!(
+        !drawn.iter().any(|t| t.contains("hunter2")),
+        "the field came back with the password in the clear: {drawn:?}"
+    );
+    Ok(())
+}
+
+/// Guards `reveal(false)`: no eye, so a tap at the right end leaves the password masked.
+#[test]
+fn a_password_field_without_the_eye_stays_masked() -> TestResult {
+    let mut rig = Rig::new();
+    let mut secret = String::from("hunter2-secret");
+    let (rect, _, _) = secret_frame(&mut rig, &mut secret, false)?;
+    tap_secret(&mut rig, &mut secret, false, eye_of(rect))?;
+    let (_, _, drawn) = secret_frame(&mut rig, &mut secret, false)?;
+    assert!(!drawn.iter().any(|t| t.contains("hunter2")), "{drawn:?}");
+    Ok(())
+}
+
+/// Guards that a painter is told about the eye, and that the eye works under a painter too.
+#[test]
+fn a_text_field_painter_sees_the_reveal_state() -> TestResult {
+    let seen = Rc::new(RefCell::new(Vec::new()));
+    let sink = Rc::clone(&seen);
+    let painters =
+        WidgetPainters::new().text_field(move |_, look| sink.borrow_mut().push(look.reveal));
+    let mut rig = Rig::new().with_painters(painters);
+    let mut secret = String::from("hunter2-secret");
+    let (rect, _, _) = secret_frame(&mut rig, &mut secret, true)?;
+    tap_secret(&mut rig, &mut secret, true, eye_of(rect))?;
+    let (_, _, drawn) = secret_frame(&mut rig, &mut secret, true)?;
+    assert!(drawn.iter().any(|t| t.contains("hunter2")), "{drawn:?}");
+    let seen = seen.borrow();
+    assert_eq!(seen.first(), Some(&Some(false)), "{seen:?}");
+    assert_eq!(seen.last(), Some(&Some(true)), "{seen:?}");
+    Ok(())
+}
+
 // ── AnimationStore ─────────────────────────────────────────────────────────────────────────
 
 /// Guards that one NaN target does not poison an id for good.

@@ -173,7 +173,7 @@ it.
 <!-- assets:begin -->
 | Asset | Source | Licence | File |
 |---|---|---|---|
-| Lucide Icons 1.39.0 subset (78 SVGs) | https://lucide.dev | ISC | `assets/icons/LICENSE-lucide` |
+| Lucide Icons 1.39.0 subset (80 SVGs) | https://lucide.dev | ISC | `assets/icons/LICENSE-lucide` |
 | Noto Sans KR v39 subset (Regular, Bold — Hangul, Latin, symbols; 14,329 glyphs) | https://fonts.google.com/noto/specimen/Noto+Sans+KR | OFL-1.1 | `assets/fonts/LICENSE-OFL-NotoSansKR` |
 
 `assets/icons/*.svg` are taken unchanged from npm `lucide-static@1.39.0` and saved under

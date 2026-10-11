@@ -110,7 +110,7 @@ slightly wrong. fairing is that shell, once, with the hard parts already decided
 | Screen layout | Pages with a pinned action bar, section cards, grids, a rail with a list/detail split, tab bars and expandable rows, all drawn from theme tokens |
 | Widgets | 23 touch widgets, from buttons, switches and sliders to a dropdown, a wheel picker, a progress ring, a PIN pad and a pattern pad. They live in [`fairing-widgets`](crates/fairing-widgets) and work without the shell |
 
-78 vector icons ship with it, plus six parametric ones (Wi-Fi strength, battery
+80 vector icons ship with it, plus six parametric ones (Wi-Fi strength, battery
 level and friends) that redraw from state.
 
 ## Quick start

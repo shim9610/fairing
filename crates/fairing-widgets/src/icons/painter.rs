@@ -436,8 +436,9 @@ mod tests {
             (hi[0] - lo[0]).max(hi[1] - lo[1])
         };
 
-        // **The band, and why it is two numbers and not one.** Measured over the 78 shipped icons
-        // the longest side has a median of 20.0 on the 24 grid and an interquartile range of
+        // **The band, and why it is two numbers and not one.** Measured over the 78 icons shipped
+        // then (`eye` and `eye-off`, added since, are 19.9 and 20.0 on their longest side, inside
+        // it), the longest side has a median of 20.0 on the 24 grid and an interquartile range of
         // 18.0–20.0, so the set already draws to a 20×20 optical box inside a 24×24 sheet — the
         // same shape Lucide and Feather use. Twelve glyphs sit deliberately below it (the four
         // chevrons at 12, `close` at 12, the four arrows and `back`, `plus` and `minus` at 14): an

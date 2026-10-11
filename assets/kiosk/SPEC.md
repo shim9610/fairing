@@ -183,7 +183,7 @@ for a customer to choose in half a second.
 
 ## 4. Payment and receipt icons (7)
 
-These are **icons, not photos** — the only group that is. The crate's 78 built-ins have no
+These are **icons, not photos** — the only group that is. The crate's 80 built-ins have no
 payment domain, so they live with the example (`assets/kiosk/icons/`).
 
 | Shared | Value |

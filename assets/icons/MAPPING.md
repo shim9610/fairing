@@ -107,7 +107,14 @@ curl -sSO "https://cdn.jsdelivr.net/npm/lucide-static@1.39.0/icons/<lucide-name>
 | `memory` | `memory-stick` | Renamed — 1.39.0 has no `memory` |
 | `hard-drive` | `hard-drive` | |
 
-That makes 51 + 27 = **78**.
+## Added for the password field (2 icons)
+
+| Our name | Lucide file | Notes |
+|---|---|---|
+| `eye` | `eye` | The reveal button while a password is masked |
+| `eye-off` | `eye-off` | The reveal button while it shows |
+
+That makes 51 + 27 + 2 = **80**.
 
 ## Checking
 

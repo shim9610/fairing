@@ -474,6 +474,9 @@ pub enum Spot {
     /// `fx` of the way across the content area, at the height the finger already is — for a
     /// horizontal drag that must not change its line: a row pushed aside, a divider moved.
     Across(f32),
+    /// Half a field's height in from the right end of the field with the focus — where a password
+    /// field's eye is. No field with the focus is a failure.
+    FocusEnd,
 }
 
 /// An edge of the glass, for [`Spot::Edge`].
@@ -1324,6 +1327,14 @@ impl<S: std::any::Any> Tour<S> {
                     self.finger.y,
                 ))
             }
+            Spot::FocusEnd => ctx
+                .memory(egui::Memory::focused)
+                .and_then(|id| ctx.read_response(id))
+                .map(|field| {
+                    let r = field.rect;
+                    egui::pos2(r.right() - r.height() / 2.0, r.center().y)
+                })
+                .ok_or_else(|| "no field has the focus".to_owned()),
             Spot::Edge(side, t) => {
                 let r = ctx.content_rect();
                 Ok(match side {

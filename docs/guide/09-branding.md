@@ -691,7 +691,7 @@ colours and keep our background.
 | 3 | Motion tokens | `[motion]`, or `Shell::set_motion` | 04 §8 |
 | 4 | Type | `.fonts(FontSet)` — **the crate carries no fonts** | §3 |
 | 5 | The background | `.wallpaper(..)` · `[desktop] wallpaper` · `image_loader` + `file:` | §1 · §2 |
-| 6 | 78 vector icons | `register_icon_painter` (recommended), or replacing the SVGs | §4 |
+| 6 | 80 vector icons | `register_icon_painter` (recommended), or replacing the SVGs | §4 |
 | 7 | 4 parametric icons (wifi/battery/bluetooth/signal) | **An `IconRef` cannot point at them** — take the whole bar with `status_bar_painter` | §6.2 |
 | 8 | Status bar · nav bar | `.status_bar_painter(..)` / `.nav_bar_painter(..)` | §6.2 |
 | 9 | Desktop cells | `.slot_painter(..)` (`SlotCx` brings press state and gates) | 04 |
@@ -833,7 +833,7 @@ grep -rn 'manta_painter\|abyss\|Preset::Abyss' src/
 cargo tree -e features -i fairing | grep -c brand
 ```
 
-Zero on all three and what is left on screen is **the palette, the metrics, the 78 icons and the
+Zero on all three and what is left on screen is **the palette, the metrics, the 80 icons and the
 built-in settings screens** — and all of those are overridable per the table in §8.2.
 
 ---

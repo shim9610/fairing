@@ -173,6 +173,10 @@ icons! {
     MEMORY = "memory";
     /// Storage.
     HARD_DRIVE = "hard-drive";
+    /// Show what is hidden — a password field's reveal button while the text is masked.
+    EYE = "eye";
+    /// Hide it again — the reveal button while the text shows.
+    EYE_OFF = "eye-off";
 }
 
 #[cfg(test)]
@@ -200,7 +204,7 @@ mod tests {
     #[test]
     fn the_generated_table_covers_the_v1_set() {
         assert!(ICONS.len() >= 40, "only {} icons", ICONS.len());
-        assert_eq!(NAMES.len(), 78);
+        assert_eq!(NAMES.len(), 80);
     }
 
     /// No duplicates in the name list, and the constants and the names point at the same values.

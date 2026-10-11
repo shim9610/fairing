@@ -360,6 +360,10 @@ pub struct TextFieldLook<'a> {
     pub empty: bool,
     /// Whether it hides what is typed.
     pub password: bool,
+    /// The reveal button, if it has one — `Some(true)` while the text shows. The field draws the
+    /// eye itself over the painter's work, in the last `rect.height()` of the field's width; a
+    /// painter only keeps that end clear.
+    pub reveal: Option<bool>,
     /// Whether it takes several lines.
     pub multiline: bool,
     /// Whether it can be typed in.

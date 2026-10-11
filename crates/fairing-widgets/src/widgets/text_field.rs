@@ -16,9 +16,11 @@
 
 use super::TextFieldLook;
 use crate::cx::WidgetCx as Cx;
+use crate::icons::{builtin, IconColor, IconStyle};
+use crate::theme::ColorRole;
 use crate::unit::round_i8;
 
-use egui::Response;
+use egui::{Rect, Response, Vec2};
 
 /// **Which keys a field is typed on** — what it asks the on-screen keyboard for while it has the
 /// focus.
@@ -78,6 +80,23 @@ const LINES: usize = 3;
 const LINES_F: f32 = 3.0;
 
 /// An input field that follows the theme.
+///
+/// # The reveal button
+///
+/// A single-line [`password`](TextField::password) field carries an eye at its right end: a tap
+/// shows what was typed, another hides it. On a touch panel every key is a guess at a small target,
+/// and a person who cannot see a masked password cannot tell a typo from a wrong password.
+///
+/// The eye is **part of the field, not a widget beside it.** egui hands a press to the topmost
+/// widget and takes the focus off a text edit that is not under the press, so a separate button
+/// would drop the focus — and the on-screen keyboard with it — on every tap. Inside the field it is
+/// a stretch of the edit's own margin: the tap lands on the edit, which keeps (or takes) the focus,
+/// and the field reads where the tap fell.
+///
+/// What it shows lasts while the field is on screen: a field left undrawn for a frame (the prompt
+/// closed, the screen changed) comes back masked, so the next person does not find the last
+/// person's password in the clear. [`TextField::reveal`] turns the eye off.
+#[allow(clippy::struct_excessive_bools)] // Independent builder options, not a state machine.
 pub struct TextField<'a> {
     text: &'a mut String,
     hint: Option<String>,
@@ -85,8 +104,45 @@ pub struct TextField<'a> {
     width: Option<f32>,
     id_salt: Option<&'static str>,
     password: bool,
+    reveal: bool,
     enabled: bool,
     keys: Keys,
+}
+
+/// Whether a password field shows its text, and the pass it was last drawn on — a gap means the
+/// field went away, and it comes back masked.
+#[derive(Debug, Clone, Copy)]
+struct Reveal {
+    shown: bool,
+    pass: u64,
+}
+
+impl Reveal {
+    fn slot(id: egui::Id) -> egui::Id {
+        id.with("fairing.reveal")
+    }
+
+    /// Shown, if it was shown on the pass before this one.
+    fn shown(ctx: &egui::Context, id: egui::Id) -> bool {
+        let pass = ctx.cumulative_pass_nr();
+        ctx.data(|d| d.get_temp::<Self>(Self::slot(id)))
+            .is_some_and(|r| r.shown && r.pass + 1 >= pass)
+    }
+
+    fn store(ctx: &egui::Context, id: egui::Id, shown: bool) {
+        let pass = ctx.cumulative_pass_nr();
+        ctx.data_mut(|d| d.insert_temp(Self::slot(id), Self { shown, pass }));
+    }
+}
+
+/// The rect of a single-line field's reveal button: a square at the right end, the field's height
+/// on a side.
+fn eye_rect(field: Rect) -> Rect {
+    let side = field.height().min(field.width());
+    Rect::from_min_size(
+        egui::pos2(field.right() - side, field.top()),
+        Vec2::splat(side),
+    )
 }
 
 impl std::fmt::Debug for TextField<'_> {
@@ -96,6 +152,7 @@ impl std::fmt::Debug for TextField<'_> {
             .field("multiline", &self.multiline)
             .field("width", &self.width)
             .field("password", &self.password)
+            .field("reveal", &self.reveal)
             .field("enabled", &self.enabled)
             .field("keys", &self.keys)
             .finish_non_exhaustive()
@@ -112,6 +169,7 @@ impl<'a> TextField<'a> {
             width: None,
             id_salt: None,
             password: false,
+            reveal: true,
             enabled: true,
             keys: Keys::Any,
         }
@@ -145,10 +203,20 @@ impl<'a> TextField<'a> {
         self
     }
 
-    /// Draw it masked, single-line or [`multiline`](Self::multiline).
+    /// Draw it masked, single-line or [`multiline`](Self::multiline). A single-line one carries
+    /// the [reveal button](TextField#the-reveal-button) unless [`reveal`](Self::reveal) turns it off.
     #[must_use]
     pub const fn password(mut self, password: bool) -> Self {
         self.password = password;
+        self
+    }
+
+    /// The eye that shows a [`password`](Self::password) field's text — on by default; `false`
+    /// leaves the field masked with no way to look. Shown, the text can also be copied, as egui
+    /// guards the clipboard by the mask.
+    #[must_use]
+    pub const fn reveal(mut self, reveal: bool) -> Self {
+        self.reveal = reveal;
         self
     }
 
@@ -189,11 +257,28 @@ impl<'a> TextField<'a> {
         let width = self.width.unwrap_or_else(|| ui.available_width());
         let is_password = self.password;
         let (empty, multiline, enabled) = (self.text.is_empty(), self.multiline, self.enabled);
-        let margin = egui::Margin::symmetric(round_i8(pad_x), round_i8(pad_y));
+        let eye = is_password && self.reveal && !multiline;
+        // The reveal state is read before the edit is built (it decides the mask), so a field with
+        // an eye names its id up front — the same id the painter path already names.
+        let id = (eye
+            || cx
+                .painters
+                .as_deref()
+                .is_some_and(|p| p.text_field.is_some()))
+        .then(|| {
+            self.id_salt
+                .map_or_else(|| ui.next_auto_id(), |salt| ui.make_persistent_id(salt))
+        });
+        let shown = eye && id.is_some_and(|id| Reveal::shown(ui.ctx(), id));
+        let mut margin = egui::Margin::symmetric(round_i8(pad_x), round_i8(pad_y));
+        if eye {
+            // The eye is the edit's own right margin, so a tap on it is a tap on the field.
+            margin.right = round_i8(height.min(width));
+        }
 
         let mut edit = egui::TextEdit::singleline(self.text)
             .hint_text(self.hint.clone().unwrap_or_default())
-            .password(self.password)
+            .password(is_password && !shown)
             .margin(margin)
             .desired_width(width);
         if self.multiline {
@@ -210,14 +295,11 @@ impl<'a> TextField<'a> {
             .painters
             .as_deref_mut()
             .and_then(|p| p.text_field.as_mut());
-        let response = if let Some(custom) = custom {
+        let response = if let (Some(custom), Some(id)) = (custom, id) {
             // A painter draws the field and egui's `TextEdit` the text over it, so the field is
-            // drawn first: its rect is taken before the edit, and the edit is given its id so the
-            // focus can be read before it runs.
+            // drawn first: its rect is taken before the edit, and the edit is given its id so
+            // the focus can be read before it runs.
             let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
-            let id = self
-                .id_salt
-                .map_or_else(|| ui.next_auto_id(), |salt| ui.make_persistent_id(salt));
             custom(
                 ui.painter(),
                 &mut TextFieldLook {
@@ -225,6 +307,7 @@ impl<'a> TextField<'a> {
                     focused: ui.memory(|m| m.has_focus(id)),
                     empty,
                     password: is_password,
+                    reveal: eye.then_some(shown),
                     multiline,
                     enabled,
                     theme: cx.theme,
@@ -235,7 +318,9 @@ impl<'a> TextField<'a> {
             let edit = edit.id(id).frame(egui::Frame::NONE.inner_margin(margin));
             ui.add_enabled_ui(enabled, |ui| ui.put(rect, edit)).inner
         } else {
-            if let Some(salt) = self.id_salt {
+            if let Some(id) = id {
+                edit = edit.id(id);
+            } else if let Some(salt) = self.id_salt {
                 edit = edit.id_salt(salt);
             }
             ui.add_enabled_ui(enabled, |ui| ui.add_sized([width, height], edit))
@@ -245,10 +330,48 @@ impl<'a> TextField<'a> {
         // it alone.
         crate::drag::claim_if_held(&response);
         self.keys.ask(ui.ctx(), response.id);
+        if eye {
+            Self::eye(ui, cx, &response, shown);
+        }
         if is_password {
             Self::forget_undo_history(ui, response.id);
         }
         response
+    }
+
+    /// The reveal button: flip on a tap that fell on it, then draw the glyph for what a tap will do
+    /// next — an eye while the text is masked, the struck eye while it shows.
+    fn eye(ui: &egui::Ui, cx: &mut Cx<'_>, response: &Response, shown: bool) {
+        let at = eye_rect(response.rect);
+        let on_eye = |pos: Option<egui::Pos2>| pos.is_some_and(|p| at.contains(p));
+        let shown = shown ^ (response.clicked() && on_eye(response.interact_pointer_pos()));
+        Reveal::store(ui.ctx(), response.id, shown);
+        let pressed =
+            response.is_pointer_button_down_on() && on_eye(ui.input(|i| i.pointer.interact_pos()));
+        let c = &cx.theme.control;
+        if pressed {
+            ui.painter().circle_filled(
+                at.center(),
+                c.icon_button * 0.5,
+                cx.theme.color(ColorRole::Pressed),
+            );
+        }
+        let ink = if response.enabled() {
+            ColorRole::OnSurface
+        } else {
+            ColorRole::Muted
+        };
+        let icon = if shown {
+            builtin::EYE_OFF
+        } else {
+            builtin::EYE
+        };
+        let style = IconStyle {
+            color: IconColor::Fixed(cx.theme.color(ink)),
+            ..IconStyle::default()
+        };
+        let glyph = Rect::from_center_size(at.center(), Vec2::splat(c.icon));
+        cx.icons.paint(ui.painter(), glyph, &icon, &style, cx.theme);
     }
 
     /// **A password field keeps no undo history.**

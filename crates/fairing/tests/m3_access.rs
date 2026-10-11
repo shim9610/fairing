@@ -2048,6 +2048,48 @@ fn a_refused_password_is_typed_again_without_a_tap() -> fairing::Result<()> {
     Ok(())
 }
 
+/// The prompt's password field has the eye: a tap on it shows what was typed, the keyboard stays
+/// up and the field keeps the focus, so the typing carries on — and the shown text is what goes in.
+#[test]
+fn the_prompt_password_can_be_shown_while_it_is_typed() -> fairing::Result<()> {
+    let (mut h, asked) = scripted(
+        vec![AuthMethod::Password {
+            needs_user: false,
+            keys: fairing::widgets::Keys::Latin,
+        }],
+        &[],
+    )?;
+    h.frames(2);
+    h.type_text("hunt");
+    h.frames(1);
+    let shown = |h: &mut Harness| h.texts().iter().any(|(t, _)| t == "hunt");
+    assert!(!shown(&mut h), "masked before the eye is tapped");
+    let field = h
+        .ctx
+        .memory(egui::Memory::focused)
+        .and_then(|id| h.ctx.read_response(id))
+        .ok_or_else(|| fairing::Error::Config("the prompt's field has no focus".to_owned()))?;
+    let eye = egui::pos2(
+        field.rect.right() - field.rect.height() / 2.0,
+        field.rect.center().y,
+    );
+    h.tap(eye);
+    h.frames(1);
+    assert!(shown(&mut h), "the eye did not show the password");
+    #[cfg(feature = "osk")]
+    assert!(h.shell.osk().is_shown(), "the eye dropped the keyboard");
+    h.type_text("er2");
+    h.frames(1);
+    assert!(
+        h.texts().iter().any(|(t, _)| t == "hunter2"),
+        "the typing did not carry on into the shown field"
+    );
+    h.key(egui::Key::Enter);
+    h.frames(2);
+    assert_eq!(asked.borrow().submitted, vec!["hunter2".to_owned()]);
+    Ok(())
+}
+
 /// The password's keys are the method's, not the device's: on an app whose keyboard is a number
 /// pad, the prompt's field brings up the letters — and the number pad comes back after.
 #[cfg(feature = "osk")]

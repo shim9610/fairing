@@ -334,7 +334,7 @@ embedded) very differently.
 
 | Asset | Bundled? | How |
 |---|---|---|
-| The 78 built-in icons | Already in the crate (`assets/icons/*.svg`, compiled by `xtask icons`) | Nothing to do |
+| The 80 built-in icons | Already in the crate (`assets/icons/*.svg`, compiled by `xtask icons`) | Nothing to do |
 | CJK fonts | **You bundle them with the snap or image** | Put the font file somewhere in your asset path and load it with the code in [§6](#6-korean-renders-as-tofu). Its licence (Noto Sans KR is OFL-1.1) needs the same kind of notice as `THIRD_PARTY.md` gives |
 | Custom icons (`register_icon`) | Defined as vectors in code | Not a raster asset — an `IconDef` ([03 §8](03-chrome.md#8-icons)) |
 

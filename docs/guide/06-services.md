@@ -130,7 +130,9 @@ TextField::new(&mut psk).password(true).hint("Password").show(ui, &mut cx.widget
 string. What it does owe you is that the widget forgets: `TextField::password(true)`
 clears the `TextEdit` undo history every frame, because egui otherwise keeps up
 to a hundred plaintext snapshots in its own memory under the widget's id, where
-no wrapper of yours can reach them.
+no wrapper of yours can reach them. The field also has an eye that shows the
+text; `.reveal(false)` takes it away, and a shown field comes back masked once
+it leaves the screen.
 
 **Holding** a row reports separately, and that is where forgetting a network
 goes:
