@@ -287,6 +287,9 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
   progress ring, a PIN pad and a pattern pad. `ProgressRing::repaint_every` keeps a ring that
   may go round for hours from asking for every frame. `Dropdown::no_match` takes the words a
   search with no results shows, in the caller's language.
+- A `Dropdown` closed by a tap outside picks again when it is reopened, with every opener
+  (`Anchored`, `Grid`, `Sheet`, `Search`). Before, the closing tap left the shield above the
+  list, so the next row tapped closed the list again and the choice never took.
 - Theme tokens: palette roles, metrics, components, elevation and motion, in light and dark —
   with `metrics.split_divider` and `components.overview` for the shell's two panes and recent
   screens, `metrics.nav_indicator_length` and `nav_indicator_thickness` for the home indicator,

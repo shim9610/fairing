@@ -1724,7 +1724,17 @@ struct ValueSlot {
 /// keeping the oversize alive frame after frame. The headless harness found it: a sheet whose
 /// layer reached a hundred pixels over its own top and took the tap that should have closed it.
 /// So the constraint is off, and the sizing pass lays nothing out: the size is known.
+///
+/// **The panel is the shield's sublayer**, so it lies right over the shield every frame. Drawing
+/// it second only decided the order the first time: egui raises a layer a press comes down on,
+/// and the tap outside that closes the list comes down on the shield. When both came back the
+/// shield was the one on top, and every row tapped after the reopen closed the list instead —
+/// on the bench, a choice that never took.
 fn panel(ui: &egui::Ui, id: egui::Id, rect: Rect, clip: Rect, add: impl FnOnce(&mut egui::Ui)) {
+    ui.ctx().set_sublayer(
+        egui::LayerId::new(LAYER, id.with("shield")),
+        egui::LayerId::new(LAYER, id.with("list")),
+    );
     egui::Area::new(id.with("list"))
         .order(LAYER)
         .fixed_pos(rect.min)
