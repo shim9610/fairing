@@ -245,6 +245,89 @@ fn a_tap_outside_closes_the_list_and_lands_on_nothing() -> fairing::Result<()> {
     Ok(())
 }
 
+/// **A list closed by a tap outside opens again and picks.** The tap that closes a list lands on
+/// the shield, and egui raises a layer a press comes down on: the shield then lay over the list
+/// when both came back, and every row tapped after a reopen was a tap on the shield that closed
+/// it again. The first close was the only one the other tests made, so none of them saw it.
+#[test]
+fn a_list_closed_by_a_tap_outside_reopens_and_picks() -> fairing::Result<()> {
+    for opener in [
+        Opener::Anchored,
+        Opener::Grid,
+        Opener::Sheet,
+        Opener::Search,
+    ] {
+        let mut h = bench_with(Spec::opener(opener))?;
+        let (_, trigger, _, _) = state(&mut h);
+        h.tap(trigger.center());
+        settled(&mut h);
+        assert!(
+            !option_texts(&mut h, trigger).is_empty(),
+            "{opener:?}: the list did not open"
+        );
+        // At the far right of the trigger's line: past the button beside it, over no opener's
+        // panel — a grid is wider than its trigger and a sheet lies along the bottom.
+        let outside = egui::pos2(h.screen_rect().max.x - 20.0, trigger.center().y);
+        h.tap(outside);
+        settled(&mut h);
+        assert!(
+            option_texts(&mut h, trigger).is_empty(),
+            "{opener:?}: a tap outside did not close the list"
+        );
+        h.tap(trigger.center());
+        settled(&mut h);
+        assert!(
+            !option_texts(&mut h, trigger).is_empty(),
+            "{opener:?}: the list did not reopen"
+        );
+        h.tap_text("Charlie")?;
+        settled(&mut h);
+        assert_eq!(
+            state(&mut h).0,
+            2,
+            "{opener:?}: a row tapped after a reopen did not pick"
+        );
+        assert!(
+            option_texts(&mut h, trigger).is_empty(),
+            "{opener:?}: the list stayed open after a pick"
+        );
+    }
+    Ok(())
+}
+
+/// **A drag outside an open list leaves it working.** A press that does not lift as a tap is no
+/// tap outside, so the list stays up — but egui raises the layer it came down on all the same,
+/// and the shield rose over the rows of a list still open: nothing in it could be picked.
+#[test]
+fn a_drag_outside_an_open_list_leaves_its_rows_pickable() -> fairing::Result<()> {
+    for opener in [
+        Opener::Anchored,
+        Opener::Grid,
+        Opener::Sheet,
+        Opener::Search,
+    ] {
+        let mut h = bench_with(Spec::opener(opener))?;
+        let (_, trigger, _, _) = state(&mut h);
+        h.tap(trigger.center());
+        settled(&mut h);
+        let from = egui::pos2(h.screen_rect().max.x - 20.0, trigger.center().y);
+        h.drag(from, from + egui::vec2(0.0, 60.0), 8);
+        settled(&mut h);
+        assert!(
+            !option_texts(&mut h, trigger).is_empty(),
+            "{opener:?}: a drag outside closed the list"
+        );
+        h.tap_text("Charlie")?;
+        settled(&mut h);
+        assert_eq!(
+            state(&mut h).0,
+            2,
+            "{opener:?}: a row tapped after a drag outside did not pick"
+        );
+    }
+    Ok(())
+}
+
 /// **Every closed form opens on a tap and picks on a row.** The forms differ in what they draw,
 /// not in what they do.
 #[test]
