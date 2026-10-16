@@ -289,7 +289,8 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
   search with no results shows, in the caller's language.
 - A `Dropdown` closed by a tap outside picks again when it is reopened, with every opener
   (`Anchored`, `Grid`, `Sheet`, `Search`). Before, the closing tap left the shield above the
-  list, so the next row tapped closed the list again and the choice never took.
+  list, so the next row tapped closed the list again and the choice never took. A drag outside
+  an open list, which leaves it open, no longer leaves its rows dead the same way.
 - Theme tokens: palette roles, metrics, components, elevation and motion, in light and dark —
   with `metrics.split_divider` and `components.overview` for the shell's two panes and recent
   screens, `metrics.nav_indicator_length` and `nav_indicator_thickness` for the home indicator,

@@ -1729,7 +1729,8 @@ struct ValueSlot {
 /// it second only decided the order the first time: egui raises a layer a press comes down on,
 /// and the tap outside that closes the list comes down on the shield. When both came back the
 /// shield was the one on top, and every row tapped after the reopen closed the list instead —
-/// on the bench, a choice that never took.
+/// on the bench, a choice that never took. A drag outside, which leaves the list open, raised
+/// the shield over rows still showing.
 fn panel(ui: &egui::Ui, id: egui::Id, rect: Rect, clip: Rect, add: impl FnOnce(&mut egui::Ui)) {
     ui.ctx().set_sublayer(
         egui::LayerId::new(LAYER, id.with("shield")),
