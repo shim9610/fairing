@@ -25,8 +25,8 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
-      # TODO(security): pin the two actions to a commit SHA rather than a tag. A tag can be moved.
-      - uses: actions/checkout@v4
+      # Pin external actions to immutable commits; comments retain the reviewed major.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # A hosted runner ships some 25 GB of toolchains this job never touches. Deleting them takes
       # about half a minute and is the difference between a build that fits and one that does not.
@@ -50,7 +50,7 @@ jobs:
       # The cache path is **the two audit plugin binaries alone**. Caching the whole of ~/.cargo/bin would
       # overwrite the runner's cargo, rustc and rustup proxies on restore.
       - name: Cache audit plugins
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/bin/cargo-audit
@@ -61,7 +61,7 @@ jobs:
       # `v1` cache holds a `target` built *with* debug info — restoring it would put the ten
       # gigabytes back before the first line compiles, and the disk would be spent again.
       - name: Cache cargo registry and target dir
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry
@@ -110,7 +110,7 @@ jobs:
     env:
       CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Read the declared minimum from Cargo.toml
         run: |
@@ -135,7 +135,7 @@ jobs:
     env:
       CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # The examples open a real window: winit loads libxkbcommon and libxkbcommon-x11 at run
       # time and glutin a GL through GLX or EGL, none of which the runner image is promised to
@@ -148,7 +148,7 @@ jobs:
             libxcursor1 libxi6 libxrandr2 libxinerama1
 
       - name: Cache cargo registry and target dir
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry
@@ -163,7 +163,7 @@ jobs:
       # The pictures and each tour's log, for a failure to be looked at rather than guessed at.
       - name: Keep the tours' output
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: tours
           path: target/tours
