@@ -22,6 +22,8 @@ You will get an answer within a week, and a fix or a plan before anything is mad
 - **`PinTable` keeps secrets in clear text.** It is the reference authenticator, read from
   `fairing.toml`, and it says so in a warning at start-up. Protecting that file is the device's
   job; for anything stronger, implement `Authenticator` yourself (guide 05).
+  Configuration diagnostics omit PIN/pattern values; malformed TOML is reported by
+  location without echoing its source or invalid values.
 - **The crate writes no files and makes no network connections.** Backends, storage and
   networking are the integrator's code, so their security is too.
 

@@ -4,11 +4,11 @@
 //!
 //! ```text
 //! Shell::frame(ui)
-//!  1. now / dt — now on the real time between frames, dt = stable_dt capped at 50 ms
+//!  1. now / dt — now on the real time between frames, dt = stable_dt capped at 50 ms;
+//!               revoke expired access and enforce overdue idle locks before commands or input
 //!  2. handle.drain()        — the command queue, through mpsc try_recv (+ M2 notify/toast/dismiss/toggle_overlay)
 //!  3. services.poll()       — pin the backend snapshots, gather next_wake
-//!  4. access.tick()         — a temporary unlock running out · the session timeout · the idle lock ·
-//!                             polling the authenticator while the prompt is up
+//!  4. access                — record current input, poll the authenticator while the prompt is up
 //!  5. gestures.update()     — edge swipes and long presses (M2)
 //!     guard.update()        — the edge_guard mask · the emergency gesture (chrome.emergency) · keep_awake
 //!     overlay.update()      — consume the top pull (priority: the shade > the back gesture)
@@ -1670,6 +1670,9 @@ impl Shell {
         let input_activity =
             ui.input(|i| i.pointer.any_down() || i.events.iter().any(is_user_input));
         self.update_cursor(&ctx, now);
+        // A queued action must not use yesterday's subject, and wake-up input must not
+        // renew inactivity deadlines that have already elapsed.
+        self.expire_access(now);
         // 2.
         let commands_pending = self.drain_commands(app);
         // 3.
@@ -3506,17 +3509,24 @@ impl Shell {
         }
     }
 
-    /// Stage 4: the session's own clock, and the authenticator's late answers.
-    fn tick_access(&mut self, now: Instant, input_activity: bool, app: &mut AppRef<'_>) {
-        #[cfg(feature = "settings")]
-        self.access.refresh_credentials();
-        if let Some(change) = self.access.tick(now, input_activity) {
+    /// Stage 1: enforce old deadlines before commands and current input can change the session.
+    fn expire_access(&mut self, now: Instant) {
+        if let Some(change) = self.access.tick(now) {
             self.session_changed(change);
         }
         // Due is asked first, so the quiet stretch is spent even while the lock screen is
         // already up — and the device is not told to lock a panel that is locked.
         if self.access.idle_lock_due(now) && !self.prompt.is_lock_screen() {
             self.lock_now(true);
+        }
+    }
+
+    /// Stage 4: current activity and the authenticator's late answers, after backend polling.
+    fn tick_access(&mut self, now: Instant, input_activity: bool, app: &mut AppRef<'_>) {
+        #[cfg(feature = "settings")]
+        self.access.refresh_credentials();
+        if input_activity {
+            self.access.record_activity(now);
         }
         if self.prompt.is_open() {
             let outcome = self

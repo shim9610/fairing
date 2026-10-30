@@ -82,7 +82,16 @@ impl ShellConfig {
     /// # Errors
     /// [`Error::Config`] on a TOML syntax error or a type mismatch.
     pub fn from_toml(text: &str) -> Result<Self> {
-        let config: Self = toml::from_str(text).map_err(|err| Error::Config(err.to_string()))?;
+        let config: Self = toml::from_str(text).map_err(|err: toml::de::Error| {
+            // TOML diagnostics include the source line and sometimes the invalid value in
+            // the message itself. Either can be a credential, so retain only its location.
+            let location = err
+                .span()
+                .map_or_else(String::new, |span| format!(" at byte {}", span.start));
+            Error::Config(format!(
+                "invalid TOML configuration{location}; check syntax and value types"
+            ))
+        })?;
         config.validate()?;
         Ok(config)
     }
@@ -1073,7 +1082,7 @@ impl Default for AccessConfig {
 /// `[access.pin_table]` (the reference implementation). Level name → PIN collects
 /// into `pins`; `attempt_limit`, `lock_secs`, `shuffle` and `max_len` are the fixed fields, so no
 /// level can be named after one of them.
-#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
+#[derive(Clone, Default, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct PinTableConfig {
     /// This many wrong tries in a row lock the prompt (optional). Counted in memory, and shared
@@ -1092,6 +1101,18 @@ pub struct PinTableConfig {
     pub pins: BTreeMap<String, String>,
 }
 
+impl std::fmt::Debug for PinTableConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PinTableConfig")
+            .field("attempt_limit", &self.attempt_limit)
+            .field("lock_secs", &self.lock_secs)
+            .field("shuffle", &self.shuffle)
+            .field("max_len", &self.max_len)
+            .field("pin_levels", &self.pins.keys().collect::<Vec<_>>())
+            .finish_non_exhaustive()
+    }
+}
+
 /// `[access.pattern_table]` (the reference implementation). Level name → pattern
 /// collects into `patterns`; `grid`, `min_points`, `show_path`, `attempt_limit` and `lock_secs`
 /// are the fixed fields.
@@ -1099,7 +1120,7 @@ pub struct PinTableConfig {
 /// A pattern is its dots in the order drawn, numbered row by row from 1 at the top left —
 /// `"1-2-3-6-9"`, with `-`, `,` or spaces between them. On the 3 × 3 grid the digits alone do
 /// (`"12369"`), the way the dots sit on a phone's keypad.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Clone, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct PatternTableConfig {
     /// Dots on a side, 3 to 5.
@@ -1117,6 +1138,19 @@ pub struct PatternTableConfig {
     /// Level name → the pattern in plain text. Every remaining key collects here.
     #[serde(flatten)]
     pub patterns: BTreeMap<String, String>,
+}
+
+impl std::fmt::Debug for PatternTableConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PatternTableConfig")
+            .field("grid", &self.grid)
+            .field("min_points", &self.min_points)
+            .field("show_path", &self.show_path)
+            .field("attempt_limit", &self.attempt_limit)
+            .field("lock_secs", &self.lock_secs)
+            .field("pattern_levels", &self.patterns.keys().collect::<Vec<_>>())
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for PatternTableConfig {

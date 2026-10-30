@@ -1200,13 +1200,15 @@ impl Access {
         self.session.elevation.is_some() || self.session.subject != self.initial
     }
 
-    /// Frame stage 4: record input, end a temporary unlock that ran out, and time the session out.
+    /// Record this frame's input after overdue deadlines have been enforced.
+    pub(crate) fn record_activity(&mut self, now: Instant) {
+        self.session.last_activity = now;
+        self.idle_locked = false;
+    }
+
+    /// End a temporary unlock that ran out and time the session out, before commands or input.
     /// Returns the change it made, for the shell to announce and propagate.
-    pub(crate) fn tick(&mut self, now: Instant, input_activity: bool) -> Option<SessionChange> {
-        if input_activity {
-            self.session.last_activity = now;
-            self.idle_locked = false;
-        }
+    pub(crate) fn tick(&mut self, now: Instant) -> Option<SessionChange> {
         if !self.session_matters() {
             return None;
         }
@@ -1651,13 +1653,14 @@ mod tests {
         assert_eq!(switch.unlock_mode(), UnlockMode::Switch);
         assert_eq!(switch.unlock(level(2), now), Level(0));
         assert!(switch.is_unlocked());
-        assert_eq!(switch.tick(now + Duration::from_secs(3600), false), None);
+        assert_eq!(switch.tick(now + Duration::from_secs(3600)), None);
         assert_eq!(switch.session().subject.level, Level(2));
 
         let mut temporary = Access::from_config(&three("temporary"))?;
         temporary.unlock(level(2), now);
-        assert_eq!(temporary.tick(now + Duration::from_secs(59), true), None);
-        let expired = temporary.tick(now + Duration::from_secs(60), false);
+        assert_eq!(temporary.tick(now + Duration::from_secs(59)), None);
+        temporary.record_activity(now + Duration::from_secs(59));
+        let expired = temporary.tick(now + Duration::from_secs(60));
         assert_eq!(
             expired.map(|d| (d.from, d.to, d.reason)),
             Some((Level(2), Level(0), ChangeReason::ElevationExpired))
@@ -1675,8 +1678,9 @@ mod tests {
         let restore = access.session().elevation.as_ref().map(|e| e.restore.level);
         assert_eq!(restore, Some(Level(0)), "not the operator in between");
         // The second unlock restarted the clock.
-        assert_eq!(access.tick(now + Duration::from_secs(80), true), None);
-        assert!(access.tick(now + Duration::from_secs(90), false).is_some());
+        assert_eq!(access.tick(now + Duration::from_secs(80)), None);
+        access.record_activity(now + Duration::from_secs(80));
+        assert!(access.tick(now + Duration::from_secs(90)).is_some());
         Ok(())
     }
 
@@ -1688,16 +1692,17 @@ mod tests {
         let mut access = Access::from_config(&cfg)?;
         access.start_clock(now);
         assert_eq!(
-            access.tick(now + Duration::from_secs(20), false),
+            access.tick(now + Duration::from_secs(20)),
             None,
             "nothing to drop"
         );
         access.unlock(level(1), now + Duration::from_secs(20));
         assert_eq!(access.next_deadline(), Some(now + Duration::from_secs(30)));
         // A touch puts the deadline back.
-        assert_eq!(access.tick(now + Duration::from_secs(29), true), None);
-        assert_eq!(access.tick(now + Duration::from_secs(38), false), None);
-        let dropped = access.tick(now + Duration::from_secs(39), false);
+        assert_eq!(access.tick(now + Duration::from_secs(29)), None);
+        access.record_activity(now + Duration::from_secs(29));
+        assert_eq!(access.tick(now + Duration::from_secs(38)), None);
+        let dropped = access.tick(now + Duration::from_secs(39));
         assert_eq!(
             dropped.map(|d| (d.to, d.reason)),
             Some((Level(0), ChangeReason::Timeout))
@@ -1717,7 +1722,7 @@ mod tests {
         assert!(access.idle_lock_due(now + Duration::from_secs(5)));
         assert!(!access.idle_lock_due(now + Duration::from_secs(50)), "once");
         assert_eq!(access.next_deadline(), None);
-        let _ = access.tick(now + Duration::from_secs(51), true);
+        access.record_activity(now + Duration::from_secs(51));
         assert!(
             access.idle_lock_due(now + Duration::from_secs(56)),
             "again after a touch"
@@ -1732,7 +1737,7 @@ mod tests {
         access.unlock(level(2), now);
         access.set_subject(level(1));
         assert!(access.session().elevation.is_none());
-        assert_eq!(access.tick(now + Duration::from_secs(3600), false), None);
+        assert_eq!(access.tick(now + Duration::from_secs(3600)), None);
         assert_eq!(access.session().subject.level, Level(1));
         Ok(())
     }

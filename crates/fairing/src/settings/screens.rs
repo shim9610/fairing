@@ -503,8 +503,6 @@ pub fn display_body(ui: &mut Ui, cx: &mut Cx<'_>) {
                 true,
             ) {
                 let level = percent(value);
-                // The backend is the original and the settings value is the copy the UI remembers.
-                let _ = cx.services.display.set_brightness(level);
                 cx.set_setting(
                     keys::DISPLAY_BRIGHTNESS,
                     SettingValue::Int(i64::from(level)),
@@ -738,7 +736,6 @@ pub fn wifi_body(ui: &mut Ui, cx: &mut Cx<'_>) {
     ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
         let mut enabled = snapshot.enabled;
         if ui::switch_row(ui, cx, tr!(s, "Wi-Fi"), None, &mut enabled, true) {
-            let _ = cx.services.wifi.set_enabled(enabled);
             cx.set_setting(keys::WIFI_ENABLED, SettingValue::Bool(enabled));
         }
     });
@@ -1266,7 +1263,6 @@ pub fn bluetooth_body(ui: &mut Ui, cx: &mut Cx<'_>) {
     ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
         let mut enabled = snapshot.enabled;
         if ui::switch_row(ui, cx, tr!(s, "Bluetooth"), None, &mut enabled, true) {
-            let _ = cx.services.bluetooth.set_enabled(enabled);
             cx.set_setting(keys::BLUETOOTH_ENABLED, SettingValue::Bool(enabled));
         }
         if snapshot.enabled {

@@ -388,7 +388,7 @@ const DEFAULT_LOCK: Duration = Duration::from_secs(60);
 ///   otherwise its OK key submits, and it takes no more than `max_len` digits.
 /// - A pattern must be one a finger can draw: a stroke from one dot to another across a third
 ///   takes the third, so `"1-3"` cannot be drawn — the finger records `"1-2-3"`, and the table
-///   says so at start-up.
+///   rejects it at start-up without printing the secret.
 /// - Wrong PINs and wrong patterns count against **one** attempt limit — two ways in are not two
 ///   allowances. The count lives **in memory** and a restart clears it. The only input is the
 ///   touchscreen and there is no remote API, so that is as far as a reference goes.
@@ -458,8 +458,8 @@ impl PinTable {
     /// [`Error::Config`] for a key that is not a level; a PIN that is not 1 to `max_len` digits,
     /// or a `max_len` outside 1–16; a pattern that is not dot numbers on the grid, takes a dot
     /// twice, is shorter than `min_points` or cannot be drawn as written (the message gives the
-    /// path a finger would record); a `grid` outside 3–5 or a `min_points` outside the grid; two
-    /// levels sharing one PIN or one pattern (the table could not tell them apart); an
+    /// validation rules without the pattern); a `grid` outside 3–5 or a `min_points` outside
+    /// the grid; two levels sharing one PIN or one pattern (the table could not tell them apart); an
     /// `attempt_limit` or `lock_secs` of 0.
     pub fn from_tables(
         pins_cfg: &PinTableConfig,
@@ -702,9 +702,10 @@ fn patterns_from(cfg: &PatternTableConfig, levels: &LevelTable) -> Result<Vec<(L
     let mut patterns: Vec<(Level, Vec<u8>)> = Vec::with_capacity(cfg.patterns.len());
     for (name, text) in &cfg.patterns {
         let level = level_of(levels, "pattern_table", name)?;
-        let path = parse_pattern(text, cfg.grid, cfg.min_points).map_err(|why| {
+        let path = parse_pattern(text, cfg.grid, cfg.min_points).map_err(|_| {
             Error::Config(format!(
-                "[access.pattern_table] \"{name}\" = \"{text}\": {why}"
+                "[access.pattern_table] \"{name}\": invalid pattern; check dot range, \
+                 minimum length, repeated dots and dots crossed by each stroke"
             ))
         })?;
         if let Some((other, _)) = patterns.iter().find(|(_, p)| *p == path) {

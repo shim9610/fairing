@@ -6,6 +6,15 @@ All notable changes to the fairing crates are recorded here. The format follows
 
 ## Unreleased
 
+### Security
+
+- Built-in Wi-Fi, Bluetooth and brightness controls now wait for setting-key authorization
+  before changing a backend.
+- Expired sessions and temporary grants, and overdue idle locks, are enforced before queued
+  commands or current input. A wake-up event cannot renew an already-expired session.
+- Configuration diagnostics redact PINs and patterns, including malformed TOML source values.
+- CI actions are pinned to verified commit SHAs.
+
 Nothing has been published to crates.io yet. This will be the first release, 0.1.0.
 
 The crates are licensed under MIT alone. The `fairing-widgets`

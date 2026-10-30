@@ -326,8 +326,8 @@ show_path = true                # optional: draw the path as the finger draws it
 - A pattern is its dots in the order drawn, numbered row by row from 1, between
   `-`, `,` or spaces; on the 3 × 3 grid the digits alone do (`"1235789"`). It has to
   be one a finger can draw: a stroke across a dot takes that dot, so `"1-3-6-9"`
-  cannot be drawn — the finger records `"1-2-3-6-9"`, and the start-up error says
-  so. A dot twice, a dot off the grid, fewer than `min_points` dots, or two levels
+  cannot be drawn — the finger records `"1-2-3-6-9"`. The start-up error names the
+  level and the validation rules, without printing the pattern. A dot twice, a dot off the grid, fewer than `min_points` dots, or two levels
   sharing a pattern is an `Error::Config` too.
 - Wrong PINs and wrong patterns count against **one** attempt limit — two ways in
   are not two allowances. A right PIN the shell refuses (an operator PIN typed
@@ -337,6 +337,10 @@ show_path = true                # optional: draw the path as the finger draws it
 - The file holds the secrets in clear text, and the shell says so once at start-up
   with a `log::warn!`. Keeping that file unreadable is yours — or replace the table
   with an authenticator of your own.
+
+Configuration `Debug` output lists the levels that have secrets, without their PINs or
+patterns. TOML syntax/type errors retain a byte offset but omit the source and parser
+message, since either can contain a secret.
 
 The fixed keys — `attempt_limit`, `lock_secs`, `shuffle` and `max_len` in the PIN
 table, `grid`, `min_points`, `show_path`, `attempt_limit` and `lock_secs` in the
@@ -634,7 +638,7 @@ allow_continue = false      # the lock screen's Continue: leave without a PIN, a
 |---|---|
 | `unlock_mode = "switch"` | A grant **becomes** the session, until a logout, the timeout or `set_subject` lowers it |
 | `unlock_mode = "temporary"` | A grant holds for `temporary_secs` **from the unlock**, then the subject from before comes back by itself (`ChangeReason::ElevationExpired`). Unlocking again on top keeps the first one's way back. For "until the panel is left alone", use `switch` with `session_timeout_secs` instead |
-| `session_timeout_secs` | No input for this long takes the session back to `[access] initial` (`ChangeReason::Timeout`). Any touch, key or pointer movement starts it again |
+| `session_timeout_secs` | No input for this long takes the session back to `[access] initial` (`ChangeReason::Timeout`). A touch, key or pointer movement before expiry starts it again |
 | `idle_lock_secs` | No input for this long locks the panel: the session goes back to its start (`ChangeReason::Lock`), `ShellEvent::LockRequested` goes out, and in `prompt` mode with an authenticator the **lock screen** comes up — the clock beside (or above) the way in. In `routing` mode the event is yours to answer with a lock screen of your own |
 
 On every way down — a temporary unlock running out, the timeout, a lock, a logout,
@@ -649,6 +653,11 @@ nothing moves, and the time it sleeps counts: a five-minute temporary unlock end
 five minutes after the unlock however few frames were drawn in between, and so
 do the timeout, the idle lock and a lockout's countdown. A timer longer than a
 year is a config error at start.
+
+Overdue timers are enforced before the command queue and before input renews activity.
+The first touch after a delayed frame cannot preserve an expired session, and queued
+actions cannot execute with a temporary grant that has already run out. Authenticator
+polling still happens after backend polling.
 
 **Every way up starts the idle stretch again** — an unlock, and an integrator's
 `set_subject`, as a touch would: a badge reader that grants after the panel sat
