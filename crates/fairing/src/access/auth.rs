@@ -276,7 +276,8 @@ pub trait Authenticator {
         None
     }
 
-    /// The prompt opened for `gate` (the lock screen's is `session.lock`) — start listening now.
+    /// The prompt opened or retargeted to `gate` (the lock screen's is `session.lock`) — start
+    /// listening now. A different gate cancels the preceding challenge before this call.
     /// Anything a reader picked up while no prompt was up belongs to nobody and should be dropped
     /// here: a badge swiped at a panel that asked for nothing must not unlock the next person's
     /// prompt hours later.

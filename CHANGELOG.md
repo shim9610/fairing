@@ -8,6 +8,9 @@ All notable changes to the fairing crates are recorded here. The format follows
 
 ### Security
 
+- Gate retargeting, logout, repeated locks and same-level subject replacements/timeouts
+  cancel stale authentication before it can grant access to a later request or session.
+  Lockout countdowns survive challenge restarts.
 - Session timeouts take precedence over simultaneously expired temporary grants. Dynamic
   policy revocations close existing screens, and literal level names precede gate aliases.
 - Product builds reject explicit panic/assertion/termination paths in Clippy. The two
@@ -22,6 +25,8 @@ All notable changes to the fairing crates are recorded here. The format follows
 
 ### Fixed
 
+- Asynchronous Bool writes serialize one outstanding command per key and coalesce queued
+  targets, preventing an unchanged cache from acknowledging later commands prematurely.
 - Pending Bool targets preserve asynchronous Set/Toggle order until confirmation, and coupled
   airplane/radio settings emit consistent values for persistence and restoration.
 - New desktop declarations are rebuilt before queued badge updates. Notification unread

@@ -135,7 +135,7 @@ pub struct Shell {
     icons: IconSet,
     settings: SettingsView,
     /// Accepted Bool requests not yet reflected in a backend snapshot.
-    pending_bools: std::collections::BTreeMap<SettingKey, bool>,
+    pending_bools: std::collections::BTreeMap<SettingKey, PendingBool>,
     strings: Strings,
     /// The locale whose letters were last looked for in the loaded fonts.
     script_checked: Option<String>,
@@ -312,6 +312,13 @@ const STALE_WAKE_FRAMES: u64 = 120;
 /// How many more times stage 14 handles the requests that `on_lifecycle` handlers made while it
 /// was flushing, before leaving the rest to the next frame.
 const LIFECYCLE_ROUNDS: usize = 4;
+
+/// One sent target and the latest intent waiting behind it.
+#[derive(Clone, Copy)]
+struct PendingBool {
+    sent: bool,
+    desired: bool,
+}
 
 /// Stage 7: draw the status bar into a panel (or, under `BarMode::Overlay`, a `Foreground` Area).
 ///
@@ -1675,6 +1682,7 @@ impl Shell {
         self.update_cursor(&ctx, now);
         // Declarations take effect before queued updates to their new desktop icons.
         self.rebuild_registry();
+        self.observe_subject_change(app);
         // A queued action must not use yesterday's subject, and wake-up input must not
         // renew inactivity deadlines that have already elapsed.
         self.expire_access(now);
@@ -2942,6 +2950,7 @@ impl Shell {
     /// [`ShellHandle::launch`](crate::ShellHandle::launch) instead and it lands inside the next
     /// frame with the state in hand.
     fn launch_in(&mut self, action: LaunchAction, app: &mut AppRef<'_>) {
+        self.observe_subject_change(app);
         match action {
             LaunchAction::Open { ref id, .. } => {
                 let id = id.clone();
@@ -3054,6 +3063,7 @@ impl Shell {
     /// built-in key and emits [`ShellEvent::SettingChanged`]. The shell writes no files: keeping
     /// the value past a restart is the integrator's, and [`Shell::restore_settings`] hands it back.
     pub fn set_setting(&mut self, key: SettingKey, value: SettingValue) {
+        self.observe_subject_change(&mut None);
         if !self.setting_allowed(&key, || LaunchAction::Set(key.clone(), value.clone())) {
             return;
         }
@@ -3126,7 +3136,7 @@ impl Shell {
         let current = self
             .pending_bools
             .get(&key)
-            .copied()
+            .map(|pending| pending.desired)
             .or_else(|| self.builtin_bool(&key))
             .or_else(|| match self.settings.get(&key) {
                 None => Some(false),
@@ -3153,20 +3163,71 @@ impl Shell {
         }
     }
 
-    /// A confirmed snapshot ends a pending request; external changes can then become the
-    /// source of truth again. Requests rejected synchronously are never kept here.
+    /// At most one unconfirmed command per key: a snapshot equal to the original state
+    /// cannot acknowledge a later command while an earlier, opposite command is in flight.
     fn reconcile_pending_bools(&mut self) {
         let pending = std::mem::take(&mut self.pending_bools);
-        for (key, desired) in pending {
+        for (key, request) in pending {
+            self.reconcile_bool(key, request);
+        }
+    }
+
+    fn reconcile_bool(&mut self, key: SettingKey, request: PendingBool) {
+        if self.builtin_bool(&key) == Some(request.sent) {
+            if request.desired != request.sent {
+                self.send_bool_target(&key, request.desired);
+            }
+        } else {
             let failed = key.0.as_ref() == keys::WIFI_ENABLED
                 && matches!(
                     self.services.wifi.snapshot().state,
                     crate::services::WifiState::Failed { .. }
                 );
-            if !failed && self.builtin_bool(&key) != Some(desired) {
-                self.pending_bools.insert(key, desired);
+            if !failed {
+                self.pending_bools.insert(key, request);
             }
         }
+    }
+
+    fn accept_bool_target(&mut self, key: &SettingKey, desired: bool) {
+        if self.builtin_bool(key).is_none() {
+            // Audio may accept writes without reporting a state. There is no acknowledgement
+            // to wait for; keep dispatching in order and let SettingsView carry the intent.
+            self.pending_bools.remove(key);
+            self.send_bool_target(key, desired);
+            return;
+        }
+        if let Some(mut pending) = self.pending_bools.remove(key) {
+            pending.desired = desired;
+            self.reconcile_bool(key.clone(), pending);
+        } else {
+            self.send_bool_target(key, desired);
+        }
+    }
+
+    fn send_bool_target(&mut self, key: &SettingKey, desired: bool) {
+        // An already satisfied target is a no-op. Sending it would have no observable
+        // acknowledgement and could remain outstanding behind a later external change.
+        let reported = self.builtin_bool(key);
+        if reported == Some(desired) {
+            return;
+        }
+        let result = match key.0.as_ref() {
+            keys::WIFI_ENABLED => self.services.wifi.set_enabled(desired),
+            keys::BLUETOOTH_ENABLED => self.services.bluetooth.set_enabled(desired),
+            keys::AUDIO_MUTED => self.services.audio.set_muted(desired),
+            _ => return,
+        };
+        if result.is_ok() && reported.is_some() {
+            self.pending_bools.insert(
+                key.clone(),
+                PendingBool {
+                    sent: desired,
+                    desired,
+                },
+            );
+        }
+        Self::note_setting_error(key, result);
     }
 
     fn setting_allowed(&mut self, key: &SettingKey, then: impl FnOnce() -> LaunchAction) -> bool {
@@ -3209,6 +3270,13 @@ impl Shell {
     /// A built-in key → the backend ("call the related backend"). A failure is only logged — the value is already in memory.
     fn apply_setting_to_backend(&mut self, key: &SettingKey, value: &SettingValue) {
         let as_bool = matches!(value, SettingValue::Bool(true));
+        if matches!(
+            key.0.as_ref(),
+            keys::WIFI_ENABLED | keys::BLUETOOTH_ENABLED | keys::AUDIO_MUTED
+        ) {
+            self.accept_bool_target(key, as_bool);
+            return;
+        }
         let as_u8 = match value {
             SettingValue::Int(v) => u8::try_from((*v).clamp(0, 100)).unwrap_or(100),
             SettingValue::Float(v) => percent_from_f64(*v),
@@ -3216,11 +3284,8 @@ impl Shell {
             SettingValue::Text(_) => 0,
         };
         let result = match key.0.as_ref() {
-            keys::WIFI_ENABLED => self.services.wifi.set_enabled(as_bool),
-            keys::BLUETOOTH_ENABLED => self.services.bluetooth.set_enabled(as_bool),
             keys::DISPLAY_BRIGHTNESS => self.services.display.set_brightness(as_u8),
             keys::AUDIO_VOLUME => self.services.audio.set_volume(as_u8),
-            keys::AUDIO_MUTED => self.services.audio.set_muted(as_bool),
             keys::RADIO_AIRPLANE => {
                 for radio in [keys::WIFI_ENABLED, keys::BLUETOOTH_ENABLED] {
                     self.apply_setting_to_backend(&radio.into(), &SettingValue::Bool(!as_bool));
@@ -3239,13 +3304,10 @@ impl Shell {
             }
             _ => Ok(()),
         };
-        if matches!(
-            key.0.as_ref(),
-            keys::WIFI_ENABLED | keys::BLUETOOTH_ENABLED | keys::AUDIO_MUTED
-        ) && result.is_ok()
-        {
-            self.pending_bools.insert(key.clone(), as_bool);
-        }
+        Self::note_setting_error(key, result);
+    }
+
+    fn note_setting_error(key: &SettingKey, result: crate::services::ServiceResult) {
         // `Unsupported` is an absence, not a failure: with the `Null` audio backend the integrator
         // applies `audio.volume` from `SettingChanged` instead, and every slider step would warn.
         match result {
@@ -3429,23 +3491,8 @@ impl Shell {
                 Command::Back => self.back_in(app),
                 Command::Home => self.home(),
                 Command::SetSubject(subject) => {
-                    let to = subject.level;
-                    let from = self.access.set_subject_at(subject, self.mono);
-                    self.session_changed(SessionChange {
-                        from,
-                        to,
-                        reason: ChangeReason::Integrator,
-                    });
-                    // The integrator vouched for someone above where a lock leaves the panel —
-                    // a reader it handles itself, a remote unlock: the lock screen has done its
-                    // work.
-                    if self.prompt.is_lock_screen() && to > self.access.initial_subject().level {
-                        self.cancel_prompt();
-                        self.events
-                            .push(ShellEvent::Access(AccessEvent::LockScreenToggled(false)));
-                        // What waited behind it is asked now, not at some later lock screen.
-                        self.ask_after_lock(app);
-                    }
+                    self.access.set_subject_at(subject, self.mono);
+                    self.observe_subject_change(app);
                 }
                 // The same as `LaunchAction::Logout`.
                 Command::Logout => self.end_session(),
@@ -3547,7 +3594,15 @@ impl Shell {
             return;
         };
         let hint = self.access.hint(&gate);
-        if !self.prompt.is_open() {
+        let current = self.prompt.gate();
+        if current.as_ref() != Some(&gate) {
+            if current.is_some() {
+                // A challenge is bound to its gate. Drop its pending answer before retargeting.
+                let _ = self.prompt.take_wait();
+                if let Some(auth) = self.access.authenticator_mut() {
+                    auth.cancel();
+                }
+            }
             // Whatever was being dragged ends here (A9).
             self.gestures.cancel_held_over();
             let now = self.mono;
@@ -3632,7 +3687,12 @@ impl Shell {
                 to: change.to,
                 reason: change.reason,
             }));
-        if change.to < change.from {
+        if change.to < change.from
+            || matches!(
+                change.reason,
+                ChangeReason::Timeout | ChangeReason::ElevationExpired
+            )
+        {
             if !self.overlay.is_closed() {
                 self.overlay.close(&self.theme.motion);
             }
@@ -3656,6 +3716,34 @@ impl Shell {
             }
         }
         self.propagate_access_change();
+    }
+
+    /// A new integrator subject invalidates the previous person's authentication even when
+    /// their levels are equal. Direct `access_mut().set_subject` is observed before polling too.
+    fn observe_subject_change(&mut self, app: &mut AppRef<'_>) {
+        let Some(from) = self.access.take_subject_change() else {
+            return;
+        };
+        let to = self.access.session().subject.level;
+        let lock = self.prompt.is_lock_screen();
+        if self.prompt.is_open() && !lock {
+            self.cancel_prompt();
+        }
+        self.session_changed(SessionChange {
+            from,
+            to,
+            reason: ChangeReason::Integrator,
+        });
+        if lock {
+            if to > self.access.initial_subject().level {
+                self.cancel_prompt();
+                self.events
+                    .push(ShellEvent::Access(AccessEvent::LockScreenToggled(false)));
+                self.ask_after_lock(app);
+            } else if let Some(methods) = self.prompt_methods() {
+                self.show_lock(methods);
+            }
+        }
     }
 
     /// Lock: [`LaunchAction::Lock`], or `idle_lock_secs` running out (`idle`).
@@ -3684,9 +3772,12 @@ impl Shell {
         let Some(methods) = methods else {
             return;
         };
-        if self.prompt.is_lock_screen() {
-            return;
-        }
+        self.show_lock(methods);
+    }
+
+    /// Start a fresh lock challenge; repeated explicit locks revoke the old check too.
+    fn show_lock(&mut self, methods: Vec<AuthMethod>) {
+        let already_locked = self.prompt.is_lock_screen();
         // An unlock under way gives way to the lock, and so does the shade.
         if self.prompt.is_open() {
             self.cancel_prompt();
@@ -3696,13 +3787,15 @@ impl Shell {
         }
         self.gestures.cancel_held_over();
         if let Some(auth) = self.access.authenticator_mut() {
-            auth.begin(&crate::access::prompt::LOCK_GATE, now);
+            auth.begin(&crate::access::prompt::LOCK_GATE, self.mono);
         }
         // A new lock starts with nothing waiting behind it.
         self.after_lock = None;
-        self.prompt.open(Purpose::Lock, methods, None, now);
-        self.events
-            .push(ShellEvent::Access(AccessEvent::LockScreenToggled(true)));
+        self.prompt.open(Purpose::Lock, methods, None, self.mono);
+        if !already_locked {
+            self.events
+                .push(ShellEvent::Access(AccessEvent::LockScreenToggled(true)));
+        }
     }
 
     /// Log out: [`LaunchAction::Logout`] and [`ShellHandle::logout`]. Always reported as
@@ -3710,7 +3803,17 @@ impl Shell {
     /// session back to the starting subject.
     fn end_session(&mut self) {
         self.events.push(ShellEvent::LogoutRequested);
-        if self.prompt_methods().is_none() || !self.access.away_from_start() {
+        let Some(methods) = self.prompt_methods() else {
+            return;
+        };
+        self.after_lock = None;
+        let locked = self.prompt.is_lock_screen();
+        if locked {
+            self.show_lock(methods);
+        } else if self.prompt.is_open() {
+            self.cancel_prompt();
+        }
+        if !self.access.away_from_start() {
             return;
         }
         let from = self.access.reset(self.mono);

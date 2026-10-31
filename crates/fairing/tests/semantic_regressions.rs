@@ -55,6 +55,7 @@ fn saved_settings_restore_the_live_radio_state() -> fairing::Result<()> {
 /// A valid backend whose commands complete only at the next poll, as guide 06 permits.
 struct DeferredWifi {
     enabled: bool,
+    auto_complete: bool,
     pending: Vec<bool>,
     commands: Rc<RefCell<Vec<bool>>>,
     reject: Rc<Cell<bool>>,
@@ -65,8 +66,10 @@ impl Backend for DeferredWifi {
         Capabilities::WIFI
     }
     fn poll(&mut self) {
-        for value in self.pending.drain(..) {
-            self.enabled = value;
+        if self.auto_complete {
+            for value in self.pending.drain(..) {
+                self.enabled = value;
+            }
         }
         if let Some(value) = self.external.take() {
             self.enabled = value;
@@ -111,6 +114,7 @@ fn set_then_toggle_preserves_command_order_with_deferred_backends() -> fairing::
         let commands = Rc::new(RefCell::new(Vec::new()));
         let backend = DeferredWifi {
             enabled: true,
+            auto_complete: true,
             pending: Vec::new(),
             commands: Rc::clone(&commands),
             reject: Rc::new(Cell::new(false)),
@@ -128,7 +132,7 @@ fn set_then_toggle_preserves_command_order_with_deferred_backends() -> fairing::
         h.shell
             .handle()
             .launch(LaunchAction::Toggle(keys::WIFI_ENABLED.into()));
-        h.frame();
+        h.frames(2);
         let actual = h.shell.services().wifi.enabled();
         assert!(actual);
         assert_eq!(&*commands.borrow(), &[false, true]);
@@ -144,6 +148,7 @@ fn toggles_follow_external_state_after_confirmation_and_ignore_rejected_requests
         let external = Rc::new(Cell::new(None));
         let backend = DeferredWifi {
             enabled: true,
+            auto_complete: true,
             pending: Vec::new(),
             commands: Rc::clone(&commands),
             reject: Rc::new(Cell::new(reject)),
@@ -172,11 +177,12 @@ fn toggles_follow_external_state_after_confirmation_and_ignore_rejected_requests
 }
 
 #[test]
-fn rejecting_a_later_request_preserves_the_accepted_pending_target() -> fairing::Result<()> {
+fn rejected_queued_requests_do_not_poison_later_toggles() -> fairing::Result<()> {
     let commands = Rc::new(RefCell::new(Vec::new()));
     let reject = Rc::new(Cell::new(false));
     let backend = DeferredWifi {
         enabled: true,
+        auto_complete: true,
         pending: Vec::new(),
         commands: Rc::clone(&commands),
         reject: Rc::clone(&reject),
@@ -189,15 +195,94 @@ fn rejecting_a_later_request_preserves_the_accepted_pending_target() -> fairing:
     h.frames(2);
     h.shell
         .set_setting(keys::WIFI_ENABLED.into(), SettingValue::Bool(false));
-    reject.set(true);
     h.shell
         .set_setting(keys::WIFI_ENABLED.into(), SettingValue::Bool(true));
+    reject.set(true);
+    h.frame(); // The first target completes; sending the queued target is rejected.
     reject.set(false);
     h.shell
         .launch(LaunchAction::Toggle(keys::WIFI_ENABLED.into()));
     h.frame();
     assert_eq!(&*commands.borrow(), &[false, true, true]);
     assert!(h.shell.services().wifi.enabled());
+    Ok(())
+}
+
+#[test]
+fn unchanged_snapshots_do_not_acknowledge_unfinished_radio_commands() -> fairing::Result<()> {
+    let commands = Rc::new(RefCell::new(Vec::new()));
+    let external = Rc::new(Cell::new(None));
+    let backend = DeferredWifi {
+        enabled: true,
+        auto_complete: false,
+        pending: Vec::new(),
+        commands: Rc::clone(&commands),
+        reject: Rc::new(Cell::new(false)),
+        external: Rc::clone(&external),
+    };
+    let mut h = Harness::new(
+        single_level_access(),
+        fairing::Services::builder().wifi(backend).build(),
+    )?;
+    h.frames(2);
+    for on in [false, true] {
+        h.shell
+            .set_setting(keys::WIFI_ENABLED.into(), SettingValue::Bool(on));
+    }
+    h.frame(); // The worker has not completed either command; the cache is still true.
+    external.set(Some(false));
+    h.frame(); // The first command completes, while the latest target is still true.
+    h.shell
+        .handle()
+        .launch(LaunchAction::Toggle(keys::WIFI_ENABLED.into()));
+    h.frame();
+    external.set(Some(true));
+    h.frame(); // The second target completes; the queued toggle must now send false.
+    assert_eq!(commands.borrow().last(), Some(&false));
+    Ok(())
+}
+
+struct UnreportedAudio(Rc<RefCell<Vec<bool>>>);
+
+impl Backend for UnreportedAudio {
+    fn capabilities(&self) -> Capabilities {
+        Capabilities::default()
+    }
+}
+
+impl fairing::services::AudioBackend for UnreportedAudio {
+    fn volume(&self) -> Option<fairing::services::AudioSnapshot> {
+        None
+    }
+
+    fn set_volume(&mut self, _: u8) -> ServiceResult {
+        Ok(())
+    }
+
+    fn set_muted(&mut self, muted: bool) -> ServiceResult {
+        self.0.borrow_mut().push(muted);
+        Ok(())
+    }
+}
+
+#[test]
+fn an_audio_backend_without_feedback_does_not_stall_queued_mute_writes() -> fairing::Result<()> {
+    let commands = Rc::new(RefCell::new(Vec::new()));
+    let mut h = Harness::new(
+        single_level_access(),
+        fairing::Services::builder()
+            .audio(UnreportedAudio(Rc::clone(&commands)))
+            .build(),
+    )?;
+    h.frames(2);
+    h.shell
+        .set_setting(keys::AUDIO_MUTED.into(), SettingValue::Bool(false));
+    h.shell
+        .launch(LaunchAction::Toggle(keys::AUDIO_MUTED.into()));
+    h.frame();
+    h.shell
+        .launch(LaunchAction::Toggle(keys::AUDIO_MUTED.into()));
+    assert_eq!(&*commands.borrow(), &[false, true, false]);
     Ok(())
 }
 

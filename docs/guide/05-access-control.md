@@ -284,6 +284,17 @@ A few rules hold whatever the authenticator does:
 - **`begin(gate, now)` comes first.** The shell calls it each time the prompt
   opens — the lock screen's gate is `session.lock` — so an authenticator can start
   listening, and drop whatever a reader picked up while no prompt was up.
+  Retargeting an open prompt to a different gate calls `cancel` and then `begin`
+  for the new gate before polling again. A request for the same gate keeps its
+  pending check. Lockout countdowns survive either case.
+- **A session boundary cancels the previous check.** Logout cancels a pending
+  unlock even when the subject is already the initial one. Explicit relocking
+  starts a fresh lock challenge and discards deferred actions. Logout while locked
+  also discards them and restarts the challenge, preserving the lockout.
+  A timeout or integrator subject replacement invalidates pending authentication
+  even when the old and new subjects have the same numeric level. Direct
+  `access_mut().set_subject` changes are observed before the next frame or launch;
+  use `ShellHandle::set_subject` for the shell's monotonic clock.
 - **An authenticator that offers nothing** (`methods()` empty) behaves as
   `routing` (§6): no prompt and no lock screen, and the lock and logout controls
   are only reported.

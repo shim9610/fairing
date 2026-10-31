@@ -564,15 +564,21 @@ instead ([05 §2.3](05-access-control.md#23-where-enforcement-happens)).
 
 A write that passes the gate does three things in order: update the in-memory
 `SettingsView`, call the matching backend if it is a built-in key
-(`apply_setting_to_backend`, the table above), and emit
+(`apply_setting_to_backend`, the table above; queued for an outstanding Bool write), and emit
 `ShellEvent::SettingChanged { key, value }`.
 
-For Wi-Fi, Bluetooth and audio mute, accepted requests remain pending until a backend
-snapshot confirms the target. A subsequent `Toggle` uses that pending target before the
-snapshot, so `Set(false)` then `Toggle` remains ordered even before the next poll.
-Synchronous rejection leaves any earlier accepted target intact; a failed Wi-Fi
-snapshot clears it.
-After confirmation, external backend changes are again the source of truth.
+For Wi-Fi, Bluetooth and audio mute, at most one command per key is awaiting a
+confirming snapshot. Subsequent writes update the desired target behind it; `Toggle`
+inverts that target before consulting the snapshot. On confirmation the next target is
+sent if needed. This can take more than one poll; unchanged cached values cannot
+acknowledge later commands ahead of the first. Intermediate queued targets are coalesced,
+and an already satisfied target with no outstanding command is a backend no-op.
+Synchronous rejection or a failed Wi-Fi snapshot clears the failed request and queued
+target. With no request pending, external backend changes are the source of truth again.
+Audio backends returning `None` from `volume()` cannot confirm a mute target: those writes
+are dispatched in order and toggles use the settings view until feedback is available.
+The UI keeps accepting input while a backend is pending; a backend with feedback must report its
+completion or failure and wake the UI, as for its other asynchronous operations.
 
 Changing `radio.airplane` also updates and emits `SettingChanged` for both radio keys.
 Enabling an individual radio clears airplane mode without enabling the other one.

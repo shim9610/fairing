@@ -639,6 +639,8 @@ pub struct Access {
     policy: Box<dyn AccessPolicy>,
     mode: AccessMode,
     session: Session,
+    /// An explicit integrator replacement not yet observed by the shell.
+    subject_change: Option<Level>,
     /// The starting subject — where a logout, a timeout and a lock return to.
     initial: Subject,
     unlock_mode: UnlockMode,
@@ -830,6 +832,7 @@ impl Access {
             policy: Box::new(policy),
             mode,
             session: Session::new(initial.clone()),
+            subject_change: None,
             initial,
             unlock_mode,
             temporary: Duration::from_secs(cfg.temporary_secs),
@@ -1131,10 +1134,10 @@ impl Access {
         self.session.last_activity = now;
     }
 
-    /// Replace the subject (`ShellHandle::set_subject`). Returns the previous level — `Shell`
-    /// uses that return value to decide about propagating `AccessChanged` and closing instances
-    /// that no longer pass. A temporary unlock in progress ends with it:
-    /// the integrator said who this is.
+    /// Replace the subject. Returns the previous level. A shell observes direct replacements
+    /// before the next frame or launch, cancels the previous user's pending authentication and
+    /// propagates the access change. A temporary elevation ends with it. Prefer
+    /// [`ShellHandle::set_subject`](crate::ShellHandle::set_subject) to use the shell's clock.
     pub fn set_subject(&mut self, subject: Subject) -> Level {
         self.set_subject_at(subject, Instant::now())
     }
@@ -1144,12 +1147,18 @@ impl Access {
     /// grants after the panel sat idle must not be timed out or idle-locked in the same frame.
     pub(crate) fn set_subject_at(&mut self, subject: Subject, now: Instant) -> Level {
         let from = self.session.subject.level;
+        self.subject_change.get_or_insert(from);
         self.session.subject = subject;
         self.session.elevation = None;
         self.session.since = now;
         self.session.last_activity = now;
         self.idle_locked = false;
         from
+    }
+
+    /// Take an integrator replacement, including a same-level identity change.
+    pub(crate) fn take_subject_change(&mut self) -> Option<Level> {
+        self.subject_change.take()
     }
 
     /// Apply a granted unlock per `unlock_mode`. Returns the previous level.
