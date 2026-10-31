@@ -56,6 +56,7 @@ fn saved_settings_restore_the_live_radio_state() -> fairing::Result<()> {
 struct DeferredWifi {
     enabled: bool,
     auto_complete: bool,
+    failed: Rc<Cell<bool>>,
     pending: Vec<bool>,
     commands: Rc<RefCell<Vec<bool>>>,
     reject: Rc<Cell<bool>>,
@@ -80,6 +81,13 @@ impl WifiBackend for DeferredWifi {
     fn snapshot(&self) -> WifiSnapshot {
         WifiSnapshot {
             enabled: self.enabled,
+            state: if self.failed.get() {
+                fairing::services::WifiState::Failed {
+                    reason: "earlier connection failure".into(),
+                }
+            } else {
+                fairing::services::WifiState::Idle
+            },
             ..WifiSnapshot::default()
         }
     }
@@ -115,6 +123,7 @@ fn set_then_toggle_preserves_command_order_with_deferred_backends() -> fairing::
         let backend = DeferredWifi {
             enabled: true,
             auto_complete: true,
+            failed: Rc::new(Cell::new(false)),
             pending: Vec::new(),
             commands: Rc::clone(&commands),
             reject: Rc::new(Cell::new(false)),
@@ -149,6 +158,7 @@ fn toggles_follow_external_state_after_confirmation_and_ignore_rejected_requests
         let backend = DeferredWifi {
             enabled: true,
             auto_complete: true,
+            failed: Rc::new(Cell::new(false)),
             pending: Vec::new(),
             commands: Rc::clone(&commands),
             reject: Rc::new(Cell::new(reject)),
@@ -183,6 +193,7 @@ fn rejected_queued_requests_do_not_poison_later_toggles() -> fairing::Result<()>
     let backend = DeferredWifi {
         enabled: true,
         auto_complete: true,
+        failed: Rc::new(Cell::new(false)),
         pending: Vec::new(),
         commands: Rc::clone(&commands),
         reject: Rc::clone(&reject),
@@ -215,6 +226,7 @@ fn unchanged_snapshots_do_not_acknowledge_unfinished_radio_commands() -> fairing
     let backend = DeferredWifi {
         enabled: true,
         auto_complete: false,
+        failed: Rc::new(Cell::new(false)),
         pending: Vec::new(),
         commands: Rc::clone(&commands),
         reject: Rc::new(Cell::new(false)),
@@ -283,6 +295,80 @@ fn an_audio_backend_without_feedback_does_not_stall_queued_mute_writes() -> fair
     h.shell
         .launch(LaunchAction::Toggle(keys::AUDIO_MUTED.into()));
     assert_eq!(&*commands.borrow(), &[false, true, false]);
+    Ok(())
+}
+
+#[test]
+fn a_cached_wifi_failure_does_not_reject_a_newer_pending_target() -> fairing::Result<()> {
+    let commands = Rc::new(RefCell::new(Vec::new()));
+    let backend = DeferredWifi {
+        enabled: true,
+        auto_complete: true,
+        failed: Rc::new(Cell::new(true)),
+        pending: Vec::new(),
+        commands: Rc::clone(&commands),
+        reject: Rc::new(Cell::new(false)),
+        external: Rc::new(Cell::new(None)),
+    };
+    let mut h = Harness::new(
+        single_level_access(),
+        fairing::Services::builder().wifi(backend).build(),
+    )?;
+    h.frames(2);
+    for on in [false, true] {
+        h.shell
+            .set_setting(keys::WIFI_ENABLED.into(), SettingValue::Bool(on));
+    }
+    h.frames(2);
+    assert_eq!(&*commands.borrow(), &[false, true]);
+    assert!(h.shell.services().wifi.enabled());
+    Ok(())
+}
+
+#[test]
+fn a_new_wifi_failure_releases_the_pending_request() -> fairing::Result<()> {
+    let commands = Rc::new(RefCell::new(Vec::new()));
+    let failed = Rc::new(Cell::new(false));
+    let backend = DeferredWifi {
+        enabled: true,
+        auto_complete: false,
+        failed: Rc::clone(&failed),
+        pending: Vec::new(),
+        commands: Rc::clone(&commands),
+        reject: Rc::new(Cell::new(false)),
+        external: Rc::new(Cell::new(None)),
+    };
+    let mut h = Harness::new(
+        single_level_access(),
+        fairing::Services::builder().wifi(backend).build(),
+    )?;
+    h.frames(2);
+    for on in [false, true] {
+        h.shell
+            .set_setting(keys::WIFI_ENABLED.into(), SettingValue::Bool(on));
+    }
+    failed.set(true);
+    h.frame();
+    h.shell
+        .launch(LaunchAction::Toggle(keys::WIFI_ENABLED.into()));
+    assert_eq!(&*commands.borrow(), &[false, false]);
+    Ok(())
+}
+
+#[test]
+fn synchronous_confirmation_does_not_mask_a_later_external_radio_change() -> fairing::Result<()> {
+    for target in [false, true] {
+        let mut h = shell()?;
+        h.frames(2);
+        assert!(h.shell.services_mut().wifi.set_enabled(!target).is_ok());
+        h.shell
+            .set_setting(keys::WIFI_ENABLED.into(), SettingValue::Bool(target));
+        assert_eq!(h.shell.services().wifi.enabled(), target);
+        assert!(h.shell.services_mut().wifi.set_enabled(!target).is_ok());
+        h.shell
+            .launch(LaunchAction::Toggle(keys::WIFI_ENABLED.into()));
+        assert_eq!(h.shell.services().wifi.enabled(), target);
+    }
     Ok(())
 }
 

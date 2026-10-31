@@ -573,8 +573,11 @@ inverts that target before consulting the snapshot. On confirmation the next tar
 sent if needed. This can take more than one poll; unchanged cached values cannot
 acknowledge later commands ahead of the first. Intermediate queued targets are coalesced,
 and an already satisfied target with no outstanding command is a backend no-op.
-Synchronous rejection or a failed Wi-Fi snapshot clears the failed request and queued
+Backends reflecting a write immediately leave no pending request, so a later external
+change is not hidden behind an already completed target.
+Synchronous rejection or a newly entered Wi-Fi failure clears the failed request and queued
 target. With no request pending, external backend changes are the source of truth again.
+An existing cached Wi-Fi failure does not reject a command sent after that failure.
 Audio backends returning `None` from `volume()` cannot confirm a mute target: those writes
 are dispatched in order and toggles use the settings view until feedback is available.
 The UI keeps accepting input while a backend is pending; a backend with feedback must report its

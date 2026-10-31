@@ -27,6 +27,8 @@ All notable changes to the fairing crates are recorded here. The format follows
 
 - Asynchronous Bool writes serialize one outstanding command per key and coalesce queued
   targets, preventing an unchanged cache from acknowledging later commands prematurely.
+  A pre-existing Wi-Fi failure no longer discards a later radio target.
+  Synchronous confirmations release the target before later external changes can arrive.
 - Pending Bool targets preserve asynchronous Set/Toggle order until confirmation, and coupled
   airplane/radio settings emit consistent values for persistence and restoration.
 - New desktop declarations are rebuilt before queued badge updates. Notification unread

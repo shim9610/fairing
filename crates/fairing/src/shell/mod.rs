@@ -318,6 +318,8 @@ const LIFECYCLE_ROUNDS: usize = 4;
 struct PendingBool {
     sent: bool,
     desired: bool,
+    /// A pre-existing failed connection is not a rejection of this later radio command.
+    was_failed: bool,
 }
 
 /// Stage 7: draw the status bar into a panel (or, under `BarMode::Overlay`, a `Foreground` Area).
@@ -3172,21 +3174,26 @@ impl Shell {
         }
     }
 
-    fn reconcile_bool(&mut self, key: SettingKey, request: PendingBool) {
+    fn reconcile_bool(&mut self, key: SettingKey, mut request: PendingBool) {
         if self.builtin_bool(&key) == Some(request.sent) {
             if request.desired != request.sent {
                 self.send_bool_target(&key, request.desired);
             }
         } else {
-            let failed = key.0.as_ref() == keys::WIFI_ENABLED
-                && matches!(
-                    self.services.wifi.snapshot().state,
-                    crate::services::WifiState::Failed { .. }
-                );
-            if !failed {
+            let failed = self.wifi_failed(&key);
+            if !failed || request.was_failed {
+                request.was_failed = failed;
                 self.pending_bools.insert(key, request);
             }
         }
+    }
+
+    fn wifi_failed(&self, key: &SettingKey) -> bool {
+        key.0.as_ref() == keys::WIFI_ENABLED
+            && matches!(
+                self.services.wifi.snapshot().state,
+                crate::services::WifiState::Failed { .. }
+            )
     }
 
     fn accept_bool_target(&mut self, key: &SettingKey, desired: bool) {
@@ -3212,18 +3219,20 @@ impl Shell {
         if reported == Some(desired) {
             return;
         }
+        let was_failed = self.wifi_failed(key);
         let result = match key.0.as_ref() {
             keys::WIFI_ENABLED => self.services.wifi.set_enabled(desired),
             keys::BLUETOOTH_ENABLED => self.services.bluetooth.set_enabled(desired),
             keys::AUDIO_MUTED => self.services.audio.set_muted(desired),
             _ => return,
         };
-        if result.is_ok() && reported.is_some() {
+        if result.is_ok() && reported.is_some() && self.builtin_bool(key) != Some(desired) {
             self.pending_bools.insert(
                 key.clone(),
                 PendingBool {
                     sent: desired,
                     desired,
+                    was_failed,
                 },
             );
         }
