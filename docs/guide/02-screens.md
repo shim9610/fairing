@@ -163,6 +163,10 @@ first) · `.enabled(bool)`; `nav_item` takes `.gate` · `.enabled(bool)`; `tile`
 
 Gates and `Visibility` are [05 Access control](05-access-control.md).
 
+Queued badge updates run after changed declarations are rebuilt. Registering an icon
+and immediately calling `handle.set_badge` applies the badge on the next frame.
+The direct `shell.set_badge` call still reports `false` if the icon has not been placed yet.
+
 ## 3. Resident and factory screens
 
 `screen` is resident, `screen_with` is a factory, and the single difference is where the state

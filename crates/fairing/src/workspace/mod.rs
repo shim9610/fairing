@@ -698,7 +698,7 @@ impl Workspace {
         let done = self
             .overview
             .as_mut()
-            .is_some_and(|o| !o.is_returning() && o.go_back(tokens));
+            .is_some_and(|o| (tokens.reduce || !o.is_returning()) && o.go_back(tokens));
         if done {
             self.finish_overview_return();
         }

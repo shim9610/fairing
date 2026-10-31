@@ -47,7 +47,7 @@ caught at start-up.
 |---|---|
 | `levels` is empty | `[access] levels = []` |
 | Two or more levels with no `default_gate` | `levels.len() >= 2` and `default_gate` omitted. With a single level everything passes anyway, so the check is skipped |
-| `default_gate`, `initial` or an `[access.gates]` value is not in `levels` | Typo protection. `"top"` and `"bottom"` are reserved only inside `default_gate`, so a level may safely share the name |
+| `default_gate`, `initial` or an `[access.gates]` value is not in `levels` | Typo protection. `"top"` and `"bottom"` are reserved inside `default_gate`. Gate assignments resolve an actual level name first; without one, those two names are aliases for the highest/lowest level |
 
 All three make `Shell::new` / `Shell::builder(..).build(ctx)` return
 `Err(Error::Config(..))`. The device refuses to start rather than come up with the
@@ -216,6 +216,13 @@ shell.access_mut().set_policy(Box::new(custom_policy()));
 To use a level table other than the one `fairing.toml` built, just hold your own
 inside the policy — the shell delegates the whole decision, so whether
 `[access.gates]` matters at all is up to you.
+
+Open screen gates are revalidated every frame, before commands and again after backend
+polling. Replacing a policy or changing a dynamic policy can close a screen without
+re-announcing the subject or restarting its session timers. The shade and overview obey
+their opening gates too and disappear immediately on revocation, including during a
+closing animation. A policy that changes while the app is asleep still needs the
+integrator to wake the UI when the change takes effect.
 
 ## 5. The shell's prompt and the `Authenticator`
 
@@ -658,6 +665,10 @@ Overdue timers are enforced before the command queue and before input renews act
 The first touch after a delayed frame cannot preserve an expired session, and queued
 actions cannot execute with a temporary grant that has already run out. Authenticator
 polling still happens after backend polling.
+
+When a temporary grant and the session timeout are both overdue, the session timeout
+wins: the shell returns directly to the initial subject, with no intermediate restore
+subject available to queued commands or wake-up input.
 
 **Every way up starts the idle stretch again** — an unlock, and an integrator's
 `set_subject`, as a touch would: a badge reader that grants after the panel sat

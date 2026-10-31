@@ -14,6 +14,10 @@
 
 ## Running the audit locally
 
+The product libraries forbid explicit panic macros, unwrap/expect calls and process
+termination in Clippy builds. Assertion macros remain available to tests. The macro
+ban is resolved by Clippy, including imported aliases; do not suppress it in product code.
+
 ```sh
 cargo xtask audit
 cargo clippy -p fairing --no-default-features --features mock --all-targets -- -D warnings   # the build with `overlay`/`osk` off

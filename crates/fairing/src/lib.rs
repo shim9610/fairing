@@ -59,6 +59,20 @@
 //! ```
 
 #![forbid(unsafe_code)]
+// Product builds reject explicit panic/termination paths; tests retain assertions.
+#![cfg_attr(
+    not(test),
+    forbid(
+        clippy::disallowed_methods,
+        clippy::disallowed_macros,
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::todo,
+        clippy::unimplemented
+    )
+)]
 // A `pub` item has to be reachable from the crate root — anything else is `pub(crate)`.
 // The audit's clippy stage denies warnings, so this keeps the public surface to what is meant.
 // It sits here rather than in the workspace lints because the examples, tests and xtask are

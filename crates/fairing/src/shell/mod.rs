@@ -6,9 +6,10 @@
 //! Shell::frame(ui)
 //!  1. now / dt — now on the real time between frames, dt = stable_dt capped at 50 ms;
 //!               revoke expired access and enforce overdue idle locks before commands or input
+//!               (changed declarations are rebuilt before queued icon updates)
 //!  2. handle.drain()        — the command queue, through mpsc try_recv (+ M2 notify/toast/dismiss/toggle_overlay)
-//!  3. services.poll()       — pin the backend snapshots, gather next_wake
-//!  4. access                — record current input, poll the authenticator while the prompt is up
+//!  3. services.poll()       — pin snapshots, reconcile pending Bool targets, gather next_wake
+//!  4. access                — revalidate policy, record input, poll the authenticator
 //!  5. gestures.update()     — edge swipes and long presses (M2)
 //!     guard.update()        — the edge_guard mask · the emergency gesture (chrome.emergency) · keep_awake
 //!     overlay.update()      — consume the top pull (priority: the shade > the back gesture)
@@ -133,6 +134,8 @@ pub struct Shell {
     animations: AnimationStore,
     icons: IconSet,
     settings: SettingsView,
+    /// Accepted Bool requests not yet reflected in a backend snapshot.
+    pending_bools: std::collections::BTreeMap<SettingKey, bool>,
     strings: Strings,
     /// The locale whose letters were last looked for in the loaded fonts.
     script_checked: Option<String>,
@@ -1670,6 +1673,8 @@ impl Shell {
         let input_activity =
             ui.input(|i| i.pointer.any_down() || i.events.iter().any(is_user_input));
         self.update_cursor(&ctx, now);
+        // Declarations take effect before queued updates to their new desktop icons.
+        self.rebuild_registry();
         // A queued action must not use yesterday's subject, and wake-up input must not
         // renew inactivity deadlines that have already elapsed.
         self.expire_access(now);
@@ -1677,6 +1682,7 @@ impl Shell {
         let commands_pending = self.drain_commands(app);
         // 3.
         let next_wake = self.services.poll(now);
+        self.reconcile_pending_bools();
         // 4.
         self.tick_access(now, input_activity, app);
         // 5.
@@ -1882,10 +1888,7 @@ impl Shell {
         for (id, instance) in self.workspace.evict_expired(now, &tokens) {
             self.events.push(ShellEvent::ScreenClosed { id, instance });
         }
-        if self.registry.take_dirty() {
-            self.desktop.rebuild(&self.registry, &self.config.desktop);
-            self.overlay.mark_tiles_dirty();
-        }
+        self.rebuild_registry();
         self.note_cover();
         let shown = self.osk.is_shown();
         if shown != self.osk_was_shown {
@@ -1969,6 +1972,14 @@ impl Shell {
             || self.workspace.is_overview_open();
         if covered {
             self.desktop.close_info(tokens);
+        }
+    }
+
+    /// Rebuild before commands, and again if declarations changed during a frame.
+    fn rebuild_registry(&mut self) {
+        if self.registry.take_dirty() {
+            self.desktop.rebuild(&self.registry, &self.config.desktop);
+            self.overlay.mark_tiles_dirty();
         }
     }
 
@@ -3085,6 +3096,9 @@ impl Shell {
         if airplane {
             let key = SettingKey::from(keys::RADIO_AIRPLANE);
             self.apply_setting_to_backend(&key, &SettingValue::Bool(true));
+            for radio in [keys::WIFI_ENABLED, keys::BLUETOOTH_ENABLED] {
+                self.settings.set(radio, SettingValue::Bool(false));
+            }
         }
     }
 
@@ -3102,16 +3116,18 @@ impl Shell {
         self.theme_dirty = true;
     }
 
-    /// `Toggle(key)`: a built-in key (`wifi.enabled` · `bluetooth.enabled` · `theme.dark`) is written as
-    /// the opposite of **the current value the backend reports**, and everything else as the opposite of
-    /// the memory view. Going by the memory view alone would make a fresh shell go `None → true` and
-    /// turn already-enabled Wi-Fi on again.
+    /// `Toggle(key)` first inverts an accepted pending Bool target, then the current backend
+    /// value for built-in keys, and otherwise the memory view. Going by the memory view alone
+    /// would make a fresh shell turn already-enabled Wi-Fi on again.
     fn toggle_setting(&mut self, key: SettingKey) {
         if !self.setting_allowed(&key, || LaunchAction::Toggle(key.clone())) {
             return;
         }
         let current = self
-            .builtin_bool(&key)
+            .pending_bools
+            .get(&key)
+            .copied()
+            .or_else(|| self.builtin_bool(&key))
             .or_else(|| match self.settings.get(&key) {
                 None => Some(false),
                 Some(SettingValue::Bool(b)) => Some(*b),
@@ -3137,6 +3153,22 @@ impl Shell {
         }
     }
 
+    /// A confirmed snapshot ends a pending request; external changes can then become the
+    /// source of truth again. Requests rejected synchronously are never kept here.
+    fn reconcile_pending_bools(&mut self) {
+        let pending = std::mem::take(&mut self.pending_bools);
+        for (key, desired) in pending {
+            let failed = key.0.as_ref() == keys::WIFI_ENABLED
+                && matches!(
+                    self.services.wifi.snapshot().state,
+                    crate::services::WifiState::Failed { .. }
+                );
+            if !failed && self.builtin_bool(&key) != Some(desired) {
+                self.pending_bools.insert(key, desired);
+            }
+        }
+    }
+
     fn setting_allowed(&mut self, key: &SettingKey, then: impl FnOnce() -> LaunchAction) -> bool {
         let gate = Gate::from(&*key.0);
         if self.access.allows(&gate) {
@@ -3150,7 +3182,27 @@ impl Shell {
     /// `SettingChanged` — the integrator's cue to store the value.
     fn write_setting(&mut self, key: SettingKey, value: SettingValue) {
         self.settings.set(key.clone(), value.clone());
+        if key.0.as_ref() == keys::RADIO_AIRPLANE {
+            let on = matches!(value, SettingValue::Bool(true));
+            for radio in [keys::WIFI_ENABLED, keys::BLUETOOTH_ENABLED] {
+                self.write_setting(radio.into(), SettingValue::Bool(!on));
+            }
+            self.events.push(ShellEvent::SettingChanged { key, value });
+            return;
+        }
         self.apply_setting_to_backend(&key, &value);
+        // Enabling one radio leaves airplane mode without changing the other radio.
+        if matches!(key.0.as_ref(), keys::WIFI_ENABLED | keys::BLUETOOTH_ENABLED)
+            && matches!(value, SettingValue::Bool(true))
+            && self.settings.get(&keys::RADIO_AIRPLANE.into()) == Some(&SettingValue::Bool(true))
+        {
+            self.settings
+                .set(keys::RADIO_AIRPLANE, SettingValue::Bool(false));
+            self.events.push(ShellEvent::SettingChanged {
+                key: keys::RADIO_AIRPLANE.into(),
+                value: SettingValue::Bool(false),
+            });
+        }
         self.events.push(ShellEvent::SettingChanged { key, value });
     }
 
@@ -3170,8 +3222,10 @@ impl Shell {
             keys::AUDIO_VOLUME => self.services.audio.set_volume(as_u8),
             keys::AUDIO_MUTED => self.services.audio.set_muted(as_bool),
             keys::RADIO_AIRPLANE => {
-                let wifi = self.services.wifi.set_enabled(!as_bool);
-                self.services.bluetooth.set_enabled(!as_bool).and(wifi)
+                for radio in [keys::WIFI_ENABLED, keys::BLUETOOTH_ENABLED] {
+                    self.apply_setting_to_backend(&radio.into(), &SettingValue::Bool(!as_bool));
+                }
+                return;
             }
             keys::THEME_DARK => {
                 self.set_theme_dark(as_bool);
@@ -3185,6 +3239,13 @@ impl Shell {
             }
             _ => Ok(()),
         };
+        if matches!(
+            key.0.as_ref(),
+            keys::WIFI_ENABLED | keys::BLUETOOTH_ENABLED | keys::AUDIO_MUTED
+        ) && result.is_ok()
+        {
+            self.pending_bools.insert(key.clone(), as_bool);
+        }
         // `Unsupported` is an absence, not a failure: with the `Null` audio backend the integrator
         // applies `audio.volume` from `SettingChanged` instead, and every slider step would warn.
         match result {
@@ -3417,29 +3478,48 @@ impl Shell {
     /// an `AccessChanged` on every instance left (notified at stage 14). A timeout, a lock, a logout,
     /// an unlock and the integrator's `set_subject` all take this path.
     fn propagate_access_change(&mut self) {
+        self.revalidate_access();
+        self.workspace.queue_all(Lifecycle::AccessChanged);
+    }
+
+    /// Policies may depend on time or external state without a change of subject.
+    /// Revoke closed gates before commands and drawing, without resetting forms in
+    /// screens that are still allowed by sending `AccessChanged` on every frame.
+    fn revalidate_access(&mut self) {
         let was_home = self.workspace.is_home();
         let Self {
             workspace,
-            registry,
             access,
             theme,
             events,
             ..
         } = self;
-        let closed = workspace.close_where(
-            |instance| {
-                let gate = registry
-                    .screen(instance.decl_id())
-                    .map_or_else(|| Gate::from(instance.decl_id()), ScreenDecl::gate_name);
-                !access.allows(&gate)
-            },
-            &theme.motion,
-        );
+        let closed =
+            workspace.close_where(|instance| !access.allows(instance.gate()), &theme.motion);
         for (id, instance) in closed {
             events.push(ShellEvent::ScreenClosed { id, instance });
         }
-        workspace.queue_all(Lifecycle::AccessChanged);
         self.note_went_home(was_home);
+        // Revocation hides content immediately; repeated animated closes would restart
+        // a card shade's tween on every frame.
+        let mut immediate = self.theme.motion;
+        immediate.reduce = true;
+        if !self.access.allows(&OVERLAY_OPEN_GATE) && !self.overlay.is_closed() {
+            self.overlay.close(&immediate);
+        }
+        if self.workspace.is_overview_open() {
+            let gate = if self.workspace.is_overview_picking() {
+                SPLIT_GATE
+            } else {
+                RECENTS_GATE
+            };
+            if self.access.allows(&gate) {
+                let beside = self.may_enter_split();
+                self.workspace.set_overview_beside(beside);
+            } else {
+                self.workspace.close_overview(&immediate);
+            }
+        }
     }
 
     /// **The one way a failed gate asks for an unlock**: the event always, and — when
@@ -3519,10 +3599,12 @@ impl Shell {
         if self.access.idle_lock_due(now) && !self.prompt.is_lock_screen() {
             self.lock_now(true);
         }
+        self.revalidate_access();
     }
 
     /// Stage 4: current activity and the authenticator's late answers, after backend polling.
     fn tick_access(&mut self, now: Instant, input_activity: bool, app: &mut AppRef<'_>) {
+        self.revalidate_access();
         #[cfg(feature = "settings")]
         self.access.refresh_credentials();
         if input_activity {

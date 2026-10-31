@@ -12,6 +12,7 @@
 
 use super::model::{Notification, NotificationId};
 use crate::access::Access;
+use std::collections::BTreeSet;
 
 /// The result of [`NotificationCenter::push`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,7 +39,7 @@ pub fn shows_content(notification: &Notification, access: &Access) -> bool {
 #[derive(Debug, Default)]
 pub struct NotificationCenter {
     items: Vec<Notification>,
-    unread: usize,
+    unread: BTreeSet<NotificationId>,
     max_items: usize,
     /// Whether it has already reported that the cap cannot be met (everything is persistent) — the same warning does not go out every frame.
     warned_full: bool,
@@ -50,7 +51,7 @@ impl NotificationCenter {
     pub fn new(max_items: usize) -> Self {
         Self {
             items: Vec::new(),
-            unread: 0,
+            unread: BTreeSet::new(),
             max_items,
             warned_full: false,
         }
@@ -76,8 +77,8 @@ impl NotificationCenter {
             }
             return CenterChange::Updated;
         }
+        self.unread.insert(notification.id);
         self.insert_grouped(notification);
-        self.unread += 1;
         self.enforce_cap();
         CenterChange::Added
     }
@@ -87,7 +88,7 @@ impl NotificationCenter {
         match self.items.iter().position(|n| n.id == id) {
             Some(pos) if !self.items.get(pos).is_some_and(|n| n.persistent) => {
                 self.items.remove(pos);
-                self.unread = self.unread.min(self.items.len());
+                self.unread.remove(&id);
                 true
             }
             _ => false,
@@ -97,19 +98,19 @@ impl NotificationCenter {
     /// Dismiss every non-persistent one ("clear all").
     pub fn clear(&mut self) {
         self.items.retain(|n| n.persistent);
-        self.unread = 0;
+        self.unread.clear();
         self.warned_full = false;
     }
 
     /// Opening the shade takes the unread count to zero.
     pub(crate) fn mark_seen(&mut self) {
-        self.unread = 0;
+        self.unread.clear();
     }
 
     /// The unread count (the status bar badge).
     #[must_use]
     pub fn unread(&self) -> usize {
-        self.unread
+        self.unread.len()
     }
 
     /// The total count.
@@ -212,9 +213,9 @@ impl NotificationCenter {
                 }
                 break;
             };
-            self.items.remove(pos);
+            let removed = self.items.remove(pos);
+            self.unread.remove(&removed.id);
         }
-        self.unread = self.unread.min(self.items.len());
     }
 }
 

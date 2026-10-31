@@ -1085,6 +1085,7 @@ impl ShellBuilder {
             animations: AnimationStore::new(),
             icons: IconSet::new(),
             settings,
+            pending_bools: std::collections::BTreeMap::new(),
             handle,
             rx,
             held_command: None,

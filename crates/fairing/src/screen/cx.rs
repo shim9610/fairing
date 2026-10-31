@@ -321,7 +321,9 @@ impl Cx<'_> {
     ///
     /// `None` where nothing was handed over, where `T` is the wrong type, or where it is **already
     /// out on loan** — a `with_app` inside a `with_app` gets `None` rather than a second `&mut`, so
-    /// a cycle stops instead of aliasing. A panic inside puts the reference back before carrying on.
+    /// a cycle stops instead of aliasing. With unwinding enabled, a callback panic restores the
+    /// reference, logs an error without its payload and returns `None`. The application's
+    /// panic hook still runs before the unwind is caught.
     pub fn with_app<T: std::any::Any, R>(
         &mut self,
         f: impl FnOnce(&mut T, &mut Self) -> R,
@@ -333,9 +335,11 @@ impl Cx<'_> {
         };
         let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(value, self)));
         self.app = Some(app);
-        match out {
-            Ok(value) => Some(value),
-            Err(payload) => std::panic::resume_unwind(payload),
+        if let Ok(value) = out {
+            Some(value)
+        } else {
+            log::error!("with_app callback failed; app reference restored");
+            None
         }
     }
 
@@ -456,11 +460,9 @@ impl Cx<'_> {
     /// [`Registry::take_resident`](crate::screen::Registry::take_resident). `None` where there was
     /// nothing to take.
     ///
-    /// The call is wrapped in [`catch_unwind`](std::panic::catch_unwind) **only so that the screen
-    /// goes home before the panic carries on**. Nothing is swallowed: the payload is resumed
-    /// immediately. Without it, an integrator who wraps the frame in `catch_unwind` — which the old
-    /// shared cell made pointless anyway, since it panicked of its own accord — would find that one
-    /// panic emptied the declaration for good and the screen silently never drew again.
+    /// With unwinding enabled, a callback panic restores the resident screen and returns `None`.
+    /// This helper logs no payload, since an integrator's error may contain sensitive data.
+    /// The application's panic hook still runs before the unwind is caught.
     pub(crate) fn with_resident<R>(
         &mut self,
         id: &str,
@@ -473,9 +475,11 @@ impl Cx<'_> {
         if let Some(registry) = self.registry.as_mut() {
             registry.put_resident(id, screen);
         }
-        match out {
-            Ok(value) => Some(value),
-            Err(payload) => std::panic::resume_unwind(payload),
+        if let Ok(value) = out {
+            Some(value)
+        } else {
+            log::error!("resident screen callback failed; declaration restored");
+            None
         }
     }
 
@@ -874,6 +878,37 @@ mod tests {
     use crate::screen::{ChromePolicy, Lifecycle, ScreenValue};
     use crate::workspace::InstanceId;
     use std::time::Duration;
+
+    /// Synthetic callback panics exercise recovery; these paths are never in product builds.
+    #[test]
+    #[allow(clippy::panic)]
+    fn callback_failures_restore_app_and_resident_loans() -> crate::Result<()> {
+        let mut fixture = Fixture::new()?;
+        let mut app = 0u32;
+        {
+            let mut parts = fixture.parts();
+            parts.app = Some(&mut app);
+            let mut cx = parts.cx(pane(InstanceId(1)), None);
+            let failed: Option<()> = cx.with_app::<u32, _>(|value, _| {
+                *value = 7;
+                panic!("synthetic app callback failure");
+            });
+            assert!(failed.is_none());
+            assert_eq!(cx.with_app::<u32, _>(|value, _| *value), Some(7));
+        }
+        let mut registry = crate::screen::Registry::new();
+        registry.add(
+            crate::screen::screen("loan", |_: &mut egui::Ui, _: &mut crate::Cx<'_>| {}).into(),
+        );
+        let mut parts = fixture.parts();
+        let mut cx = parts.cx_in(pane(InstanceId(1)), None, Some(&mut registry));
+        let failed: Option<()> = cx.with_resident("loan", |_, _| {
+            panic!("synthetic resident callback failure");
+        });
+        assert!(failed.is_none());
+        assert_eq!(cx.with_resident("loan", |_, _| true), Some(true));
+        Ok(())
+    }
 
     /// The instance namespace: the same `egui::Id` in a different instance is a different entry.
     #[test]

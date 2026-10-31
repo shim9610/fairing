@@ -44,6 +44,8 @@ missing_docs = "warn"
 unused_must_use = "deny"
 
 [workspace.lints.clippy]
+# The two product libraries deny these macros outside cfg(test); verification code may assert.
+disallowed_macros = "allow"
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 unwrap_used = "deny"

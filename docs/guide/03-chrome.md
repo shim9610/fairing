@@ -1152,6 +1152,9 @@ the timing and the taps stay the shell's
 The unread count goes to zero the moment the shade opens. That is the number in
 `status.notifications`'s badge, drawn as `99+` above 99.
 
+Unread state is tracked per notification id: dismissing or evicting an unread item removes
+its badge contribution, while removing an already-read item leaves the unread count alone.
+
 ### 5.6 `[notify]` keys
 
 | Key | Default | Meaning |

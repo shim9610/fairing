@@ -39,6 +39,8 @@ pub enum InstanceScreen {
 pub struct Instance {
     id: InstanceId,
     decl_id: String,
+    /// Resolved once; policy revalidation does not allocate a gate every frame.
+    gate: crate::access::Gate,
     title: String,
     icon: Option<IconRef>,
     screen: InstanceScreen,
@@ -73,6 +75,10 @@ impl std::fmt::Debug for Instance {
 }
 
 impl Instance {
+    pub(crate) fn gate(&self) -> &crate::access::Gate {
+        &self.gate
+    }
+
     /// Build from a declaration. `Created` goes into both queues (`on_lifecycle` and `cx.event`) together.
     #[must_use]
     pub fn new(id: InstanceId, decl: &ScreenDecl, screen: InstanceScreen) -> Self {
@@ -83,6 +89,7 @@ impl Instance {
         Self {
             id,
             decl_id: decl.id.clone(),
+            gate: decl.gate_name(),
             title: decl.title.clone(),
             icon: decl.icon.clone(),
             screen,

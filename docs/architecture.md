@@ -92,10 +92,10 @@ Everything happens inside `Shell::frame(ui)`, once per frame, in a fixed order:
 
 | # | Step | What happens |
 |---|---|---|
-| 1 | Time and expiry | `now` from the real time between frames; `dt` is capped at 50 ms; expired access and overdue idle locks are enforced before commands or input |
+| 1 | Time, declarations and expiry | Advance time, rebuild changed declarations, enforce all overdue access deadlines and revalidate open gates before commands or input |
 | 2 | Commands | The `ShellHandle` queue is drained with `try_recv` |
-| 3 | Services | Backend snapshots are pinned and their next wake-ups gathered |
-| 4 | Access | Record current input activity and poll the authenticator after backend polling |
+| 3 | Services | Pin snapshots, reconcile accepted pending Bool settings, gather backend wake-ups |
+| 4 | Access | Revalidate policy after backend updates, record input and poll the authenticator |
 | 5 | Input | The gesture engine, the guard, the shade, the back gesture, the keyboard, every animation |
 | 6 | Layout | The rects for this frame from the focused screen's chrome policy and the keyboard |
 | 7–9 | Draw | The status bar, the nav bar, then the desktop or the screens |

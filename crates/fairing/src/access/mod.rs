@@ -779,15 +779,18 @@ impl Access {
         };
         let mut gates = BTreeMap::new();
         for (gate, level_name) in &cfg.gates {
-            let level = match level_name.as_str() {
-                "top" => table.top(),
-                "bottom" => table.bottom(),
-                name => table.index_of(name).ok_or_else(|| {
+            let level = table
+                .index_of(level_name)
+                .or_else(|| match level_name.as_str() {
+                    "top" => Some(table.top()),
+                    "bottom" => Some(table.bottom()),
+                    _ => None,
+                })
+                .ok_or_else(|| {
                     Error::Config(format!(
-                        "[access.gates] \"{gate}\" = \"{name}\" - no such level"
+                        "[access.gates] \"{gate}\" = \"{level_name}\" - no such level"
                     ))
-                })?,
-            };
+                })?;
             gates.insert(gate.clone(), level);
         }
         let initial = match cfg.initial.as_deref() {
@@ -1212,6 +1215,16 @@ impl Access {
         if !self.session_matters() {
             return None;
         }
+        // The timeout revokes the whole session, including any temporary elevation.
+        let idle = now.saturating_duration_since(self.session.last_activity);
+        if self.session_timeout.is_some_and(|t| idle >= t) && self.away_from_start() {
+            let from = self.reset(now);
+            return Some(SessionChange {
+                from,
+                to: self.initial.level,
+                reason: ChangeReason::Timeout,
+            });
+        }
         if self
             .session
             .elevation
@@ -1225,15 +1238,6 @@ impl Access {
                 from,
                 to: self.session.subject.level,
                 reason: ChangeReason::ElevationExpired,
-            });
-        }
-        let idle = now.saturating_duration_since(self.session.last_activity);
-        if self.session_timeout.is_some_and(|t| idle >= t) && self.away_from_start() {
-            let from = self.reset(now);
-            return Some(SessionChange {
-                from,
-                to: self.initial.level,
-                reason: ChangeReason::Timeout,
             });
         }
         None

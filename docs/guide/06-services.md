@@ -567,6 +567,17 @@ A write that passes the gate does three things in order: update the in-memory
 (`apply_setting_to_backend`, the table above), and emit
 `ShellEvent::SettingChanged { key, value }`.
 
+For Wi-Fi, Bluetooth and audio mute, accepted requests remain pending until a backend
+snapshot confirms the target. A subsequent `Toggle` uses that pending target before the
+snapshot, so `Set(false)` then `Toggle` remains ordered even before the next poll.
+Synchronous rejection leaves any earlier accepted target intact; a failed Wi-Fi
+snapshot clears it.
+After confirmation, external backend changes are again the source of truth.
+
+Changing `radio.airplane` also updates and emits `SettingChanged` for both radio keys.
+Enabling an individual radio clears airplane mode without enabling the other one.
+Persist every emitted change: the latest values then restore the same coupled state.
+
 Read inside a screen with `cx.settings.get(&key)`; `Cx::settings` is a read-only
 view.
 
