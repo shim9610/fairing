@@ -9,17 +9,21 @@ from pathlib import Path
 import shutil
 import subprocess
 import tarfile
+import tomllib
 import urllib.request
 import zipfile
 
 HERE = Path(__file__).resolve().parent
 PINS = json.loads((HERE / "tools.json").read_text())
+# Coverage shares the existing archive pin with the source-built compiler trial.
+PINS["cargo_llvm_cov"] = json.loads((HERE.parent / "tools/ferrocene/coverage-tool.json").read_text())
 BASE = Path(os.environ.get("FAIRING_ASSURANCE_TOOLS", Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "fairing-assurance"))
 LAYOUT = {
     "verus": ("verus", "verus-x86-linux/verus"),
     "kani": ("kani", "kani-0.68.0/bin/kani-driver"),
     "cargo_fuzz": ("cargo_fuzz", "cargo-fuzz"),
     "cargo_cyclonedx": ("cyclonedx", "cargo-cyclonedx-x86_64-unknown-linux-gnu/cargo-cyclonedx"),
+    "cargo_llvm_cov": ("llvm_cov", "cargo-llvm-cov"),
 }
 
 
@@ -73,7 +77,7 @@ def tool(name):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("profile", choices=["proofs", "miri", "fuzz", "sbom", "all"])
+    parser.add_argument("profile", choices=["proofs", "miri", "fuzz", "sbom", "coverage", "all"])
     args = parser.parse_args()
     if args.profile in {"proofs", "all"}:
         subprocess.run(["rustup", "toolchain", "install", PINS["verus_toolchain"], "--profile", "minimal"], check=True)
@@ -86,6 +90,10 @@ def main():
         tool("cargo_fuzz")
     if args.profile in {"sbom", "all"}:
         tool("cargo_cyclonedx")
+    if args.profile in {"coverage", "all"}:
+        channel = tomllib.loads((HERE.parent / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
+        subprocess.run(["rustup", "component", "add", "llvm-tools-preview", "--toolchain", channel], check=True)
+        tool("cargo_llvm_cov")
 
 
 if __name__ == "__main__":

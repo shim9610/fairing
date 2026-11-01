@@ -95,15 +95,15 @@ toolchain required no changes for this trial.
 | Check | Result |
 | --- | --- |
 | All workspace features and Cargo targets | Passed |
-| Workspace tests and documentation tests | 1,811 passed; 16 ignored |
+| Workspace tests and documentation tests (initial source trial) | 1,811 passed; 16 ignored |
 | Minimal feature set | Passed |
 | Unannotated library lint inventory | 0 diagnostics |
 | Consumer compile and execution | Passed; 100 validation-boundary diagnostics |
 | Lint negative control | Rejected the unvalidated call as expected |
-| Instrumented product unit/integration tests | 1,451 passed |
-| Coverage: lines | 45,029 / 49,019 (91.86%) |
-| Coverage: functions | 4,807 / 5,277 (91.09%) |
-| Coverage: regions | 74,942 / 81,568 (91.88%) |
+| Instrumented product unit/integration tests | 1,453 passed |
+| Coverage: lines | 45,070 / 49,060 (91.87%) |
+| Coverage: functions | 4,813 / 5,283 (91.10%) |
+| Coverage: regions | 75,013 / 81,641 (91.88%) |
 
 The consumer diagnostics include `ShellConfig::default`, `ShellConfig::validate`,
 `round_u8` and calls reached through generic instantiations. The count includes
@@ -112,7 +112,7 @@ an inventory of validation evidence needed at those call boundaries. No
 `prevalidated` attributes were added to production code.
 
 Coverage figures describe the instrumented test build, including inline unit
-tests. The export contains 123 product source files and one standard-library
+tests. The export contains 124 product source files and one standard-library
 file. Documentation tests, branch coverage and MC/DC are outside
 these figures. These results are local; the new hosted Ferrocene workflow has
 not been executed.

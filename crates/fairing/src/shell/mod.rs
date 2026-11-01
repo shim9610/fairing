@@ -3863,8 +3863,7 @@ impl Shell {
                     );
                 }
                 let held = self.access.session().subject.level;
-                let worthless = if lock { level < held } else { level <= held };
-                if unknown || worthless {
+                if !crate::access::rules::grant_allowed(!unknown, lock, held.0, level.0) {
                     // Not a way in, so not a right answer either: the authenticator counts it,
                     // and a lockout it reaches is applied as one.
                     let counted = self

@@ -16,7 +16,7 @@ loom = ["dep:loom"]
 fuzz = ["dep:libfuzzer-sys"]
 
 [dependencies]
-fairing = { path = "../crates/fairing", version = "0.1.0", default-features = false, features = ["mock"], optional = true }
+fairing = { path = "../crates/fairing", version = "0.1.0", default-features = false, features = ["mock", "overlay", "settings", "osk"], optional = true }
 loom = { version = "=0.7.2", optional = true }
 libfuzzer-sys = { version = "=0.4.13", optional = true }
 
@@ -40,6 +40,22 @@ required-features = ["fuzz"]
 [[bin]]
 name = "config"
 path = "fuzz/config.rs"
+test = false
+doc = false
+bench = false
+required-features = ["fuzz", "integration"]
+
+[[bin]]
+name = "api_contracts"
+path = "fuzz/api_contracts.rs"
+test = false
+doc = false
+bench = false
+required-features = ["fuzz", "integration"]
+
+[[bin]]
+name = "shell_contracts"
+path = "fuzz/shell_contracts.rs"
 test = false
 doc = false
 bench = false

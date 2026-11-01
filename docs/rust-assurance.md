@@ -4,6 +4,8 @@ The `Rust assurance` workflow runs the checks below on pull requests, main
 pushes, a weekly schedule and manual requests. Its input gate checks the separate
 verification lockfile and licences before the tool workspace is compiled. The
 existing strict audit, MSRV and example-tour workflow continues independently.
+The [API contract map](api-contracts.md) links each public guarantee to its
+production path, proof/property, bounds and negative control.
 The [Ferrocene source trial](ferrocene-source-trial.md) also supplies the existing
 source-built compiler and matching LLVM coverage workflow.
 
@@ -11,17 +13,18 @@ source-built compiler and matching LLVM coverage workflow.
 
 | Tool | Pin | Scope |
 | --- | --- | --- |
-| Kani | 0.68.0; nightly 2026-08-21 | Two symbolic harnesses for the production Boolean acknowledgement decision |
-| Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | A postcondition on the same production function |
-| Miri | nightly 2026-10-30 | Five deterministic tests using the real kernel, configuration parser and native Inbox |
-| Loom | 0.7.2 | Inbox with modelled mpsc operations: two senders, three messages, an early drain and a final drain |
-| proptest | 1.12.0 | Three properties, 512 cases each, seed 20261101 |
-| cargo-fuzz | 0.13.2; libfuzzer-sys 0.4.13 | ASan campaigns: 20,000 protocol inputs and 10,000 configuration inputs |
-| cargo-llvm-cov | 0.9.1 | Product test-build line/function/region coverage in the Ferrocene workflow |
+| Kani | 0.68.0; nightly 2026-08-21 | Six harnesses: ACK, ordered access, grant validity, nonwrapping failure accounting and lockout boundary |
+| Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Postconditions on five real ACK/access functions |
+| Miri | nightly 2026-10-30 | Ten fixed tests using actual Access/PinTable/notifications/services/time/units/parser/Inbox |
+| Loom | 0.7.2 | Two Inbox scenarios, including a concurrent consumer; two senders and three messages |
+| proptest | 1.12.0 | Eleven properties × 512 cases plus four shell properties × 64; seed 20261101 |
+| cargo-fuzz | 0.13.2; libfuzzer-sys 0.4.13 | ASan: 20,000 ACK, 10,000 parser, 10,000 API and 2,000 shell inputs |
+| cargo-llvm-cov | 0.9.1 | Product and API-contract line/function/region coverage; latter checks nine production modules |
 | cargo-cyclonedx | 0.5.9 | Library package dependency BOMs for default/all features on Linux x86_64 and aarch64 |
 
-Tool archives and CycloneDX schemas have pinned SHA-256 values in
-[`verification/tools.json`](../verification/tools.json). Downloads are checked
+Assurance tool archives and CycloneDX schemas have pinned SHA-256 values in
+[`verification/tools.json`](../verification/tools.json). Coverage shares its
+archive pin with [`tools/ferrocene/coverage-tool.json`](../tools/ferrocene/coverage-tool.json). Downloads are checked
 before extraction. Rustup installs the exact compiler versions needed by the
 verifiers. Python schema-validator dependencies are pinned in
 [`requirements.txt`](../verification/requirements.txt).
@@ -71,15 +74,15 @@ the model treats a new failure notification as terminal for the pending command.
 
 The Inbox harness includes the production source. Normal tests and Miri use
 `std::sync::mpsc`; `--cfg fairing_loom` selects Loom's channel implementation for
-the model test. The complete bounded scenario is explored without a permutation
+the model tests. Both complete bounded scenarios are explored without a permutation
 or preemption cap. A branch-limit violation fails the test. Loom 0.7.2 does not
 model the exact disconnected-channel `try_recv` result, so its result is limited
-to delivery, per-sender order and nonblocking drains in this scenario.
+to delivery, per-sender order and nonblocking drains in these scenarios.
 
 Miri keeps its normal isolation, validity and race checks enabled. It interprets
 fixed regression inputs and real channel threads. Random-input generation runs
 natively under proptest and libFuzzer; interpreting the generators themselves
-was unnecessarily expensive. Miri's five cases are separate from the full
+was unnecessarily expensive. Miri's ten cases are separate from the full
 product test suite and the generated-input campaigns.
 
 ## SBOM scope and validation
@@ -112,19 +115,16 @@ through eframe/arboard; the default library graph excludes it.
 
 ## Local results — 2026-11-01
 
-Kani passed both harnesses and Verus verified the production function. Both
-negative controls rejected the broken acknowledgement condition. Native tests
-passed all six cases (including three properties with 512 generated cases each),
-Miri passed five fixed cases, and Loom passed the bounded schedule scenario.
-Both seeded ASan campaigns completed: 20,000 protocol runs and 10,000 parser runs.
-
-All eight product BOMs and four utility BOMs passed schema validation. For
-fairing, the resolved default graph has 65 dependency components and the
-all-features graph has 162 on each selected Linux target. The strict product
-audit passed all 14 stages with 1,811 tests passed and 16 ignored; all-features
-and minimal-feature Clippy and the Rust 1.95 check passed. Fresh source-built
-Ferrocene coverage passed 1,451 tests, measuring 91.86% lines, 91.09% functions
-and 91.88% regions. Hosted workflow results are reported by the PR checks.
+The public API contract suite passes 25 native tests, ten Miri tests and two
+Loom scenarios. Kani passes six harnesses and Verus verifies five production
+functions. Both reject all five deliberate decision defects; public API/model
+controls also reject broken gate delegation, notification cap handling and
+message delivery. All four seeded ASan campaigns complete (42,000 total runs).
+The strict audit also passes all 14 stages: 1,813 tests passed, 16 ignored.
+Fresh source-built Ferrocene coverage passes 1,453 tests (91.87% lines,
+91.10% functions, 91.88% regions). The separate API-only coverage is 23.45%
+of product lines; nine claimed production modules must execute in CI.
+The [contract map](api-contracts.md) records the exact guarantees and assumptions.
 
 ## Run locally
 
@@ -150,7 +150,9 @@ pin, the interpreter and fuzz commands are:
 ```sh
 MIRIFLAGS='-Zmiri-seed=0' cargo +nightly-2026-10-30 miri test \
   --locked --manifest-path verification/Cargo.toml --lib
+python3 verification/controls.py
 python3 verification/fuzz.py
+python3 verification/coverage.py
 python3 -m venv /tmp/fairing-sbom-python
 /tmp/fairing-sbom-python/bin/python -m pip install -r verification/requirements.txt
 /tmp/fairing-sbom-python/bin/python verification/sbom.py

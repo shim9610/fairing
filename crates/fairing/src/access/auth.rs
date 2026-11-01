@@ -568,22 +568,21 @@ impl PinTable {
     /// A wrong attempt: count it, and lock once the limit is reached. `wrong` is what a refusal
     /// says.
     fn fail(&mut self, now: Instant, wrong: &str) -> AuthOutcome {
-        self.failures += 1;
-        match self.attempt_limit {
-            Some(limit) if self.failures >= limit => {
-                let lock = self.lock.unwrap_or(DEFAULT_LOCK);
-                let until = now.checked_add(lock).unwrap_or(now);
-                self.locked_until = Some(until);
-                // A fresh allowance once the lock runs out, not one more try.
-                self.failures = 0;
-                AuthOutcome::Locked {
-                    until,
-                    message: TOO_MANY.to_owned(),
-                }
+        self.failures = super::rules::next_failure(self.failures);
+        if super::rules::lockout_reached(self.failures, self.attempt_limit) {
+            let lock = self.lock.unwrap_or(DEFAULT_LOCK);
+            let until = now.checked_add(lock).unwrap_or(now);
+            self.locked_until = Some(until);
+            // A fresh allowance once the lock runs out, not one more try.
+            self.failures = 0;
+            AuthOutcome::Locked {
+                until,
+                message: TOO_MANY.to_owned(),
             }
-            _ => AuthOutcome::Denied {
+        } else {
+            AuthOutcome::Denied {
                 message: wrong.to_owned(),
-            },
+            }
         }
     }
 }
@@ -1132,5 +1131,21 @@ mod tests {
         assert!(!same(b"1234", b"1235"));
         assert!(!same(b"1234", b"12345"));
         assert!(!same(b"", b"0"));
+    }
+    #[test]
+    fn unlimited_failure_accounting_saturates_including_refused_grants() -> crate::Result<()> {
+        let cfg = table(&[("operator", "7391")]);
+        let mut auth = super::PinTable::from_config(&cfg, &levels())?;
+        auth.failures = u32::MAX;
+        let now = std::time::Instant::now();
+        assert!(matches!(
+            auth.submit(super::Credential::Pin("0000".into()), now),
+            super::AuthOutcome::Denied { .. }
+        ));
+        assert_eq!(auth.failures, u32::MAX);
+        let _ = auth.submit(super::Credential::Pin("7391".into()), now);
+        assert!(auth.refused(now).is_none());
+        assert_eq!(auth.failures, u32::MAX);
+        Ok(())
     }
 }

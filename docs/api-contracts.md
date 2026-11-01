@@ -1,0 +1,138 @@
+# Public API contracts and verification
+
+The assurance suite checks the contracts below against the production sources
+and public APIs. The table distinguishes exhaustive decision proofs from
+generated or bounded executions. A tool installation or a green placeholder
+test is insufficient: production mutations must also fail the relevant checks.
+
+## Contract map
+
+| Documented contract | Production path | Executable evidence |
+| --- | --- | --- |
+| Ordered gate levels; explicit assignments and unknown-gate defaults; one level/off bypasses policy | `Access::allows`, `LevelPolicy::allows/required` ([access guide §1–4](guide/05-access-control.md)) | Kani `ordered_gates_are_monotone_and_reflexive`; Verus `level_allows`; generated `public_access` includes Unicode/empty/unknown names and real level names preceding top/bottom aliases |
+| A grant must name an existing level, cannot demote an unlock session, and may equal the current level only on a lock screen | `Shell::apply_outcome` → `access::rules::grant_allowed` ([access guide §5](guide/05-access-control.md)) | Kani `grants_cannot_use_unknown_or_lower_levels`; Verus `grant_allowed`; `public_grants` exercises actual table lookup, prompt purpose and continuation dispatch |
+| Direct and queued actions, screens and setting writes check their gate when executed; changing policy revokes open screens | `Shell::launch/set_setting`, `ShellHandle`, `revalidate_access` ([access guide §2.3](guide/05-access-control.md)) | `public_shell_ordering` tracks independent expected action counts/settings through up to 32 operations; same-sender subject/launch order; gate-bypass mutation must fail screen revocation |
+| Authentication continuation re-enters the launch gate; a session boundary cancels the old check before polling | `apply_outcome`, `observe_subject_change`, `request_unlock`, `cancel_prompt` ([access guide §5](guide/05-access-control.md)) | `public_grants`; fixed `session_boundaries_cancel_before_polling_and_deadlines_are_inclusive` covers logout, same-level identity replacement, gate retargeting, lock and Back |
+| Overdue session timeout, temporary elevation and idle lock precede queued privileged work and fresh input | Frame state/expiry and access timers ([access guide §7](guide/05-access-control.md)) | `public_expiry` and fixed cases at deadline −1 ms, exactly at the deadline and +1 ms, with and without fresh input; check action refusal, unchanged setting and screen eviction |
+| PIN and pattern attempts share the stricter allowance and longer lockout; refused grants restore their cleared attempt history; reopening does not reset lockout | `PinTable::submit/refused` ([access guide §5](guide/05-access-control.md)) | `public_authentication` uses an independent attempt/deadline model for up to 64 operations; Miri fixed sequences include lock expiry equality and mixed methods |
+| Failure accounting cannot wrap; the attempt limit is inclusive | `PinTable::fail` → `next_failure/lockout_reached` | Kani `failure_accounting_never_wraps`, `lockout_is_inclusive_and_cannot_be_disabled_by_more_failures`; Verus contracts on both real functions; product regression at `u32::MAX` |
+| Accepted Boolean settings coalesce to the latest target and wait for the previous backend acknowledgement | `set_setting` → pending Boolean handling ([services guide §5](guide/06-services.md)) | Existing Kani/Verus ACK proofs plus `public_backend_ordering`: actual `ShellHandle`, setting gates and a recording delayed Wi-Fi backend; no overlapping writes and exact independent expected dispatch list |
+| Inbox has only nonblocking receive APIs and preserves messages and per-sender order | `Inbox::pair/try_recv/drain` ([screen guide](guide/02-screens.md)) | Two Loom scenarios: early/final drain, and a concurrent consumer with two senders/three messages; native and Miri run the same source with real channels; a drop-message mutation must fail |
+| Notification ids deduplicate; source groups stay contiguous; persistent items resist dismissal; caps drop dismissible items, including updates; gated content hides | `NotificationCenter`, `shows_content` ([notification source](../crates/fairing/src/notify/center.rs)) | `public_notifications` checks invariants after up to 64 operations; fixed persistence-update regression; Miri, libFuzzer and a cap-removal mutation |
+| Every service polls once with the supplied time and the minimum reported deadline wins | `Services::poll/custom` ([services guide §1](guide/06-services.md)) | `public_services`, two independently recorded backend types; Miri fixed deadline/missing-deadline cases |
+| UTC conversion saturates, calendar fields are valid, formatting clears a reused buffer and changing hour convention preserves shape | `WallTime`, `ClockFormat` ([services guide: clocks](guide/06-services.md)) | `public_calendar` with arbitrary u64/i32 inputs, inverse Gregorian conversion and all formats; Miri boundary values and API fuzzer |
+| Pixel conversion clamps; changing a container changes fractional references without changing physical, finger or text terms | `round_u8/round_i8`, `Dim`, `Scale::in_container` ([unit source](../crates/fairing-widgets/src/unit.rs)) | `public_units` uses arbitrary f32 bit patterns, NaN/infinities and arbitrary u16 dimensions; Miri/fuzzer; compile-fail anchor contracts remain in product documentation tests |
+| Invalid ratios/grid dimensions fail validation; malformed configuration and credential debug/error output do not reveal entered secrets | `ShellConfig::from_toml`, `Access::from_config`, `Credential::Debug` ([configuration guide](guide/07-config-reference.md)) | Generated `public_configuration`, `credential_debug_is_independent_of_contents`, parser/redaction properties, Miri fixed cases and parser/API fuzz targets |
+| Tool dependencies stay outside product packages; dependency inventories match the locked target/feature graph | Published manifests, primary lockfile and package BOMs | Input approvals/audit/deny; eight product CycloneDX BOMs, official schema validation and reconciliation with Cargo normal/build edges |
+
+Test names in this table are in
+[`verification/src/api.rs`](../verification/src/api.rs),
+[`src/lib.rs`](../verification/src/lib.rs) and the
+[`Kani harnesses`](../verification/kani_access.rs). Verus checks the exact
+production bodies in [`access/rules.rs`](../crates/fairing/src/access/rules.rs);
+the adapter adds contracts and visibility only. Kani/Verus also check the
+original ACK kernel.
+
+## Bounds and assumptions
+
+- Kani proves six harnesses and Verus verifies five production functions.
+  The access rules cover all u16 levels, all u32 counter values and every
+  optional attempt limit. They are exhaustive decision proofs, not a proof of
+  the complete egui application.
+- Native tests contain eleven properties with 512 cases each and four shell
+  properties with 64 cases each, using seed 20261101. Operation sequences cap
+  at 32 shell/backend operations or 64 non-UI operations. Fixed cases ensure
+  the important deadline/credential boundaries execute regardless of the seed.
+- Miri interprets ten fixed tests with normal isolation, validity and race
+  checks. It covers the actual Access, PinTable, notification, calendar, unit,
+  service and Inbox APIs. It does not interpret the complete shell rendering
+  path; generated cases run natively.
+- Loom exhausts its two bounded scenarios without a preemption/permutation/time
+  cap. The larger scenario has four threads including the caller. The branch
+  safety limit is 1,000 and exceeding it fails. Loom 0.7.2 does not model the exact
+  empty/disconnected error distinction.
+- The delayed backend model acknowledges one command at a time. Accepted,
+  previously authorized intent may finish after a later subject change; newly
+  denied writes do not change that intent. A fresh failure is terminal in the
+  ACK-kernel model. Integrators must honor these backend assumptions.
+- The reader fixture obeys `Authenticator::cancel/begin`: those calls discard
+  the earlier response. Tests verify the shell calls them before polling a new
+  challenge. An authenticator that returns a canceled result violates that
+  integration contract; the trait supplies no response-generation identifier
+  for the shell to independently identify such a result.
+- Generated deadline cases exercise the deterministic frame-only timeline.
+  Integer-second deadlines are exact; the ±1 ms probes allow less than 1 µs
+  of interval rounding in the frame's f32 representation. Existing product
+  background/logic-only regressions continue in the strict audit.
+- ASan (AddressSanitizer) campaigns run 20,000 ACK inputs, 10,000 parser inputs,
+  10,000 public non-UI API inputs and 2,000 shell/backend/grant inputs.
+  They provide bounded bug-finding evidence, not an exhaustive proof.
+
+Rendering, arbitrary gestures, every optional runner/platform combination,
+integrator callbacks, schedulability and hardware behavior are covered only
+to the extent of the existing product tests and audits. They have no new
+universal proof here. SBOM validation establishes inventory structure and
+graph consistency, not runtime behavior.
+
+## Controls and coverage
+
+`verification/proofs.py` requires both verifiers to reject five mutations:
+reversed ACK condition, reversed level order, accepting an unknown grant,
+wrapping failure count and excluding equality from the lockout boundary.
+The controls require a semantic verification error; compilation errors fail
+the control instead of counting as a successful rejection.
+
+`verification/controls.py` copies the sources into a disposable directory,
+checks a passing baseline, then breaks production gate delegation,
+notification cap enforcement and Inbox delivery separately. The matching
+public API/Loom test must fail with its expected assertion. Working sources
+and published dependencies remain intact.
+
+`verification/coverage.py` reports product code executed by the contract suite.
+It fails if any of nine claimed production modules has no executed source
+lines. cargo-llvm-cov's dependency selection must explicitly instrument both
+product crates; its default dependency-path filter excludes non-registry
+dependencies. The command therefore disables that default report filter and
+the script selects canonical product source paths from the raw export.
+This is distinct from the whole product unit/integration coverage in the
+Ferrocene workflow. Both raw and per-file exports are retained, with no
+arbitrary certification threshold. The current API suite executes 9,120 of
+38,885 product lines (23.45%); this targeted figure is deliberately separate
+from the full product test suite and is not claimed as whole-API coverage.
+
+## Defects found while checking the contracts
+
+The original failure count used `failures += 1`. Kani produced an overflow
+counterexample at `u32::MAX`. Saturating accounting preserves the attempt
+history, including the restoration performed by `refused`.
+
+The notification cap was applied only to newly inserted ids. With a cap of
+one, insert two persistent ids and update one to be dismissible: the old
+implementation retained two items even though one could be dropped.
+proptest reduced this to three push/update operations. Updates now reapply
+the same oldest-non-persistent eviction rule. Both defects have product
+regressions and negative verification controls.
+
+## Run
+
+See [the tool installation and workflow guide](rust-assurance.md) first.
+
+```sh
+python3 verification/check-inputs.py
+python3 verification/install.py all
+python3 verification/proofs.py
+PROPTEST_CASES=512 PROPTEST_RNG_SEED=20261101 \
+  cargo test --locked --manifest-path verification/Cargo.toml --lib
+RUSTFLAGS='--cfg fairing_loom' \
+  cargo test --locked --manifest-path verification/Cargo.toml \
+  --no-default-features --features loom --lib
+MIRIFLAGS='-Zmiri-seed=0' cargo +nightly-2026-10-30 miri test \
+  --locked --manifest-path verification/Cargo.toml --lib
+python3 verification/controls.py
+python3 verification/fuzz.py
+python3 verification/coverage.py
+```
+
+CI uploads contract controls, per-module coverage, proof controls, Miri/Loom
+logs, fuzz corpora and BOMs. A passing run establishes the recorded contracts
+within these scopes and assumptions; it is not a device certification.

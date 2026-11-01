@@ -15,6 +15,7 @@ mod auth;
 mod knock;
 mod painters;
 pub(crate) mod prompt;
+pub(crate) mod rules;
 
 pub use auth::{
     AdminResult, AuthMethod, AuthOutcome, Authenticator, Credential, CredentialAdmin,
@@ -256,7 +257,7 @@ impl LevelPolicy {
 
 impl AccessPolicy for LevelPolicy {
     fn allows(&self, subject: &Subject, gate: &Gate) -> bool {
-        subject.level >= self.required(gate)
+        rules::level_allows(subject.level.0, self.required(gate).0)
     }
 
     fn hint(&self, gate: &Gate) -> Option<LabelKey> {

@@ -5,6 +5,9 @@ pub mod bool_ack;
 #[path = "../../crates/fairing/src/inbox.rs"]
 pub mod inbox;
 
+#[cfg(all(feature = "integration", not(fairing_loom)))]
+pub mod api;
+
 /// Exercise queued intent against a backend that acknowledges one command at a time.
 pub fn exercise_protocol(events: &[u8]) {
     use bool_ack::{reconcile, Decision};
@@ -174,6 +177,57 @@ mod schedules {
     #[test]
     fn real_senders_preserve_order_and_lose_no_messages() {
         scenario();
+    }
+
+    fn concurrent_drain() {
+        let (a, inbox) = Inbox::pair();
+        let b = a.clone();
+        let first = thread::spawn(move || {
+            assert!(a.send((0, 0)).is_ok());
+            assert!(a.send((0, 1)).is_ok());
+        });
+        let second = thread::spawn(move || {
+            assert!(b.send((1, 0)).is_ok());
+        });
+        let consumer = thread::spawn(move || {
+            let mut early = Vec::new();
+            for _ in 0..2 {
+                if let Ok(message) = inbox.try_recv() {
+                    early.push(message);
+                }
+            }
+            (inbox, early)
+        });
+        first.join().unwrap();
+        second.join().unwrap();
+        let (inbox, mut received) = consumer.join().unwrap();
+        received.extend(inbox.drain());
+        assert_eq!(received.len(), 3);
+        assert_eq!(received.iter().filter(|&&m| m == (0, 0)).count(), 1);
+        assert_eq!(received.iter().filter(|&&m| m == (0, 1)).count(), 1);
+        assert_eq!(received.iter().filter(|&&m| m == (1, 0)).count(), 1);
+        let order: Vec<_> = received.iter().filter(|m| m.0 == 0).map(|m| m.1).collect();
+        assert_eq!(order, [0, 1]);
+        assert!(inbox.try_recv().is_err());
+    }
+
+    #[cfg(not(fairing_loom))]
+    #[test]
+    fn a_consumer_can_drain_while_workers_are_sending() {
+        concurrent_drain();
+    }
+
+    #[cfg(fairing_loom)]
+    #[test]
+    fn modeled_concurrent_drain_preserves_each_message_and_sender_order() {
+        let mut model = loom::model::Builder::new();
+        model.max_threads = 4;
+        model.max_branches = 1000;
+        model.max_permutations = None;
+        model.max_duration = None;
+        model.preemption_bound = None;
+        model.checkpoint_file = None;
+        model.check(concurrent_drain);
     }
 
     #[cfg(fairing_loom)]

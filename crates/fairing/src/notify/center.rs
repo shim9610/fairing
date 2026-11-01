@@ -75,6 +75,8 @@ impl NotificationCenter {
                 self.items.remove(index);
                 self.insert_grouped(notification);
             }
+            // An update can make a persistent entry dismissible while already over the cap.
+            self.enforce_cap();
             return CenterChange::Updated;
         }
         self.unread.insert(notification.id);
@@ -336,5 +338,23 @@ mod tests {
         assert_eq!(c.len(), 2);
         assert_eq!(c.hidden(&access), 1);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod contract_regressions {
+    #[test]
+    fn updating_persistence_reapplies_the_cap() {
+        use super::{Notification, NotificationCenter, NotificationId};
+        let mut center = NotificationCenter::new(1);
+        for id in [1, 2] {
+            let mut n = Notification::new(NotificationId(id), "persistent");
+            n.persistent = true;
+            center.push(n);
+        }
+        assert_eq!(center.len(), 2);
+        center.push(Notification::new(NotificationId(1), "dismissible"));
+        assert_eq!(center.len(), 1);
+        assert!(center.get(NotificationId(2)).is_some());
     }
 }

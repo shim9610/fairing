@@ -52,6 +52,7 @@ jobs:
           cargo deny --manifest-path verification/Cargo.toml --config verification/deny.toml check
           cargo fmt --manifest-path verification/Cargo.toml -- --check
           rustfmt --check verification/kani.rs
+          rustfmt --check verification/kani_access.rs
 
   proofs:
     needs: inputs
@@ -118,6 +119,38 @@ jobs:
         with:
           name: miri-results
           path: target/assurance/logs/
+          retention-days: 14
+
+  contract-controls:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Reject broken public API wiring and dropped Inbox messages
+        run: python3 verification/controls.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: api-contract-controls
+          path: target/assurance/controls/
+          retention-days: 14
+
+  contract-coverage:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install pinned coverage tool and matching LLVM tools
+        run: python3 verification/install.py coverage
+      - name: Measure production code exercised by the API contracts
+        run: python3 verification/coverage.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: api-contract-coverage
+          path: target/assurance/coverage/
           retention-days: 14
 
   fuzz:

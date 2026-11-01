@@ -18,7 +18,8 @@ seeds = json.loads((ROOT / "verification/seeds.json").read_text())
 lock = ROOT / "verification/Cargo.lock"
 lock_before = install.digest(lock)
 results = []
-for target, runs, max_length in [("bool_protocol", 20000, 128), ("config", 10000, 4096)]:
+for target, runs, max_length in [("bool_protocol", 20000, 128), ("config", 10000, 4096),
+                                 ("api_contracts", 10000, 64), ("shell_contracts", 2000, 32)]:
     corpus = OUT / "corpus" / target
     corpus.mkdir(parents=True, exist_ok=True)
     for index, seed in enumerate(seeds[target]):
