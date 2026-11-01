@@ -1,15 +1,12 @@
-//! Explicit process-wide fixed-arena allocation, with no system-heap fallback.
+//! Diagnostic fixed-arena allocator, unpublished and isolated from product libraries.
 //!
-//! Enable `global` directly or `fairing/fixed-heap` in the device binary.
-//! `FAIRING_HEAP_BYTES` chooses 128 KiB..=1 GiB at build time (default 512 MiB
-//! for parallel development tests). Every Rust allocation routed through the
-//! selected global allocator uses this one arena, including Vec/String/Box in
-//! fairing and egui. Native C, driver, GPU and some runtime allocations are outside
-//! that contract. Infallible allocations can abort on exhaustion; this does not
-//! turn an arbitrary allocating UI into a fallible or allocation-free program.
-//!
-//! The allocation algorithm is Talc; synchronization is `spinning_top`. The only
-//! local unsafe operation gives Talc exclusive ownership of static arena memory.
+//! This is a failure-injection tool, not a supported production recovery policy.
+//! Enable `global` only in an explicitly linked diagnostic executable. Infallible
+//! Rust/egui allocation can abort; the product fairing/fixed-heap feature was withdrawn.
+//! `FAIRING_HEAP_BYTES` chooses 128 KiB..=1 GiB (default 512 MiB for development).
+//! Native C, stacks, OS/driver/GPU and explicitly different allocators are excluded.
+//! Talc provides allocation and `spinning_top` synchronization; one local unsafe
+//! block transfers exclusive ownership of the static arena to the upstream allocator.
 
 #![deny(unsafe_code)]
 #![forbid(unsafe_op_in_unsafe_fn)]

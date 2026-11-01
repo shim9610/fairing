@@ -872,7 +872,8 @@ pub struct NotifyConfig {
     pub heads_up: bool,
     /// How many toasts are visible at once.
     pub max_visible: u8,
-    /// The maximum the notification centre retains (over it, the oldest non-persistent ones are dropped).
+    /// Hard notification retention cap including persistent items; zero selects 100.
+    /// Old dismissible items can be replaced; protected overflow refuses the new item.
     pub max_items: u16,
     /// The default time a toast shows (ms).
     pub toast_ms: u64,

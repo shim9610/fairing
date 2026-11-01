@@ -1,6 +1,7 @@
 #![no_main]
 libfuzzer_sys::fuzz_target!(|data: &[u8]| {
     fairing_assurance::api::memory_contract(data);
+    fairing_assurance::api::display_contract(data);
     fairing_assurance::api::access_contract(data);
     fairing_assurance::api::authentication_contract(data);
     fairing_assurance::api::notification_contract(data);

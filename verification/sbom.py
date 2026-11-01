@@ -113,6 +113,8 @@ for profile in ["default", "all-features"]:
             names = {item["name"] for item in data.get("components", [])}
             if package in {"fairing", "fairing-widgets"} and not names:
                 raise SystemExit("Empty product dependency BOM")
+            if package in {"fairing", "fairing-widgets"} and names & {"fairing-fixed-heap", "talc", "spinning_top", "allocator-api2"}:
+                raise SystemExit("Diagnostic allocator leaked into the product dependency graph")
             if names & {"loom", "proptest", "libfuzzer-sys", "fairing-assurance"}:
                 raise SystemExit("Development/tool dependencies leaked into the library BOM")
             shutil.move(generated, destination / (package + ".cdx.json"))

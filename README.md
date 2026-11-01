@@ -83,9 +83,10 @@ slightly wrong. fairing is that shell, once, with the hard parts already decided
 - **Bounded command admission.** Choose queue capacity and work per update; full
   queues return an error. UI code uses non-waiting receive/send APIs. The build
   gate rejects blocking calls and shared-state locks in the UI sources.
-- **Optional fixed Rust heap.** Select `fixed-heap` and `FAIRING_HEAP_BYTES` to use
-  one reusable arena without system-heap fallback. Infallible OOM may abort;
-  native/graphics allocations remain outside it. See [memory limits](docs/memory-limits.md).
+- **Recoverable display admission.** Bound queued toasts and retained notifications;
+  fallible text/buffer allocation refuses or defers optional display work. The global
+  fixed-heap option was withdrawn because egui cannot universally recover from OOM.
+  See [memory limits](docs/memory-limits.md) for supported paths and the isolated lab.
 - **Little is hard-wired.** Every chrome surface takes configuration and
   declarations; the bars, toasts, banners, keyboard keys, the shade's tiles and panel,
   the desktop cells, the lock screen, the unlock prompt, the recent screens and every
@@ -373,7 +374,7 @@ Honest gaps, not a roadmap:
 
 | Crate | Role |
 |---|---|
-| `fairing-fixed-heap` | Optional fixed-arena global Rust allocator; one reviewed unsafe initialization; `fixed-heap` selects it |
+| `fairing-fixed-heap` | Unpublished allocation-failure diagnostic, isolated from product dependencies; one reviewed unsafe arena claim |
 | `fairing` | The shell. `fairing-widgets`, `egui`, `serde`, `toml` and `log`; features `mock`, `overlay`, `osk`, `brand` and `settings` on by default, `runner`/`runner-x11` (eframe) and `chrono` optional |
 | `fairing-widgets` | The element layer, usable without the shell: touch widgets, theme tokens, the `du`/`mm` unit system, icons and motion. `egui`, `serde` and `log` |
 | `xtask` | The audit, the dependency allow-list, the icon compiler, the licence notices |

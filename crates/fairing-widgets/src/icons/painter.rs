@@ -234,8 +234,11 @@ impl IconCache {
 
 /// A cached subpath's points translated to the target position. The one per-frame allocation,
 /// and it exists because `epaint`'s `PathShape` wants an owned `Vec`.
-fn translated(line: &Polyline, offset: Vec2) -> Vec<Pos2> {
-    line.points.iter().map(|point| *point + offset).collect()
+fn translated(line: &Polyline, offset: Vec2) -> Option<Vec<Pos2>> {
+    let mut points = Vec::new();
+    points.try_reserve_exact(line.points.len()).ok()?;
+    points.extend(line.points.iter().map(|point| *point + offset));
+    Some(points)
 }
 
 /// Draw the icon into `rect`, scaled uniformly and centred. A stroke icon gets round caps faked
@@ -269,8 +272,11 @@ pub fn paint(
     for line in &flat.polylines {
         if flat.fill {
             if line.points.len() >= 3 {
+                let Some(points) = translated(line, offset) else {
+                    continue;
+                };
                 painter.add(Shape::Path(PathShape::convex_polygon(
-                    translated(line, offset),
+                    points,
                     color,
                     Stroke::NONE,
                 )));
@@ -292,7 +298,9 @@ pub fn paint(
                 painter.circle_filled(last, cap, color);
             }
             _ => {
-                let points = translated(line, offset);
+                let Some(points) = translated(line, offset) else {
+                    continue;
+                };
                 let stroke = PathStroke::new(stroke_px, color);
                 if line.closed {
                     painter.add(Shape::Path(PathShape::closed_line(points, stroke)));

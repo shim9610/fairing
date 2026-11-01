@@ -7,7 +7,7 @@ use crate::access::{Gate, Subject};
 use crate::desktop::Badge;
 use crate::inbox::{
     BoundedInbox, BoundedSender, Inbox, QueueCapacityError, QueueErrorKind, QueueStats,
-    TrySendError,
+    TryBuildSendError, TrySendError,
 };
 use crate::notify::{Notification, NotificationId, Toast};
 use crate::screen::LaunchAction;
@@ -19,6 +19,10 @@ use crate::workspace::InstanceId;
 /// A shell command. All of them are `Send`.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "bounded transport stores payloads inline to avoid infallible Box allocation on send"
+)]
 pub enum Command {
     /// Launch (the gate is checked by `Shell::launch`).
     Launch(LaunchAction),
@@ -58,15 +62,15 @@ pub enum Command {
         then: Option<LaunchAction>,
     },
     /// A notification (M2). The same id updates.
-    Notify(Box<Notification>),
+    Notify(Notification),
     /// A toast (M2).
-    Toast(Box<Toast>),
+    Toast(Toast),
     /// Dismiss a notification (M2). Persistent ones are ignored.
     DismissNotification(NotificationId),
     /// Toggle the shade (M2). Opening goes through the gate as `Launch(OpenOverlay)`.
     ToggleOverlay,
     /// Replace the motion tokens (M2, tuning from `examples/motion_lab.rs`). From the next frame.
-    SetMotion(Box<MotionTokens>),
+    SetMotion(MotionTokens),
 }
 
 /// A `Clone + Send` handle.
@@ -100,6 +104,10 @@ impl ShellHandle {
     ///
     /// # Errors
     /// Full or disconnected; the error owns the original command.
+    #[allow(
+        clippy::result_large_err,
+        reason = "return rejected ownership inline; boxing an allocation failure would allocate again"
+    )]
     pub fn try_send(&self, command: Command) -> Result<(), TrySendError<Command>> {
         let result = self.tx.try_send(command);
         if result.is_ok() {
@@ -114,6 +122,24 @@ impl ShellHandle {
     /// Full or disconnected. See `BoundedSender::try_send_with` for concurrent close semantics.
     pub fn try_send_with(&self, make: impl FnOnce() -> Command) -> Result<(), QueueErrorKind> {
         let result = self.tx.try_send_with(make);
+        if result.is_ok() {
+            self.waker.wake();
+        }
+        result
+    }
+
+    /// Send text using fallible bounded construction, without a per-message Box.
+    /// A full command queue skips text allocation. Admission is not display completion.
+    ///
+    /// # Errors
+    /// Queue full/closed, oversized text, or failed String allocation.
+    pub fn try_toast(
+        &self,
+        text: &str,
+    ) -> Result<(), TryBuildSendError<crate::notify::AdmissionError>> {
+        let result = self
+            .tx
+            .try_send_fallible_with(|| Toast::try_new(text).map(Command::Toast));
         if result.is_ok() {
             self.waker.wake();
         }
@@ -196,12 +222,12 @@ impl ShellHandle {
 
     /// A notification, from any thread. A new one shows briefly as a heads-up and then goes into the shade.
     pub fn notify(&self, notification: Notification) {
-        self.post_with(|| Command::Notify(Box::new(notification)));
+        self.post_with(|| Command::Notify(notification));
     }
 
     /// A toast, from any thread. Either `"text"` or a [`Toast`].
     pub fn toast(&self, toast: impl Into<Toast>) {
-        self.post_with(|| Command::Toast(Box::new(toast.into())));
+        self.post_with(|| Command::Toast(toast.into()));
     }
 
     /// Dismiss a notification.
@@ -216,7 +242,7 @@ impl ShellHandle {
 
     /// Replace the motion tokens (the tuning tool). Animations in flight are left alone.
     pub fn set_motion(&self, tokens: MotionTokens) {
-        self.post_with(|| Command::SetMotion(Box::new(tokens)));
+        self.post_with(|| Command::SetMotion(tokens));
     }
 
     /// The wake handle (hand it to backend and scenario threads).

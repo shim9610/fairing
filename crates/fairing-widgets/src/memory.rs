@@ -7,6 +7,17 @@
 use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+/// Copy text using fallible allocation; never invokes the infallible String growth path.
+///
+/// # Errors
+/// The allocator cannot supply the required buffer.
+pub fn try_string(text: &str) -> Result<String, std::collections::TryReserveError> {
+    let mut result = String::new();
+    result.try_reserve_exact(text.len())?;
+    result.push_str(text);
+    Ok(result)
+}
+
 static NEXT_POOL: AtomicUsize = AtomicUsize::new(1);
 
 pub(crate) const fn next_generation(current: u64) -> Option<u64> {

@@ -92,10 +92,13 @@ pub(crate) enum ToastAction {
 #[doc(hidden)]
 pub struct ToastQueue {
     queue: VecDeque<Toast>,
+    pending_capacity: usize,
+    retry_after: Option<Instant>,
+    allocation_blocked: bool,
     visible: Vec<ActiveToast>,
     max_visible: usize,
     default_duration: Duration,
-    /// The icon polyline cache (no allocation on the render path).
+    /// Cached icon polylines; translated draw paths still require owned point storage.
     icons: IconCache,
     /// The integrator's card, in place of the built-in one (rung 5).
     painter: Option<ToastPainter>,
@@ -125,8 +128,11 @@ impl ToastQueue {
     pub fn new(max_visible: usize, default_duration: Duration) -> Self {
         Self {
             queue: VecDeque::new(),
+            pending_capacity: super::DEFAULT_MAX_PENDING_TOASTS,
+            retry_after: None,
+            allocation_blocked: false,
             visible: Vec::new(),
-            max_visible: max_visible.max(1),
+            max_visible: max_visible.clamp(1, 255),
             default_duration,
             icons: IconCache::new(),
             painter: None,
@@ -160,13 +166,124 @@ impl ToastQueue {
         if self.queue.iter().any(same) {
             return;
         }
+        let _ = self.try_push(toast);
+    }
+
+    /// Set the maximum waiting items. Zero disables new toasts; at most 65,536.
+    #[must_use]
+    pub fn with_pending_capacity(mut self, capacity: usize) -> Self {
+        self.pending_capacity = capacity.min(65_536);
+        self.queue.truncate(self.pending_capacity);
+        self
+    }
+
+    /// Hard cap on waiting items, excluding visible slots.
+    #[must_use]
+    pub const fn pending_capacity(&self) -> usize {
+        self.pending_capacity
+    }
+
+    /// Admit a display item with bounded retention and fallible buffer growth.
+    ///
+    /// # Errors
+    /// Full, oversized text storage or allocation failure. The rejected value is returned.
+    pub fn try_push(&mut self, toast: Toast) -> Result<(), super::Rejected<Toast>> {
+        if toast
+            .text
+            .capacity()
+            .saturating_add(super::admission::icon_bytes(toast.icon.as_ref()))
+            > super::MAX_TOAST_TEXT_BYTES
+        {
+            return Err(super::Rejected {
+                kind: super::AdmissionError::TooLarge,
+                value: toast,
+            });
+        }
+        if let Some(item) = self
+            .visible
+            .iter_mut()
+            .find(|item| item.toast.text == toast.text && item.toast.level == toast.level)
+        {
+            item.renew = true;
+            return Ok(());
+        }
+        if self
+            .queue
+            .iter()
+            .any(|item| item.text == toast.text && item.level == toast.level)
+        {
+            return Ok(());
+        }
+        if self.queue.len() >= self.pending_capacity {
+            return Err(super::Rejected {
+                kind: super::AdmissionError::Full,
+                value: toast,
+            });
+        }
+        if self.queue.try_reserve(1).is_err() {
+            return Err(super::Rejected {
+                kind: super::AdmissionError::AllocationFailed,
+                value: toast,
+            });
+        }
         self.queue.push_back(toast);
+        Ok(())
+    }
+
+    /// Borrowed text admission. Full queues skip String construction.
+    ///
+    /// # Errors
+    /// Full, oversized text or failed fallible growth.
+    pub fn try_push_text(&mut self, text: &str) -> Result<(), super::AdmissionError> {
+        if text.len() > super::MAX_TOAST_TEXT_BYTES {
+            return Err(super::AdmissionError::TooLarge);
+        }
+        if let Some(item) = self
+            .visible
+            .iter_mut()
+            .find(|item| item.toast.text == text && item.toast.level == super::Level::Info)
+        {
+            item.renew = true;
+            return Ok(());
+        }
+        if self
+            .queue
+            .iter()
+            .any(|item| item.text == text && item.level == super::Level::Info)
+        {
+            return Ok(());
+        }
+        if self.queue.len() >= self.pending_capacity {
+            return Err(super::AdmissionError::Full);
+        }
+        self.try_push(Toast::try_new(text)?)
+            .map_err(|error| error.kind())
     }
 
     /// Frame stage 5: fill slots, expire, animate. `true` while something is moving.
     pub fn tick(&mut self, dt: f32, now: Instant, tokens: &MotionTokens, m: ToastMetrics) -> bool {
         let mut animating = false;
-        while self.visible.len() < self.max_visible {
+        let retry_ready = !self.allocation_blocked || self.retry_after.is_some_and(|at| now >= at);
+        if retry_ready {
+            self.allocation_blocked = false;
+            self.retry_after = None;
+        }
+        while !self.allocation_blocked
+            && !self.queue.is_empty()
+            && self.visible.len() < self.max_visible
+        {
+            if self.visible.try_reserve(1).is_err()
+                || self
+                    .rests
+                    .try_reserve((self.visible.len() + 1).saturating_sub(self.rests.len()))
+                    .is_err()
+            {
+                // Retain accepted items, keep the update non-waiting, and schedule a bounded retry.
+                self.icons.clear();
+                self.allocation_blocked = true;
+                self.retry_after = now.checked_add(Duration::from_millis(100));
+                break;
+            }
             let Some(toast) = self.queue.pop_front() else {
                 break;
             };
@@ -264,7 +381,7 @@ impl ToastQueue {
     /// deadline or its exit animation already wakes the shell for.
     #[must_use]
     pub(crate) fn has_room_for_next(&self) -> bool {
-        !self.queue.is_empty() && self.visible.len() < self.max_visible
+        !self.allocation_blocked && !self.queue.is_empty() && self.visible.len() < self.max_visible
     }
 
     /// Whether anything is moving.
@@ -282,6 +399,7 @@ impl ToastQueue {
             .iter()
             .filter(|i| i.phase == ToastPhase::Holding)
             .filter_map(|i| i.until)
+            .chain(self.retry_after)
             .min()
     }
 
@@ -324,6 +442,9 @@ impl ToastQueue {
         // anchor's bottom — the same gap as between two toasts.
         let mut bottom = anchor.max.y - m.stack_gap;
         self.rests.clear();
+        if self.rests.try_reserve(self.visible.len()).is_err() {
+            return None;
+        }
         for item in &self.visible {
             let height = Self::row_height(item, theme);
             self.rests.push(Rect::from_min_size(
@@ -401,7 +522,7 @@ impl ToastQueue {
     }
 }
 
-/// One toast row: the background, the severity icon and the text. Galley- and polyline-cached, so no allocation.
+/// One toast row. A failed text copy omits this optional card.
 fn paint_toast(
     ui: &egui::Ui,
     rect: Rect,
@@ -411,6 +532,11 @@ fn paint_toast(
     icon_size: f32,
     wrap: f32,
 ) {
+    let mut text = String::new();
+    if text.try_reserve_exact(item.toast.text.len()).is_err() {
+        return;
+    }
+    text.push_str(&item.toast.text);
     let painter = ui.painter();
     painter.rect_filled(
         rect,
@@ -448,7 +574,7 @@ fn paint_toast(
     item.wrap = wrap;
     // The galleys are not held across frames — a growing atlas throws the UVs out.
     let galley = painter.layout(
-        item.toast.text.clone(),
+        text,
         egui::TextStyle::Body.resolve(ui.style()),
         Color32::PLACEHOLDER,
         wrap,

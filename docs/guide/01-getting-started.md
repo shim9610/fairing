@@ -90,7 +90,6 @@ Straight from `crates/fairing/Cargo.toml`.
 | `brand` | ✓ | `fairing::brand` — the manta mark (a ribbon mesh) and the Abyss procedural background. **Turning it off is not how you remove the branding** — branding is opt-in, so not switching it on is enough ([09](09-branding.md)) |
 | `settings` | ✓ | The eleven built-in settings screens and `settings::add_all` ([§4.1](#41-the-built-in-settings-screens)). The setting keys and values screens use are there either way |
 | `runner` | | `fairing::runner` — an eframe-based fullscreen bootstrap (Wayland + glow) |
-| `fixed-heap` | | Process-wide fixed Rust arena; [budget, OOM and scope](../memory-limits.md) |
 | `runner-x11` | | `runner` plus `eframe/x11` |
 | `chrono` | | `fairing::services::clock::ChronoClock` — a clock that asks the OS timezone database every frame, so daylight saving corrects itself. Costs three crates in the tree; the default `SystemClock` is a fixed offset and does not know about DST |
 
@@ -518,11 +517,10 @@ conditions (resolution, icon count, `motion.reduce`) and the table of numbers `b
 runs on the same device: a p50 more than 30 % above an earlier one counts as a regression. p95
 wobbles run to run on shared machines, so re-run two or three times before calling it.
 
-The bench table does not count per-frame allocations. With `fixed-heap`, sample
-`fairing::fixed_heap::try_stats()` around a controlled workload to measure Rust
-allocation counts and live bytes. Counts include all threads using that global
-allocator. Timing alone cannot establish whether a render path allocates; see
-[memory limits](../memory-limits.md).
+The bench table does not count per-frame allocations. The separate diagnostic
+allocator example measures process-wide counters and injects actual failures;
+it is not a production feature. Timing alone does not establish whether a render
+path allocates; see [memory limits](../memory-limits.md).
 
 ## 8. Where to go next
 

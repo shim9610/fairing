@@ -96,6 +96,24 @@ pub enum IconRef {
     Glyph(String),
 }
 
+impl IconRef {
+    /// Clone a glyph with fallible allocation; other references are copied.
+    ///
+    /// # Errors
+    /// The allocator cannot supply a glyph String buffer.
+    pub fn try_clone(&self) -> Result<Self, std::collections::TryReserveError> {
+        Ok(match self {
+            Self::Builtin(name) => Self::Builtin(name),
+            Self::Custom(id) => Self::Custom(*id),
+            Self::Texture { id, tint } => Self::Texture {
+                id: *id,
+                tint: *tint,
+            },
+            Self::Glyph(text) => Self::Glyph(crate::memory::try_string(text)?),
+        })
+    }
+}
+
 /// An icon's colour.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum IconColor {

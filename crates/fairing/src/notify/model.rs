@@ -111,6 +111,19 @@ impl Notification {
         }
     }
 
+    /// Construct a bounded title using fallible allocation.
+    ///
+    /// # Errors
+    /// The title exceeds the byte budget or its buffer cannot be allocated.
+    pub fn try_new(id: NotificationId, title: &str) -> Result<Self, super::AdmissionError> {
+        if title.len() > super::MAX_NOTIFICATION_TEXT_BYTES {
+            return Err(super::AdmissionError::TooLarge);
+        }
+        let title = crate::memory::try_string(title)
+            .map_err(|_| super::AdmissionError::AllocationFailed)?;
+        Ok(Self::new(id, title))
+    }
+
     /// The body.
     #[must_use]
     pub fn body(mut self, body: impl Into<String>) -> Self {
@@ -197,6 +210,27 @@ pub struct Toast {
 }
 
 impl Toast {
+    /// Construct bounded toast text using fallible allocation.
+    ///
+    /// # Errors
+    /// Text exceeds the byte limit, or allocation failed; no toast is constructed.
+    pub fn try_new(text: &str) -> Result<Self, super::AdmissionError> {
+        if text.len() > super::MAX_TOAST_TEXT_BYTES {
+            return Err(super::AdmissionError::TooLarge);
+        }
+        let mut owned = String::new();
+        owned
+            .try_reserve_exact(text.len())
+            .map_err(|_| super::AdmissionError::AllocationFailed)?;
+        owned.push_str(text);
+        Ok(Self {
+            text: owned,
+            level: Level::Info,
+            duration: Duration::ZERO,
+            icon: None,
+        })
+    }
+
     /// A basic toast.
     #[must_use]
     pub fn new(text: impl Into<String>) -> Self {

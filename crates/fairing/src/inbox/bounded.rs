@@ -83,6 +83,28 @@ impl<T> fmt::Display for TrySendError<T> {
 }
 impl<T> std::error::Error for TrySendError<T> {}
 
+/// Slot admission or fallible payload construction failed. No error wrapper allocation.
+pub enum TryBuildSendError<E> {
+    /// No slot is available, or the receiver is closed. The factory was not called.
+    Queue(QueueErrorKind),
+    /// The payload factory returned its own error; the slot was returned.
+    Build(E),
+}
+impl<E> fmt::Debug for TryBuildSendError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Queue(kind) => fmt::Debug::fmt(kind, f),
+            Self::Build(_) => f.write_str("payload construction failed"),
+        }
+    }
+}
+impl<E> fmt::Display for TryBuildSendError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
+    }
+}
+impl<E> std::error::Error for TryBuildSendError<E> {}
+
 /// Individually sampled counters; concurrent changes can occur between fields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QueueStats {
@@ -259,6 +281,23 @@ impl<T> BoundedSender<T> {
             _permit: permit,
         })
         .map_err(|error| error.kind())
+    }
+
+    /// Reserve capacity before a fallible factory. Factory failure returns its slot.
+    ///
+    /// # Errors
+    /// Queue admission failure or the factory's error; no message is enqueued on either.
+    pub fn try_send_fallible_with<E>(
+        &self,
+        make: impl FnOnce() -> Result<T, E>,
+    ) -> Result<(), TryBuildSendError<E>> {
+        let permit = self.reserve().map_err(TryBuildSendError::Queue)?;
+        let message = make().map_err(TryBuildSendError::Build)?;
+        self.publish(Envelope {
+            message,
+            _permit: permit,
+        })
+        .map_err(|error| TryBuildSendError::Queue(error.kind()))
     }
 
     /// Sample capacity/usage/overload counters without touching message contents.

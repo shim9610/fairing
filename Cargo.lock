@@ -659,7 +659,6 @@ dependencies = [
  "chrono",
  "eframe",
  "egui",
- "fairing-fixed-heap",
  "fairing-widgets",
  "image",
  "log",
@@ -671,6 +670,7 @@ dependencies = [
 name = "fairing-fixed-heap"
 version = "0.1.0"
 dependencies = [
+ "fairing",
  "spinning_top",
  "talc",
 ]

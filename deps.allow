@@ -204,6 +204,6 @@ unarray                          =0.1.4           MIT OR Apache-2.0             
 valuable                         =0.1.1           MIT                                                     verification only: loom (shim9610, 2026-11-01)
 
 # Optional process-wide fixed Rust heap; direct request from the owner.
-allocator-api2                   =0.4.0            MIT OR Apache-2.0                                       optional fixed-heap allocator API bridge (shim9610, 2026-11-01)
-spinning_top                     =0.3.1            MIT OR Apache-2.0                                       optional fixed-heap allocator synchronization (shim9610, 2026-11-01)
+allocator-api2                   =0.4.0            MIT OR Apache-2.0                                       isolated allocator diagnostic allocator API bridge (shim9610, 2026-11-01)
+spinning_top                     =0.3.1            MIT OR Apache-2.0                                       isolated allocator diagnostic allocator synchronization (shim9610, 2026-11-01)
 talc                             =5.1.1            MIT                                                     optional fixed-arena allocator; no System fallback (shim9610, 2026-11-01)

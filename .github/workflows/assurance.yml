@@ -179,7 +179,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Verify bounded admission and fixed Rust heap exhaustion
+      - name: Verify recoverable display pressure and isolated allocator diagnostics
         run: python3 verification/memory.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()

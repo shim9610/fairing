@@ -5,7 +5,8 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
-description = "Opt-in fixed-arena global Rust allocator for fairing device applications"
+publish = false
+description = "Diagnostic fixed-arena allocator; infallible OOM aborts, not a production recovery policy"
 readme = "README.md"
 
 [features]
@@ -30,3 +31,10 @@ unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
 indexing_slicing = "warn"
+
+[dev-dependencies]
+fairing = { path = "../fairing", version = "0.1.0", default-features = false }
+
+[[example]]
+name = "allocation_pressure"
+required-features = ["global"]

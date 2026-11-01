@@ -195,7 +195,7 @@ remove one. See [03 §4.4a](03-chrome.md#44a-removing-reordering-adding).
 |---|---|---|---|---|
 | `heads_up` | `bool` | `true` | Show a new notification briefly as a banner | None |
 | `max_visible` | `u8` | `2` | Toasts on screen at once | `0` is an error |
-| `max_items` | `u16` | `100` | Notification centre capacity; the oldest non-persistent ones drop first | None |
+| `max_items` | `u16` | `100` | Hard retention cap including persistent entries; dismissible items may be replaced, otherwise new overflow is refused; zero selects 100 | None |
 | `toast_ms` | `u64` | `3000` | Default toast duration | None |
 | `dismiss_button` | `bool` | `true` | Draw the `×` on a shade notification row. Turn it off and the only ways to clear are **a left swipe and "Clear all"** | None |
 

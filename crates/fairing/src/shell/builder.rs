@@ -61,6 +61,7 @@ pub struct ShellBuilder {
     config: ShellConfig,
     command_capacity: usize,
     commands_per_update: usize,
+    toast_capacity: usize,
     services: Option<Services>,
     theme: Option<Theme>,
     palettes: Option<(Palette, Palette)>,
@@ -227,6 +228,7 @@ impl ShellBuilder {
             config,
             command_capacity: 1024,
             commands_per_update: 256,
+            toast_capacity: crate::notify::DEFAULT_MAX_PENDING_TOASTS,
             services: None,
             theme: None,
             palettes: None,
@@ -273,6 +275,13 @@ impl ShellBuilder {
     #[must_use]
     pub fn max_commands_per_update(mut self, count: usize) -> Self {
         self.commands_per_update = count;
+        self
+    }
+
+    /// Maximum waiting toasts (default 64); zero disables new toasts.
+    #[must_use]
+    pub fn toast_queue_capacity(mut self, capacity: usize) -> Self {
+        self.toast_capacity = capacity;
         self
     }
 
@@ -919,6 +928,7 @@ impl ShellBuilder {
             config,
             command_capacity,
             commands_per_update,
+            toast_capacity,
             services,
             theme,
             palettes,
@@ -958,6 +968,11 @@ impl ShellBuilder {
         if commands_per_update == 0 || commands_per_update > crate::inbox::MAX_BOUNDED_CAPACITY {
             return Err(crate::Error::Config(
                 "max_commands_per_update must be 1..=65536".into(),
+            ));
+        }
+        if toast_capacity > crate::inbox::MAX_BOUNDED_CAPACITY {
+            return Err(crate::Error::Config(
+                "toast_queue_capacity must be 0..=65536".into(),
             ));
         }
         if status_bar_painter.is_some() && status_bar_layout.is_some() {
@@ -1069,7 +1084,8 @@ impl ShellBuilder {
         let mut toasts = ToastQueue::new(
             usize::from(config.notify.max_visible),
             Duration::from_millis(config.notify.toast_ms),
-        );
+        )
+        .with_pending_capacity(toast_capacity);
         let mut heads_up = HeadsUp::new(theme.metrics.heads_up_height);
         notify_hooks.install(&mut toasts, &mut heads_up);
         let theme_fade = ThemeFade::idle(theme.palette);

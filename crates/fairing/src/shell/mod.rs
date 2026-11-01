@@ -958,15 +958,35 @@ impl Shell {
     }
 
     /// Notify (directly, from the UI thread). From another thread, [`ShellHandle::notify`].
-    pub fn notify(&mut self, mut notification: Notification) {
+    pub fn notify(&mut self, notification: Notification) {
+        let _ = self.try_notify(notification);
+    }
+
+    /// Admit notification storage fallibly; optional banner allocation may be omitted.
+    ///
+    /// # Errors
+    /// Hard retention cap, oversized payload or failed storage growth. Ownership is returned.
+    #[allow(
+        clippy::result_large_err,
+        reason = "return rejected ownership inline; boxing an allocation failure would allocate again"
+    )]
+    pub fn try_notify(
+        &mut self,
+        mut notification: Notification,
+    ) -> std::result::Result<crate::notify::CenterChange, crate::notify::Rejected<Notification>>
+    {
         if notification.at == crate::time::WallTime::default() {
             notification.at = self.services.clock.now();
         }
-        let change = self.notifications.push(notification.clone());
+        let id = notification.id;
+        let change = self.notifications.try_push(notification)?;
+        let Some(notification) = self.notifications.get(id) else {
+            return Ok(change);
+        };
         if change != crate::notify::CenterChange::Added {
             // No new banner for an update, but one already up for it shows what it now says.
-            self.heads_up.update(&notification);
-            return;
+            self.heads_up.update(notification);
+            return Ok(change);
         }
         // The cue is the audio backend's to sound; `ui.silent` keeps it quiet and leaves the banner.
         let silent = matches!(
@@ -978,13 +998,25 @@ impl Shell {
         }
         if self.config.notify.heads_up && self.overlay.is_closed() {
             self.heads_up
-                .show(&notification, self.mono, &self.theme.motion);
+                .show(notification, self.mono, &self.theme.motion);
         }
+        Ok(change)
     }
 
     /// A toast (directly, from the UI thread).
     pub fn toast(&mut self, toast: impl Into<Toast>) {
         self.toasts.push(toast.into());
+    }
+
+    /// Fallibly construct/admit a bounded text toast; refuse it without stopping other work.
+    ///
+    /// # Errors
+    /// Full display queue, oversized text or failed fallible allocation.
+    pub fn try_toast(
+        &mut self,
+        text: &str,
+    ) -> std::result::Result<(), crate::notify::AdmissionError> {
+        self.toasts.try_push_text(text)
     }
 
     /// Dismiss a notification. `false` for a persistent one.
@@ -3488,13 +3520,13 @@ impl Shell {
                 }
                 Command::SetSetting { key, value } => self.set_setting(key, value),
                 Command::RequestUnlock { gate, then } => self.request_unlock(gate, then),
-                Command::Notify(notification) => self.notify(*notification),
-                Command::Toast(toast) => self.toasts.push(*toast),
+                Command::Notify(notification) => self.notify(notification),
+                Command::Toast(toast) => self.toasts.push(toast),
                 Command::DismissNotification(id) => {
                     self.dismiss_notification(id);
                 }
                 Command::ToggleOverlay => self.toggle_overlay(app),
-                Command::SetMotion(tokens) => self.set_motion(*tokens),
+                Command::SetMotion(tokens) => self.set_motion(tokens),
             }
         }
         // Include producers constructing reserved payloads. Successful sends wake the

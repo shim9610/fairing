@@ -52,15 +52,16 @@ line disable the audit itself.
 ## Fixed-heap allocator boundary
 
 Both UI crates and other normal workspace members retain `forbid(unsafe_code)`.
-Only `crates/fairing-fixed-heap` has a path-specific integrity exception: it uses
+Only the unpublished diagnostic `crates/fairing-fixed-heap` (not a product dependency)
+has a path-specific integrity exception: it uses
 `deny(unsafe_code)` with one scoped expectation for the static arena ownership
 transfer to Talc. No local allocator algorithm or unsafe trait implementation is
 introduced. The gate checks that boundary and has negative controls; CODEOWNERS
 protects the whole crate. Changes require the same owner review as dependencies.
 See [memory limits](docs/memory-limits.md) for OOM, scope and spinlock limitations.
 
-`python3 verification/memory.py` checks normal/16 MiB/64 MiB modes and expected
-infallible OOM termination. The headless `memory_limits` example is a diagnostic,
+`python3 verification/memory.py` checks normal/16 MiB/64 MiB modes, real fallible
+recovery and the diagnostic unsupported infallible OOM abort. The headless `memory_limits` example is a diagnostic,
 so it is checked there rather than in the graphical example tours.
 
 ## The approval procedure for adding a dependency

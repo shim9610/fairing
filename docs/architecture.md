@@ -40,7 +40,7 @@ implementation and, with the `mock` feature, a `Mock` simulator for development
 |---|---|---|
 | `fairing` | yes | The shell. It re-exports `fairing-widgets` and `egui`, so one dependency is enough |
 | `fairing-widgets` | yes | Units, the theme, motion, icons, fonts and the touch widgets. A control can be worked on here without the shell |
-| `fairing-fixed-heap` | optional | Process-wide static Rust arena; one scoped unsafe ownership transfer to the upstream allocator |
+| `fairing-fixed-heap` | no | Isolated allocation-failure diagnostic; no product dependency; one scoped unsafe arena claim |
 | `xtask` | no | The audit gate, the icon compiler, the license report and the other maintenance commands |
 
 `fairing` depends on `egui`, `serde`, `toml` and `log`, plus `eframe` behind `runner` and `chrono`
@@ -125,7 +125,7 @@ asks for while it draws, such as opening another screen, is handled later in the
 - **The UI is one thread.** `Shell` does not need to be `Send`.
 - **UI shared state uses channels and atomics.** The audit bans application-level
   Mutex/RwLock/Condvar and blocking calls in UI sources. Standard channels may
-  synchronize internally; the optional fixed allocator uses a spinlock. There is
+  synchronize internally; the isolated diagnostic allocator uses a spinlock. There is
   no wait-free or hard real-time guarantee.
 - **Command admission is bounded.** All handles share 1,024 slots by default and
   an update executes at most 256 commands. Builder options adjust both. Full
@@ -169,8 +169,8 @@ screen with `keep_awake` holds the display's idle timer off. How to confirm 0 fp
 
 - **UI product code rejects explicit panic paths.** `unwrap`, `expect`, `panic!`
   and unchecked indexing are denied by its lints. Dependencies, integrator
-  callbacks and infallible allocation can still terminate a process; fixed-heap
-  exhaustion is not universally recoverable.
+  callbacks and infallible allocation can still terminate a process; whole-renderer exhaustion is not universally recoverable. The diagnostic allocator
+  is not selected by either product library.
 - A backend error comes back as a value, and the shell shows it as a toast or a notification.
 - A configuration that cannot be right fails at start with `Error::Config`. Access control is
   never silently opened.

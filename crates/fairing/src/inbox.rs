@@ -24,8 +24,8 @@ use std::sync::mpsc::TryRecvError;
 #[path = "inbox/bounded.rs"]
 mod bounded;
 pub use bounded::{
-    BoundedInbox, BoundedSender, QueueCapacityError, QueueErrorKind, QueueStats, TrySendError,
-    MAX_BOUNDED_CAPACITY,
+    BoundedInbox, BoundedSender, QueueCapacityError, QueueErrorKind, QueueStats, TryBuildSendError,
+    TrySendError, MAX_BOUNDED_CAPACITY,
 };
 
 impl<T> Inbox<T> {

@@ -30,7 +30,6 @@
 //! | `mock` | on | Mock backends for Wi-Fi, Bluetooth, display and power, for development |
 //! | `runner` | off | An eframe window bootstrap, `runner::run_shell` |
 //! | `runner-x11` | off | The same, with X11 as well as Wayland on Linux |
-//! | `fixed-heap` | off | Process-wide fixed Rust arena; infallible OOM can abort; native/GPU allocations excluded |
 //! | `chrono` | off | A clock that follows the system time zone and daylight saving |
 //!
 //! # Example
@@ -102,10 +101,6 @@ pub mod shell;
 pub mod testing;
 pub mod time;
 pub mod workspace;
-
-/// Opt-in process-wide fixed Rust heap; size is chosen at build time.
-#[cfg(feature = "fixed-heap")]
-pub use fairing_fixed_heap as fixed_heap;
 
 #[cfg(feature = "osk")]
 pub mod osk;

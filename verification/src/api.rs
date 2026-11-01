@@ -284,10 +284,14 @@ pub fn notification_contract(bytes: &[u8]) {
                     .source(format!("source-{}", byte / 16 % 3));
                 n.persistent = byte & 8 != 0;
                 n.gate = Some(Gate::from("private"));
+                let full_protected =
+                    center.len() == cap && center.iter().all(|item| item.persistent);
                 assert_eq!(
                     center.push(n),
                     if old {
                         CenterChange::Updated
+                    } else if full_protected {
+                        CenterChange::Rejected
                     } else {
                         CenterChange::Added
                     }
@@ -305,10 +309,9 @@ pub fn notification_contract(bytes: &[u8]) {
         let ids: BTreeSet<_> = center.iter().map(|n| n.id).collect();
         assert_eq!(ids.len(), center.len());
         assert!(center.unread() <= center.len());
-        let persistent = center.iter().filter(|n| n.persistent).count();
         assert!(
-            center.len() <= cap.max(persistent),
-            "an update left dismissible notifications above the cap"
+            center.len() <= cap,
+            "notification retention exceeded hard cap"
         );
         let mut groups = BTreeSet::new();
         for (source, items) in center.groups() {
@@ -324,6 +327,46 @@ pub fn notification_contract(bytes: &[u8]) {
             }
         );
     }
+}
+
+/// Optional display queues are bounded and refusal preserves previously accepted work.
+pub fn display_contract(bytes: &[u8]) {
+    use fairing::notify::{AdmissionError, Toast, ToastQueue};
+    let capacity = usize::from(bytes.first().copied().unwrap_or(0) % 4);
+    let mut queue = ToastQueue::new(1, Duration::from_millis(100)).with_pending_capacity(capacity);
+    let theme = fairing::Theme::default();
+    let start = Instant::now();
+    for (step, &byte) in bytes.iter().take(64).enumerate() {
+        match byte % 4 {
+            0 | 1 => {
+                let pending = queue.pending();
+                let visible = queue.visible().len();
+                let text = ["a", "b", "c", "d"][usize::from(byte / 4 % 4)];
+                if let Err(error) = queue.try_push_text(text) {
+                    assert_eq!(error, AdmissionError::Full);
+                    assert_eq!(pending, capacity);
+                    assert_eq!(queue.pending(), pending);
+                    assert_eq!(queue.visible().len(), visible);
+                }
+            }
+            2 => {
+                let _ = queue.tick(
+                    0.1,
+                    start + Duration::from_millis(step as u64 * 100),
+                    &theme.motion,
+                    theme.components.toast,
+                );
+            }
+            _ => queue.dismiss(0, &theme.motion),
+        }
+        assert!(
+            queue.pending() <= capacity,
+            "toast retention exceeded hard cap"
+        );
+        assert!(queue.visible().len() <= 1);
+    }
+    let oversized = "x".repeat(fairing::notify::MAX_TOAST_TEXT_BYTES + 1);
+    assert_eq!(Toast::try_new(&oversized), Err(AdmissionError::TooLarge));
 }
 
 /// Date conversion is checked by an inverse Gregorian calculation in wide arithmetic.
@@ -803,7 +846,7 @@ pub fn expiry_contract(seconds: u8, boundary: u8, input: bool, kind: u8) {
 /// Bounded admission and inline pool handles compared with independent FIFO/live-key models.
 pub fn memory_contract(bytes: &[u8]) {
     use fairing::{
-        inbox::{Inbox, QueueErrorKind},
+        inbox::{Inbox, QueueErrorKind, TryBuildSendError},
         memory::{FixedPool, PoolKey},
     };
     use std::collections::VecDeque;
@@ -817,7 +860,7 @@ pub fn memory_contract(bytes: &[u8]) {
     let mut stale = Vec::new();
     let mut rejected = 0;
     for &byte in bytes.iter().take(64) {
-        match byte % 7 {
+        match byte % 8 {
             0 | 1 => {
                 let ran = Cell::new(false);
                 let result = tx.clone().try_send_with(|| {
@@ -859,10 +902,30 @@ pub fn memory_contract(bytes: &[u8]) {
                 stale.extend(live.drain(..).map(|(key, _)| key));
                 pool.clear();
             }
-            _ => {
+            6 => {
                 if let Some((key, value)) = live.first_mut() {
                     *pool.get_mut(*key).unwrap() = byte;
                     *value = byte;
+                }
+            }
+            _ => {
+                let ran = Cell::new(false);
+                let result = tx.try_send_fallible_with(|| {
+                    ran.set(true);
+                    Err::<u8, _>(byte)
+                });
+                if queued.len() == capacity {
+                    rejected += 1;
+                    assert!(matches!(
+                        result,
+                        Err(TryBuildSendError::Queue(QueueErrorKind::Full))
+                    ));
+                    assert!(!ran.get());
+                } else {
+                    assert!(
+                        matches!(result, Err(TryBuildSendError::Build(value)) if value == byte)
+                    );
+                    assert!(ran.get());
                 }
             }
         }
@@ -899,6 +962,7 @@ mod generated {
         #[test] fn public_memory(bytes in prop::collection::vec(any::<u8>(), 0..65)) { super::memory_contract(&bytes); }
         #[test] fn public_access(bytes in prop::collection::vec(any::<u8>(), 1..65)) { super::access_contract(&bytes); }
         #[test] fn public_authentication(bytes in prop::collection::vec(any::<u8>(), 0..65)) { super::authentication_contract(&bytes); }
+        #[test] fn public_display(bytes in prop::collection::vec(any::<u8>(), 0..65)) { super::display_contract(&bytes); }
         #[test] fn public_notifications(bytes in prop::collection::vec(any::<u8>(), 1..65)) { super::notification_contract(&bytes); }
         #[test] fn public_calendar(utc in any::<u64>(), offset in any::<i32>()) { super::time_contract(utc, offset); }
         #[test] fn public_services(a in any::<Option<u16>>(), b in any::<Option<u16>>()) { super::services_contract([a,b]); }
@@ -928,6 +992,16 @@ mod generated {
 
 #[cfg(test)]
 mod regressions {
+    #[test]
+    fn display_refusal_and_capacity_reuse() {
+        for bytes in [
+            vec![0; 64],
+            vec![1, 0, 4, 8, 12, 2, 3, 2, 3, 2],
+            (0..64).collect(),
+        ] {
+            super::display_contract(&bytes);
+        }
+    }
     #[test]
     fn native_receiver_close_races_release_all_reservations() {
         use std::sync::{Arc, Barrier};
@@ -965,7 +1039,7 @@ mod regressions {
         }
     }
     #[test]
-    fn persistent_to_dismissible_updates_enforce_the_notification_cap() {
+    fn persistent_inputs_never_bypass_notification_cap() {
         super::notification_contract(&[0, 8, 12, 0]);
     }
     #[test]

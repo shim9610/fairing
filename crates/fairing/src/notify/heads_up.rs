@@ -64,7 +64,7 @@ pub(crate) enum HeadsUpAction {
 pub struct HeadsUp {
     current: Option<Banner>,
     height: f32,
-    /// The icon polyline cache (no allocation on the render path).
+    /// Cached icon polylines; translated draw paths still require owned point storage.
     icons: IconCache,
     /// The integrator's banner, in place of the built-in one (rung 5).
     painter: Option<HeadsUpPainter>,
@@ -110,19 +110,39 @@ struct Banner {
 
 impl Banner {
     /// Overwrite the content (reusing the string buffers; the galleys are invalidated).
-    fn fill(&mut self, notification: &Notification) {
+    fn fill(&mut self, notification: &Notification) -> Option<()> {
+        // Stage every allocating field before publishing new content; failure hides the banner.
+        let title = crate::memory::try_string(&notification.title).ok()?;
+        let body = crate::memory::try_string(&notification.body).ok()?;
+        let icon = match notification.icon.as_ref() {
+            Some(icon) => icon.try_clone().ok()?,
+            None => notification.level.icon(),
+        };
+        let gate = notification
+            .gate
+            .as_ref()
+            .map(|gate| {
+                let name = match &gate.0 {
+                    std::borrow::Cow::Borrowed(name) => std::borrow::Cow::Borrowed(*name),
+                    std::borrow::Cow::Owned(name) => {
+                        std::borrow::Cow::Owned(crate::memory::try_string(name)?)
+                    }
+                };
+                Ok::<_, std::collections::TryReserveError>(crate::access::Gate(name))
+            })
+            .transpose()
+            .ok()?;
         self.id = notification.id;
-        self.title.clear();
-        self.title.push_str(&notification.title);
-        self.body.clear();
-        self.body.push_str(&notification.body);
-        self.icon = notification.shown_icon();
+        self.title = title;
+        self.body = body;
+        self.icon = icon;
         self.level = notification.level;
         self.progress = notification.progress;
-        self.gate.clone_from(&notification.gate);
+        self.gate = gate;
         self.rect = Rect::NOTHING;
         self.pressed = false;
         self.needed = 0.0;
+        Some(())
     }
 }
 
@@ -155,7 +175,11 @@ impl HeadsUp {
         let until = now + tokens.heads_up_in.duration + tokens.heads_up_hold;
         // A banner already up is reused — the string and galley buffers stay, so there are fewer allocations.
         if let Some(banner) = &mut self.current {
-            banner.fill(notification);
+            if banner.fill(notification).is_none() {
+                self.current = None;
+                self.icons.clear();
+                return;
+            }
             banner.phase = HeadsUpPhase::Entering;
             banner.until = until;
             banner.y.set_range(-h, 0.0);
@@ -168,12 +192,12 @@ impl HeadsUp {
         y.to(0.0, tokens.heads_up_in);
         self.current = Some(Banner {
             id: notification.id,
-            title: notification.title.clone(),
-            body: notification.body.clone(),
-            icon: notification.shown_icon(),
+            title: String::new(),
+            body: String::new(),
+            icon: notification.level.icon(),
             level: notification.level,
             progress: notification.progress,
-            gate: notification.gate.clone(),
+            gate: None,
             y,
             phase: HeadsUpPhase::Entering,
             until,
@@ -182,6 +206,14 @@ impl HeadsUp {
             wrap: 0.0,
             needed: 0.0,
         });
+        if self
+            .current
+            .as_mut()
+            .and_then(|banner| banner.fill(notification))
+            .is_none()
+        {
+            self.current = None;
+        }
     }
 
     /// The notification on screen was updated in place: the banner takes the new content and
@@ -191,7 +223,10 @@ impl HeadsUp {
             return;
         };
         let (rect, pressed, needed) = (banner.rect, banner.pressed, banner.needed);
-        banner.fill(notification);
+        if banner.fill(notification).is_none() {
+            self.current = None;
+            return;
+        }
         banner.rect = rect;
         banner.pressed = pressed;
         banner.needed = needed;
@@ -549,7 +584,7 @@ fn paint_with(
     );
 }
 
-/// One banner: the background, icon, title, body and progress. Galley- and polyline-cached, so no allocation.
+/// One banner. Failed owned-text copies omit this optional display.
 /// With `hidden` (a gated notification the session may not read) that line is the title, and
 /// the body, the progress and the notification's own icon and accent are left out.
 fn paint_banner(
@@ -560,6 +595,17 @@ fn paint_banner(
     theme: &Theme,
     icons: &mut IconCache,
 ) {
+    let Ok(title_text) = crate::memory::try_string(hidden.unwrap_or(&banner.title)) else {
+        return;
+    };
+    let body_text = if hidden.is_none() && !banner.body.is_empty() {
+        let Ok(text) = crate::memory::try_string(&banner.body) else {
+            return;
+        };
+        Some(text)
+    } else {
+        None
+    };
     let painter = ui.painter();
     let metrics = theme.metrics;
     painter.rect_filled(
@@ -590,7 +636,7 @@ fn paint_banner(
     banner.wrap = wrap;
     // The galleys are not held across frames — a growing atlas throws the UVs out.
     let title = painter.layout(
-        hidden.map_or_else(|| banner.title.clone(), str::to_owned),
+        title_text,
         egui::TextStyle::Button.resolve(ui.style()),
         Color32::PLACEHOLDER,
         wrap,
@@ -600,9 +646,9 @@ fn paint_banner(
     } else {
         banner.progress
     };
-    let body = (hidden.is_none() && !banner.body.is_empty()).then(|| {
+    let body = body_text.map(|text| {
         painter.layout(
-            banner.body.clone(),
+            text,
             egui::TextStyle::Body.resolve(ui.style()),
             Color32::PLACEHOLDER,
             wrap,

@@ -15,9 +15,9 @@ source-built compiler and matching LLVM coverage workflow.
 | --- | --- | --- |
 | Kani | 0.68.0; nightly 2026-08-21 | Eight harnesses: ACK/access decisions, nonwrapping pool generations and bounded pool sequences |
 | Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Postconditions on six real ACK/access/generation functions |
-| Miri | nightly 2026-10-30 | Eighteen fixed tests using actual Access/PinTable/notifications/services/time/units/parser/pool/Inbox |
+| Miri | nightly 2026-10-30 | Nineteen fixed tests using actual Access/PinTable/notifications/services/time/units/parser/pool/Inbox |
 | Loom | 0.7.2 | Four scenarios: Inbox ordering/consumer and bounded admission/close-after-drain |
-| proptest | 1.12.0 | Twelve properties × 512 cases plus four shell properties × 64; seed 20261101 |
+| proptest | 1.12.0 | Thirteen properties × 512 cases plus four shell properties × 64; seed 20261101 |
 | cargo-fuzz | 0.13.2; libfuzzer-sys 0.4.13 | ASan: 20,000 ACK, 10,000 parser, 10,000 API and 2,000 shell inputs |
 | cargo-llvm-cov | 0.9.1 | Product and API-contract line/function/region coverage; latter checks eleven production modules |
 | cargo-cyclonedx | 0.5.9 | Library package dependency BOMs for default/all features on Linux x86_64 and aarch64 |
@@ -82,7 +82,7 @@ to delivery, per-sender order and nonblocking drains in these scenarios.
 Miri keeps its normal isolation, validity and race checks enabled. It interprets
 fixed regression inputs and real channel threads. Random-input generation runs
 natively under proptest and libFuzzer; interpreting the generators themselves
-was unnecessarily expensive. Miri's eighteen cases are separate from the full
+was unnecessarily expensive. Miri's nineteen cases are separate from the full
 product test suite and the generated-input campaigns.
 
 ## SBOM scope and validation
@@ -106,9 +106,10 @@ edge kinds as component properties, pass schema validation again, and have no
 unresolved dependency references. A missing package in the original export
 fails generation. The approved product lockfile must remain unchanged.
 
-There are twelve product BOMs: three libraries × two targets × two feature
-profiles. The default standalone allocator graph is empty by design; all-features
-selects its allocator dependencies. Four additional xtask BOMs describe the build utility. These are
+There are eight product BOMs: two libraries × two targets × two feature profiles.
+Four diagnostic allocator and four xtask BOMs describe the unpublished tools.
+The default standalone allocator graph is empty; its global feature is lab-only.
+The BOM gate rejects allocator diagnostic dependencies in either product graph. These are
 resolved library/package dependency inventories. A final device application
 must generate its own BOM with its own lockfile, features, native dependencies
 and firmware. The all-features fairing graph legitimately includes `image`
@@ -116,20 +117,17 @@ through eframe/arboard; the default library graph excludes it.
 
 ## Local results — 2026-11-01
 
-The expanded public API suite passes 34 native tests, eighteen Miri tests and
-four Loom scenarios. Kani passes eight harnesses and Verus verifies six production
-functions. Both reject six deliberate decision defects, including generation
-wrap. Public API/model controls reject broken gate delegation, notification cap
-handling, bounded factory admission and message delivery. `verification/memory.py` passes the normal,
-16 MiB and 64 MiB modes, including zero-allocation queue/pool reuse and expected
-infallible OOM termination. The [memory guide](memory-limits.md) records allocator
-scope, spinlock and exhaustion limits. Full audit, fuzz and coverage results are
-retained per commit in CI artifacts. The strict local audit passes all 14 stages
-(1,827 tests passed, 16 ignored); three additional memory-guide examples pass.
-Rust 1.95 checks all features/targets, and source-built Ferrocene 1.97.1 checks
-the fixed-heap example profile. The API-only coverage executes 9,434 of 39,147
-product lines (24.10%). Earlier full Ferrocene coverage figures describe the
-earlier baseline rather than this allocator change.
+The memory-pressure correction adds hard persistent-notification retention,
+bounded pending toasts and fallible factories/display admission. The production
+global allocator feature is withdrawn; the unpublished lab demonstrates actual
+fallible recovery and the remaining unsupported infallible abort separately.
+Local correction validation passes all 14 strict audit stages (1,835 tests passed,
+16 ignored), 36 native API tests, nineteen Miri tests, four Loom scenarios and
+all four mutation controls. Normal/16 MiB/64 MiB trials pass real exhausted-arena
+refusal, preallocated work and deferred display recovery. Sixteen BOMs pass
+schema/graph validation; neither product graph includes the diagnostic allocator.
+Fresh hosted artifacts provide per-commit fuzz/coverage totals rather than
+reusing the earlier allocator-prototype coverage figures.
 The [contract map](api-contracts.md) records the exact guarantees and assumptions.
 
 ## Run locally

@@ -20,13 +20,13 @@ test is insufficient: production mutations must also fail the relevant checks.
 | Inbox has only nonblocking receive APIs and preserves messages and per-sender order | `Inbox::pair/try_recv/drain` ([screen guide](guide/02-screens.md)) | Two Loom scenarios: early/final drain, and a concurrent consumer with two senders/three messages; native and Miri run the same source with real channels; a drop-message mutation must fail |
 | Bounded admission shares capacity across clones, preserves rejected ownership, skips rejected factories and returns slots; update budget preserves accepted order | `Inbox::bounded`, `ShellHandle::try_send*`, builder limits ([memory limits](memory-limits.md)) | `public_memory` FIFO oracle; native/Miri close races and factory unwinding; Loom atomic-admission scenarios; shell cap-2/budget-1 integration regression |
 | Inline pool handles remain pool-specific and removed generations never revive | `FixedPool`, `next_generation` ([memory limits](memory-limits.md)) | `public_memory` live/stale/foreign-key model, Miri and API fuzzer; Kani four-operation two-slot sequences and all u64 generations; Verus exact generation body; both reject generation wrap |
-| Opt-in global allocator uses one static arena without System growth | `fairing-fixed-heap`, `fixed-heap` ([memory limits](memory-limits.md)) | Normal/16 MiB/64 MiB real-API trials, zero-allocation steady-state queue/pool reuse, cumulative heap churn, egui frames, oversized fallible rejection and expected infallible OOM termination |
-| Notification ids deduplicate; source groups stay contiguous; persistent items resist dismissal; caps drop dismissible items, including updates; gated content hides | `NotificationCenter`, `shows_content` ([notification source](../crates/fairing/src/notify/center.rs)) | `public_notifications` checks invariants after up to 64 operations; fixed persistence-update regression; Miri, libFuzzer and a cap-removal mutation |
+| Display retention refuses or defers optional work under pressure; diagnostic allocator stays outside product graphs | `try_toast/try_notify`, ToastQueue, NotificationCenter ([memory limits](memory-limits.md)) | `public_display` and hard-cap notification properties, native/Miri fixed cases, real 16/64 MiB exhausted-arena factory/text failures, continued preallocated queue work and display resumption; BOM gate rejects diagnostic allocator edges in either product |
+| Notification ids deduplicate; source groups stay contiguous; persistent items resist dismissal; hard caps include persistent entries, refusing new overflow; gated content hides | `NotificationCenter`, `shows_content` ([notification source](../crates/fairing/src/notify/center.rs)) | `public_notifications` checks invariants after up to 64 operations; fixed persistent-flood/refusal regressions; Miri, libFuzzer and a cap-removal mutation |
 | Every service polls once with the supplied time and the minimum reported deadline wins | `Services::poll/custom` ([services guide §1](guide/06-services.md)) | `public_services`, two independently recorded backend types; Miri fixed deadline/missing-deadline cases |
 | UTC conversion saturates, calendar fields are valid, formatting clears a reused buffer and changing hour convention preserves shape | `WallTime`, `ClockFormat` ([services guide: clocks](guide/06-services.md)) | `public_calendar` with arbitrary u64/i32 inputs, inverse Gregorian conversion and all formats; Miri boundary values and API fuzzer |
 | Pixel conversion clamps; changing a container changes fractional references without changing physical, finger or text terms | `round_u8/round_i8`, `Dim`, `Scale::in_container` ([unit source](../crates/fairing-widgets/src/unit.rs)) | `public_units` uses arbitrary f32 bit patterns, NaN/infinities and arbitrary u16 dimensions; Miri/fuzzer; compile-fail anchor contracts remain in product documentation tests |
 | Invalid ratios/grid dimensions fail validation; malformed configuration and credential debug/error output do not reveal entered secrets | `ShellConfig::from_toml`, `Access::from_config`, `Credential::Debug` ([configuration guide](guide/07-config-reference.md)) | Generated `public_configuration`, `credential_debug_is_independent_of_contents`, parser/redaction properties, Miri fixed cases and parser/API fuzz targets |
-| Tool dependencies stay outside product packages; dependency inventories match the locked target/feature graph | Published manifests, primary lockfile and package BOMs | Input approvals/audit/deny; twelve product CycloneDX BOMs, official schema validation and reconciliation with Cargo normal/build edges |
+| Tool dependencies stay outside product packages; dependency inventories match the locked target/feature graph | Published manifests, primary lockfile and package BOMs | Input approvals/audit/deny; eight product and eight diagnostic/utility CycloneDX BOMs, official schema validation and reconciliation with Cargo normal/build edges |
 
 Test names in this table are in
 [`verification/src/api.rs`](../verification/src/api.rs),
@@ -44,11 +44,11 @@ original ACK kernel.
   it does not prove concurrent identity creation. The access rules cover all u16 levels, all u32 counter values and every
   optional attempt limit. They are exhaustive decision proofs, not a proof of
   the complete egui application.
-- Native tests contain twelve properties with 512 cases each and four shell
+- Native tests contain thirteen properties with 512 cases each and four shell
   properties with 64 cases each, using seed 20261101. Operation sequences cap
   at 32 shell/backend operations or 64 non-UI operations. Fixed cases ensure
   the important deadline/credential boundaries execute regardless of the seed.
-- Miri interprets eighteen fixed tests with normal isolation, validity and race
+- Miri interprets nineteen fixed tests with normal isolation, validity and race
   checks. It covers the actual Access, PinTable, notification, calendar, unit,
   service, fixed-pool and bounded/unbounded Inbox APIs. It does not interpret the complete shell rendering
   path; generated cases run natively.
@@ -108,9 +108,9 @@ This is distinct from the whole product unit/integration coverage in the
 Ferrocene workflow. Both raw and per-file exports are retained, with no
 arbitrary certification threshold. The latest API-suite totals are retained in the workflow coverage artifact;
 this targeted figure is separate from the full product test suite and is not
-claimed as whole-API coverage. The current local contract run executes 9,434 of
-39,147 product lines (24.10%); this excludes the separately exercised optional
-allocator.
+claimed as whole-API coverage. Fresh coverage artifacts record totals per commit; earlier percentages describe
+the previous allocator prototype. The isolated diagnostic allocator is outside
+product API coverage.
 
 ## Defects found while checking the contracts
 
@@ -121,9 +121,10 @@ history, including the restoration performed by `refused`.
 The notification cap was applied only to newly inserted ids. With a cap of
 one, insert two persistent ids and update one to be dismissible: the old
 implementation retained two items even though one could be dropped.
-proptest reduced this to three push/update operations. Updates now reapply
-the same oldest-non-persistent eviction rule. Both defects have product
-regressions and negative verification controls.
+proptest reduced this to three push/update operations. Updates initially reapplied the oldest-non-persistent eviction rule. The later
+memory-pressure correction makes the cap hard even for persistent entries,
+refusing protected overflow before insertion. Both rules have product regressions
+and the hard-cap bypass must fail its negative control.
 
 ## Run
 

@@ -130,11 +130,13 @@ MIT, see [`LICENSE`](LICENSE).
 `Inbox::bounded` supports worker channels, and `memory::FixedPool<T, N>` stores
 objects inline with stale/foreign handle rejection.
 
-The optional `fixed-heap` feature selects one reusable static global Rust arena.
-Set the build-time decimal byte budget with `FAIRING_HEAP_BYTES`; the 512 MiB
-default is for parallel development tests. There is no System fallback, but
-infallible allocation may abort on exhaustion. Stacks/native/GPU memory are
-outside this budget. Both UI crates forbid unsafe code; the separate allocator
-crate has one reviewed unsafe arena initialization. See the
-[memory guide](https://github.com/shim9610/fairing/blob/HEAD/docs/memory-limits.md)
-for errors, telemetry, sizing and synchronization limits.
+Display admission uses fallible buffer growth, hard notification retention including
+persistent items, and a bounded waiting toast queue (default 64). Use `try_toast`,
+`try_notify` and the models' `try_new` constructors for explicit errors. Full or
+failed optional display admission does not evict accepted commands.
+
+The production `fixed-heap` feature was withdrawn: egui and remaining infallible
+Rust paths can abort on OOM. The unpublished allocator is now a separate diagnostic
+with no dependency edge from either product crate. Whole-renderer continued
+operation under complete exhaustion remains unsupported. See the
+[memory guide](https://github.com/shim9610/fairing/blob/HEAD/docs/memory-limits.md).

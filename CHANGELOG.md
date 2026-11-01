@@ -6,6 +6,21 @@ All notable changes to the fairing crates are recorded here. The format follows
 
 ## Unreleased
 
+### Security
+
+- Withdraw the production fixed-heap feature: imposing a global hard limit cannot
+  make infallible egui/Rust OOM recoverable. Keep the unpublished allocator only as
+  an isolated failure-injection diagnostic, outside product dependency graphs.
+- Bound the waiting toast queue (default 64) and all retained notification counts,
+  including persistent items. Refuse new protected overflow without eviction.
+  Limit retained strings including spare capacity, glyphs and action/gate payloads.
+- Add fallible display construction/admission, inline command payloads and fallible
+  factories that return reservations on failure. Omit optional display copies on
+  failure, reclaim toast icon caches and retry visible storage after 100 ms.
+- Require actual exhausted-arena refusal, continued preallocated queue work and
+  display recovery after memory release; the lab abort control is not a production
+  recovery acceptance test. Whole-renderer no-abort behavior is still unsupported.
+
 ### Added
 
 - Public `Inbox::bounded`, `BoundedSender`/`BoundedInbox`, ownership-preserving
@@ -14,16 +29,20 @@ All notable changes to the fairing crates are recorded here. The format follows
   `ShellHandle::try_send`, `try_send_with` and `queue_stats`.
 - Inline `memory::FixedPool<T, N>` with pool-specific generational keys, no heap
   fallback, stale/foreign handle rejection and nonwrapping slot retirement.
-- Opt-in `fixed-heap` feature and `fairing-fixed-heap` crate: one reusable static
-  Rust global arena selected by `FAIRING_HEAP_BYTES`, no System fallback. This
-  adds pinned Talc/spinning_top/allocator-api2 and one reviewed unsafe arena claim
-  in a separate integrity exception; both UI crates still forbid unsafe code.
-  Infallible OOM can abort; stacks/native/GPU allocations are outside the budget.
+- Unpublished `fairing-fixed-heap` diagnostic with a reusable static Rust arena
+  selected by `FAIRING_HEAP_BYTES`; one scoped unsafe arena claim, isolated from
+  product libraries. Talc/spinning_top/allocator-api2 are diagnostic inputs.
 - Real normal/16 MiB/64 MiB allocation trials and expected OOM controls in CI;
   pool/queue API properties, Miri/ASan and Loom admission checks, Kani pool
   sequences and Kani/Verus generation contracts with wrap-defect controls.
 
 ### Changed
+
+- Command::Notify/Toast/SetMotion now carry values inline; remove Box::new at
+  explicit command construction sites. Rejected command ownership stays inline
+  too, avoiding an allocation while reporting an allocation failure.
+- CenterChange gains Rejected. notify.max_items = 0 selects the bounded default
+  of 100; it no longer enables unlimited persistent retention.
 
 - Shell commands now have a default 1,024-slot limit and a 256-command update
   budget. `send` returns false on full as well as closed; void convenience methods

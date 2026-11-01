@@ -18,7 +18,6 @@ exclude = ["examples/*.rs", "examples/common/", "examples/kiosk.toml", "src/guid
 
 [dependencies]
 fairing-widgets = { path = "../fairing-widgets", version = "0.1.0" }
-fairing-fixed-heap = { path = "../fairing-fixed-heap", version = "0.1.0", features = ["global"], optional = true }
 egui = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
@@ -36,8 +35,6 @@ image = { workspace = true }
 # A large subsystem comes out whole behind a feature — on by default, compiled out when off.
 # `overlay` = the shade, the quick-settings tiles and the scrim; `osk` = the on-screen keyboard.
 default = ["mock", "overlay", "osk", "brand", "settings"]
-# Explicit process-wide allocator selection. Incompatible with another global allocator.
-fixed-heap = ["dep:fairing-fixed-heap"]
 mock = []
 overlay = []
 osk = []
