@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/fairing",
     "crates/fairing-widgets",
+    "crates/fairing-fixed-heap",
     "xtask",
 ]
 
@@ -32,6 +33,9 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # it is used only by the demos and tests to show a decoder wired into the `ShellBuilder::image_loader`
 # hook. Being a dev-dependency, it does not enter an integrator's tree.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+# Opt-in process-wide fixed Rust heap. Never selected by default.
+talc = { version = "=5.1.1", default-features = false, features = ["counters"] }
+spinning_top = { version = "=0.3.1", default-features = false }
 # Workspace-internal path dependencies. Dropping the version trips cargo-deny's `wildcards = "deny"`,
 # so [workspace.package]'s value is repeated here. `cargo xtask integrity` (audit stage 0) compares the
 # two so they cannot drift apart. The members use version.workspace = true.

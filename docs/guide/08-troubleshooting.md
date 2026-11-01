@@ -236,7 +236,7 @@ regression.
 
 | Check | Why |
 |---|---|
-| **Idle desktop p50** | It is the proxy for per-frame heap allocation. A counting allocator needs `unsafe impl GlobalAlloc` and the workspace is `unsafe_code = "forbid"`, so this cannot be measured directly — if idle p50 moves, something in the render path started allocating |
+| **Idle desktop p50 and heap counters** | Compare render time separately from allocation. With `fixed-heap`, `fairing::fixed_heap::try_stats()` reports process-wide Rust allocation counts/live bytes; timing alone does not identify allocation. See [memory limits](../memory-limits.md) |
 | **How many fonts you loaded** | Every font added through `egui::Context::set_fonts` adds first-rasterisation and atlas-rebuild cost. If one Korean font is enough, do not stack several |
 | **Known render allocations** | `icons::paint` allocates one `Vec<Pos2>` per sub-path with three or more points (epaint's `PathShape` wants an owned Vec), plus one each for the parametric bluetooth and volume icons. On the M1 baseline (51 icons then), 69 of 146 sub-paths were allocation-free `LineSegment`s — worth knowing when you add custom icons |
 | **Debug versus release** | Debug numbers are a different order of magnitude (x86 baseline idle p95: 0.042 ms release, 0.75 ms debug). Always bench and compare with `--release` |

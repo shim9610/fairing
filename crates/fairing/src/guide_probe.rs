@@ -46,3 +46,7 @@ pub struct GuideReadme;
 #[cfg(doctest)]
 #[doc = include_str!("../README.md")]
 pub struct CrateReadme;
+
+#[cfg(doctest)]
+#[doc = include_str!("../../../docs/memory-limits.md")]
+pub struct MemoryLimits;

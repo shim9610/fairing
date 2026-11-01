@@ -800,11 +800,103 @@ pub fn expiry_contract(seconds: u8, boundary: u8, input: bool, kind: u8) {
     }
 }
 
+/// Bounded admission and inline pool handles compared with independent FIFO/live-key models.
+pub fn memory_contract(bytes: &[u8]) {
+    use fairing::{
+        inbox::{Inbox, QueueErrorKind},
+        memory::{FixedPool, PoolKey},
+    };
+    use std::collections::VecDeque;
+    let capacity = 1 + usize::from(bytes.first().copied().unwrap_or(0) % 8);
+    let (tx, rx) = Inbox::bounded(capacity).unwrap();
+    let mut queued = VecDeque::new();
+    let mut pool = FixedPool::<u8, 3>::new().unwrap();
+    let mut other = FixedPool::<u8, 1>::new().unwrap();
+    let foreign = other.try_insert(77).unwrap();
+    let mut live: Vec<(PoolKey, u8)> = Vec::new();
+    let mut stale = Vec::new();
+    let mut rejected = 0;
+    for &byte in bytes.iter().take(64) {
+        match byte % 7 {
+            0 | 1 => {
+                let ran = Cell::new(false);
+                let result = tx.clone().try_send_with(|| {
+                    ran.set(true);
+                    byte
+                });
+                if queued.len() == capacity {
+                    rejected += 1;
+                    assert_eq!(result, Err(QueueErrorKind::Full));
+                    assert!(!ran.get(), "a rejected factory allocated/ran");
+                    let error = tx.try_send(byte).unwrap_err();
+                    rejected += 1;
+                    assert_eq!(error.kind(), QueueErrorKind::Full);
+                    assert_eq!(error.into_inner(), byte);
+                } else {
+                    result.unwrap();
+                    assert!(ran.get());
+                    queued.push_back(byte);
+                }
+            }
+            2 => assert_eq!(rx.try_recv().ok(), queued.pop_front()),
+            3 => {
+                let result = pool.try_insert(byte);
+                if live.len() == 3 {
+                    assert_eq!(result, Err(byte));
+                } else {
+                    live.push((result.unwrap(), byte));
+                }
+            }
+            4 => {
+                if !live.is_empty() {
+                    let (key, value) = live.remove(usize::from(byte) % live.len());
+                    assert_eq!(pool.remove(key), Some(value));
+                    assert!(pool.remove(key).is_none());
+                    stale.push(key);
+                }
+            }
+            5 => {
+                stale.extend(live.drain(..).map(|(key, _)| key));
+                pool.clear();
+            }
+            _ => {
+                if let Some((key, value)) = live.first_mut() {
+                    *pool.get_mut(*key).unwrap() = byte;
+                    *value = byte;
+                }
+            }
+        }
+        assert_eq!(tx.stats().outstanding, queued.len());
+        assert_eq!(tx.stats().rejected_full, rejected);
+        assert!(tx.stats().high_water <= capacity);
+        assert_eq!(pool.len(), live.len());
+        assert_eq!(pool.available() + pool.len(), 3);
+        for &(key, value) in &live {
+            assert_eq!(pool.get(key), Some(&value));
+        }
+        for &key in &stale {
+            assert!(pool.get(key).is_none(), "a stale handle revived");
+        }
+        assert!(pool.get(foreign).is_none());
+    }
+    assert_eq!(
+        rx.drain().collect::<Vec<_>>(),
+        queued.into_iter().collect::<Vec<_>>()
+    );
+    drop(rx);
+    assert_eq!(tx.stats().outstanding, 0);
+    assert_eq!(
+        tx.try_send_with(|| panic!("closed factory ran")),
+        Err(QueueErrorKind::Disconnected)
+    );
+}
+
 #[cfg(all(test, not(miri)))]
 mod generated {
     use proptest::prelude::*;
     proptest! {
         #![proptest_config(ProptestConfig { failure_persistence: None, ..ProptestConfig::default() })]
+        #[test] fn public_memory(bytes in prop::collection::vec(any::<u8>(), 0..65)) { super::memory_contract(&bytes); }
         #[test] fn public_access(bytes in prop::collection::vec(any::<u8>(), 1..65)) { super::access_contract(&bytes); }
         #[test] fn public_authentication(bytes in prop::collection::vec(any::<u8>(), 0..65)) { super::authentication_contract(&bytes); }
         #[test] fn public_notifications(bytes in prop::collection::vec(any::<u8>(), 1..65)) { super::notification_contract(&bytes); }
@@ -836,6 +928,42 @@ mod generated {
 
 #[cfg(test)]
 mod regressions {
+    #[test]
+    fn native_receiver_close_races_release_all_reservations() {
+        use std::sync::{Arc, Barrier};
+        for _ in 0..16 {
+            let (tx, rx) = fairing::inbox::Inbox::<u8>::bounded(1).unwrap();
+            let start = Arc::new(Barrier::new(3));
+            let workers: Vec<_> = (0..2)
+                .map(|value| {
+                    let tx = tx.clone();
+                    let start = Arc::clone(&start);
+                    std::thread::spawn(move || {
+                        start.wait();
+                        let _ = tx.try_send_with(|| value);
+                    })
+                })
+                .collect();
+            start.wait();
+            drop(rx);
+            for worker in workers {
+                worker.join().unwrap();
+            }
+            assert_eq!(tx.stats().outstanding, 0);
+            assert!(!tx.stats().receiver_open);
+        }
+    }
+
+    #[test]
+    fn memory_capacity_reuse_and_stale_handles() {
+        for bytes in [
+            vec![0; 64],
+            vec![3, 3, 3, 3, 4, 3, 5, 3, 6],
+            (0..64).collect(),
+        ] {
+            super::memory_contract(&bytes);
+        }
+    }
     #[test]
     fn persistent_to_dismissible_updates_enforce_the_notification_cap() {
         super::notification_contract(&[0, 8, 12, 0]);

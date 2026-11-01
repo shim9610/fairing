@@ -795,7 +795,7 @@ pub(crate) mod fixture {
     pub(crate) struct Fixture {
         handle: ShellHandle,
         /// The receiver has to stay alive or `ShellHandle::send` fails (it is never read).
-        _rx: crate::inbox::Inbox<Command>,
+        _rx: crate::inbox::BoundedInbox<Command>,
         access: Access,
         services: Services,
         settings: SettingsView,
@@ -817,7 +817,8 @@ pub(crate) mod fixture {
         /// Build one with the default config (one level table).
         pub(crate) fn new() -> crate::Result<Self> {
             let ctx = egui::Context::default();
-            let (handle, rx) = ShellHandle::pair(Waker::new(&ctx));
+            let (handle, rx) = ShellHandle::pair(Waker::new(&ctx), 1024)
+                .map_err(|error| crate::Error::Config(error.to_string()))?;
             Ok(Self {
                 handle,
                 _rx: rx,

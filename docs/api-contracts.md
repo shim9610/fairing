@@ -18,12 +18,15 @@ test is insufficient: production mutations must also fail the relevant checks.
 | Failure accounting cannot wrap; the attempt limit is inclusive | `PinTable::fail` → `next_failure/lockout_reached` | Kani `failure_accounting_never_wraps`, `lockout_is_inclusive_and_cannot_be_disabled_by_more_failures`; Verus contracts on both real functions; product regression at `u32::MAX` |
 | Accepted Boolean settings coalesce to the latest target and wait for the previous backend acknowledgement | `set_setting` → pending Boolean handling ([services guide §5](guide/06-services.md)) | Existing Kani/Verus ACK proofs plus `public_backend_ordering`: actual `ShellHandle`, setting gates and a recording delayed Wi-Fi backend; no overlapping writes and exact independent expected dispatch list |
 | Inbox has only nonblocking receive APIs and preserves messages and per-sender order | `Inbox::pair/try_recv/drain` ([screen guide](guide/02-screens.md)) | Two Loom scenarios: early/final drain, and a concurrent consumer with two senders/three messages; native and Miri run the same source with real channels; a drop-message mutation must fail |
+| Bounded admission shares capacity across clones, preserves rejected ownership, skips rejected factories and returns slots; update budget preserves accepted order | `Inbox::bounded`, `ShellHandle::try_send*`, builder limits ([memory limits](memory-limits.md)) | `public_memory` FIFO oracle; native/Miri close races and factory unwinding; Loom atomic-admission scenarios; shell cap-2/budget-1 integration regression |
+| Inline pool handles remain pool-specific and removed generations never revive | `FixedPool`, `next_generation` ([memory limits](memory-limits.md)) | `public_memory` live/stale/foreign-key model, Miri and API fuzzer; Kani four-operation two-slot sequences and all u64 generations; Verus exact generation body; both reject generation wrap |
+| Opt-in global allocator uses one static arena without System growth | `fairing-fixed-heap`, `fixed-heap` ([memory limits](memory-limits.md)) | Normal/16 MiB/64 MiB real-API trials, zero-allocation steady-state queue/pool reuse, cumulative heap churn, egui frames, oversized fallible rejection and expected infallible OOM termination |
 | Notification ids deduplicate; source groups stay contiguous; persistent items resist dismissal; caps drop dismissible items, including updates; gated content hides | `NotificationCenter`, `shows_content` ([notification source](../crates/fairing/src/notify/center.rs)) | `public_notifications` checks invariants after up to 64 operations; fixed persistence-update regression; Miri, libFuzzer and a cap-removal mutation |
 | Every service polls once with the supplied time and the minimum reported deadline wins | `Services::poll/custom` ([services guide §1](guide/06-services.md)) | `public_services`, two independently recorded backend types; Miri fixed deadline/missing-deadline cases |
 | UTC conversion saturates, calendar fields are valid, formatting clears a reused buffer and changing hour convention preserves shape | `WallTime`, `ClockFormat` ([services guide: clocks](guide/06-services.md)) | `public_calendar` with arbitrary u64/i32 inputs, inverse Gregorian conversion and all formats; Miri boundary values and API fuzzer |
 | Pixel conversion clamps; changing a container changes fractional references without changing physical, finger or text terms | `round_u8/round_i8`, `Dim`, `Scale::in_container` ([unit source](../crates/fairing-widgets/src/unit.rs)) | `public_units` uses arbitrary f32 bit patterns, NaN/infinities and arbitrary u16 dimensions; Miri/fuzzer; compile-fail anchor contracts remain in product documentation tests |
 | Invalid ratios/grid dimensions fail validation; malformed configuration and credential debug/error output do not reveal entered secrets | `ShellConfig::from_toml`, `Access::from_config`, `Credential::Debug` ([configuration guide](guide/07-config-reference.md)) | Generated `public_configuration`, `credential_debug_is_independent_of_contents`, parser/redaction properties, Miri fixed cases and parser/API fuzz targets |
-| Tool dependencies stay outside product packages; dependency inventories match the locked target/feature graph | Published manifests, primary lockfile and package BOMs | Input approvals/audit/deny; eight product CycloneDX BOMs, official schema validation and reconciliation with Cargo normal/build edges |
+| Tool dependencies stay outside product packages; dependency inventories match the locked target/feature graph | Published manifests, primary lockfile and package BOMs | Input approvals/audit/deny; twelve product CycloneDX BOMs, official schema validation and reconciliation with Cargo normal/build edges |
 
 Test names in this table are in
 [`verification/src/api.rs`](../verification/src/api.rs),
@@ -35,22 +38,28 @@ original ACK kernel.
 
 ## Bounds and assumptions
 
-- Kani proves six harnesses and Verus verifies five production functions.
-  The access rules cover all u16 levels, all u32 counter values and every
+- Kani proves eight harnesses and Verus verifies six production functions.
+  Pool sequence proof is bounded to four operations on a two-slot u8 pool; the generation
+  decision covers all u64 values. Kani treats pool-identity atomics sequentially;
+  it does not prove concurrent identity creation. The access rules cover all u16 levels, all u32 counter values and every
   optional attempt limit. They are exhaustive decision proofs, not a proof of
   the complete egui application.
-- Native tests contain eleven properties with 512 cases each and four shell
+- Native tests contain twelve properties with 512 cases each and four shell
   properties with 64 cases each, using seed 20261101. Operation sequences cap
   at 32 shell/backend operations or 64 non-UI operations. Fixed cases ensure
   the important deadline/credential boundaries execute regardless of the seed.
-- Miri interprets ten fixed tests with normal isolation, validity and race
+- Miri interprets eighteen fixed tests with normal isolation, validity and race
   checks. It covers the actual Access, PinTable, notification, calendar, unit,
-  service and Inbox APIs. It does not interpret the complete shell rendering
+  service, fixed-pool and bounded/unbounded Inbox APIs. It does not interpret the complete shell rendering
   path; generated cases run natively.
-- Loom exhausts its two bounded scenarios without a preemption/permutation/time
+- Loom exhausts its four bounded scenarios without a preemption/permutation/time
   cap. The larger scenario has four threads including the caller. The branch
   safety limit is 1,000 and exceeding it fails. Loom 0.7.2 does not model the exact
-  empty/disconnected error distinction.
+  empty/disconnected error distinction. The bounded transport substitutes a model
+  channel (Loom has no sync_channel) while retaining production admission atomics.
+  A close-after-drain model avoids the stub's failed-send/destruction miscount;
+  real concurrent close uses native channels and Miri. These are not proofs of
+  std's channel internals or of the optional allocator.
 - The delayed backend model acknowledges one command at a time. Accepted,
   previously authorized intent may finish after a later subject change; newly
   denied writes do not change that intent. A fresh failure is terminal in the
@@ -76,29 +85,32 @@ graph consistency, not runtime behavior.
 
 ## Controls and coverage
 
-`verification/proofs.py` requires both verifiers to reject five mutations:
+`verification/proofs.py` requires both verifiers to reject six mutations:
 reversed ACK condition, reversed level order, accepting an unknown grant,
-wrapping failure count and excluding equality from the lockout boundary.
+wrapping failure count, excluding equality from the lockout boundary, and wrapping
+a pool generation into an old handle.
 The controls require a semantic verification error; compilation errors fail
 the control instead of counting as a successful rejection.
 
 `verification/controls.py` copies the sources into a disposable directory,
 checks a passing baseline, then breaks production gate delegation,
-notification cap enforcement and Inbox delivery separately. The matching
+notification cap enforcement, bounded factory admission and Inbox delivery separately. The matching
 public API/Loom test must fail with its expected assertion. Working sources
 and published dependencies remain intact.
 
 `verification/coverage.py` reports product code executed by the contract suite.
-It fails if any of nine claimed production modules has no executed source
+It fails if any of eleven claimed production modules has no executed source
 lines. cargo-llvm-cov's dependency selection must explicitly instrument both
 product crates; its default dependency-path filter excludes non-registry
 dependencies. The command therefore disables that default report filter and
 the script selects canonical product source paths from the raw export.
 This is distinct from the whole product unit/integration coverage in the
 Ferrocene workflow. Both raw and per-file exports are retained, with no
-arbitrary certification threshold. The current API suite executes 9,120 of
-38,885 product lines (23.45%); this targeted figure is deliberately separate
-from the full product test suite and is not claimed as whole-API coverage.
+arbitrary certification threshold. The latest API-suite totals are retained in the workflow coverage artifact;
+this targeted figure is separate from the full product test suite and is not
+claimed as whole-API coverage. The current local contract run executes 9,434 of
+39,147 product lines (24.10%); this excludes the separately exercised optional
+allocator.
 
 ## Defects found while checking the contracts
 

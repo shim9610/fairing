@@ -40,6 +40,7 @@ implementation and, with the `mock` feature, a `Mock` simulator for development
 |---|---|---|
 | `fairing` | yes | The shell. It re-exports `fairing-widgets` and `egui`, so one dependency is enough |
 | `fairing-widgets` | yes | Units, the theme, motion, icons, fonts and the touch widgets. A control can be worked on here without the shell |
+| `fairing-fixed-heap` | optional | Process-wide static Rust arena; one scoped unsafe ownership transfer to the upstream allocator |
 | `xtask` | no | The audit gate, the icon compiler, the license report and the other maintenance commands |
 
 `fairing` depends on `egui`, `serde`, `toml` and `log`, plus `eframe` behind `runner` and `chrono`
@@ -122,9 +123,14 @@ asks for while it draws, such as opening another screen, is handled later in the
 ## 5. Threads
 
 - **The UI is one thread.** `Shell` does not need to be `Send`.
-- **No locks.** No `Mutex`, `RwLock`, `Condvar`, `OnceLock` or the like, in any crate of the
-  workspace. Threads talk over `std::sync::mpsc` channels and atomics. The audit fails a build
-  that brings a lock in.
+- **UI shared state uses channels and atomics.** The audit bans application-level
+  Mutex/RwLock/Condvar and blocking calls in UI sources. Standard channels may
+  synchronize internally; the optional fixed allocator uses a spinlock. There is
+  no wait-free or hard real-time guarantee.
+- **Command admission is bounded.** All handles share 1,024 slots by default and
+  an update executes at most 256 commands. Builder options adjust both. Full
+  rejection preserves ownership through `try_send`; accepted work is not evicted.
+  [Memory limits](memory-limits.md) explains factories, metrics and fixed storage.
 - **The UI thread never blocks.** It uses `try_recv`, never `recv`, `join`, `sleep` or file IO.
   A worker thread may wait on its own queue.
 - **`ShellHandle` is `Clone + Send`.** Any thread can launch a screen, go back or home, post a
@@ -161,8 +167,10 @@ screen with `keep_awake` holds the display's idle timer off. How to confirm 0 fp
 
 ## 8. Errors
 
-- **Library code does not panic.** `unwrap`, `expect`, `panic!` and unchecked indexing are
-  denied by the workspace lints.
+- **UI product code rejects explicit panic paths.** `unwrap`, `expect`, `panic!`
+  and unchecked indexing are denied by its lints. Dependencies, integrator
+  callbacks and infallible allocation can still terminate a process; fixed-heap
+  exhaustion is not universally recoverable.
 - A backend error comes back as a value, and the shell shows it as a toast or a notification.
 - A configuration that cannot be right fails at start with `Error::Config`. Access control is
   never silently opened.
@@ -189,7 +197,7 @@ These are the rules the design keeps coming back to.
 3. **Backends belong to the integrator.** The crate defines the traits and ships no system code.
 4. **Customization happens in code.** Every part can be turned on, turned off or redrawn without
    forking the crate.
-5. **No locks.** Threads talk over channels, and the UI thread never blocks.
+5. **Non-waiting UI APIs.** Threads exchange messages; UI code does not wait for messages or capacity.
 6. **One general mechanism beats a one-off effect.** Implement a trait, and the library does the
    rest.
 7. **The public surface is deliberate.** Nothing is public by accident.

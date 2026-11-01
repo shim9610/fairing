@@ -53,6 +53,7 @@ jobs:
           cargo fmt --manifest-path verification/Cargo.toml -- --check
           rustfmt --check verification/kani.rs
           rustfmt --check verification/kani_access.rs
+          rustfmt --check verification/kani_memory.rs
 
   proofs:
     needs: inputs
@@ -170,6 +171,21 @@ jobs:
           path: |
             target/assurance/fuzz/
             verification/artifacts/
+          retention-days: 14
+
+  memory-modes:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Verify bounded admission and fixed Rust heap exhaustion
+        run: python3 verification/memory.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: memory-modes
+          path: target/assurance/memory/
           retention-days: 14
 
   sbom:

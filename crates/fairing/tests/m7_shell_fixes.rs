@@ -228,7 +228,7 @@ fn fonts_replaced_before_first_frame_recover_and_are_logged_once() -> fairing::R
     Ok(())
 }
 
-/// Exactly `MAX_COMMANDS_PER_FRAME` (256) queued commands are not "over the limit".
+/// Exactly the default update budget (256) commands leaves no work queued.
 #[test]
 fn exactly_256_commands_are_not_over_the_limit() -> fairing::Result<()> {
     capture_logs();
@@ -253,7 +253,7 @@ fn exactly_256_commands_are_not_over_the_limit() -> fairing::Result<()> {
     Ok(())
 }
 
-/// 257 queued commands still run the one past the cap on the next frame, with the warning.
+/// 257 accepted commands defer the last one without treating normal budgeting as overload.
 #[test]
 fn commands_past_the_cap_run_next_frame() -> fairing::Result<()> {
     capture_logs();
@@ -268,8 +268,13 @@ fn commands_past_the_cap_run_next_frame() -> fairing::Result<()> {
     let first = frame_delay(&mut h);
     assert_eq!(
         logged("went over the per-frame limit"),
+        0,
+        "normal work budgeting is not queue overload"
+    );
+    assert_eq!(
+        handle.queue_stats().outstanding,
         1,
-        "the cap warning"
+        "the deferred command stays queued"
     );
     assert!(
         first < Duration::from_millis(50),

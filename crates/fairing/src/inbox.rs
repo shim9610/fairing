@@ -21,6 +21,28 @@ use mpsc::Sender;
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
 
+#[path = "inbox/bounded.rs"]
+mod bounded;
+pub use bounded::{
+    BoundedInbox, BoundedSender, QueueCapacityError, QueueErrorKind, QueueStats, TrySendError,
+    MAX_BOUNDED_CAPACITY,
+};
+
+impl<T> Inbox<T> {
+    /// A preallocated bounded transport exposing no blocking send or receive.
+    ///
+    /// A full queue returns the original message; it never evicts another message.
+    /// Use the lazy sender to reserve capacity before constructing a payload.
+    ///
+    /// # Errors
+    /// Zero, excessive capacity, or a slot layout that cannot be represented.
+    pub fn bounded(
+        capacity: usize,
+    ) -> Result<(BoundedSender<T>, BoundedInbox<T>), QueueCapacityError> {
+        bounded::pair(capacity)
+    }
+}
+
 /// The receiving end of an mpsc channel that **cannot block**.
 ///
 /// ```

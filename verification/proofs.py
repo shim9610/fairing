@@ -39,6 +39,8 @@ kani_env["LD_LIBRARY_PATH"] = os.pathsep.join(path for path in [str(Path(sysroot
 results.append(execute("kani", [kani, ROOT / "verification/kani.rs"], kani_env))
 results.append(execute("verus-access", [sys.executable, ROOT / "verification/verus/access.py"], environment))
 results.append(execute("kani-access", [kani, ROOT / "verification/kani_access.rs"], kani_env))
+results.append(execute("verus-memory", [sys.executable, ROOT / "verification/verus/memory.py"], environment))
+results.append(execute("kani-memory", [kani, ROOT / "verification/kani_memory.rs"], kani_env))
 
 source = (ROOT / "crates/fairing/src/shell/bool_ack.rs").read_text()
 needle = "if reported == Some(sent)"
@@ -83,4 +85,22 @@ for name, old, new in [
     harness_path.write_text(access_harness.replace(declaration, "mod rules {\n" + mutant + "\n}"))
     results.append(execute("kani-" + name, [kani, harness_path], kani_env,
                            expected_failure=True, marker="VERIFICATION:- FAILED"))
+memory_source = (ROOT / "crates/fairing-widgets/src/memory.rs").read_text()
+needle = "current.checked_add(1)"
+if memory_source.count(needle) != 1:
+    raise SystemExit("Review the generation negative control")
+mutant = memory_source.replace(needle, "Some(current.wrapping_add(1))", 1)
+source_path = OUT / "memory-wrap-source.rs"
+source_path.write_text(mutant)
+results.append(execute("verus-memory-wrap", [sys.executable, ROOT / "verification/verus/memory.py",
+                       "--source", source_path, "--output", OUT / "memory-wrap-verus.rs"], environment,
+                       expected_failure=True, marker="postcondition not satisfied"))
+harness = (ROOT / "verification/kani_memory.rs").read_text()
+declaration = '#[path = "../crates/fairing-widgets/src/memory.rs"]\nmod memory;'
+if harness.count(declaration) != 1:
+    raise SystemExit("Review the generation Kani mutation adapter")
+harness_path = OUT / "memory-wrap-kani.rs"
+harness_path.write_text(harness.replace(declaration, "mod memory {\n" + mutant + "\n}"))
+results.append(execute("kani-memory-wrap", [kani, harness_path], kani_env,
+                       expected_failure=True, marker="VERIFICATION:- FAILED"))
 (OUT / "summary.json").write_text(json.dumps(results, indent=2) + "\n")

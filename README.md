@@ -7,7 +7,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/rust-1.95%2B-orange.svg" alt="Rust 1.95+">
   <a href="https://github.com/emilk/egui"><img src="https://img.shields.io/badge/egui-0.37-8a2be2.svg" alt="egui 0.37"></a>
-  <img src="https://img.shields.io/badge/unsafe-forbidden-success.svg" alt="unsafe forbidden">
+  <img src="https://img.shields.io/badge/UI_crates_unsafe-forbidden-success.svg" alt="unsafe forbidden in UI crates">
 </p>
 
 # fairing
@@ -80,8 +80,12 @@ slightly wrong. fairing is that shell, once, with the hard parts already decided
 
 - **Touch targets are physical.** Sizes resolve through panel millimetres, not
   pixels, so the same code lands correctly on a 4-inch panel and a 27-inch one.
-- **No locks.** Threads talk over channels; the UI thread never blocks. A build
-  gate (`xtask sync-check`) enforces it.
+- **Bounded command admission.** Choose queue capacity and work per update; full
+  queues return an error. UI code uses non-waiting receive/send APIs. The build
+  gate rejects blocking calls and shared-state locks in the UI sources.
+- **Optional fixed Rust heap.** Select `fixed-heap` and `FAIRING_HEAP_BYTES` to use
+  one reusable arena without system-heap fallback. Infallible OOM may abort;
+  native/graphics allocations remain outside it. See [memory limits](docs/memory-limits.md).
 - **Little is hard-wired.** Every chrome surface takes configuration and
   declarations; the bars, toasts, banners, keyboard keys, the shade's tiles and panel,
   the desktop cells, the lock screen, the unlock prompt, the recent screens and every
@@ -369,6 +373,7 @@ Honest gaps, not a roadmap:
 
 | Crate | Role |
 |---|---|
+| `fairing-fixed-heap` | Optional fixed-arena global Rust allocator; one reviewed unsafe initialization; `fixed-heap` selects it |
 | `fairing` | The shell. `fairing-widgets`, `egui`, `serde`, `toml` and `log`; features `mock`, `overlay`, `osk`, `brand` and `settings` on by default, `runner`/`runner-x11` (eframe) and `chrono` optional |
 | `fairing-widgets` | The element layer, usable without the shell: touch widgets, theme tokens, the `du`/`mm` unit system, icons and motion. `egui`, `serde` and `log` |
 | `xtask` | The audit, the dependency allow-list, the icon compiler, the licence notices |

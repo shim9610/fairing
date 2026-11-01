@@ -120,3 +120,21 @@ opt-level = 3      # for a UI, 3 beats "s"; strip wins the size back
 ## Licence
 
 MIT, see [`LICENSE`](LICENSE).
+
+## Memory limits
+
+`ShellBuilder::command_queue_capacity` (default 1,024) and
+`max_commands_per_update` (default 256) bound command admission and work count.
+`ShellHandle::try_send` distinguishes full/closed and preserves rejected ownership;
+`try_send_with` constructs payloads only after reserving space.
+`Inbox::bounded` supports worker channels, and `memory::FixedPool<T, N>` stores
+objects inline with stale/foreign handle rejection.
+
+The optional `fixed-heap` feature selects one reusable static global Rust arena.
+Set the build-time decimal byte budget with `FAIRING_HEAP_BYTES`; the 512 MiB
+default is for parallel development tests. There is no System fallback, but
+infallible allocation may abort on exhaustion. Stacks/native/GPU memory are
+outside this budget. Both UI crates forbid unsafe code; the separate allocator
+crate has one reviewed unsafe arena initialization. See the
+[memory guide](https://github.com/shim9610/fairing/blob/HEAD/docs/memory-limits.md)
+for errors, telemetry, sizing and synchronization limits.

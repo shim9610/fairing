@@ -1,0 +1,32 @@
+[package]
+name = "fairing-fixed-heap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+description = "Opt-in fixed-arena global Rust allocator for fairing device applications"
+readme = "README.md"
+
+[features]
+default = []
+global = ["dep:talc", "dep:spinning_top"]
+
+[dependencies]
+talc = { workspace = true, optional = true }
+spinning_top = { workspace = true, optional = true }
+
+# The UI libraries keep forbid(unsafe_code). This allocator boundary instead denies
+# it and permits only the reviewed static arena claim; allocator logic is upstream.
+[lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "warn"

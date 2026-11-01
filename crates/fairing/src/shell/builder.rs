@@ -59,6 +59,8 @@ use std::time::{Duration, Instant};
 /// The shell builder. Made with [`Shell::builder`].
 pub struct ShellBuilder {
     config: ShellConfig,
+    command_capacity: usize,
+    commands_per_update: usize,
     services: Option<Services>,
     theme: Option<Theme>,
     palettes: Option<(Palette, Palette)>,
@@ -223,6 +225,8 @@ impl ShellBuilder {
     pub(crate) fn new(config: ShellConfig) -> Self {
         Self {
             config,
+            command_capacity: 1024,
+            commands_per_update: 256,
             services: None,
             theme: None,
             palettes: None,
@@ -253,6 +257,23 @@ impl ShellBuilder {
             widget_painters: crate::widgets::WidgetPainters::new(),
             gesture_handle_painter: None,
         }
+    }
+
+    /// Fixed command slots shared by all handles; default 1,024.
+    /// Build rejects zero or capacities above `inbox::MAX_BOUNDED_CAPACITY`.
+    /// Payload allocations are separate from the transport's slot storage.
+    #[must_use]
+    pub fn command_queue_capacity(mut self, capacity: usize) -> Self {
+        self.command_capacity = capacity;
+        self
+    }
+
+    /// Maximum commands executed in one UI/logic update; default 256.
+    /// This is a work-count budget, not a hard real-time guarantee.
+    #[must_use]
+    pub fn max_commands_per_update(mut self, count: usize) -> Self {
+        self.commands_per_update = count;
+        self
     }
 
     /// **The authenticator** the unlock prompt and the lock screen ask.
@@ -896,6 +917,8 @@ impl ShellBuilder {
     pub fn build(self, ctx: &egui::Context) -> Result<Shell> {
         let Self {
             config,
+            command_capacity,
+            commands_per_update,
             services,
             theme,
             palettes,
@@ -927,6 +950,16 @@ impl ShellBuilder {
             gesture_handle_painter,
         } = self;
         config.validate()?;
+        if !(1..=crate::inbox::MAX_BOUNDED_CAPACITY).contains(&command_capacity) {
+            return Err(crate::Error::Config(
+                "command_queue_capacity must be 1..=65536".into(),
+            ));
+        }
+        if commands_per_update == 0 || commands_per_update > crate::inbox::MAX_BOUNDED_CAPACITY {
+            return Err(crate::Error::Config(
+                "max_commands_per_update must be 1..=65536".into(),
+            ));
+        }
         if status_bar_painter.is_some() && status_bar_layout.is_some() {
             log::warn!("status_bar_layout is never called: status_bar_painter draws the whole bar");
         }
@@ -978,7 +1011,8 @@ impl ShellBuilder {
         // Every session timer is measured on the shell's clock, which starts here.
         let mono = Instant::now();
         access.start_clock(mono);
-        let (handle, rx) = ShellHandle::pair(waker);
+        let (handle, rx) = ShellHandle::pair(waker, command_capacity)
+            .map_err(|error| crate::Error::Config(error.to_string()))?;
         let mut desktop = DesktopView::from_config(&config.desktop);
         load_file_wallpaper(ctx, &config.desktop, &mut desktop, image_loader.as_deref());
         // A wallpaper given in code is stronger than the config — `[desktop] wallpaper` is the default for
@@ -1088,7 +1122,7 @@ impl ShellBuilder {
             pending_bools: std::collections::BTreeMap::new(),
             handle,
             rx,
-            held_command: None,
+            commands_per_update,
             events: Vec::new(),
             requests: Vec::new(),
             layout: Layout::default(),

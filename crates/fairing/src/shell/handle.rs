@@ -1,19 +1,20 @@
 //! `ShellHandle` — the handle for sending the shell commands from any thread.
 //!
-//! Inside it is an `mpsc::Sender<Command>` plus a [`Waker`]. `Shell` owns the receiving end as an
-//! [`Inbox`](crate::inbox::Inbox) and drains it in stage 2 of the frame — the type has no blocking
-//! call to reach for. No locks.
+//! A bounded sender plus a [`Waker`]. Both transport endpoints expose only immediate
+//! send/receive operations. Queue capacity and per-update processing are builder choices.
 
 use crate::access::{Gate, Subject};
 use crate::desktop::Badge;
-use crate::inbox::Inbox;
+use crate::inbox::{
+    BoundedInbox, BoundedSender, Inbox, QueueCapacityError, QueueErrorKind, QueueStats,
+    TrySendError,
+};
 use crate::notify::{Notification, NotificationId, Toast};
 use crate::screen::LaunchAction;
 use crate::services::Waker;
 use crate::settings::{SettingKey, SettingValue};
 use crate::theme::MotionTokens;
 use crate::workspace::InstanceId;
-use std::sync::mpsc::Sender;
 
 /// A shell command. All of them are `Send`.
 #[derive(Debug, Clone, PartialEq)]
@@ -71,7 +72,7 @@ pub enum Command {
 /// A `Clone + Send` handle.
 #[derive(Debug, Clone)]
 pub struct ShellHandle {
-    tx: Sender<Command>,
+    tx: BoundedSender<Command>,
     waker: Waker,
 }
 
@@ -80,23 +81,60 @@ impl ShellHandle {
     ///
     /// The receiving end is an [`Inbox`](crate::inbox::Inbox) rather than a bare
     /// `std::sync::mpsc::Receiver`: the UI thread drains it every frame and must never wait on it.
-    #[must_use]
-    pub(crate) fn pair(waker: Waker) -> (Self, Inbox<Command>) {
-        let (tx, rx) = Inbox::pair();
-        (Self { tx, waker }, rx)
+    pub(crate) fn pair(
+        waker: Waker,
+        capacity: usize,
+    ) -> Result<(Self, BoundedInbox<Command>), QueueCapacityError> {
+        let (tx, rx) = Inbox::bounded(capacity)?;
+        Ok((Self { tx, waker }, rx))
     }
 
-    /// Send a command and wake the UI. `false` if the shell is gone.
+    /// Send a command and wake the UI. `false` if full or the shell is gone.
+    /// Use `try_send` to distinguish rejection and recover the command.
     #[must_use]
     pub fn send(&self, command: Command) -> bool {
-        let ok = self.tx.send(command).is_ok();
-        self.waker.wake();
-        ok
+        self.try_send(command).is_ok()
+    }
+
+    /// Send without waiting or evicting another command.
+    ///
+    /// # Errors
+    /// Full or disconnected; the error owns the original command.
+    pub fn try_send(&self, command: Command) -> Result<(), TrySendError<Command>> {
+        let result = self.tx.try_send(command);
+        if result.is_ok() {
+            self.waker.wake();
+        }
+        result
+    }
+
+    /// Reserve capacity before constructing a command's variable-sized payload.
+    ///
+    /// # Errors
+    /// Full or disconnected. See `BoundedSender::try_send_with` for concurrent close semantics.
+    pub fn try_send_with(&self, make: impl FnOnce() -> Command) -> Result<(), QueueErrorKind> {
+        let result = self.tx.try_send_with(make);
+        if result.is_ok() {
+            self.waker.wake();
+        }
+        result
+    }
+
+    /// Queue capacity, outstanding reservations, high-water mark and full rejections.
+    #[must_use]
+    pub fn queue_stats(&self) -> QueueStats {
+        self.tx.stats()
     }
 
     fn post(&self, command: Command) {
-        if !self.send(command) {
-            log::warn!("ShellHandle: the shell is gone, dropping the command");
+        if let Err(error) = self.try_send(command) {
+            log::warn!("ShellHandle: {error}, command rejected");
+        }
+    }
+
+    fn post_with(&self, make: impl FnOnce() -> Command) {
+        if let Err(error) = self.try_send_with(make) {
+            log::warn!("ShellHandle: {error}, command rejected");
         }
     }
 
@@ -132,7 +170,7 @@ impl ShellHandle {
 
     /// A badge.
     pub fn set_badge(&self, id: impl Into<String>, badge: Option<Badge>) {
-        self.post(Command::SetBadge {
+        self.post_with(|| Command::SetBadge {
             id: id.into(),
             badge,
         });
@@ -140,7 +178,7 @@ impl ShellHandle {
 
     /// Write a setting. The shell checks the gate (`Shell::launch(LaunchAction::Set)`).
     pub fn set_setting(&self, key: impl Into<SettingKey>, value: SettingValue) {
-        self.post(Command::SetSetting {
+        self.post_with(|| Command::SetSetting {
             key: key.into(),
             value,
         });
@@ -150,7 +188,7 @@ impl ShellHandle {
     /// goes out, and in `prompt` mode with an authenticator the shell's prompt opens; a grant runs
     /// `then` through the gate.
     pub fn request_unlock(&self, gate: impl Into<Gate>, then: Option<LaunchAction>) {
-        self.post(Command::RequestUnlock {
+        self.post_with(|| Command::RequestUnlock {
             gate: gate.into(),
             then,
         });
@@ -158,12 +196,12 @@ impl ShellHandle {
 
     /// A notification, from any thread. A new one shows briefly as a heads-up and then goes into the shade.
     pub fn notify(&self, notification: Notification) {
-        self.post(Command::Notify(Box::new(notification)));
+        self.post_with(|| Command::Notify(Box::new(notification)));
     }
 
     /// A toast, from any thread. Either `"text"` or a [`Toast`].
     pub fn toast(&self, toast: impl Into<Toast>) {
-        self.post(Command::Toast(Box::new(toast.into())));
+        self.post_with(|| Command::Toast(Box::new(toast.into())));
     }
 
     /// Dismiss a notification.
@@ -178,7 +216,7 @@ impl ShellHandle {
 
     /// Replace the motion tokens (the tuning tool). Animations in flight are left alone.
     pub fn set_motion(&self, tokens: MotionTokens) {
-        self.post(Command::SetMotion(Box::new(tokens)));
+        self.post_with(|| Command::SetMotion(Box::new(tokens)));
     }
 
     /// The wake handle (hand it to backend and scenario threads).

@@ -959,7 +959,12 @@ fn main() -> fairing::Result<()> {
 ```
 
 Hand the whole `ShellHandle` over and the worker can call `notify` · `toast` · `launch` ·
-`set_badge` itself. Those already `wake()` internally.
+`set_badge` itself. Those already `wake()` internally. The command queue is bounded
+(default 1,024 slots, 256 commands per update). Void helpers log a rejection;
+use `try_send` to distinguish `Full`/`Disconnected` and recover a rejected command,
+or `try_send_with` to construct payloads only after reserving space. Critical
+commands need an explicit refusal/retry and completion policy. See
+[memory limits](../memory-limits.md).
 
 ### 9.3 List screens
 

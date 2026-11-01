@@ -6,7 +6,28 @@ All notable changes to the fairing crates are recorded here. The format follows
 
 ## Unreleased
 
+### Added
+
+- Public `Inbox::bounded`, `BoundedSender`/`BoundedInbox`, ownership-preserving
+  `Full`/`Disconnected` errors, lazy factories, bounded drains and queue statistics.
+- `ShellBuilder::command_queue_capacity` and `max_commands_per_update`;
+  `ShellHandle::try_send`, `try_send_with` and `queue_stats`.
+- Inline `memory::FixedPool<T, N>` with pool-specific generational keys, no heap
+  fallback, stale/foreign handle rejection and nonwrapping slot retirement.
+- Opt-in `fixed-heap` feature and `fairing-fixed-heap` crate: one reusable static
+  Rust global arena selected by `FAIRING_HEAP_BYTES`, no System fallback. This
+  adds pinned Talc/spinning_top/allocator-api2 and one reviewed unsafe arena claim
+  in a separate integrity exception; both UI crates still forbid unsafe code.
+  Infallible OOM can abort; stacks/native/GPU allocations are outside the budget.
+- Real normal/16 MiB/64 MiB allocation trials and expected OOM controls in CI;
+  pool/queue API properties, Miri/ASan and Loom admission checks, Kani pool
+  sequences and Kani/Verus generation contracts with wrap-defect controls.
+
 ### Changed
+
+- Shell commands now have a default 1,024-slot limit and a 256-command update
+  budget. `send` returns false on full as well as closed; void convenience methods
+  log refusal. Accepted work is not evicted. Use fallible APIs for critical work.
 
 - Upgrade egui, eframe and their paint crates from 0.36.2 to 0.37.0. The runner retains
   bundled fonts, GL and OS clipboard support. eframe's overdue-Wayland-redraw fallback

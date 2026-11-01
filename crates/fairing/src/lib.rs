@@ -30,6 +30,7 @@
 //! | `mock` | on | Mock backends for Wi-Fi, Bluetooth, display and power, for development |
 //! | `runner` | off | An eframe window bootstrap, `runner::run_shell` |
 //! | `runner-x11` | off | The same, with X11 as well as Wayland on Linux |
+//! | `fixed-heap` | off | Process-wide fixed Rust arena; infallible OOM can abort; native/GPU allocations excluded |
 //! | `chrono` | off | A clock that follows the system time zone and daylight saving |
 //!
 //! # Example
@@ -102,6 +103,10 @@ pub mod testing;
 pub mod time;
 pub mod workspace;
 
+/// Opt-in process-wide fixed Rust heap; size is chosen at build time.
+#[cfg(feature = "fixed-heap")]
+pub use fairing_fixed_heap as fixed_heap;
+
 #[cfg(feature = "osk")]
 pub mod osk;
 #[cfg(feature = "overlay")]
@@ -125,7 +130,7 @@ pub use egui;
 /// shell in the way. They are re-exported here under the names they have always
 /// had, so integrator code does not change: `fairing::unit::Dim` is `fairing_widgets::unit::Dim`.
 pub use fairing_widgets;
-pub use fairing_widgets::{drag, error, fonts, icons, motion, theme, unit, widgets};
+pub use fairing_widgets::{drag, error, fonts, icons, memory, motion, theme, unit, widgets};
 
 pub use access::{AccessEvent, Gate, Level, LevelTable, Subject, Visibility};
 pub use chrome::{

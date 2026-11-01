@@ -733,3 +733,11 @@ fn running_2024() -> MockClock {
 follows the shell's monotonic clock. Either one can be jumped to an arbitrary time
 by sending `ClockMsg::Set(WallTime)` to the `MockControl<ClockMsg>` from
 `control()`.
+
+## Bounded service channels
+
+`Inbox::pair()` and the worker examples above use unbounded channels. For bounded
+admission use `Inbox::bounded(capacity)`, `try_send`/`try_send_with` and
+`drain_up_to(limit)` at the service boundary. Handle `Full` without waiting on the
+UI thread, and wake the UI after an accepted backend update. Payload bytes need
+an additional budget; see [memory limits](../memory-limits.md).

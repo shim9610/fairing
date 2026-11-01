@@ -40,6 +40,10 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
         print(name + (": rejected broken production code" if failure else ": passed"), flush=True)
 
     scenarios = [
+        ("bounded-admission", "api::regressions::memory_capacity_reuse_and_stale_handles",
+         "crates/fairing/src/inbox/bounded.rs",
+         [("if used >= self.budget.capacity", "if false")],
+         False, "a rejected factory allocated/ran"),
         ("launch-gates", "api::regressions::direct_and_queued_paths_recheck_the_current_policy",
          "crates/fairing/src/access/mod.rs",
          [("self.policy.allows(&self.session.subject, gate)", "true"),

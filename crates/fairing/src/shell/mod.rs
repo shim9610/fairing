@@ -151,10 +151,9 @@ pub struct Shell {
     /// The locale whose letters were last looked for in the loaded fonts.
     script_checked: Option<String>,
     handle: ShellHandle,
-    rx: crate::inbox::Inbox<Command>,
-    /// The first command past the per-frame cap, taken off the queue to learn whether any were
-    /// left. It runs first next frame.
-    held_command: Option<Command>,
+    rx: crate::inbox::BoundedInbox<Command>,
+    /// Maximum commands received in one UI or logic update.
+    commands_per_update: usize,
     events: Vec<ShellEvent>,
     requests: Vec<CxRequest>,
     layout: Layout,
@@ -301,12 +300,6 @@ fn toast_anchor(layout: &Layout, theme: &Theme) -> egui::Rect {
 /// The `Foreground` Area id shared by a `BarMode::Overlay` status bar, the shade panel's status row
 /// and the peek (the layer ids are a fixed, finite set).
 pub(crate) const STATUS_BAR_OVERLAY_AREA_ID: &str = "fairing.status_bar.overlay";
-
-/// The cap on how many commands frame stage 2 handles at once. The handle's channel is unbounded, so
-/// a producer thread faster than the UI would make one frame grow in proportion to the queue — past
-/// the cap the rest is left to the next frame and an immediate repaint is requested (a p95 of
-/// 12 ms).
-const MAX_COMMANDS_PER_FRAME: usize = 256;
 
 /// The most events to hold that [`Shell::poll_events`] has not taken. So that it does not grow
 /// without bound when an integrator forgets to poll, the oldest are dropped first (with at least one
@@ -3471,14 +3464,12 @@ impl Shell {
         self.events.push(ShellEvent::WentHome);
     }
 
-    /// Stage 2. There is a **per-frame cap**: so that one frame does not grow in proportion to the
-    /// queue when another thread pours commands in (the p95 budget of 12 ms), only
-    /// [`MAX_COMMANDS_PER_FRAME`] are handled and the rest is left to the next frame. `true` if any
-    /// were left — the shell then requests an immediate repaint to carry on.
+    /// Stage 2 handles at most the builder's command budget and leaves remaining work queued.
+    /// `true` requests another update. This is a count limit, not a callback-duration guarantee.
     fn drain_commands(&mut self, app: &mut AppRef<'_>) -> bool {
-        for _ in 0..MAX_COMMANDS_PER_FRAME {
+        for _ in 0..self.commands_per_update {
             // `Inbox` has no blocking call to reach for, so this loop cannot become one.
-            let Some(command) = self.held_command.take().or_else(|| self.rx.try_recv().ok()) else {
+            let Ok(command) = self.rx.try_recv() else {
                 return false;
             };
             match command {
@@ -3506,15 +3497,9 @@ impl Shell {
                 Command::SetMotion(tokens) => self.set_motion(*tokens),
             }
         }
-        // Exactly the cap leaves nothing behind: one more is looked at to tell, and kept.
-        self.held_command = self.rx.try_recv().ok();
-        if self.held_command.is_none() {
-            return false;
-        }
-        log::warn!(
-            "the command queue went over the per-frame limit ({MAX_COMMANDS_PER_FRAME}) - the rest run next frame"
-        );
-        true
+        // Include producers constructing reserved payloads. Successful sends wake the
+        // shell too; no extra command is removed from bounded storage merely to peek.
+        self.rx.stats().outstanding != 0
     }
 
     /// After a session change: end the instances that can no longer pass their gate, and queue

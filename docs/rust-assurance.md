@@ -13,13 +13,13 @@ source-built compiler and matching LLVM coverage workflow.
 
 | Tool | Pin | Scope |
 | --- | --- | --- |
-| Kani | 0.68.0; nightly 2026-08-21 | Six harnesses: ACK, ordered access, grant validity, nonwrapping failure accounting and lockout boundary |
-| Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Postconditions on five real ACK/access functions |
-| Miri | nightly 2026-10-30 | Ten fixed tests using actual Access/PinTable/notifications/services/time/units/parser/Inbox |
-| Loom | 0.7.2 | Two Inbox scenarios, including a concurrent consumer; two senders and three messages |
-| proptest | 1.12.0 | Eleven properties × 512 cases plus four shell properties × 64; seed 20261101 |
+| Kani | 0.68.0; nightly 2026-08-21 | Eight harnesses: ACK/access decisions, nonwrapping pool generations and bounded pool sequences |
+| Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Postconditions on six real ACK/access/generation functions |
+| Miri | nightly 2026-10-30 | Eighteen fixed tests using actual Access/PinTable/notifications/services/time/units/parser/pool/Inbox |
+| Loom | 0.7.2 | Four scenarios: Inbox ordering/consumer and bounded admission/close-after-drain |
+| proptest | 1.12.0 | Twelve properties × 512 cases plus four shell properties × 64; seed 20261101 |
 | cargo-fuzz | 0.13.2; libfuzzer-sys 0.4.13 | ASan: 20,000 ACK, 10,000 parser, 10,000 API and 2,000 shell inputs |
-| cargo-llvm-cov | 0.9.1 | Product and API-contract line/function/region coverage; latter checks nine production modules |
+| cargo-llvm-cov | 0.9.1 | Product and API-contract line/function/region coverage; latter checks eleven production modules |
 | cargo-cyclonedx | 0.5.9 | Library package dependency BOMs for default/all features on Linux x86_64 and aarch64 |
 
 Assurance tool archives and CycloneDX schemas have pinned SHA-256 values in
@@ -74,7 +74,7 @@ the model treats a new failure notification as terminal for the pending command.
 
 The Inbox harness includes the production source. Normal tests and Miri use
 `std::sync::mpsc`; `--cfg fairing_loom` selects Loom's channel implementation for
-the model tests. Both complete bounded scenarios are explored without a permutation
+the model tests. All four bounded scenarios are explored without a permutation
 or preemption cap. A branch-limit violation fails the test. Loom 0.7.2 does not
 model the exact disconnected-channel `try_recv` result, so its result is limited
 to delivery, per-sender order and nonblocking drains in these scenarios.
@@ -82,7 +82,7 @@ to delivery, per-sender order and nonblocking drains in these scenarios.
 Miri keeps its normal isolation, validity and race checks enabled. It interprets
 fixed regression inputs and real channel threads. Random-input generation runs
 natively under proptest and libFuzzer; interpreting the generators themselves
-was unnecessarily expensive. Miri's ten cases are separate from the full
+was unnecessarily expensive. Miri's eighteen cases are separate from the full
 product test suite and the generated-input campaigns.
 
 ## SBOM scope and validation
@@ -106,8 +106,9 @@ edge kinds as component properties, pass schema validation again, and have no
 unresolved dependency references. A missing package in the original export
 fails generation. The approved product lockfile must remain unchanged.
 
-There are eight product BOMs: two libraries × two targets × two feature
-profiles. Four additional xtask BOMs describe the build utility. These are
+There are twelve product BOMs: three libraries × two targets × two feature
+profiles. The default standalone allocator graph is empty by design; all-features
+selects its allocator dependencies. Four additional xtask BOMs describe the build utility. These are
 resolved library/package dependency inventories. A final device application
 must generate its own BOM with its own lockfile, features, native dependencies
 and firmware. The all-features fairing graph legitimately includes `image`
@@ -115,15 +116,20 @@ through eframe/arboard; the default library graph excludes it.
 
 ## Local results — 2026-11-01
 
-The public API contract suite passes 25 native tests, ten Miri tests and two
-Loom scenarios. Kani passes six harnesses and Verus verifies five production
-functions. Both reject all five deliberate decision defects; public API/model
-controls also reject broken gate delegation, notification cap handling and
-message delivery. All four seeded ASan campaigns complete (42,000 total runs).
-The strict audit also passes all 14 stages: 1,813 tests passed, 16 ignored.
-Fresh source-built Ferrocene coverage passes 1,453 tests (91.87% lines,
-91.10% functions, 91.88% regions). The separate API-only coverage is 23.45%
-of product lines; nine claimed production modules must execute in CI.
+The expanded public API suite passes 34 native tests, eighteen Miri tests and
+four Loom scenarios. Kani passes eight harnesses and Verus verifies six production
+functions. Both reject six deliberate decision defects, including generation
+wrap. Public API/model controls reject broken gate delegation, notification cap
+handling, bounded factory admission and message delivery. `verification/memory.py` passes the normal,
+16 MiB and 64 MiB modes, including zero-allocation queue/pool reuse and expected
+infallible OOM termination. The [memory guide](memory-limits.md) records allocator
+scope, spinlock and exhaustion limits. Full audit, fuzz and coverage results are
+retained per commit in CI artifacts. The strict local audit passes all 14 stages
+(1,827 tests passed, 16 ignored); three additional memory-guide examples pass.
+Rust 1.95 checks all features/targets, and source-built Ferrocene 1.97.1 checks
+the fixed-heap example profile. The API-only coverage executes 9,434 of 39,147
+product lines (24.10%). Earlier full Ferrocene coverage figures describe the
+earlier baseline rather than this allocator change.
 The [contract map](api-contracts.md) records the exact guarantees and assumptions.
 
 ## Run locally
@@ -137,6 +143,7 @@ cargo audit --file verification/Cargo.lock
 cargo deny --manifest-path verification/Cargo.toml --config verification/deny.toml check
 python3 verification/install.py all
 python3 verification/proofs.py
+python3 verification/memory.py
 PROPTEST_CASES=512 PROPTEST_RNG_SEED=20261101 \
   cargo test --locked --manifest-path verification/Cargo.toml --lib
 RUSTFLAGS='--cfg fairing_loom' \
@@ -167,3 +174,17 @@ Generated fuzz inputs and crash artifacts never enter the published crates.
 All results are evidence for these configurations and bounded checks. The
 tools and a passing workflow provide no device certification or complete
 security proof. Board/probe tests remain excluded from this library workflow.
+
+## Memory-specific checks
+
+The `memory-modes` job exercises the real opt-in allocator separately from Miri
+and the API state models. Kani checks bounded pool sequences and every u64
+generation; Verus adds postconditions to the exact generation body. Both reject
+a generated wrapping-add defect. proptest/Miri/libFuzzer compare the public
+pool and bounded queue with independent live-key and FIFO models.
+
+The Loom bounded-channel case uses the real admission atomics with a model
+channel because Loom 0.7.2 lacks sync_channel. Its channel stub miscounts failed
+sends racing receiver destruction; that race runs with real channels natively
+and under Miri. The close-after-drain Loom case checks closed admission. See
+[the contract map](api-contracts.md) for sequence limits and assumptions.

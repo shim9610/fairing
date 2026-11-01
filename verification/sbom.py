@@ -78,7 +78,8 @@ for profile in ["default", "all-features"]:
         subprocess.run(command, cwd=ROOT, env=environment, check=True)
         destination = OUT / profile / target
         destination.mkdir(parents=True, exist_ok=True)
-        for package, directory in [("fairing", ROOT / "crates/fairing"), ("fairing-widgets", ROOT / "crates/fairing-widgets"), ("xtask", ROOT / "xtask")]:
+        for package, directory in [("fairing", ROOT / "crates/fairing"), ("fairing-widgets", ROOT / "crates/fairing-widgets"),
+                                   ("fairing-fixed-heap", ROOT / "crates/fairing-fixed-heap"), ("xtask", ROOT / "xtask")]:
             generated = directory / (filename + ".json")
             data = json.loads(generated.read_text())
             validator.validate(data)
@@ -110,7 +111,7 @@ for profile in ["default", "all-features"]:
             validator.validate(data)
             generated.write_text(json.dumps(data, indent=2) + "\n")
             names = {item["name"] for item in data.get("components", [])}
-            if package != "xtask" and not names:
+            if package in {"fairing", "fairing-widgets"} and not names:
                 raise SystemExit("Empty product dependency BOM")
             if names & {"loom", "proptest", "libfuzzer-sys", "fairing-assurance"}:
                 raise SystemExit("Development/tool dependencies leaked into the library BOM")

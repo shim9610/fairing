@@ -170,6 +170,15 @@ fn manifests(root: &Path, members: &[PathBuf], problems: &mut Vec<String>) -> Re
                 ));
             }
             internal_versions(&items, &shown, problems)?;
+        } else if file == root.join("crates/fairing-fixed-heap/Cargo.toml") {
+            // The explicit allocator package has one reviewed ownership transfer.
+            // No other member may opt out of the workspace's unsafe prohibition.
+            let source = util::read_file(&root.join("crates/fairing-fixed-heap/src/lib.rs"))?;
+            if !allocator_boundary(&items, &source) {
+                problems.push(format!(
+                    "{shown} does not preserve the single fixed-arena unsafe boundary"
+                ));
+            }
         } else {
             let on = tomlish::find(&items, "lints", "workspace").map(|item| item.value.as_str());
             if on != Some("true") {
@@ -181,6 +190,22 @@ unsafe_code = \"forbid\" among them, are not applied to this crate"
         }
     }
     Ok(())
+}
+
+fn allocator_boundary(items: &[tomlish::Item], source: &str) -> bool {
+    let lint =
+        |name: &str| tomlish::find(items, "lints.rust", name).and_then(tomlish::Item::string);
+    let compact: String = source.chars().filter(|c| !c.is_whitespace()).collect();
+    lint("unsafe_code").as_deref() == Some("deny")
+        && lint("unsafe_op_in_unsafe_fn").as_deref() == Some("forbid")
+        && compact.contains("#![deny(unsafe_code)]")
+        && compact.matches("unsafe{").count() == 1
+        && compact.matches("#[expect(unsafe_code,").count() == 1
+        && compact
+            .matches("talc::source::Claim::array(&rawmutARENA)")
+            .count()
+            == 1
+        && !compact.contains("allow(unsafe_code")
 }
 
 /// Whether the version of a workspace-internal crate in `[workspace.dependencies]` matches
@@ -316,6 +341,30 @@ mod tests {
             })
             .collect();
         assert_eq!(sources, vec![None, Some(CRATES_IO.to_owned())]);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod allocator_boundary_tests {
+    #[test]
+    fn only_the_reviewed_allocator_boundary_can_lower_the_lint() -> crate::util::Result<()> {
+        let manifest = include_str!("../../crates/fairing-fixed-heap/Cargo.toml");
+        let source = include_str!("../../crates/fairing-fixed-heap/src/lib.rs");
+        let items = crate::tomlish::items(manifest)?;
+        assert!(super::allocator_boundary(&items, source));
+        assert!(!super::allocator_boundary(
+            &items,
+            &source.replace("#![deny(unsafe_code)]", "")
+        ));
+        assert!(!super::allocator_boundary(
+            &items,
+            &format!("{source}\nunsafe {{}}")
+        ));
+        assert!(!super::allocator_boundary(
+            &items,
+            &format!("{source}\n#[allow(unsafe_code)]")
+        ));
         Ok(())
     }
 }

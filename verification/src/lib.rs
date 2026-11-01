@@ -179,6 +179,83 @@ mod schedules {
         scenario();
     }
 
+    #[cfg(fairing_loom)]
+    fn bounded_scenario(close: bool) {
+        use loom::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let (tx, inbox) = Inbox::bounded(1).unwrap();
+        let factories = Arc::new(AtomicUsize::new(0));
+        let a = tx.clone();
+        let f = Arc::clone(&factories);
+        let first = thread::spawn(move || {
+            a.try_send_with(|| {
+                f.fetch_add(1, Ordering::SeqCst);
+                0
+            })
+            .is_ok()
+        });
+        let b = tx.clone();
+        let f = Arc::clone(&factories);
+        let second = thread::spawn(move || {
+            b.try_send_with(|| {
+                f.fetch_add(1, Ordering::SeqCst);
+                1
+            })
+            .is_ok()
+        });
+        if close {
+            let _ = first.join().unwrap();
+            let _ = second.join().unwrap();
+            // Loom's channel stub miscounts failed sends racing Receiver::drop.
+            // Drain before close here; native/Miri cover the actual close race.
+            let _ = inbox.drain().count();
+            drop(inbox);
+            assert!(!tx.stats().receiver_open);
+            assert_eq!(tx.stats().outstanding, 0);
+            assert_eq!(
+                tx.try_send_with(|| panic!("closed factory ran")),
+                Err(super::inbox::QueueErrorKind::Disconnected)
+            );
+        } else {
+            let mut received: Vec<_> = inbox.try_recv().ok().into_iter().collect();
+            let accepted = usize::from(first.join().unwrap()) + usize::from(second.join().unwrap());
+            received.extend(inbox.drain());
+            assert_eq!(received.len(), accepted);
+            assert_eq!(factories.load(Ordering::SeqCst), accepted);
+            assert!(received.len() < 2 || received[0] != received[1]);
+            assert_eq!(tx.stats().outstanding, 0);
+            assert!(tx.stats().high_water <= 1);
+        }
+    }
+
+    #[cfg(fairing_loom)]
+    #[test]
+    fn modeled_bounded_admission_counts_factories_and_releases_received_slots() {
+        let mut model = loom::model::Builder::new();
+        model.max_threads = 3;
+        model.max_branches = 1000;
+        model.max_permutations = None;
+        model.preemption_bound = None;
+        model.max_duration = None;
+        model.checkpoint_file = None;
+        model.check(|| bounded_scenario(false));
+    }
+
+    #[cfg(fairing_loom)]
+    #[test]
+    fn modeled_close_after_drain_returns_all_reservations() {
+        let mut model = loom::model::Builder::new();
+        model.max_threads = 3;
+        model.max_branches = 1000;
+        model.max_permutations = None;
+        model.preemption_bound = None;
+        model.max_duration = None;
+        model.checkpoint_file = None;
+        model.check(|| bounded_scenario(true));
+    }
+
     fn concurrent_drain() {
         let (a, inbox) = Inbox::pair();
         let b = a.clone();

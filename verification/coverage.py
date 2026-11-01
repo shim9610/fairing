@@ -30,7 +30,8 @@ product = {str(Path(item["filename"]).resolve().relative_to(ROOT)): item["summar
            if str(Path(item["filename"]).resolve()).startswith(str(ROOT / "crates") + os.sep)}
 required = ["fairing/src/access/auth.rs", "fairing/src/access/mod.rs", "fairing/src/access/rules.rs",
             "fairing/src/shell/mod.rs", "fairing/src/services/mod.rs", "fairing/src/notify/center.rs",
-            "fairing/src/time.rs", "fairing/src/inbox.rs", "fairing-widgets/src/unit.rs"]
+            "fairing/src/time.rs", "fairing/src/inbox.rs", "fairing/src/inbox/bounded.rs",
+            "fairing-widgets/src/memory.rs", "fairing-widgets/src/unit.rs"]
 for path in required:
     summary = product.get("crates/" + path)
     if summary is None or summary["lines"]["covered"] == 0:
