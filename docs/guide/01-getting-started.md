@@ -91,6 +91,7 @@ Straight from `crates/fairing/Cargo.toml`.
 | `settings` | ✓ | The eleven built-in settings screens and `settings::add_all` ([§4.1](#41-the-built-in-settings-screens)). The setting keys and values screens use are there either way |
 | `runner` | | `fairing::runner` — an eframe-based fullscreen bootstrap (Wayland + glow) |
 | `runner-x11` | | `runner` plus `eframe/x11` |
+| `process` | | Optional Linux renderer supervision; the work engine stays independent of egui ([integration](../../crates/fairing-process/README.md)) |
 | `chrono` | | `fairing::services::clock::ChronoClock` — a clock that asks the OS timezone database every frame, so daylight saving corrects itself. Costs three crates in the tree; the default `SystemClock` is a fixed offset and does not know about DST |
 
 The default set is `["mock", "overlay", "osk", "brand", "settings"]`. A device with a hardware

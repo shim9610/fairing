@@ -90,9 +90,11 @@ fallible: egui can allocate before or after these calls.
 Existing `new`/Into constructors and user callbacks may still allocate
 infallibly. Use the explicit try APIs before copying untrusted borrowed input;
 passing an already-created String cannot recover an earlier caller allocation.
-Whole-renderer nontermination on memory exhaustion remains unsupported until the
-remaining allocation paths and the renderer propagate failure, or the device
-isolates renderer failure from its independent work engine.
+Same-process renderer recovery from complete exhaustion remains unsupported.
+The optional Linux [process supervisor](../crates/fairing-process/README.md)
+keeps an independent work engine running when the renderer aborts, without
+modifying egui. It requires an explicit application model/intent boundary;
+it does not transparently move existing shell callbacks to another process.
 
 ## Backend channels and object storage
 

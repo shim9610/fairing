@@ -106,10 +106,10 @@ edge kinds as component properties, pass schema validation again, and have no
 unresolved dependency references. A missing package in the original export
 fails generation. The approved product lockfile must remain unchanged.
 
-There are eight product BOMs: two libraries × two targets × two feature profiles.
+There are twelve product BOMs: three libraries × two targets × two feature profiles.
 Four diagnostic allocator and four xtask BOMs describe the unpublished tools.
 The default standalone allocator graph is empty; its global feature is lab-only.
-The BOM gate rejects allocator diagnostic dependencies in either product graph. These are
+The BOM gate rejects allocator diagnostic dependencies in all three product graphs. These are
 resolved library/package dependency inventories. A final device application
 must generate its own BOM with its own lockfile, features, native dependencies
 and firmware. The all-features fairing graph legitimately includes `image`
@@ -124,8 +124,8 @@ fallible recovery and the remaining unsupported infallible abort separately.
 Local correction validation passes all 14 strict audit stages (1,835 tests passed,
 16 ignored), 36 native API tests, nineteen Miri tests, four Loom scenarios and
 all four mutation controls. Normal/16 MiB/64 MiB trials pass real exhausted-arena
-refusal, preallocated work and deferred display recovery. Sixteen BOMs pass
-schema/graph validation; neither product graph includes the diagnostic allocator.
+refusal, preallocated work and deferred display recovery. The earlier sixteen BOMs passed
+schema/graph validation; the UI product graphs include no diagnostic allocator.
 Fresh hosted artifacts provide per-commit fuzz/coverage totals rather than
 reusing the earlier allocator-prototype coverage figures.
 The [contract map](api-contracts.md) records the exact guarantees and assumptions.
@@ -142,6 +142,7 @@ cargo deny --manifest-path verification/Cargo.toml --config verification/deny.to
 python3 verification/install.py all
 python3 verification/proofs.py
 python3 verification/memory.py
+python3 verification/process.py
 PROPTEST_CASES=512 PROPTEST_RNG_SEED=20261101 \
   cargo test --locked --manifest-path verification/Cargo.toml --lib
 RUSTFLAGS='--cfg fairing_loom' \
@@ -186,3 +187,29 @@ channel because Loom 0.7.2 lacks sync_channel. Its channel stub miscounts failed
 sends racing receiver destruction; that race runs with real channels natively
 and under Miri. The close-after-drain Loom case checks closed admission. See
 [the contract map](api-contracts.md) for sequence limits and assumptions.
+
+## Optional renderer process isolation
+
+The `process-isolation` job tests the new Linux process API natively and runs real
+unmodified-egui UI/tessellation allocation aborts in a 16 MiB diagnostic arena.
+Its independent engine must continue work, reap the failed renderer and accept a
+fresh generation's current model. Watchdog, partial/oversized frames, duplicated
+intent sequence, wrong context, action overflow and authority invalidation are
+separate failure cases. Two negative baseline probes require an actual allocation
+abort; a fabricated child exit does not satisfy the OOM checks. A separate eframe
+window integration checks model application through private IPC under Xvfb/Mesa.
+
+Local validation of the optional process feature passes all fourteen strict audit
+stages (1,846 tests passed, sixteen ignored), Rust 1.95 all-feature checks and the
+aarch64 runner/process check. Ten native process tests and one compiled usage
+example cover fixed framing, authority invalidation, generation refusal and batch
+spooling; eleven process scenarios and the real-window check pass. Twenty BOMs
+pass schema/graph validation, and all 323 registry package/version/source/checksum
+identities remain unchanged.
+
+Per-run timing, RSS (resident set size), virtual-address size and thread observations
+are saved in `target/assurance/process/summary.json` and `window.json`. These are
+local/hosted x86_64 observations, not an MCU measurement or worst-case timing proof.
+The process API has native execution evidence; the existing Kani/Verus/Miri and
+Loom evidence remains scoped to the contracts named above. The SBOM export now
+includes fairing-process, bringing the total to twenty target/feature BOMs.

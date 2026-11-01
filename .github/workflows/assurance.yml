@@ -188,6 +188,34 @@ jobs:
           path: target/assurance/memory/
           retention-days: 14
 
+
+  process-isolation:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Verify bounded IPC, supervision and engine survival under actual egui OOM
+        run: python3 verification/process.py
+      - name: Install the native display test runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xauth libgl1 libglx-mesa0 libegl1 \
+            libegl-mesa0 libgl1-mesa-dri libgbm1 libxkbcommon0 libxkbcommon-x11-0 \
+            libxcursor1 libxi6 libxrandr2 libxinerama1
+      - name: Run the optional real-window integration
+        env:
+          CARGO_TARGET_DIR: target/process-isolation
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          LP_NUM_THREADS: "1"
+        run: xvfb-run -a -s '-screen 0 640x480x24' python3 verification/window.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: process-isolation
+          path: target/assurance/process/
+          retention-days: 14
+
   sbom:
     needs: inputs
     runs-on: ubuntu-24.04

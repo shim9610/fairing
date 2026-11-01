@@ -24,6 +24,7 @@ toml = { workspace = true }
 log = { workspace = true }
 eframe = { workspace = true, optional = true }
 chrono = { workspace = true, optional = true }
+fairing-process = { workspace = true, optional = true }
 
 # The library does not decode images (guide 09 §1). `image` is used only by **the demos and tests** to
 # show a decoder wired into `ShellBuilder::image_loader` — being a dev-dependency, it does not enter an
@@ -46,6 +47,8 @@ brand = []
 # Turned off, only the screens are compiled out and an integrator can register their own under the same ids.
 settings = []
 runner = ["dep:eframe"]
+# Linux only. The work engine can instead depend on fairing-process directly, without egui.
+process = ["dep:fairing-process"]
 runner-x11 = ["runner", "eframe/x11"]
 # `chrono` = a `ChronoClock` that follows the system time zone and DST. The default `SystemClock`
 # has its offset as a config value and so knows nothing of summer time. On, it measures at +3 crates.
@@ -101,3 +104,7 @@ workspace = true
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 targets = ["x86_64-unknown-linux-gnu"]
+
+[[example]]
+name = "process_renderer"
+required-features = ["runner-x11", "process"]

@@ -70,6 +70,7 @@ drive `Shell::frame` from an eframe app you already have.
 | `mock` | on | Mock backends — clock, power, Wi-Fi, Bluetooth, display, audio, network and device info — for development |
 | `runner` | off | An eframe window bootstrap (`runner::run_shell`) |
 | `runner-x11` | off | The same, with X11 as well as Wayland on Linux |
+| `process` | off | Optional Linux renderer supervision via `fairing::process`; the engine can depend on fairing-process alone without egui |
 | `chrono` | off | A clock that follows the system time zone and daylight saving |
 
 The touch widgets, the theme tokens and the unit system live in

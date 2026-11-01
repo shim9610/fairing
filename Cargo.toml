@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/fairing",
     "crates/fairing-widgets",
+    "crates/fairing-process",
     "crates/fairing-fixed-heap",
     "xtask",
 ]
@@ -18,7 +19,7 @@ repository = "https://github.com/shim9610/fairing"
 # The versions and features are pinned here as the single source, and the members refer to them with `.workspace = true` alone.
 #
 # egui and eframe ask for the minor, not the patch: an integrator's tree may hold other egui
-# crates, and an exact `=0.36.x` here would fail their resolution over one patch release. This
+# crates, and an exact `=0.37.x` here would fail their resolution over one patch release. This
 # repository's own tree stays exact all the same — Cargo.lock holds the patch, and deps.allow's
 # `=X.Y.Z` lines make a patch update an approval diff.
 [workspace.dependencies]
@@ -33,13 +34,16 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # it is used only by the demos and tests to show a decoder wired into the `ShellBuilder::image_loader`
 # hook. Being a dev-dependency, it does not enter an integrator's tree.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
-# Opt-in process-wide fixed Rust heap. Never selected by default.
+# Diagnostic-only fixed Rust heap; never a product dependency.
 talc = { version = "=5.1.1", default-features = false, features = ["counters"] }
 spinning_top = { version = "=0.3.1", default-features = false }
+# Already locked through the runner; safe Linux process limits/polling, not an IPC framework.
+rustix = { version = "=1.1.5", default-features = false, features = ["std", "event", "process"] }
 # Workspace-internal path dependencies. Dropping the version trips cargo-deny's `wildcards = "deny"`,
 # so [workspace.package]'s value is repeated here. `cargo xtask integrity` (audit stage 0) compares the
 # two so they cannot drift apart. The members use version.workspace = true.
 fairing = { path = "crates/fairing", version = "0.1.0", default-features = false }
+fairing-process = { path = "crates/fairing-process", version = "0.1.0" }
 
 # The workspace lints, applied to every member.
 [workspace.lints.rust]

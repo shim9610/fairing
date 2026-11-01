@@ -40,11 +40,13 @@ implementation and, with the `mock` feature, a `Mock` simulator for development
 |---|---|---|
 | `fairing` | yes | The shell. It re-exports `fairing-widgets` and `egui`, so one dependency is enough |
 | `fairing-widgets` | yes | Units, the theme, motion, icons, fonts and the touch widgets. A control can be worked on here without the shell |
+| `fairing-process` | yes | Optional Linux renderer supervision and bounded private IPC; usable by an engine without egui |
 | `fairing-fixed-heap` | no | Isolated allocation-failure diagnostic; no product dependency; one scoped unsafe arena claim |
 | `xtask` | no | The audit gate, the icon compiler, the license report and the other maintenance commands |
 
 `fairing` depends on `egui`, `serde`, `toml` and `log`, plus `eframe` behind `runner` and `chrono`
-behind `chrono`. Every other dependency, a new asset included, goes through an approval list
+behind `chrono`. The optional `process` feature adds `fairing-process` using the
+already-locked rustix version for safe Linux limits and polling. Every other dependency, a new asset included, goes through an approval list
 that the audit checks (`deps.allow`, `deny.toml`).
 
 egui and eframe use the 0.37 API. The optional runner keeps GL, Wayland, bundled fonts and
@@ -60,6 +62,7 @@ has no shell to tick; a custom host must connect `Shell::logic*` itself.
 
 | Feature | Default | What it adds |
 |---|---|---|
+| `process` | off | Linux renderer supervision; work engine stays separate ([integration](../crates/fairing-process/README.md)) |
 | `overlay` | on | The shade: quick-settings tiles, the notification list, the scrim |
 | `osk` | on | The on-screen keyboard |
 | `settings` | on | The built-in settings screens. The setting values are always there |

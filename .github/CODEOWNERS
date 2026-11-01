@@ -22,3 +22,5 @@ vendor/**              @shim9610
 **/build.rs            @shim9610
 assets/**/LICENSE-*    @shim9610
 THIRD_PARTY.md         @shim9610
+
+crates/fairing-process/** @shim9610

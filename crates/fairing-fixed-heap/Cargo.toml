@@ -34,7 +34,16 @@ indexing_slicing = "warn"
 
 [dev-dependencies]
 fairing = { path = "../fairing", version = "0.1.0", default-features = false }
+fairing-process = { workspace = true }
 
 [[example]]
 name = "allocation_pressure"
+required-features = ["global"]
+
+[[example]]
+name = "renderer_boundary"
+required-features = ["global"]
+
+[[example]]
+name = "isolated_renderer"
 required-features = ["global"]

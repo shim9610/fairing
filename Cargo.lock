@@ -659,6 +659,7 @@ dependencies = [
  "chrono",
  "eframe",
  "egui",
+ "fairing-process",
  "fairing-widgets",
  "image",
  "log",
@@ -671,8 +672,16 @@ name = "fairing-fixed-heap"
 version = "0.1.0"
 dependencies = [
  "fairing",
+ "fairing-process",
  "spinning_top",
  "talc",
+]
+
+[[package]]
+name = "fairing-process"
+version = "0.1.0"
+dependencies = [
+ "rustix 1.1.5",
 ]
 
 [[package]]

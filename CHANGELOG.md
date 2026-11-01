@@ -19,9 +19,18 @@ All notable changes to the fairing crates are recorded here. The format follows
   failure, reclaim toast icon caches and retry visible storage after 100 ms.
 - Require actual exhausted-arena refusal, continued preallocated queue work and
   display recovery after memory release; the lab abort control is not a production
-  recovery acceptance test. Whole-renderer no-abort behavior is still unsupported.
+  recovery acceptance test. Same-process complete renderer OOM recovery remains unsupported;
+  the optional Linux supervisor instead keeps an independent work engine alive.
 
 ### Added
+
+- Optional `fairing-process` Linux supervisor and `fairing/process` re-export:
+  private inherited Unix streams, fixed model/intent bounds, non-wrapping generations,
+  immediate authority-context invalidation, per-model watchdogs, child address-space
+  limits, reaping and finite restart backoff. The engine independently authorizes intents.
+- Separate engine/window examples, real egui UI/tessellation OOM survival/restart trials,
+  malformed/partial/replayed/context/overflow protocol checks and a real-window CI check.
+  egui remains unchanged; no registry package or version is added.
 
 - Public `Inbox::bounded`, `BoundedSender`/`BoundedInbox`, ownership-preserving
   `Full`/`Disconnected` errors, lazy factories, bounded drains and queue statistics.

@@ -122,7 +122,7 @@ jobs:
         run: rustup toolchain install "$MSRV" --profile minimal
 
       - name: Check the libraries with it
-        run: cargo "+$MSRV" check --locked -p fairing -p fairing-widgets --all-features
+        run: cargo "+$MSRV" check --locked -p fairing -p fairing-widgets -p fairing-process --all-features
 
   # **The example tours, as checks.** Each script presses what it names (`Act::Tap(Spot::Text(..))`, a label
   # found on the glass) and says what it expects to see (`Act::Expect`) before every picture, and
