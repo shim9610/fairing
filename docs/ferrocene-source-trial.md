@@ -101,9 +101,9 @@ toolchain required no changes for this trial.
 | Consumer compile and execution | Passed; 100 validation-boundary diagnostics |
 | Lint negative control | Rejected the unvalidated call as expected |
 | Instrumented product unit/integration tests | 1,451 passed |
-| Coverage: lines | 45,008 / 48,998 (91.86%) |
-| Coverage: functions | 4,806 / 5,276 (91.09%) |
-| Coverage: regions | 74,925 / 81,551 (91.88%) |
+| Coverage: lines | 45,029 / 49,019 (91.86%) |
+| Coverage: functions | 4,807 / 5,277 (91.09%) |
+| Coverage: regions | 74,942 / 81,568 (91.88%) |
 
 The consumer diagnostics include `ShellConfig::default`, `ShellConfig::validate`,
 `round_u8` and calls reached through generic instantiations. The count includes
@@ -112,7 +112,7 @@ an inventory of validation evidence needed at those call boundaries. No
 `prevalidated` attributes were added to production code.
 
 Coverage figures describe the instrumented test build, including inline unit
-tests. The export contains 122 product source files and one standard-library
+tests. The export contains 123 product source files and one standard-library
 file. Documentation tests, branch coverage and MC/DC are outside
 these figures. These results are local; the new hosted Ferrocene workflow has
 not been executed.

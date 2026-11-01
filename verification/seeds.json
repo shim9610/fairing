@@ -1,0 +1,4 @@
+{
+  "bool_protocol": [[1, 0, 1, 2, 2], [1, 3, 0, 1, 4, 3, 2, 0, 2], [1, 5, 5, 5, 0, 2, 2]],
+  "config": [" ", "[shell]\nlocale = 'en'\nidle_lock_secs = 0\n", "[theme]\ndark = true\n", "[wifi]\npsk = \"FUZZ_PRIVATE_SEED", "[motion]\nfade = nan\n"]
+}

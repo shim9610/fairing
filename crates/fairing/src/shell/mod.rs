@@ -62,6 +62,8 @@ use crate::access::{
     Access, AccessEvent, AuthMethod, AuthOutcome, Authenticator, ChangeReason, Credential, Gate,
     SessionChange,
 };
+mod bool_ack;
+
 use crate::chrome::bar::{BarItemRow, BarPainter};
 use crate::chrome::{
     NavAction, NavBar, NavStyle, PolicyDriver, StatusBar, StatusBarAction, EMERGENCY_GATE,
@@ -3155,16 +3157,21 @@ impl Shell {
     }
 
     fn reconcile_bool(&mut self, key: SettingKey, mut request: PendingBool) {
-        if self.builtin_bool(&key) == Some(request.sent) {
-            if request.desired != request.sent {
-                self.send_bool_target(&key, request.desired);
-            }
-        } else {
-            let failed = self.wifi_failed(&key);
-            if !failed || request.was_failed {
+        let reported = self.builtin_bool(&key);
+        let failed = reported != Some(request.sent) && self.wifi_failed(&key);
+        match bool_ack::reconcile(
+            request.sent,
+            request.desired,
+            request.was_failed,
+            reported,
+            failed,
+        ) {
+            bool_ack::Decision::Send(desired) => self.send_bool_target(&key, desired),
+            bool_ack::Decision::Keep(failed) => {
                 request.was_failed = failed;
                 self.pending_bools.insert(key, request);
             }
+            bool_ack::Decision::Complete => {}
         }
     }
 

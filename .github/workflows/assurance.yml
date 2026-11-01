@@ -1,0 +1,160 @@
+name: Rust assurance
+
+on:
+  pull_request:
+  push: { branches: [main] }
+  workflow_dispatch:
+  schedule: [{ cron: "0 5 * * 1" }]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_BUILD_JOBS: "2"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  inputs:
+    if: github.repository == 'shim9610/fairing'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-audit
+            ~/.cargo/bin/cargo-deny
+          key: tools-${{ runner.os }}-${{ hashFiles('xtask/tools.lock') }}
+      - name: Install pinned audit tools
+        run: |
+          set -euo pipefail
+          while read -r name version; do
+            [ -z "${name:-}" ] && continue
+            case "$name" in \#*) continue ;; esac
+            sub="${name#cargo-}"
+            found="$(cargo "$sub" --version 2>/dev/null | head -n1 | awk '{print $NF}' || true)"
+            if [ "$found" != "$version" ]; then
+              cargo install "$name" --locked --version "$version" --force
+            fi
+          done < xtask/tools.lock
+      - name: Check inputs before compiling assurance dependencies
+        run: |
+          cargo run -p xtask --locked -- integrity
+          python3 verification/check-inputs.py
+          cargo audit --file verification/Cargo.lock
+          cargo deny --manifest-path verification/Cargo.toml --config verification/deny.toml check
+          cargo fmt --manifest-path verification/Cargo.toml -- --check
+          rustfmt --check verification/kani.rs
+
+  proofs:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install pinned Kani and Verus
+        run: python3 verification/install.py proofs
+      - name: Verify production code and reject broken-order controls
+        run: python3 verification/proofs.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: proof-results
+          path: target/assurance/proofs/
+          retention-days: 14
+
+  properties-and-loom:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Generated input properties and real channels
+        env:
+          PROPTEST_CASES: "512"
+          PROPTEST_RNG_SEED: "20261101"
+          CARGO_TARGET_DIR: target/assurance-tests
+        run: |
+          mkdir -p target/assurance/logs
+          cargo test --locked --manifest-path verification/Cargo.toml --lib 2>&1 | tee target/assurance/logs/properties.log
+      - name: Exhaust bounded Inbox channel schedules
+        env:
+          RUSTFLAGS: "--cfg fairing_loom"
+          CARGO_TARGET_DIR: target/assurance-loom
+        run: |
+          cargo test --locked --manifest-path verification/Cargo.toml --no-default-features --features loom --lib 2>&1 | tee target/assurance/logs/loom.log
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: property-model-results
+          path: target/assurance/logs/
+          retention-days: 14
+
+  miri:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install the pinned Miri toolchain
+        run: python3 verification/install.py miri
+      - name: Interpret the production kernel, parser and real Inbox
+        env:
+          MIRIFLAGS: "-Zmiri-seed=0"
+          CARGO_TARGET_DIR: target/assurance-miri
+        run: |
+          mkdir -p target/assurance/logs
+          nightly="$(python3 -c 'import json; print(json.load(open("verification/tools.json"))["nightly"])')"
+          cargo "+$nightly" miri test --locked --manifest-path verification/Cargo.toml --lib 2>&1 | tee target/assurance/logs/miri.log
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: miri-results
+          path: target/assurance/logs/
+          retention-days: 14
+
+  fuzz:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install pinned nightly and cargo-fuzz
+        run: python3 verification/install.py fuzz
+      - name: Run bounded sanitizer fuzzing
+        run: python3 verification/fuzz.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: fuzz-results
+          path: |
+            target/assurance/fuzz/
+            verification/artifacts/
+          retention-days: 14
+
+  sbom:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install the pinned generator and schema validator
+        run: |
+          python3 verification/install.py sbom
+          python3 -m venv "$RUNNER_TEMP/sbom-python"
+          "$RUNNER_TEMP/sbom-python/bin/python" -m pip install --disable-pip-version-check -r verification/requirements.txt
+      - name: Generate target-scoped BOMs and validate CycloneDX schemas
+        run: '"$RUNNER_TEMP/sbom-python/bin/python" verification/sbom.py'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: library-sboms
+          path: target/assurance/sbom/
+          retention-days: 14

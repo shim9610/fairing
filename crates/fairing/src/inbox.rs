@@ -14,7 +14,12 @@
 //! hands out `try_recv` and a non-blocking [`Inbox::drain`], and never lends the receiver out. There
 //! is no expression you can write that blocks.
 
-use std::sync::mpsc::{Sender, TryRecvError};
+#[cfg(fairing_loom)]
+use loom::sync::mpsc;
+use mpsc::Sender;
+#[cfg(not(fairing_loom))]
+use std::sync::mpsc;
+use std::sync::mpsc::TryRecvError;
 
 /// The receiving end of an mpsc channel that **cannot block**.
 ///
@@ -45,7 +50,7 @@ use std::sync::mpsc::{Sender, TryRecvError};
 /// let (_tx, inbox) = Inbox::<u8>::pair();
 /// let _ = inbox.recv();  // no such method — `try_recv` and `drain` are the whole of it
 /// ```
-#[derive(Debug)]
+#[cfg_attr(not(fairing_loom), derive(Debug))]
 pub struct Inbox<T> {
     // The one place in the workspace a bare `Receiver` is allowed to live. It is private and never
     // handed out, which is what makes the guarantee above hold.
@@ -53,14 +58,14 @@ pub struct Inbox<T> {
         clippy::disallowed_types,
         reason = "Inbox is the wrapper that makes the blocking half unreachable"
     )]
-    rx: std::sync::mpsc::Receiver<T>,
+    rx: mpsc::Receiver<T>,
 }
 
 impl<T> Inbox<T> {
     /// A channel: the ordinary [`Sender`], and the non-blocking receiving end.
     #[must_use]
     pub fn pair() -> (Sender<T>, Self) {
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = mpsc::channel();
         (tx, Self { rx })
     }
 
@@ -80,7 +85,7 @@ impl<T> Inbox<T> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(fairing_loom)))]
 mod tests {
     use super::Inbox;
 

@@ -16,6 +16,8 @@
 
 For the separate public-source Ferrocene compatibility trial, see
 [Trying Ferrocene from public source](docs/ferrocene-source-trial.md).
+For Kani, Verus, Miri, Loom, generated-input checks and dependency BOMs, see
+[Rust assurance checks](docs/rust-assurance.md).
 
 The product libraries forbid explicit panic macros, unwrap/expect calls and process
 termination in Clippy builds. Assertion macros remain available to tests. The macro
@@ -52,7 +54,7 @@ line disable the audit itself.
 1. When a new crate appears in the tree — directly or transitively — its name, version range,
    licence and rationale go in `deps.allow`.
 2. A PR touching `Cargo.toml` (root or member), `Cargo.lock`, `deps.allow`, `deny.toml`,
-   `rust-toolchain.toml`, `xtask/**`, `tools/ferrocene/**`, `.cargo/**`, `vendor/**`, `.github/**`, `**/build.rs`,
+   `rust-toolchain.toml`, `xtask/**`, `tools/ferrocene/**`, `verification/**`, `.cargo/**`, `vendor/**`, `.github/**`, `**/build.rs`,
    `assets/**/LICENSE-*` or `THIRD_PARTY.md` requires an owner review, via `CODEOWNERS`.
 3. Fill in the dependency checklist in the PR template: purpose, alternatives, licence,
    maintenance status, how much the tree grows, `build.rs` and `unsafe`, feature isolation,
