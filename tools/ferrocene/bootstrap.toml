@@ -1,0 +1,41 @@
+# Source-built Linux compatibility trial; this is not a qualified distribution.
+change-id = "ignore"
+
+[build]
+build = "x86_64-unknown-linux-gnu"
+host = ["x86_64-unknown-linux-gnu"]
+target = ["x86_64-unknown-linux-gnu"]
+jobs = 4
+submodules = false
+locked-deps = true
+docs = false
+compiler-docs = false
+extended = false
+profiler = true
+
+[llvm]
+download-ci-llvm = false
+targets = "X86"
+experimental-targets = ""
+assertions = false
+release-debuginfo = false
+link-jobs = 1
+
+[rust]
+download-rustc = false
+optimize = 2
+debug = false
+debug-assertions = false
+debug-logging = false
+debuginfo-level = 0
+incremental = false
+codegen-units = 64
+codegen-units-std = 1
+lto = "off"
+channel = "stable"
+lld = false
+
+[ferrocene]
+channel = "auto-detect"
+test-outcomes = "disabled"
+coverage-outcomes = "disabled"
