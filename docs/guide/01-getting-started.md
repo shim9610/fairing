@@ -30,10 +30,10 @@ OS copy/paste and bundled fallback faces with eframe's default features disabled
 automatic system-font provider stays disabled; register device fonts through the builder.
 If you supply your own eframe host, choose those features in that host too.
 
-eframe's stalled-Wayland-redraw fallback calls `App::logic`, not `App::ui`. The built-in
-fairing runners currently implement only `ui`, so the upgrade alone does not keep shell
-polling or deadlines ticking while redraws are withheld. A custom host may run its own
-background work in `logic`; see [the known limits](../roadmap.md#4-known-limits).
+eframe's stalled-Wayland-redraw fallback calls `App::logic`, not `App::ui`. The shell/state
+runners connect it to `Shell::logic*`, keeping commands, backend polling, access deadlines
+and lifecycle requests working without drawing. They deliver events there as well as
+after UI work. The closure-only `runner::run` has no shell to tick automatically.
 
 For code migrating from egui 0.36, use `Id::unique` for the old global `Id::new` calls and
 `Ui::scope_id` for `Ui::id`. Screenshot results now arrive through callbacks instead of
@@ -292,6 +292,15 @@ let shell = fairing::Shell::builder(fairing::ShellConfig::default())
 
 If you already have your own `eframe::App` or another egui host, skip the `runner`
 feature and call `Shell::frame(ui)` once per frame.
+
+To continue shell state processing while eframe withholds UI passes, also call
+`shell.logic(ctx)` in **every** `App::logic` callback, and keep `shell.frame(ui)` in
+`App::ui`. For shared app state, pair `logic_with(ctx, &mut state)` and
+`frame_with(ui, &mut state)`. Take `poll_events()` after either callback: commands and
+authentication can complete while hidden. The UI pass reuses its preceding logic update.
+Logic callbacks use a monotonic wall clock because egui's UI time and input events are
+stale while hidden. Hosts using only `frame` retain the egui input timeline, including
+virtual time in the headless harness. Drawing and animations wait for the next UI pass.
 
 `ShellEvent` is not a reason to come here. `runner::run_shell` does drop events
 into `log::debug!`, but **`runner::run_shell_with(options, build, on_event)`**

@@ -157,7 +157,8 @@ pub type ServiceResult = Result<(), ServiceError>;
 pub trait Backend {
     /// Given once by the shell at startup. Hand it to a worker thread and `wake()` when the state changes.
     fn attach(&mut self, _waker: Waker) {}
-    /// Every frame: drain the channel with `try_recv` and refresh the `latest` snapshot.
+    /// Every state update (a UI frame or a logic-only tick): drain the channel with
+    /// `try_recv` and refresh the `latest` snapshot, on the event-loop thread.
     fn poll(&mut self) {}
     /// What frame stage 3 actually calls. `now` is the shell's monotonic time
     /// ([`crate::Shell::now`]) — headless it is virtual time (1/60 s at a step), so a
@@ -714,8 +715,9 @@ impl Services {
             .chain(self.custom.iter_mut().map(|b| &mut **b as &mut dyn Backend))
     }
 
-    /// Frame stage 3: [`Backend::poll_at`] on every backend. Returns the earliest `next_wake`.
-    /// `now` is the shell's monotonic time (virtual, headless).
+    /// State stage 3: [`Backend::poll_at`] on every backend, including logic-only ticks.
+    /// Returns the earliest `next_wake`. `now` is the shell's monotonic time (virtual
+    /// for frame-only headless hosts).
     pub fn poll(&mut self, now: Instant) -> Option<Instant> {
         self.each()
             .filter_map(|backend| {
@@ -723,6 +725,12 @@ impl Services {
                 backend.next_wake()
             })
             .min()
+    }
+
+    /// Re-read deadlines after actions/lifecycle callbacks may have started or canceled
+    /// backend work since the poll. This does not poll or change a snapshot again.
+    pub(crate) fn next_wake(&mut self) -> Option<Instant> {
+        self.each().filter_map(|backend| backend.next_wake()).min()
     }
 
     /// Name every backend whose `next_wake` is at or before `now` — a built-in one by its field,

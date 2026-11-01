@@ -1095,6 +1095,8 @@ impl ShellBuilder {
             frame_no: 0,
             last_dt: 0.0,
             mono,
+            clock_wall: mono,
+            logic_state: None,
             stale_wake_frames: 0,
             font_waits: 0,
             status_bar_painter,

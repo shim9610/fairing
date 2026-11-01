@@ -1,6 +1,11 @@
 //! `Shell` — the top-level object. One [`Shell::frame`] per frame draws everything.
 //!
 //! The frame order is a fixed contract.
+//! [`Shell::logic`] / [`Shell::logic_with`] can run state stages 1–4 plus eviction and
+//! lifecycle requests without drawing. The shell/state runners use them in `App::logic`;
+//! a following UI pass reuses that update and records only its fresh input activity.
+//! Background calls use wall time and schedule state deadlines, leaving visual animation
+//! and gesture processing to UI passes.
 //!
 //! ```text
 //! Shell::frame(ui)
@@ -35,6 +40,9 @@
 //! 16. events       — the integrator takes them with poll_events
 //! ```
 
+mod background;
+#[cfg(all(test, feature = "mock"))]
+mod background_tests;
 mod builder;
 mod env_scale;
 mod event;
@@ -112,6 +120,7 @@ use crate::services::Services;
 use crate::settings::{keys, SettingKey, SettingValue, SettingsView};
 use crate::theme::{Theme, ThemeFade};
 use crate::workspace::{Instance, InstanceId, OverviewMode, SplitBlocker, Task, Workspace};
+use background::LogicState;
 use slots::{OskSlot, OverlaySlot, OverlaySlotAction};
 use std::time::{Duration, Instant};
 
@@ -149,11 +158,13 @@ pub struct Shell {
     layout: Layout,
     frame_no: u64,
     last_dt: f32,
-    /// The shell's monotonic time. It starts from `Shell::new`'s `Instant::now()` and **accumulates**
-    /// `dt` each frame (the M1 version of `now = clock.now()`). Headless,
-    /// `RawInput.time` advances by 1/60 at a time, so this value is the virtual time as it stands —
-    /// `run_for(0.2)` really does imitate 200 ms.
+    /// Monotonic time: input deltas for a frame-only host, wall deltas once the host
+    /// uses `logic`. Headless frame-only tests retain their virtual `RawInput::time`.
     mono: Instant,
+    /// Last wall-clock observation, also refreshed by input-driven frames before opting in.
+    clock_wall: Instant,
+    /// Present once the host uses `App::logic`; UI passes then share its wall clock.
+    logic_state: Option<LogicState>,
     /// How many frames `next_wake` has pointed into the past in a row (for diagnosing a backend fault).
     stale_wake_frames: u64,
     /// How many passes before the first frame were skipped waiting for the font families.
@@ -792,7 +803,8 @@ impl Shell {
         &mut self.access
     }
 
-    /// The shell's monotonic time (as of last frame). `Cx::now`, `evict_after` and the backends' `poll_at` all see the same value.
+    /// The shell's monotonic time at its last UI or logic update. `Cx::now`,
+    /// `evict_after` and the backends' `poll_at` all see the same timeline.
     #[must_use]
     pub fn now(&self) -> Instant {
         self.mono
@@ -1667,24 +1679,13 @@ impl Shell {
         let elapsed = ui.input(|i| i.unstable_dt);
         let elapsed = Duration::try_from_secs_f32(elapsed.max(0.0))
             .unwrap_or_else(|_| Duration::from_secs_f32(dt));
-        self.mono = self.mono.checked_add(elapsed).unwrap_or(self.mono);
+        self.advance_frame_time(elapsed);
         let now = self.mono;
         let input_activity =
             ui.input(|i| i.pointer.any_down() || i.events.iter().any(is_user_input));
         self.update_cursor(&ctx, now);
-        // Declarations take effect before queued updates to their new desktop icons.
-        self.rebuild_registry();
-        self.observe_subject_change(app);
-        // A queued action must not use yesterday's subject, and wake-up input must not
-        // renew inactivity deadlines that have already elapsed.
-        self.expire_access(now);
-        // 2.
-        let commands_pending = self.drain_commands(app);
-        // 3.
-        let next_wake = self.services.poll(now);
-        self.reconcile_pending_bools();
-        // 4.
-        self.tick_access(now, input_activity, app);
+        // State processing may already have run in eframe::App::logic for this pass.
+        let wake = self.frame_state(&ctx, input_activity, app);
         // 5.
         let screen = ui.max_rect();
         let wants_keyboard = ctx.egui_wants_keyboard_input();
@@ -1743,11 +1744,7 @@ impl Shell {
                 status: status_action,
             },
             late,
-            FrameWake {
-                next_wake,
-                now,
-                commands_pending,
-            },
+            wake,
             app,
         );
         // 16. The events go out through poll_events.
@@ -2740,18 +2737,11 @@ impl Shell {
             Some(PromptAction::Continue) => self.continue_from_lock(app),
             None => {}
         }
-        self.process_requests(app);
-        self.flush_lifecycle(app);
-        // A screen's `on_lifecycle` can make requests of its own (saving its state on
-        // `Destroyed`, say); they are carried out this frame too, for a few rounds. Whatever a
-        // handler that keeps asking leaves is the next frame's, and stage 15 asks for one.
-        for _ in 0..LIFECYCLE_ROUNDS {
-            if self.requests.is_empty() {
-                break;
-            }
-            self.process_requests(app);
-            self.flush_lifecycle(app);
-        }
+        self.settle_requests(app);
+        let wake = FrameWake {
+            next_wake: self.services.next_wake(),
+            ..wake
+        };
         self.schedule_repaint(ctx, wake);
         // 16. The events go out through poll_events.
     }

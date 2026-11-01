@@ -1123,6 +1123,14 @@ impl Workspace {
         self.queue_pane_resize(1, second);
     }
 
+    /// Initial geometry for lifecycle work before the first UI pass. A later actual size
+    /// is still reported by `content_resized`.
+    pub(crate) fn seed_content(&mut self, content: Rect) {
+        if !self.last_content.is_positive() {
+            self.last_content = content;
+        }
+    }
+
     /// The content resized (a rotation, a window, the chrome hiding): every pane's instances hear
     /// their new size — the whole content with one pane, each pane's share with two.
     pub(crate) fn content_resized(&mut self, content: Rect) {

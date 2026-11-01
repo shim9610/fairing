@@ -7,6 +7,11 @@
 //! `eframe::App::ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame)` (confirmed against
 //! the registry source; not `update()`). The panel receives a `Ui`, so [`run`]'s callback and
 //! [`crate::Shell::frame`] take a root `Ui` too.
+//!
+//! The shell/state adapters call [`Shell::logic`] / [`Shell::logic_with`] from
+//! `App::logic`, so commands, polling and access deadlines continue while no UI pass
+//! runs. Their event handlers can run then too. [`run`] wraps only a UI closure;
+//! custom hosts that own a shell must connect the logic callback themselves.
 
 use crate::error::{Error, Result};
 use crate::shell::Shell;
@@ -84,7 +89,8 @@ pub fn run_shell(
 /// `runner::run` and write the frame loop yourself. Every device with a lock screen is in that
 /// position.
 ///
-/// `on_event` is called **within the frame** the shell emitted the event in.
+/// `on_event` is called in the UI or logic callback that emitted the event, including
+/// when the window has no UI pass.
 ///
 /// ```no_run
 /// # fn main() -> fairing::Result<()> {
@@ -192,6 +198,13 @@ struct StateApp<S> {
 }
 
 impl<S: std::any::Any> eframe::App for StateApp<S> {
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.shell.logic_with(ctx, &mut self.state);
+        for event in self.shell.poll_events() {
+            (self.on_event)(&event);
+        }
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.shell.frame_with(ui, &mut self.state);
         for event in self.shell.poll_events() {
@@ -221,10 +234,87 @@ struct ShellApp {
 }
 
 impl eframe::App for ShellApp {
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.shell.logic(ctx);
+        for event in self.shell.poll_events() {
+            (self.on_event)(&event);
+        }
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.shell.frame(ui);
         for event in self.shell.poll_events() {
             (self.on_event)(&event);
         }
+    }
+}
+
+#[cfg(all(test, feature = "mock"))]
+mod tests {
+    use super::{ShellApp, StateApp};
+    use crate::{action, LaunchAction, Shell};
+    use eframe::App;
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    #[test]
+    fn state_runner_delivers_logic_only_actions_and_events_once() -> crate::Result<()> {
+        let ctx = egui::Context::default();
+        let mut shell = Shell::builder(crate::testing::single_level_access()).build(&ctx)?;
+        shell.add(action("work", |cx| {
+            if let Some(count) = cx.app_mut::<usize>() {
+                *count += 1;
+            }
+            cx.set_setting("app.done", crate::SettingValue::Bool(true));
+        }));
+        let delivered = Rc::new(Cell::new(0));
+        let seen = Rc::clone(&delivered);
+        let _ = shell.poll_events();
+        shell.handle().launch(LaunchAction::run("work"));
+        let mut app = StateApp {
+            shell,
+            state: 0usize,
+            on_event: Box::new(move |event| {
+                if matches!(event, crate::ShellEvent::SettingChanged { key, .. } if key.0.as_ref() == "app.done")
+                {
+                    seen.set(seen.get() + 1);
+                }
+            }),
+        };
+        let mut frame = eframe::Frame::_new_kittest();
+        let _ = ctx.run_logic(&egui::RawInput::default(), |ctx| app.logic(ctx, &mut frame));
+        assert_eq!(app.state, 1);
+        assert_eq!(delivered.get(), 1);
+        assert_eq!(app.shell.frame_no(), 0);
+        let out = ctx.run_ui(egui::RawInput::default(), |ui| {
+            app.logic(ui.ctx(), &mut frame);
+            app.ui(ui, &mut frame);
+        });
+        out.drop_without_applying_deltas();
+        assert_eq!(app.state, 1);
+        assert_eq!(delivered.get(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn shell_runner_delivers_logic_only_commands_without_drawing() -> crate::Result<()> {
+        let ctx = egui::Context::default();
+        let shell = Shell::builder(crate::testing::single_level_access()).build(&ctx)?;
+        let events = Rc::new(Cell::new(0));
+        let seen = Rc::clone(&events);
+        shell.handle().logout();
+        let mut app = ShellApp {
+            shell,
+            on_event: Box::new(move |event| {
+                if matches!(event, crate::ShellEvent::LogoutRequested) {
+                    seen.set(seen.get() + 1);
+                }
+            }),
+        };
+        let mut frame = eframe::Frame::_new_kittest();
+        let _ = ctx.run_logic(&egui::RawInput::default(), |ctx| app.logic(ctx, &mut frame));
+        assert_eq!(events.get(), 1);
+        assert_eq!(app.shell.frame_no(), 0);
+        Ok(())
     }
 }

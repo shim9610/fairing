@@ -45,13 +45,14 @@ These are candidates, not promises. Each one waits for a real need.
 
 ## 4. Known limits
 
-- **Stalled redraws pause shell processing.** eframe 0.37 keeps calling `App::logic` when
-  Wayland frame callbacks stop, but fairing's built-in runners drive the shell only from
-  `App::ui`. Shell commands, backend polling and access deadlines resume with the next UI
-  frame. Using that fallback for shell processing requires separating it from drawing;
-  a custom host can already use `App::logic` for its own background work.
 These are how the crate behaves today. Each is small, and each has a reason.
 
+- **Background logic cannot present a frame.** The shell/state runners use eframe 0.37's
+  `App::logic` fallback for state processing, but drawing and animations still wait for a
+  UI pass. Access can be revoked in state while a compositor retains its last presented
+  frame. `runner::run` supplies only a UI closure. Hosts needing background shell work
+  must use a shell/state runner or implement `App::logic` and call `Shell::logic*` there.
+  Backends must still use `Waker` or `next_wake`.
 - **One finger.** The gesture engine follows a single touch. A second finger is not a gesture.
 - **Strips and regions are a frame or two behind the glass.** egui decides what a press hits from
   where things were the frame before. So a gesture region that moves, grows or first appears

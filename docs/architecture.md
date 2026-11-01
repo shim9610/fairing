@@ -49,10 +49,11 @@ that the audit checks (`deps.allow`, `deny.toml`).
 egui and eframe use the 0.37 API. The optional runner keeps GL, Wayland, bundled fonts and
 OS clipboard support explicit, with X11 added by `runner-x11`. For an overdue redraw,
 eframe can call `App::logic` while a Wayland compositor withholds frame callbacks. It
-does not run `App::ui` or force a frame to be presented. The built-in fairing runners
-currently implement only `App::ui`: shell polling, commands and access deadlines resume
-when a UI frame runs. A custom host can use `App::logic` for its own background work;
-running the shell there requires separating its state processing from drawing.
+does not run `App::ui` or force a frame to be presented. `run_shell*` and `run_app*` call
+`Shell::logic*` there: commands, backend snapshots, access expiry/authentication, stopped
+screen eviction and lifecycle requests continue on the event-loop thread. Their `ui`
+callback draws without repeating the same state update. The closure-only `runner::run`
+has no shell to tick; a custom host must connect `Shell::logic*` itself.
 
 ### Features
 
@@ -96,7 +97,10 @@ A large part comes out whole behind its feature. Turned off, it is not compiled 
 
 ## 4. One frame
 
-Everything happens inside `Shell::frame(ui)`, once per frame, in a fixed order:
+For a frame-only host, `Shell::frame(ui)` runs this sequence. Shell/state runners run
+state stages 1–4 in `Shell::logic*` first, including when no UI follows; the UI pass
+records fresh activity and reuses that state update before gestures and drawing.
+Eviction and lifecycle requests can also finish during logic-only calls.
 
 | # | Step | What happens |
 |---|---|---|
@@ -127,6 +131,12 @@ asks for while it draws, such as opening another screen, is handled later in the
   notification or a toast, change a setting or ask for an unlock. Sending wakes the UI.
 - **Backends ask to be woken.** A backend holds a `Waker` and calls `wake()` when its state
   changes. Something due later, such as a scan finishing, is `next_wake()`, not a timer thread.
+- **Logic-only work uses wall time.** egui retains the last UI input during `run_logic`.
+  The shell uses a shared monotonic wall timeline once `Shell::logic*` is used, so stale
+  input cannot renew a session and returning to UI cannot count the hidden interval twice.
+  A host using only `Shell::frame*` retains egui's input timeline for headless simulation.
+  Hidden scheduling follows backend/access/eviction deadlines and bounded queued work;
+  animations, held pointers and continuous repaint do not keep it spinning.
 - **Screenshot callbacks only deliver data.** A per-request `Inbox` carries the image back to
   the UI thread and the callback asks for a repaint. Closing a card, changing its theme or
   viewport, or timing out drops that inbox so a late image cannot complete a later request.

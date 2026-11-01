@@ -45,6 +45,13 @@ The `now` in `poll_at` is **the shell's monotonic clock** (`Shell::now()`), not
 simulation — a scan delay, say — can be verified with no `sleep`. The flip side:
 a backend that calls `Instant::now()` internally throws that away.
 
+With a shell/state runner, `poll_at` also runs from `App::logic` while the window has
+no UI pass. It stays on the same event-loop thread. A subsequent UI pass reuses the
+update instead of polling a second time. Once `Shell::logic*` is used, its monotonic
+clock advances with wall time; frame-only headless hosts retain virtual input time.
+Use `Waker` or `next_wake` even while hidden: animations and continuous repaint do not
+drive background polling.
+
 Eight traits, one for each kind of hardware the built-in UI shows:
 
 | Trait | What it covers | Key methods |

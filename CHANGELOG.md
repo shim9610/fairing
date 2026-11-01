@@ -10,9 +10,12 @@ All notable changes to the fairing crates are recorded here. The format follows
 
 - Upgrade egui, eframe and their paint crates from 0.36.2 to 0.37.0. The runner retains
   bundled fonts, GL and OS clipboard support. eframe's overdue-Wayland-redraw fallback
-  calls `App::logic`; built-in fairing runners still drive the shell from `App::ui`, so
-  this upgrade alone does not continue shell processing during a stalled redraw.
+  calls `App::logic`. The shell/state runners now process commands, backends, access
+  deadlines and lifecycle requests there, even without a UI pass; a visible pass reuses
+  that update. Hidden ticks use wall time and do not replay old input or drive animations.
   The minimum Rust version remains 1.95.
+- Re-read backend wake deadlines after actions and lifecycle callbacks, so work started
+  after the poll still schedules its next update in UI and logic-only paths.
 - Use callback-based screenshots for card backdrops and example capture/recording. Each
   card request has its own inbox and wakes the UI on completion; closing, timing out, changing
   theme or resizing discards its late response.
