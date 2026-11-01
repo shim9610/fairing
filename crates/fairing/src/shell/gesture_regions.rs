@@ -475,7 +475,7 @@ impl Shell {
             let Some(slot) = self.gesture_regions.get(usize::from(tag)) else {
                 continue;
             };
-            let id = Id::new(GUARD_AREA).with(&slot.id);
+            let id = Id::unique(GUARD_AREA).with(&slot.id);
             let _ = egui::Area::new(id)
                 .order(Order::Foreground)
                 .fixed_pos(rect.min)
@@ -502,7 +502,7 @@ impl Shell {
             icons,
             ..
         } = self;
-        let layer = ctx.layer_painter(LayerId::new(Order::Foreground, Id::new(REGION_LAYER)));
+        let layer = ctx.layer_painter(LayerId::new(Order::Foreground, Id::unique(REGION_LAYER)));
         for (rect, tag) in region_zones.iter() {
             let Some(RegionSlot { id, kind }) = gesture_regions.get_mut(usize::from(tag)) else {
                 continue;

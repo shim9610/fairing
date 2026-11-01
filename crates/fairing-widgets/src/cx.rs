@@ -85,7 +85,7 @@ mod tests {
             theme: &theme,
             icons: &mut icons,
             anims: &mut anims,
-            anim_scope: egui::Id::new("test"),
+            anim_scope: egui::Id::unique("test"),
             frame: 0,
             inset_bottom: 0.0,
             painters: Some(&mut painters),

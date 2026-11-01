@@ -344,6 +344,7 @@ fn nested_scroll_hands_off_to_shade_once_per_gesture() -> fairing::Result<()> {
     for _ in 0..2 {
         h.push_event(egui::Event::MouseWheel {
             unit: egui::MouseWheelUnit::Point,
+            source: egui::MouseWheelSource::Wheel,
             delta: egui::vec2(0.0, -60.0),
             modifiers: egui::Modifiers::default(),
             phase: egui::TouchPhase::Move,
@@ -1508,7 +1509,7 @@ fn footer_buttons(h: &Harness) -> Vec<&'static str> {
     .into_iter()
     .filter(|id| {
         h.ctx
-            .read_response(egui::Id::new(*id))
+            .read_response(egui::Id::unique(*id))
             .is_some_and(|r| r.rect.is_positive())
     })
     .collect()
@@ -1590,7 +1591,7 @@ fn the_shade_lock_button_reports_and_closes_the_shade() -> fairing::Result<()> {
 
     let lock = need(
         h.ctx
-            .read_response(egui::Id::new("fairing.overlay.footer.lock"))
+            .read_response(egui::Id::unique("fairing.overlay.footer.lock"))
             .map(|r| r.rect),
         "the lock button",
     )?;

@@ -40,7 +40,7 @@ let mut cx = WidgetCx {
     theme: &theme,
     icons: &mut icons,
     anims: &mut anims,
-    anim_scope: egui::Id::new("my-app"),
+    anim_scope: egui::Id::unique("my-app"),
     frame: 0,
     inset_bottom: 0.0,
     painters: None,

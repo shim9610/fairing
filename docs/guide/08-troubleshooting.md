@@ -115,7 +115,7 @@ appears or you get an initialisation `Error::Runner`. Switch to `runner-x11`.
 
 ## 6. Korean renders as tofu
 
-egui's `default_fonts` (Ubuntu family plus emoji) has no CJK glyphs. `fairing`
+egui's bundled `default_fonts` have no CJK glyphs. `fairing`
 does **not** embed a font file — they run to several megabytes and how far to
 subset is a per-device call. What it gives you instead is
 [`fairing::fonts`](../../crates/fairing-widgets/src/fonts.rs) and `ShellBuilder::fonts`.

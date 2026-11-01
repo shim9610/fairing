@@ -217,7 +217,7 @@ impl PolicyDriver {
         let Some(center) = self.emergency_at() else {
             return;
         };
-        let painter = ctx.layer_painter(LayerId::new(Order::Foreground, Id::new(RING_LAYER)));
+        let painter = ctx.layer_painter(LayerId::new(Order::Foreground, Id::unique(RING_LAYER)));
         let style = ParamStyle {
             color: theme.color(ColorRole::Primary),
             muted: theme.color(ColorRole::Muted),

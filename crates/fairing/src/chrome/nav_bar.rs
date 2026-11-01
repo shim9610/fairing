@@ -624,7 +624,11 @@ fn draw_custom(
     parts: &mut CxParts<'_>,
 ) -> Option<NavAction> {
     // It has to be registered first for the widget the closure makes to win the hit test (the same order as the top bar).
-    let response = ui.interact(cell, egui::Id::new(("fairing.nav", index)), Sense::click());
+    let response = ui.interact(
+        cell,
+        egui::Id::unique(("fairing.nav", index)),
+        Sense::click(),
+    );
     let decl = custom.get_mut(custom_index)?;
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(cell).layout(
         egui::Layout::centered_and_justified(egui::Direction::TopDown),
@@ -682,7 +686,7 @@ fn draw_item(
     let tokens = theme.motion;
     let response = ui.interact(
         cell,
-        egui::Id::new(("fairing.nav", index)),
+        egui::Id::unique(("fairing.nav", index)),
         if live { Sense::click() } else { Sense::hover() },
     );
     let down = raw_down || (live && response.is_pointer_button_down_on());
@@ -701,7 +705,7 @@ fn draw_item(
         tokens.press_release
     };
     let scale = parts.animations.animate(
-        egui::Id::new(("fairing.nav.press", index)),
+        egui::Id::unique(("fairing.nav.press", index)),
         target,
         tween,
         parts.frame,

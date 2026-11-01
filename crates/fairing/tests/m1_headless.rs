@@ -1249,7 +1249,7 @@ fn cx_animate_converges_and_store_prunes() -> fairing::Result<()> {
             };
             let tween = Tween::cubic_out(std::time::Duration::from_millis(100));
             v.borrow_mut()
-                .push(cx.animate(egui::Id::new("fade"), target, tween));
+                .push(cx.animate(egui::Id::unique("fade"), target, tween));
             ui.label("a");
         }));
     h.frames(2);

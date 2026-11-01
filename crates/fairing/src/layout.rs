@@ -877,7 +877,7 @@ impl Rail {
     #[must_use]
     pub fn is_folded(self, ctx: &egui::Context) -> bool {
         ctx.data(|d| {
-            d.get_temp::<bool>(egui::Id::new(self.salt))
+            d.get_temp::<bool>(egui::Id::unique(self.salt))
                 .unwrap_or(false)
         })
     }
@@ -886,7 +886,7 @@ impl Rail {
     /// [`Fold::Away`] rail wants since there is nothing left on screen to press. The width still
     /// tweens from here exactly as it does from a gesture.
     pub fn set_folded(self, ctx: &egui::Context, folded: bool) {
-        ctx.data_mut(|d| d.insert_temp(egui::Id::new(self.salt), folded));
+        ctx.data_mut(|d| d.insert_temp(egui::Id::unique(self.salt), folded));
     }
 
     /// Draw it. See [`rail_split`] for what the two closures are and why the rail returns its pick.
@@ -905,7 +905,7 @@ impl Rail {
                 collapsed: false,
             };
         };
-        let id = egui::Id::new(self.salt);
+        let id = egui::Id::unique(self.salt);
         let folded = self.collapsible && self.is_folded(ui.ctx());
         // **The width is animated, the state is a bool.** Folding is one bit; how far through the
         // fold this frame is, is a tween, and `Cx::animate` is where the crate keeps those so
@@ -976,7 +976,7 @@ impl Rail {
             // band, and on a panel whose glyphs are large the disc reaches past the screen inset
             // the arm starts at. Cut there, the disc lost its left edge (user report).
             rail_ui.set_clip_rect(band);
-            let fold_id = egui::Id::new(FOLD_KEY);
+            let fold_id = egui::Id::unique(FOLD_KEY);
             let frame = FoldFrame {
                 k: progress,
                 band: Some((band.left(), band.right())),
@@ -1223,7 +1223,7 @@ pub fn page(
 fn keep_focus_clear(ui: &Ui, cx: &Cx<'_>, id: &(impl std::hash::Hash + std::fmt::Debug)) {
     let inset = cx.pane.inset_bottom;
     let ctx = ui.ctx();
-    let inset_key = egui::Id::new(("fairing.page.keyboard", id));
+    let inset_key = egui::Id::unique(("fairing.page.keyboard", id));
     let focus_key = inset_key.with("focus");
     let expect_key = inset_key.with("expect");
     let was = ctx.data(|d| d.get_temp::<f32>(inset_key).unwrap_or(0.0));
@@ -1419,7 +1419,7 @@ pub fn chip_row<R>(
         &cx.widgets(),
         out.inner_rect,
         out.content_size.x,
-        out.state.offset.x,
+        out.state.clamped_offset().x,
     );
     ui.add_space(cx.theme.metrics.row_height * CARD_GAP);
     out.inner
@@ -2501,7 +2501,7 @@ pub fn tab_bar(
             egui::pos2(cell_w.mul_add(f32::from(slot), bar.min.x), bar.min.y),
             egui::vec2(cell_w, bar.height()),
         );
-        let response = ui.interact(cell, ui.id().with((id, index)), egui::Sense::click());
+        let response = ui.interact(cell, ui.scope_id().with((id, index)), egui::Sense::click());
         if response.clicked() && index != *selected {
             *selected = index;
             picked = Some(index);
@@ -2789,7 +2789,7 @@ impl<'a> ExpandableRow<'a> {
         body: impl FnOnce(&mut Ui, &mut Cx<'_>),
     ) -> Expanded {
         card_divider(ui, cx);
-        let id = ui.id().with(self.id_salt);
+        let id = ui.scope_id().with(self.id_salt);
         let mut row = ListRow::new(self.title)
             .disclosure(*open)
             .separator(false)
@@ -2899,7 +2899,7 @@ pub fn advanced_rows(
     revealed: &mut bool,
     body: impl FnOnce(&mut Ui, &mut Cx<'_>),
 ) -> bool {
-    let id = ui.id().with(id_salt);
+    let id = ui.scope_id().with(id_salt);
     let mut tapped = false;
     if !*revealed {
         card_divider(ui, cx);
@@ -3609,7 +3609,7 @@ pub fn list_item_with(
     // narrow gets the folded drawing, which is the same thing seen from the other side.
     let fold = ui
         .ctx()
-        .data(|d| d.get_temp::<FoldFrame>(egui::Id::new(FOLD_KEY)));
+        .data(|d| d.get_temp::<FoldFrame>(egui::Id::unique(FOLD_KEY)));
     if let Some(f) = fold.filter(|f| f.k > 0.0) {
         return folding_item(ui, cx, mark, &icon, title, selected, f);
     }

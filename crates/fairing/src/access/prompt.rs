@@ -719,13 +719,13 @@ fn draw(
             Rect::from_min_max(egui::pos2(room.min.x, split), room.max),
         )
     };
-    let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::new(BACKDROP_ID));
+    let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::unique(BACKDROP_ID));
     // **On top of its order every frame.** The shade pins its own layers with `move_to_top` each
     // pass, and egui keeps every area it has seen in its order — once is not enough (see the OSK).
     ctx.move_to_top(layer);
     let grow = if lock_screen { look.scale } else { 1.0 };
     ctx.set_transform_layer(layer, transform(screen.center(), grow, 0.0));
-    egui::Area::new(egui::Id::new(BACKDROP_ID))
+    egui::Area::new(egui::Id::unique(BACKDROP_ID))
         .order(egui::Order::Foreground)
         .fixed_pos(screen.min)
         .default_size(screen.size())
@@ -886,7 +886,7 @@ fn panel(
     let rect = Rect::from_center_size(room.center(), size);
     let fit = (room.height() / size.y.max(1.0)).min(1.0);
 
-    let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::new(CARD_ID));
+    let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::unique(CARD_ID));
     ctx.move_to_top(layer);
     // The card comes in at 0.98; the lock screen's column leaves at 1.04 with its clock.
     let to_screen = transform(rect.center(), look.scale * fit, look.shake);
@@ -895,7 +895,7 @@ fn panel(
     // that clip along with everything else — shrunk to fit, the panel was cut off at a clip that
     // had shrunk with it. The clip is the screen taken back through the transform.
     let clip = to_screen.inverse() * screen;
-    egui::Area::new(egui::Id::new(CARD_ID))
+    egui::Area::new(egui::Id::unique(CARD_ID))
         .order(egui::Order::Foreground)
         .fixed_pos(rect.min)
         .default_size(rect.size())
@@ -1226,7 +1226,7 @@ fn pin_body(
         // if it had been heard.
         let _ = ui.interact(
             drawn.response.rect,
-            ui.id().with("shake-cover"),
+            ui.scope_id().with("shake-cover"),
             Sense::click_and_drag(),
         );
         return None;

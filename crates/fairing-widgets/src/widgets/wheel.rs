@@ -137,7 +137,7 @@ impl<'a> WheelPicker<'a> {
             *self.selected = wanted;
             response.mark_changed();
         }
-        let id = ui.id().with(self.id_salt);
+        let id = ui.scope_id().with(self.id_salt);
         let mut drum: Drum = ui.data(|d| d.get_temp::<Drum>(id)).unwrap_or(Drum {
             pos: Animated::new(as_f32(wanted)),
             caller: false,

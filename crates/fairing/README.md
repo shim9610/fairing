@@ -39,7 +39,7 @@ fn main() -> fairing::Result<()> {
 }
 ```
 
-That needs the `runner` feature (`runner-x11` on a Linux desktop), and `egui = "0.36"`
+That needs the `runner` feature (`runner-x11` on a Linux desktop), and `egui = "0.37"`
 beside fairing for the `egui::Ui` in it (or `use fairing::egui;`). Without the runner,
 drive `Shell::frame` from an eframe app you already have.
 

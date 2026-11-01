@@ -956,7 +956,7 @@ impl ShellBuilder {
         let (theme, palettes) = resolve_theme(theme, palettes, &config)?;
         // The fonts come first — `set_fonts` throws the font atlas and the galley cache away whole, so it
         // is called once, before the style. It runs even for an empty set — binding the strong
-        // family (`fonts::STRONG_FAMILY`) is part of it, and epaint panics on an unbound family.
+        // family (`fonts::STRONG_FAMILY`) is part of it, so strong text always has fallback faces.
         fonts.install(ctx);
         if !fonts.has_bold() {
             // egui's own face has one weight, so the titles come out flat and nothing on the

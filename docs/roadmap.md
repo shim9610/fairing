@@ -45,6 +45,11 @@ These are candidates, not promises. Each one waits for a real need.
 
 ## 4. Known limits
 
+- **Stalled redraws pause shell processing.** eframe 0.37 keeps calling `App::logic` when
+  Wayland frame callbacks stop, but fairing's built-in runners drive the shell only from
+  `App::ui`. Shell commands, backend polling and access deadlines resume with the next UI
+  frame. Using that fallback for shell processing requires separating it from drawing;
+  a custom host can already use `App::logic` for its own background work.
 These are how the crate behaves today. Each is small, and each has a reason.
 
 - **One finger.** The gesture engine follows a single touch. A second finger is not a gesture.

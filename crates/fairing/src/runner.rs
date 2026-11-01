@@ -3,7 +3,7 @@
 //! For an integrator who does not own their own event loop and backends, this module opens a
 //! fullscreen kiosk window with `eframe` and calls a callback every frame.
 //!
-//! `eframe` 0.36.1 has the shape
+//! `eframe` 0.37 has the shape
 //! `eframe::App::ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame)` (confirmed against
 //! the registry source; not `update()`). The panel receives a `Ui`, so [`run`]'s callback and
 //! [`crate::Shell::frame`] take a root `Ui` too.

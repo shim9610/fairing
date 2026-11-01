@@ -2552,7 +2552,7 @@ impl Workspace {
                 // Always the top within Foreground (it does not lean on the registration order).
                 ctx.move_to_top(egui::LayerId::new(
                     egui::Order::Foreground,
-                    egui::Id::new(crate::gesture::shield::AREA_ID),
+                    egui::Id::unique(crate::gesture::shield::AREA_ID),
                 ));
             }
         }
@@ -3097,7 +3097,7 @@ impl Workspace {
         let dragging = self.split.as_ref().is_some_and(Split::is_dragging);
 
         // What is drawn: the band, the grip, the focus outline.
-        let chrome = egui::Id::new(DIVIDER_ID);
+        let chrome = egui::Id::unique(DIVIDER_ID);
         let focus = pane_of(frame.visible, self.focus);
         paint_divider(
             ctx,
@@ -3507,7 +3507,7 @@ fn paint_divider(
     content: Rect,
     look: DividerLook,
 ) {
-    let chrome = egui::Id::new(DIVIDER_ID);
+    let chrome = egui::Id::unique(DIVIDER_ID);
     ctx.move_to_top(egui::LayerId::new(egui::Order::Background, chrome));
     let DividerLook {
         band,
@@ -3859,7 +3859,7 @@ fn draw_instance(
                 let mut child = ui.new_child(
                     egui::UiBuilder::new()
                         .max_rect(inner)
-                        .id(egui::Id::new(("fairing.instance", instance.id()))),
+                        .scope_id(egui::Id::unique(("fairing.instance", instance.id()))),
                 );
                 child.set_clip_rect(inner.intersect(clip));
                 if params.opacity < 1.0 {

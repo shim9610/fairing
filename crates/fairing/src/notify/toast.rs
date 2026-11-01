@@ -358,7 +358,7 @@ impl ToastQueue {
             let opacity = item.opacity();
             let rect = place.translate(egui::vec2(0.0, item.offset_y(m)));
             item.rect = rect;
-            let response = egui::Area::new(egui::Id::new(("fairing.toast", index)))
+            let response = egui::Area::new(egui::Id::unique(("fairing.toast", index)))
                 .order(egui::Order::Tooltip)
                 .fixed_pos(rect.min)
                 .constrain(false)

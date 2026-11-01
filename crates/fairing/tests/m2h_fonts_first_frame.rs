@@ -1,17 +1,6 @@
-//! **A shell built from inside a frame must not draw in that frame**.
-//!
-//! `ShellBuilder::build` installs the fonts, but `Context::set_fonts` does not apply in the pass it
-//! is called from — egui swaps the definitions in at the start of the *next* pass. Until then this
-//! crate's named families are not bound, and epaint does not fall back on an unbound family:
-//!
-//! ```text
-//! FontFamily::Name("fairing-strong") is not bound to any fonts
-//! ```
-//!
-//! So the first `Theme::strong` draw takes the process down. It is not a rare shape either —
-//! `eframe::App::update` gives you the context inside a pass, which is where an integrator would
-//! naturally build. It cost the kiosk example every screenshot: its first screen is a grid of
-//! `MediaCard`s and a card titles itself in the strong face, so the tour died before shot one.
+//! A shell built inside a pass draws only once its named font families are live.
+//! egui 0.37 applies fonts immediately before text layout; after text layout the change
+//! is deferred, so both startup paths must remain safe.
 
 #![cfg(feature = "mock")]
 
@@ -24,11 +13,18 @@ use std::rc::Rc;
 ///
 /// Returns how many times the screen's body ran, so the caller can tell "did not draw" from
 /// "drew nothing".
-fn pass_building_inside(ctx: &egui::Context, drawn: &Rc<Cell<u32>>) -> fairing::Result<()> {
+fn pass_building_inside(
+    ctx: &egui::Context,
+    drawn: &Rc<Cell<u32>>,
+    text_laid_out: bool,
+) -> fairing::Result<()> {
     let d = Rc::clone(drawn);
     let mut out = Ok(());
     let output = ctx.run_ui(egui::RawInput::default(), |ui| {
-        // Built from **inside** the pass, which is what `eframe::App::update` hands an integrator.
+        if text_laid_out {
+            ui.label("text laid out before font installation");
+        }
+        // Build inside the pass, before or after the first text layout.
         let mut shell = match Shell::builder(single_level_access()).build(ui.ctx()) {
             Ok(shell) => shell,
             Err(err) => {
@@ -53,31 +49,26 @@ fn pass_building_inside(ctx: &egui::Context, drawn: &Rc<Cell<u32>>) -> fairing::
     out
 }
 
-/// The crash, reproduced: build inside a pass, then draw the strong face in that same pass.
-///
-/// Before the guard in `Shell::frame_inner` this panicked inside epaint. It has to come back
-/// without drawing instead — and then draw normally once the fonts are live.
+/// Immediate and deferred font installation both allow safe startup and later drawing.
 #[test]
-fn a_shell_built_inside_a_pass_waits_for_its_fonts() -> fairing::Result<()> {
-    let ctx = egui::Context::default();
-    let drawn = Rc::new(Cell::new(0));
-
-    pass_building_inside(&ctx, &drawn)?;
-    assert_eq!(
-        drawn.get(),
-        0,
-        "the screen must not be drawn in the pass the fonts were installed in — that draw is the \
-         panic this test exists for"
-    );
-
-    // The definitions land at the start of the next pass, so a shell built in *that* one is fine.
-    pass_building_inside(&ctx, &drawn)?;
-    assert_eq!(
-        drawn.get(),
-        1,
-        "once the families are live the shell has to draw as usual, or the guard is a hang rather \
-         than a fix"
-    );
+fn a_shell_built_inside_a_pass_obeys_font_readiness() -> fairing::Result<()> {
+    for text_laid_out in [false, true] {
+        let ctx = egui::Context::default();
+        let drawn = Rc::new(Cell::new(0));
+        pass_building_inside(&ctx, &drawn, text_laid_out)?;
+        let first = u32::from(!text_laid_out);
+        assert_eq!(
+            drawn.get(),
+            first,
+            "only live fonts may draw in the first pass"
+        );
+        pass_building_inside(&ctx, &drawn, text_laid_out)?;
+        assert_eq!(
+            drawn.get(),
+            first + 1,
+            "the next pass draws without remaining stuck"
+        );
+    }
     Ok(())
 }
 

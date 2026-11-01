@@ -359,7 +359,7 @@ pub(super) fn show(
     // other both are drawn in the same frame, each in its own `Area`.
     let _ = ui.interact(
         rect,
-        ui.id().with("fairing.overlay.panel.bg"),
+        ui.scope_id().with("fairing.overlay.panel.bg"),
         Sense::click(),
     );
     let style = PanelStyle::new(&metrics, theme.components.shade);
@@ -411,7 +411,7 @@ pub(super) fn show(
         }
         pressed_row = out.inner.pressed;
         close_hit = out.inner.close_hit;
-        list_offset = out.state.offset.y;
+        list_offset = out.state.clamped_offset().y;
         // Where the list overflows, its top and bottom ends fade into the panel's colour. A card simply
         // cut at a scroll boundary reads as "broken", and a fade reads as "there is more" — iOS and One
         // UI use the same device. Two triangles, so it costs nothing.
@@ -1028,7 +1028,11 @@ fn draw_tiles(
             let cell = Rect::from_center_size(home + (slot - home) * t, size);
             cursor_x += (tile_px + gap) * (1.0 - t);
             tile_rects.push(cell);
-            let resp = ui.interact(cell, egui::Id::new(("fairing.tile", index)), Sense::click());
+            let resp = ui.interact(
+                cell,
+                egui::Id::unique(("fairing.tile", index)),
+                Sense::click(),
+            );
             let live = quick.enabled && *state != TileState::Unavailable;
             if t > MOVING_EPS && moving_n < MOVING_MAX {
                 if let Some(hold) = moving.get_mut(moving_n) {
@@ -1253,7 +1257,7 @@ fn draw_gauge(
     let current = gauge_value(parts, gauge);
     let resp = ui.interact(
         track,
-        egui::Id::new(("fairing.tile.gauge", spec.tile, index)),
+        egui::Id::unique(("fairing.tile.gauge", spec.tile, index)),
         if gauge.read_only {
             Sense::hover()
         } else {
@@ -1281,7 +1285,7 @@ fn draw_gauge(
     // The press swell is the same tween as the built-in slider's (A7).
     let tween = theme.motion.press;
     let grow = parts.animations.animate(
-        egui::Id::new(("fairing.tile.gauge.press", spec.tile, index)),
+        egui::Id::unique(("fairing.tile.gauge.press", spec.tile, index)),
         f32::from(u8::from(pressed)),
         tween,
         parts.frame,
@@ -1392,7 +1396,7 @@ fn tile_out(
     tween: crate::motion::Tween,
 ) -> f32 {
     parts.animations.animate(
-        egui::Id::new(("fairing.tile.out", index)),
+        egui::Id::unique(("fairing.tile.out", index)),
         f32::from(u8::from(expanded == Some(index))),
         tween,
         parts.frame,
@@ -1428,7 +1432,7 @@ fn draw_slider_row(ui: &mut egui::Ui, parts: &mut CxParts<'_>, slot: SliderSlot<
     );
     let resp = ui.interact(
         track_rect,
-        egui::Id::new(("fairing.tile.slider", slot.index)),
+        egui::Id::unique(("fairing.tile.slider", slot.index)),
         Sense::click_and_drag(),
     );
     // It follows the finger, and says so: the page under the shade reads no swipe off this drag.
@@ -1472,7 +1476,7 @@ fn draw_slider_row(ui: &mut egui::Ui, parts: &mut CxParts<'_>, slot: SliderSlot<
         )
     };
     let grow = parts.animations.animate(
-        egui::Id::new(("fairing.tile.slider.press", slot.index)),
+        egui::Id::unique(("fairing.tile.slider.press", slot.index)),
         f32::from(u8::from(pressed)),
         theme.motion.press,
         parts.frame,
@@ -1851,7 +1855,7 @@ fn draw_notification_row(
         .translate(Vec2::new(-dx, 0.0));
     let close_resp = ui.interact(
         close_hit,
-        egui::Id::new(("fairing.notif.x", item.id.0)),
+        egui::Id::unique(("fairing.notif.x", item.id.0)),
         Sense::click(),
     );
     if close_resp.hovered() || close_resp.is_pointer_button_down_on() {
@@ -1904,7 +1908,7 @@ fn footer_icon_button(
         Vec2::splat(slot),
     );
     *right = cell.min.x - style.card_gap;
-    let resp = ui.interact(cell, egui::Id::new(id), Sense::click());
+    let resp = ui.interact(cell, egui::Id::unique(id), Sense::click());
     let down = resp.is_pointer_button_down_on();
     // An icon floating alone does not show where the pressable place is — a disc beneath it declares it a button.
     ui.painter().circle_filled(
@@ -2071,7 +2075,7 @@ fn clear_all_button(
     *right = clear.min.x - style.card_gap;
     let resp = ui.interact(
         clear,
-        egui::Id::new("fairing.overlay.clear"),
+        egui::Id::unique("fairing.overlay.clear"),
         Sense::click(),
     );
     let down = resp.is_pointer_button_down_on();

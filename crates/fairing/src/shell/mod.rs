@@ -352,7 +352,7 @@ fn draw_status_bar(
         status_bar.collect_items(registry.status_items(), parts.access, rows);
     }
     let mut action = None;
-    egui::Panel::top(egui::Id::new("fairing.status_bar.panel"))
+    egui::Panel::top(egui::Id::unique("fairing.status_bar.panel"))
         .exact_size(rect.height())
         .resizable(false)
         .show_separator_line(false)
@@ -390,7 +390,7 @@ fn draw_status_bar_area(
     // The layout is `rect` (the whole row) with only what is visible clipped — the status row is
     // revealed from the top as the shade comes down like a curtain (the A1 render mapping). For the
     // peek the two are the same.
-    egui::Area::new(egui::Id::new(STATUS_BAR_OVERLAY_AREA_ID))
+    egui::Area::new(egui::Id::unique(STATUS_BAR_OVERLAY_AREA_ID))
         .order(egui::Order::Foreground)
         .fixed_pos(rect.min)
         .default_size(clip.size())
@@ -1631,22 +1631,12 @@ impl Shell {
         let ctx = ui.ctx().clone();
         // **Nothing is drawn until this crate's font families are live.**
         //
-        // `ShellBuilder::build` installs the fonts, but `Context::set_fonts` does not apply in the
-        // pass it is called from — egui swaps the definitions in at the start of the *next* pass.
-        // Build the shell from inside a frame (`App::update` does exactly that, and so does the
-        // examples' tour) and for that one pass `fonts::STRONG_FAMILY` is not bound. Asking for an
-        // unbound family is not a fallback in epaint, it is `panic!`, so the first `Theme::strong`
-        // draw takes the process down — which is how the kiosk example lost every screenshot: its
-        // first screen is a grid of `MediaCard`s and a card titles itself in the strong face.
+        // egui 0.37 applies `set_fonts` immediately before text layout, and otherwise at the
+        // next pass. Building inside a pass therefore draws at once only when the families
+        // are already live. A missing family would show replacement glyphs.
         //
-        // Skipping is allowed **only before the first frame**, which is the only moment the window
-        // can legitimately be open. Later, an unbound family is the integrator's own `set_fonts`
-        // clobbering ours, and a blank screen forever would hide it far worse than epaint saying so.
-        //
-        // One pass is all the builder's own `set_fonts` needs. Still unbound after that, the
-        // integrator's `set_fonts` replaced ours between `build` and the first frame: the two
-        // families are bound again on top of what is there now (said once in the log), rather than
-        // waiting for ever on a blank panel.
+        // Wait only during startup. If an integrator replaced the definitions after the
+        // builder, rebind our two families after the first wait instead of staying blank.
         if self.frame_no == 0 && !crate::fonts::families_are_live(&ctx) {
             self.font_waits = self.font_waits.saturating_add(1);
             if self.font_waits > 1 {
@@ -2467,7 +2457,7 @@ impl Shell {
             if nav_bar_painter.is_some() {
                 nav_bar.collect_items(registry.nav_items(), parts.access, bar_rows);
             }
-            egui::Panel::bottom(egui::Id::new("fairing.nav_bar.panel"))
+            egui::Panel::bottom(egui::Id::unique("fairing.nav_bar.panel"))
                 .exact_size(rect.height())
                 .resizable(false)
                 .show_separator_line(false)
@@ -4434,7 +4424,7 @@ fn draw_prompt(
             theme: parts.theme,
             icons: &mut *parts.icons,
             anims: &mut *parts.animations,
-            anim_scope: egui::Id::new("fairing.prompt"),
+            anim_scope: egui::Id::unique("fairing.prompt"),
             frame: parts.frame,
             inset_bottom: 0.0,
             painters: Some(&mut *parts.widget_painters),

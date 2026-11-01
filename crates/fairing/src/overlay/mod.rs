@@ -49,6 +49,8 @@
 )]
 
 mod backdrop;
+#[cfg(test)]
+mod capture_tests;
 mod card;
 mod hooks;
 mod panel;
@@ -267,6 +269,13 @@ struct Backdrop {
     surface: egui::Color32,
 }
 
+/// A response belongs to the viewport and surface present when it was requested.
+struct PendingShot {
+    rx: crate::inbox::Inbox<Arc<egui::ColorImage>>,
+    viewport: Rect,
+    surface: egui::Color32,
+}
+
 /// How many frames a card waits for the runner to answer its screenshot before it gives up and
 /// stays solid — a runner without the command never answers, and a frame late is all a real one
 /// is.
@@ -327,6 +336,8 @@ pub struct Overlay {
     backdrop: Option<Backdrop>,
     /// Frames left to wait for that screenshot; 0 when not waiting.
     shot_wait: u8,
+    /// Per-request inbox; dropping it invalidates any late callback.
+    pending_shot: Option<PendingShot>,
     /// Where the outgoing panel's tiles were drawn — kept apart from `tile_rects`, which the panel
     /// being pressed owns.
     leaving_tile_rects: Vec<Rect>,
@@ -506,6 +517,7 @@ impl Overlay {
             reliefs: Default::default(),
             backdrop: None,
             shot_wait: 0,
+            pending_shot: None,
             leaving_tile_rects: Vec::new(),
             reveal,
             card_ratio: cfg.card_width_ratio,
@@ -1419,6 +1431,7 @@ impl Overlay {
         self.last_plate = None;
         self.backdrop = None;
         self.shot_wait = 0;
+        self.pending_shot = None;
         self.expanded = None;
         self.swiping = None;
         self.swipe_x.snap(0.0);
@@ -1581,7 +1594,7 @@ impl Overlay {
             scroll_to,
             panel: *shown,
         };
-        let out = egui::Area::new(egui::Id::new(PANEL_AREA_ID))
+        let out = egui::Area::new(egui::Id::unique(PANEL_AREA_ID))
             .order(egui::Order::Foreground)
             .fixed_pos(plate.visible.min)
             .default_size(plate.visible.size())
@@ -1654,7 +1667,7 @@ impl Overlay {
                 panel: from,
                 ..row
             };
-            egui::Area::new(egui::Id::new(PANEL_LEAVING_AREA_ID))
+            egui::Area::new(egui::Id::unique(PANEL_LEAVING_AREA_ID))
                 .order(egui::Order::Foreground)
                 .fixed_pos(leaving.visible.min)
                 .default_size(leaving.visible.size())
@@ -1698,7 +1711,7 @@ impl Overlay {
             // Kept up, empty, while a split shade is open: egui lays a new `Area` out unseen on
             // its first frame, and the outgoing panel vanishing for that frame read as a blink
             // at the start of every crossing.
-            egui::Area::new(egui::Id::new(PANEL_LEAVING_AREA_ID))
+            egui::Area::new(egui::Id::unique(PANEL_LEAVING_AREA_ID))
                 .order(egui::Order::Foreground)
                 .fixed_pos(screen.min)
                 .constrain(false)
@@ -1774,41 +1787,57 @@ impl Overlay {
             .backdrop
             .as_ref()
             .is_some_and(|b| b.surface != surface || b.viewport != viewport)
+            || self
+                .pending_shot
+                .as_ref()
+                .is_some_and(|shot| shot.surface != surface || shot.viewport != viewport)
         {
             self.put_down_glass();
             return;
         }
         if first && self.backdrop.is_none() {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+            let (tx, rx) = crate::inbox::Inbox::pair();
+            self.pending_shot = Some(PendingShot {
+                rx,
+                viewport,
+                surface,
+            });
+            let wake = ctx.clone();
+            ctx.request_screenshot(move |image| {
+                let _ = tx.send(image);
+                wake.request_repaint();
+            });
             self.shot_wait = SHOT_PATIENCE;
             return;
         }
         if self.shot_wait == 0 || self.backdrop.is_some() {
+            self.pending_shot = None;
             return;
         }
-        let shot = ctx.input(|i| {
-            i.events.iter().find_map(|e| match e {
-                egui::Event::Screenshot { image, .. } => Some(Arc::clone(image)),
-                _ => None,
-            })
-        });
-        match shot {
-            Some(image) => {
-                let frosted = backdrop::frost(&image);
-                let texture = ctx.load_texture(
-                    "fairing.overlay.backdrop",
-                    frosted,
-                    egui::TextureOptions::LINEAR,
-                );
-                self.backdrop = Some(Backdrop {
-                    texture,
-                    viewport,
-                    surface,
-                });
-                self.shot_wait = 0;
+        let shot = self
+            .pending_shot
+            .as_ref()
+            .and_then(|shot| shot.rx.try_recv().ok());
+        let Some(image) = shot else {
+            self.shot_wait -= 1;
+            if self.shot_wait == 0 {
+                self.pending_shot = None;
             }
-            None => self.shot_wait -= 1,
-        }
+            return;
+        };
+        let frosted = backdrop::frost(&image);
+        let texture = ctx.load_texture(
+            "fairing.overlay.backdrop",
+            frosted,
+            egui::TextureOptions::LINEAR,
+        );
+        self.backdrop = Some(Backdrop {
+            texture,
+            viewport,
+            surface,
+        });
+        self.shot_wait = 0;
+        self.pending_shot = None;
     }
 
     /// Drop the frost, and every plate still drawn with it: the texture is freed with the handle,
@@ -1817,6 +1846,7 @@ impl Overlay {
     fn put_down_glass(&mut self) {
         self.backdrop = None;
         self.shot_wait = 0;
+        self.pending_shot = None;
         if let Some((_, plate)) = self.fade.as_mut() {
             plate.glass = None;
         }
@@ -2073,15 +2103,15 @@ fn footer_buttons(names: &[String]) -> Vec<FooterButton> {
 /// dissolve.
 fn pin_leaving_under_panel(ctx: &egui::Context) {
     ctx.set_sublayer(
-        egui::LayerId::new(egui::Order::Foreground, egui::Id::new(scrim::AREA_ID)),
+        egui::LayerId::new(egui::Order::Foreground, egui::Id::unique(scrim::AREA_ID)),
         egui::LayerId::new(
             egui::Order::Foreground,
-            egui::Id::new(PANEL_LEAVING_AREA_ID),
+            egui::Id::unique(PANEL_LEAVING_AREA_ID),
         ),
     );
     ctx.move_to_top(egui::LayerId::new(
         egui::Order::Foreground,
-        egui::Id::new(PANEL_AREA_ID),
+        egui::Id::unique(PANEL_AREA_ID),
     ));
 }
 
@@ -2235,8 +2265,8 @@ fn paint_relief(
 /// every `end_pass`.
 fn pin_panel_above_scrim(ctx: &egui::Context) {
     ctx.set_sublayer(
-        egui::LayerId::new(egui::Order::Foreground, egui::Id::new(scrim::AREA_ID)),
-        egui::LayerId::new(egui::Order::Foreground, egui::Id::new(PANEL_AREA_ID)),
+        egui::LayerId::new(egui::Order::Foreground, egui::Id::unique(scrim::AREA_ID)),
+        egui::LayerId::new(egui::Order::Foreground, egui::Id::unique(PANEL_AREA_ID)),
     );
 }
 

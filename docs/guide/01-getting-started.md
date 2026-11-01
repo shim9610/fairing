@@ -14,7 +14,7 @@ screen with egui. How it is put together is in
 |---|---|---|
 | Rust | 1.95 or newer | The crates' MSRV (`rust-version`). To work on fairing itself, `rust-toolchain.toml` at the repository root pins 1.99 and rustup fetches it |
 | Edition | 2021 | |
-| egui | `0.36` | `fairing` asks for egui 0.36 (any 0.36.x) and re-exports it as `fairing::egui`, so depending on egui directly is **optional** — if you do, ask for the same minor, `egui = "0.36"` |
+| egui | `0.37` | `fairing` asks for egui 0.37 (any 0.37.x) and re-exports it as `fairing::egui`, so depending on egui directly is **optional** — if you do, ask for the same minor, `egui = "0.37"` |
 | OS | Linux | The main target is Ubuntu Core with `ubuntu-frame` (a Wayland kiosk); `cage` and `weston` are meant to work too. None of the three has been tried on a real device yet — development and CI run under X11 |
 | Graphics | OpenGL ES 2 or newer (Mesa/EGL) | The runner uses eframe's `glow` backend. wgpu is not used |
 
@@ -24,6 +24,20 @@ If you use the runner, a feature picks the windowing backend.
 |---|---|
 | Device (Wayland kiosk) | `runner` |
 | Desktop development, X11 included | `runner-x11` — a superset of `runner` plus `eframe/x11`, so the Wayland backend is still in |
+
+The runner explicitly enables `clipboard` and `default_fonts` on eframe 0.37, preserving
+OS copy/paste and bundled fallback faces with eframe's default features disabled. Its
+automatic system-font provider stays disabled; register device fonts through the builder.
+If you supply your own eframe host, choose those features in that host too.
+
+eframe's stalled-Wayland-redraw fallback calls `App::logic`, not `App::ui`. The built-in
+fairing runners currently implement only `ui`, so the upgrade alone does not keep shell
+polling or deadlines ticking while redraws are withheld. A custom host may run its own
+background work in `logic`; see [the known limits](../roadmap.md#4-known-limits).
+
+For code migrating from egui 0.36, use `Id::unique` for the old global `Id::new` calls and
+`Ui::scope_id` for `Ui::id`. Screenshot results now arrive through callbacks instead of
+input events; see [egui's migration notes](https://github.com/emilk/egui/blob/0.37.0/CHANGELOG.md).
 
 After installing `rustup`, check the repository once:
 
@@ -53,7 +67,7 @@ fairing = { git = "https://github.com/shim9610/fairing", features = ["runner"] }
 # Leave it out and use `fairing::egui` - a version mismatch becomes impossible.
 # Put it in and it must be the same minor as fairing's, or you link two copies
 # of egui and the types stop matching.
-# egui = "0.36"
+# egui = "0.37"
 ```
 
 Screen closures take `&mut egui::Ui`, so the egui types have to be reachable.
@@ -61,7 +75,7 @@ Either of these works:
 
 ```rust
 use fairing::egui;          // the re-export - nothing to mismatch
-// use egui;                // a direct dependency, with `egui = "0.36"` in Cargo.toml
+// use egui;                // a direct dependency, with `egui = "0.37"` in Cargo.toml
 ```
 
 ### Feature list

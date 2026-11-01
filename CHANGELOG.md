@@ -6,6 +6,21 @@ All notable changes to the fairing crates are recorded here. The format follows
 
 ## Unreleased
 
+### Changed
+
+- Upgrade egui, eframe and their paint crates from 0.36.2 to 0.37.0. The runner retains
+  bundled fonts, GL and OS clipboard support. eframe's overdue-Wayland-redraw fallback
+  calls `App::logic`; built-in fairing runners still drive the shell from `App::ui`, so
+  this upgrade alone does not continue shell processing during a stalled redraw.
+  The minimum Rust version remains 1.95.
+- Use callback-based screenshots for card backdrops and example capture/recording. Each
+  card request has its own inbox and wakes the UI on completion; closing, timing out, changing
+  theme or resizing discards its late response.
+- Adopt the 0.37 ID, font-data, scroll-state and wheel-input APIs. Font startup supports
+  both immediate installation before text layout and deferred installation after layout.
+- Draw the keyboard's previous/next focus controls with bundled vector icons, keeping
+  them visible without the glyphs removed from egui's default fonts.
+
 ### Security
 
 - Gate retargeting, logout, repeated locks and same-level subject replacements/timeouts

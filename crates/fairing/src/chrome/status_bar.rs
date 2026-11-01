@@ -770,7 +770,7 @@ impl StatusBar {
             },
         );
         // The bar's own tap is registered first — an item registered later wins the hit test.
-        let bar = ui.interact(rect, egui::Id::new("fairing.status_bar"), Sense::click());
+        let bar = ui.interact(rect, egui::Id::unique("fairing.status_bar"), Sense::click());
         let inner = rect.shrink2(egui::vec2(parts.theme.metrics.status_edge_pad, 0.0));
 
         self.measure(ui, parts, custom);
@@ -805,7 +805,7 @@ impl StatusBar {
         // No built-in item was drawn, so last frame's Rects are not left behind.
         self.mark_hidden();
         let rect = ui.max_rect();
-        let bar = ui.interact(rect, egui::Id::new("fairing.status_bar"), Sense::click());
+        let bar = ui.interact(rect, egui::Id::unique("fairing.status_bar"), Sense::click());
         let pane = PaneInfo {
             rect,
             outer: rect,
@@ -1080,8 +1080,8 @@ impl StatusBar {
             };
             let spec = placed.spec.and_then(|i| specs.get(i));
             let widget_id = match (spec, placed.custom.and_then(|i| custom.get(i))) {
-                (Some(spec), _) => egui::Id::new(("fairing.status_bar.item", &spec.id)),
-                (None, Some(decl)) => egui::Id::new(("fairing.status_bar.item", &decl.id)),
+                (Some(spec), _) => egui::Id::unique(("fairing.status_bar.item", &spec.id)),
+                (None, Some(decl)) => egui::Id::unique(("fairing.status_bar.item", &decl.id)),
                 (None, None) => continue,
             };
             let response = ui.interact(placed.rect, widget_id, Sense::click());

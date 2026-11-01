@@ -676,7 +676,7 @@ fn a_screen_keeps_its_scroll_through_a_switch() -> fairing::Result<()> {
                             }
                         });
                     if let Some(slot) = seen.borrow_mut().get_mut(index) {
-                        *slot = out.state.offset.y;
+                        *slot = out.state.clamped_offset().y;
                     }
                 })
                 .title(id),

@@ -487,7 +487,7 @@ fn nav_bar_painter(ui: &mut egui::Ui, bar: &mut BarCx<'_>) {
         );
         let response = ui.interact(
             cell,
-            egui::Id::new(("device.nav", index)),
+            egui::Id::unique(("device.nav", index)),
             egui::Sense::click(),
         );
         let color = if item.live() {

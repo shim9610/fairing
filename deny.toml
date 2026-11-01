@@ -65,13 +65,15 @@ deny = [
     { crate = "wgpu", reason = "GL (glow) only. It doubles the tree" },
 ]
 
-# The nine measured duplicate pairs. They arise only from winit-ecosystem drift with the runner
+# The eleven measured duplicate pairs. They arise only from platform/clipboard drift with the runner
 # feature on; with the core alone (egui/serde/toml/log) there are zero duplicates.
 # The policy: empty this list each release branch and confirm it is still needed.
 skip = [
     { crate = "calloop@0.13", reason = "winit 0.30 ↔ smithay-client-toolkit 0.20 drift. Tracking upstream" },
     { crate = "calloop-wayland-source@0.3", reason = "winit 0.30 ↔ smithay-client-toolkit 0.20 drift" },
     { crate = "smithay-client-toolkit@0.19", reason = "winit ↔ smithay-clipboard(arboard)" },
+    { crate = "foldhash@0.1", reason = "Wayland clipboard MIME graph uses hashbrown 0.15; epaint uses hashbrown 0.17" },
+    { crate = "hashbrown@0.15", reason = "petgraph 0.8 via wl-clipboard-rs ↔ epaint font rasterisation" },
     { crate = "rustix@0.38", reason = "a generation gap between winit and smithay-client-toolkit" },
     { crate = "linux-raw-sys@0.4", reason = "the older generation rustix 0.38 drags in" },
     { crate = "miniz_oxide@0.8", reason = "flate2 ↔ png" },

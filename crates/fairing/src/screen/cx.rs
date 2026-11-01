@@ -728,7 +728,7 @@ impl Cx<'_> {
     ///
     /// `id` only has to be unique **within the instance**. There is one store in the shell, so
     /// [`PaneInfo::instance`] is mixed in here — two instances of the same declaration opened
-    /// with `LaunchMode::Multi` can both use `egui::Id::new("fade")` without their values
+    /// with `LaunchMode::Multi` can both use `egui::Id::unique("fade")` without their values
     /// mixing, and closing and reopening a screen gives a new instance id, so the animation
     /// starts over. Contexts with no instance (actions and status items,
     /// [`InstanceId::NONE`]) share one namespace.
@@ -760,7 +760,7 @@ impl Cx<'_> {
             theme: self.theme,
             icons: &mut *self.icons,
             anims: &mut *self.animations,
-            anim_scope: egui::Id::new(self.pane.instance.0),
+            anim_scope: egui::Id::unique(self.pane.instance.0),
             frame: self.frame,
             inset_bottom: self.pane.inset_bottom,
             painters: Some(&mut *self.widget_painters),
@@ -913,12 +913,12 @@ mod tests {
     /// The instance namespace: the same `egui::Id` in a different instance is a different entry.
     #[test]
     fn scope_id_separates_instances() {
-        let raw = egui::Id::new("fade");
+        let raw = egui::Id::unique("fade");
         assert_ne!(scope_id(raw, InstanceId(1)), scope_id(raw, InstanceId(2)));
         assert_eq!(scope_id(raw, InstanceId(1)), scope_id(raw, InstanceId(1)));
         assert_ne!(scope_id(raw, InstanceId::NONE), raw);
         assert_ne!(
-            scope_id(egui::Id::new("a"), InstanceId(1)),
+            scope_id(egui::Id::unique("a"), InstanceId(1)),
             scope_id(raw, InstanceId(1))
         );
     }
@@ -928,7 +928,7 @@ mod tests {
     fn animate_does_not_mix_two_instances() -> crate::Result<()> {
         let mut fixture = Fixture::new()?;
         let mut parts = fixture.parts();
-        let raw = egui::Id::new("fade");
+        let raw = egui::Id::unique("fade");
         let tween = Tween::cubic_out(Duration::from_millis(100));
         // An id seen for the first time is at its target at once — the two instances start from different values.
         let a0 = parts.cx(pane(InstanceId(1)), None).animate(raw, 0.0, tween);
@@ -949,7 +949,7 @@ mod tests {
     fn animate_with_instant_tween_jumps_to_target() -> crate::Result<()> {
         let mut fixture = Fixture::new()?;
         let mut parts = fixture.parts();
-        let id = egui::Id::new("reduce");
+        let id = egui::Id::unique("reduce");
         let first = parts
             .cx(pane(InstanceId(7)), None)
             .animate(id, 0.0, Tween::instant());

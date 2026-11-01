@@ -22,7 +22,8 @@ fn keyboard(h: &Harness) -> Option<egui::Rect> {
     if !h.shell.osk().is_visible() {
         return None;
     }
-    h.ctx.memory(|m| m.area_rect(egui::Id::new("fairing.osk")))
+    h.ctx
+        .memory(|m| m.area_rect(egui::Id::unique("fairing.osk")))
 }
 
 fn field(h: &mut Harness) -> egui::Rect {

@@ -6,7 +6,7 @@
   <a href="https://github.com/shim9610/fairing/actions/workflows/ci.yml"><img src="https://github.com/shim9610/fairing/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/rust-1.95%2B-orange.svg" alt="Rust 1.95+">
-  <a href="https://github.com/emilk/egui"><img src="https://img.shields.io/badge/egui-0.36-8a2be2.svg" alt="egui 0.36"></a>
+  <a href="https://github.com/emilk/egui"><img src="https://img.shields.io/badge/egui-0.37-8a2be2.svg" alt="egui 0.37"></a>
   <img src="https://img.shields.io/badge/unsafe-forbidden-success.svg" alt="unsafe forbidden">
 </p>
 
@@ -120,7 +120,7 @@ fairing is not on crates.io yet. Until 0.1.0 is published, depend on this reposi
 ```toml
 [dependencies]
 fairing = { git = "https://github.com/shim9610/fairing", features = ["runner-x11"] }
-egui = "0.36"   # the same minor as fairing's; or name it through `fairing::egui`
+egui = "0.37"   # the same minor as fairing's; or name it through `fairing::egui`
 ```
 
 ```rust

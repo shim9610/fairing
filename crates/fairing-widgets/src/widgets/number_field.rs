@@ -296,7 +296,7 @@ impl<'a> NumberField<'a> {
         let font = egui::FontId::proportional(cx.theme.metrics.type_scale.body);
         let edit = egui::TextEdit::singleline(buf)
             .id(id.with("edit"))
-            .horizontal_align(egui::Align::Center)
+            .align(egui::Align2::CENTER_TOP)
             .font(font.clone())
             // No frame of its own: the pill under it is already the field's boundary, and a
             // second one inside it would read as a box in a box.

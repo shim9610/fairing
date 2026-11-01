@@ -1031,7 +1031,7 @@ impl DesktopView {
     /// The desktop `Area`'s id.
     #[must_use]
     pub(crate) fn area_id() -> egui::Id {
-        egui::Id::new("fairing.desktop")
+        egui::Id::unique("fairing.desktop")
     }
 
     /// Change where the dock goes. A band along the bottom, a rail down either side, a row
@@ -2292,7 +2292,7 @@ fn draw_indicator(
         }
         let response = ui.interact(
             hit,
-            egui::Id::new(("fairing.desktop.page", i)),
+            egui::Id::unique(("fairing.desktop.page", i)),
             Sense::click(),
         );
         if response.clicked() {
@@ -2339,7 +2339,7 @@ fn draw_slot(
         return None;
     }
     let metrics = cx.theme.metrics;
-    let key = egui::Id::new(("fairing.desktop.slot", &slot.id));
+    let key = egui::Id::unique(("fairing.desktop.slot", &slot.id));
     let response = ui.interact(cell, key, Sense::click());
     // A `Response`'s press is the previous pass's snapshot and so is a frame late. The raw input is read
     // alongside it so it answers on the very frame of the press (A7, "≤ 16 ms").

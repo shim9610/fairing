@@ -167,7 +167,7 @@ breaks the crate's no-locks rule ([architecture §5](../architecture.md#5-thread
 > **Match the egui version.** The loader is the **only** place where you touch egui types
 > (`ColorImage`, `TextureHandle`) directly. If the egui in your `Cargo.toml` is a different minor
 > from the one `fairing` uses, two copies of egui get linked, the types stop matching and the build
-> breaks. Ask for the same minor with `egui = "0.36"` ([01 Getting started](01-getting-started.md)).
+> breaks. Ask for the same minor with `egui = "0.37"` ([01 Getting started](01-getting-started.md)).
 
 > **There are no mipmaps.** `TextureOptions::LINEAR` means `mipmap_mode: None`. Putting a
 > 2560×1440 image on an 800×480 panel is a 3.2× downscale with no mipmaps, so it **shimmers even

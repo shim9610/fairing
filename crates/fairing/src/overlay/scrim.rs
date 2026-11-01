@@ -52,7 +52,7 @@ pub(crate) fn show(ctx: &egui::Context, rect: Rect, alpha: f32, theme: &Theme) -
         return false;
     }
     let fill = fill(alpha, theme);
-    egui::Area::new(egui::Id::new(AREA_ID))
+    egui::Area::new(egui::Id::unique(AREA_ID))
         .order(egui::Order::Foreground)
         .fixed_pos(rect.min)
         .default_size(rect.size())
@@ -72,7 +72,7 @@ pub(crate) fn show(ctx: &egui::Context, rect: Rect, alpha: f32, theme: &Theme) -
 /// ([`super::Overlay::ui`]) holds for both. Returns `true` if it was tapped.
 #[must_use]
 pub(crate) fn catch(ctx: &egui::Context, rect: Rect) -> bool {
-    egui::Area::new(egui::Id::new(AREA_ID))
+    egui::Area::new(egui::Id::unique(AREA_ID))
         .order(egui::Order::Foreground)
         .fixed_pos(rect.min)
         .default_size(rect.size())

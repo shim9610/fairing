@@ -188,7 +188,7 @@ impl IconInfo {
         }
         let t = self.t.value().clamp(0.0, 1.0);
         let anchor = self.anchor;
-        let id = egui::Id::new("fairing.desktop.info");
+        let id = egui::Id::unique("fairing.desktop.info");
         let card = egui::Area::new(id)
             .order(egui::Order::Foreground)
             .fixed_pos(root.min)
@@ -211,7 +211,7 @@ impl IconInfo {
 /// Every press while the popover is up lands here — over the desktop, the bars, everything the
 /// shell drew below it — so nothing under it sees the press that puts it away.
 fn shield(ctx: &egui::Context, root: Rect) {
-    egui::Area::new(egui::Id::new("fairing.desktop.info.shield"))
+    egui::Area::new(egui::Id::unique("fairing.desktop.info.shield"))
         .order(egui::Order::Foreground)
         .fixed_pos(root.min)
         .constrain(false)

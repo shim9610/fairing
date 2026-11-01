@@ -440,7 +440,7 @@ impl HeadsUp {
         let rect = place.translate(egui::vec2(0.0, y));
         banner.rect = rect;
         let allowed = banner.gate.as_ref().is_none_or(|gate| access.allows(gate));
-        let response = egui::Area::new(egui::Id::new("fairing.heads_up"))
+        let response = egui::Area::new(egui::Id::unique("fairing.heads_up"))
             .order(egui::Order::Tooltip)
             .fixed_pos(rect.min)
             .constrain(false)

@@ -46,6 +46,14 @@ implementation and, with the `mock` feature, a `Mock` simulator for development
 behind `chrono`. Every other dependency, a new asset included, goes through an approval list
 that the audit checks (`deps.allow`, `deny.toml`).
 
+egui and eframe use the 0.37 API. The optional runner keeps GL, Wayland, bundled fonts and
+OS clipboard support explicit, with X11 added by `runner-x11`. For an overdue redraw,
+eframe can call `App::logic` while a Wayland compositor withholds frame callbacks. It
+does not run `App::ui` or force a frame to be presented. The built-in fairing runners
+currently implement only `App::ui`: shell polling, commands and access deadlines resume
+when a UI frame runs. A custom host can use `App::logic` for its own background work;
+running the shell there requires separating its state processing from drawing.
+
 ### Features
 
 | Feature | Default | What it adds |
@@ -119,6 +127,9 @@ asks for while it draws, such as opening another screen, is handled later in the
   notification or a toast, change a setting or ask for an unlock. Sending wakes the UI.
 - **Backends ask to be woken.** A backend holds a `Waker` and calls `wake()` when its state
   changes. Something due later, such as a scan finishing, is `next_wake()`, not a timer thread.
+- **Screenshot callbacks only deliver data.** A per-request `Inbox` carries the image back to
+  the UI thread and the callback asks for a repaint. Closing a card, changing its theme or
+  viewport, or timing out drops that inbox so a late image cannot complete a later request.
 
 ## 6. State
 

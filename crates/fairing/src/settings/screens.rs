@@ -350,7 +350,7 @@ fn dedup_ids(entries: Vec<SettingsEntry>) -> Vec<SettingsEntry> {
 /// `(Id::NULL, TypeId::of::<String>())`, this shared it with any integrator following that advice,
 /// and the narrow branch below clears it on every frame it draws.
 fn selected_id() -> egui::Id {
-    egui::Id::new("fairing.settings.home.selected")
+    egui::Id::unique("fairing.settings.home.selected")
 }
 
 /// **The two-pane split**. The list of entries on the left, that entry's screen on
@@ -858,7 +858,7 @@ fn held<T: Clone + Send + Sync + 'static>(
     salt: &'static str,
     body: impl FnOnce(&mut Ui, &mut Cx<'_>, &mut Option<T>),
 ) {
-    let key = egui::Id::new((salt, cx.pane.instance.0));
+    let key = egui::Id::unique((salt, cx.pane.instance.0));
     let frame = cx.frame();
     let kept: Option<Held<T>> = ui.data(|d| d.get_temp(key));
     let mut value = kept
@@ -1635,7 +1635,7 @@ const CREDENTIALS: &str = "settings.credentials";
 /// first frame the body is not drawn (closed, covered, another entry on the settings home's right)
 /// or is drawn for another subject — the next person never finds a half-filled form to apply.
 pub fn credentials_body(ui: &mut Ui, cx: &mut Cx<'_>) {
-    let key = egui::Id::new((CREDENTIALS, cx.pane.instance.0));
+    let key = egui::Id::unique((CREDENTIALS, cx.pane.instance.0));
     let mut state: CredentialsState = ui.data_mut(|d| d.remove_temp(key)).unwrap_or_default();
     state.ui(ui, cx);
     ui.data_mut(|d| d.insert_temp(key, state));

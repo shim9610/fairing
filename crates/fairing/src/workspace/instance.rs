@@ -159,7 +159,7 @@ impl Instance {
     /// named without an instance — used by the slot warm-up and the z-order tests.
     #[must_use]
     pub(crate) fn slot_area_id(slot: u32) -> egui::Id {
-        egui::Id::new(("fairing.screen", slot))
+        egui::Id::unique(("fairing.screen", slot))
     }
 
     /// An [`egui::LayerId`] made from the slot number alone. See `Instance::slot_area_id`.

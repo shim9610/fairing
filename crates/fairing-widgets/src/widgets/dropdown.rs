@@ -290,7 +290,7 @@ impl<'a> Dropdown<'a> {
     /// Draw it. On the frame a new option was picked, `response.changed()`.
     pub fn show(self, ui: &mut egui::Ui, cx: &mut Cx<'_>) -> Response {
         let t = Tokens::read(ui, cx);
-        let id = ui.id().with(self.id_salt);
+        let id = ui.scope_id().with(self.id_salt);
         let mut open = ui.data(|d| d.get_temp::<bool>(id).unwrap_or(false));
         let was_open = open;
         // The bound the list is placed inside and clipped to: where this was called, not the
@@ -1799,7 +1799,7 @@ fn scroll_rows(
             })
         })
         .inner;
-    (out.state.offset.y, out.content_size.y)
+    (out.state.clamped_offset().y, out.content_size.y)
 }
 
 /// egui's own single-line edit with no frame of its own — the head is its frame — in `edit`,

@@ -701,6 +701,11 @@ The card shade (`reveal = "card"`, `card_width_ratio`, `card_anchor`, `card_glas
 the split's `split_ratio` and the two-step pull (`two_step`) are in
 [07 §6](07-config-reference.md#6-overlay-feature-overlay).
 
+Card backdrops use egui 0.37 screenshot callbacks. A callback wakes the UI and its image
+is consumed on the UI thread. Each request belongs to its opening card, viewport and
+theme; a close, timeout, resize or theme change discards a late result. Hosts that do not
+complete screenshot requests leave the card solid.
+
 An id in `tiles` that is neither built in nor declared logs a warning and is ignored.
 
 The three footer buttons are `clear_all` · `lock` · `settings`, and **none of them
