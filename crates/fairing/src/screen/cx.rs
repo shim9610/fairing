@@ -322,7 +322,7 @@ impl Cx<'_> {
     /// `None` where nothing was handed over, where `T` is the wrong type, or where it is **already
     /// out on loan** — a `with_app` inside a `with_app` gets `None` rather than a second `&mut`, so
     /// a cycle stops instead of aliasing. With unwinding enabled, a callback panic restores the
-    /// reference, logs an error without its payload and returns `None`. The application's
+    /// reference and propagates to the shell runtime boundary, which quarantines the shell. The application's
     /// panic hook still runs before the unwind is caught.
     pub fn with_app<T: std::any::Any, R>(
         &mut self,
@@ -335,12 +335,7 @@ impl Cx<'_> {
         };
         let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(value, self)));
         self.app = Some(app);
-        if let Ok(value) = out {
-            Some(value)
-        } else {
-            log::error!("with_app callback failed; app reference restored");
-            None
-        }
+        Some(crate::runtime::propagate(out))
     }
 
     /// **Whether a screen is declared under this id.**
@@ -460,7 +455,7 @@ impl Cx<'_> {
     /// [`Registry::take_resident`](crate::screen::Registry::take_resident). `None` where there was
     /// nothing to take.
     ///
-    /// With unwinding enabled, a callback panic restores the resident screen and returns `None`.
+    /// With unwinding enabled, a callback panic restores the resident screen and propagates to the shell boundary.
     /// This helper logs no payload, since an integrator's error may contain sensitive data.
     /// The application's panic hook still runs before the unwind is caught.
     pub(crate) fn with_resident<R>(
@@ -475,12 +470,7 @@ impl Cx<'_> {
         if let Some(registry) = self.registry.as_mut() {
             registry.put_resident(id, screen);
         }
-        if let Ok(value) = out {
-            Some(value)
-        } else {
-            log::error!("resident screen callback failed; declaration restored");
-            None
-        }
+        Some(crate::runtime::propagate(out))
     }
 
     /// Push onto the same pane (the shell checks the gate).
@@ -890,11 +880,13 @@ mod tests {
             let mut parts = fixture.parts();
             parts.app = Some(&mut app);
             let mut cx = parts.cx(pane(InstanceId(1)), None);
-            let failed: Option<()> = cx.with_app::<u32, _>(|value, _| {
-                *value = 7;
-                panic!("synthetic app callback failure");
-            });
-            assert!(failed.is_none());
+            let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                cx.with_app::<u32, ()>(|value, _| {
+                    *value = 7;
+                    panic!("synthetic app callback failure");
+                })
+            }));
+            assert!(failed.is_err());
             assert_eq!(cx.with_app::<u32, _>(|value, _| *value), Some(7));
         }
         let mut registry = crate::screen::Registry::new();
@@ -903,10 +895,12 @@ mod tests {
         );
         let mut parts = fixture.parts();
         let mut cx = parts.cx_in(pane(InstanceId(1)), None, Some(&mut registry));
-        let failed: Option<()> = cx.with_resident("loan", |_, _| {
-            panic!("synthetic resident callback failure");
-        });
-        assert!(failed.is_none());
+        let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            cx.with_resident::<()>("loan", |_, _| {
+                panic!("synthetic resident callback failure");
+            })
+        }));
+        assert!(failed.is_err());
         assert_eq!(cx.with_resident("loan", |_, _| true), Some(true));
         Ok(())
     }

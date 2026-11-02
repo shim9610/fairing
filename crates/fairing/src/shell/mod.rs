@@ -133,6 +133,8 @@ const TOUCH_GRACE: Duration = Duration::from_millis(400);
 /// The shell.
 #[allow(clippy::struct_excessive_bools)] // Independent switches, not a state machine — one flag each.
 pub struct Shell {
+    faulted: bool,
+    boundary_active: bool,
     config: ShellConfig,
     theme: Theme,
     services: Services,
@@ -657,8 +659,44 @@ impl Shell {
         self.handle.clone()
     }
 
+    /// Whether a caught runtime panic has permanently quarantined this shell.
+    /// No automatic retry/reset is offered: callback business mutations cannot be rolled back.
+    #[must_use]
+    pub const fn is_faulted(&self) -> bool {
+        self.faulted
+    }
+
+    /// Stop shell dispatch after an application/host failure, without running callbacks.
+    /// Queued work is retained but will never execute on this shell. New sends are refused.
+    pub fn quarantine(&mut self) {
+        self.faulted = true;
+        self.access.quarantine();
+        self.rx.close_admission();
+    }
+
+    fn contain_fault(&mut self, work: impl FnOnce(&mut Self)) {
+        if self.faulted {
+            return;
+        }
+        // Inner public APIs must unwind to the outer transaction boundary; swallowing here
+        // would let the rest of an interrupted poll/frame continue.
+        if self.boundary_active {
+            work(self);
+            return;
+        }
+        self.boundary_active = true;
+        let completed = crate::runtime::contain(|| work(self));
+        self.boundary_active = false;
+        if !completed {
+            self.quarantine();
+        }
+    }
+
     /// Take the events that have built up.
     pub fn poll_events(&mut self) -> Vec<ShellEvent> {
+        if self.faulted {
+            return Vec::new();
+        }
         std::mem::take(&mut self.events)
     }
 
@@ -1163,13 +1201,16 @@ impl Shell {
     ///
     /// An unknown id does nothing — a typo does not stop the shell (the same policy as a config id the code never declares).
     pub fn knock(&mut self, id: &str) {
-        self.knock_in(id, &mut None);
+        self.contain_fault(|shell| shell.knock_in(id, &mut None));
     }
 
     /// [`Shell::knock`] **with the app's state in hand** — a hidden entry point whose action is a
     /// `Run` closure that reads it. See [`Shell::launch_with`].
     pub fn knock_with(&mut self, id: &str, app: &mut dyn std::any::Any) {
-        self.knock_in(id, &mut Some(app));
+        if self.faulted {
+            return;
+        }
+        self.contain_fault(|shell| shell.knock_in(id, &mut Some(app)));
     }
 
     fn knock_in(&mut self, id: &str, app: &mut AppRef<'_>) {
@@ -1683,7 +1724,13 @@ impl Shell {
     ///
     /// [`Shell::frame`] is this with nothing lent; screens then see `cx.app::<T>() == None`.
     pub fn frame_with(&mut self, ui: &mut egui::Ui, app: &mut dyn std::any::Any) {
-        self.frame_inner(ui, &mut Some(app));
+        if self.faulted {
+            return;
+        }
+        self.contain_fault(|shell| shell.frame_inner(ui, &mut Some(app)));
+        if self.faulted {
+            crate::runtime::blank_faulted_frame(ui.ctx());
+        }
     }
 
     fn frame_inner(&mut self, ui: &mut egui::Ui, app: &mut AppRef<'_>) {
@@ -2994,7 +3041,7 @@ impl Shell {
     /// raises an `UnlockRequested`. For `Set` / `Toggle` the key name is the gate ("writing a
     /// settings value").
     pub fn launch(&mut self, action: LaunchAction) {
-        self.launch_in(action, &mut None);
+        self.contain_fault(|shell| shell.launch_in(action, &mut None));
     }
 
     /// [`Shell::launch`] **with the app's state in hand**.
@@ -3018,7 +3065,7 @@ impl Shell {
     /// Only `LaunchAction::Run` actually runs your code on the spot; `Open` puts a screen up and its
     /// `ui` runs in the next frame, which has the state anyway.
     pub fn launch_with(&mut self, action: LaunchAction, app: &mut dyn std::any::Any) {
-        self.launch_in(action, &mut Some(app));
+        self.contain_fault(|shell| shell.launch_in(action, &mut Some(app)));
     }
 
     /// The frame's own launch — it carries the app's state, so an `action(id, ..)` closure reached
@@ -3027,6 +3074,9 @@ impl Shell {
     /// [`ShellHandle::launch`](crate::ShellHandle::launch) instead and it lands inside the next
     /// frame with the state in hand.
     fn launch_in(&mut self, action: LaunchAction, app: &mut AppRef<'_>) {
+        if self.faulted {
+            return;
+        }
         self.observe_subject_change(app);
         match action {
             LaunchAction::Open { ref id, .. } => {
@@ -3140,6 +3190,10 @@ impl Shell {
     /// built-in key and emits [`ShellEvent::SettingChanged`]. The shell writes no files: keeping
     /// the value past a restart is the integrator's, and [`Shell::restore_settings`] hands it back.
     pub fn set_setting(&mut self, key: SettingKey, value: SettingValue) {
+        self.contain_fault(|shell| shell.set_setting_inner(key, value));
+    }
+
+    fn set_setting_inner(&mut self, key: SettingKey, value: SettingValue) {
         self.observe_subject_change(&mut None);
         if !self.setting_allowed(&key, || LaunchAction::Set(key.clone(), value.clone())) {
             return;
@@ -3170,6 +3224,9 @@ impl Shell {
         &mut self,
         values: impl IntoIterator<Item = (K, SettingValue)>,
     ) {
+        if self.faulted {
+            return;
+        }
         let mut airplane = false;
         for (key, value) in values {
             let key = key.into();
@@ -3448,13 +3505,13 @@ impl Shell {
     /// ignored at home). Back cancels an unlock prompt and does nothing on the lock screen — the
     /// way out of that is the prompt.
     pub fn back(&mut self) {
-        self.back_in(&mut None);
+        self.contain_fault(|shell| shell.back_in(&mut None));
     }
 
     /// [`Shell::back`] **with the app's state in hand** — for a screen whose
     /// [`Screen::on_back`](crate::Screen::on_back) reads it. See [`Shell::launch_with`].
     pub fn back_with(&mut self, app: &mut dyn std::any::Any) {
-        self.back_in(&mut Some(app));
+        self.contain_fault(|shell| shell.back_in(&mut Some(app)));
     }
 
     /// The frame's own back — see [`Shell::launch_in`] for why there are two.

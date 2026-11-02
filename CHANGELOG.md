@@ -8,6 +8,15 @@ All notable changes to the fairing crates are recorded here. The format follows
 
 ### Security
 
+- Contain runtime callback unwinds at shell/runner boundaries. Quarantine failed
+  shells, deny gates, close command admission and suppress pending shell events;
+  discard failed viewport graphics/platform commands. Do not automatically retry
+  partially applied callbacks. Restore loans before propagating to the boundary.
+- Recommend panic=unwind for device binaries instead of panic=abort. Recovery does
+  not roll back business side effects or cover allocator/native aborts, panicking
+  hooks or double panics in destructors. Unknown panic payloads are retained to
+  avoid a second user-destructor panic during fault handling.
+
 - Remove the optional renderer process/IPC implementation. Its Linux-only boundary
   does not implement same-process display reclamation or bounded rendering.
 - Add inline newest-sample retention, allocation-free borrowed-image preview and

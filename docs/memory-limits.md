@@ -232,3 +232,37 @@ records why the global production option was withdrawn; an abort is not an
 acceptable production recovery result. Native tests, Miri, Loom, generated
 inputs and the API fuzzer cover the bounded contracts with their documented
 limits. No whole-application or medical-device certification follows from them.
+
+## Runtime panics and sensitive UI state
+
+With `panic = "unwind"`, Shell frame/logic entry points, direct launch/setting/hidden
+entry dispatch and the supplied runners contain runtime callback unwinds. A failed
+shell permanently enters `is_faulted()`: access gates deny even in single-level/off
+mode, command admission closes, pending commands are retained without dispatch,
+and partially generated shell events are not published. `quarantine()` lets a
+host latch the same state after its own failure. No automatic reset or replay is
+provided. Independent business workers can continue; shell polling and dispatch stop.
+
+A faulting UI pass erases its viewport's pending graphics and platform output,
+including clipboard commands. Logic/event handlers receive the same output cleanup.
+The fallback is a blank viewport; hosts can use the prepared CPU warning surface.
+Loan helpers restore borrowed state/resident ownership and then propagate the unwind
+to the runtime boundary. They no longer swallow a panic and resume the caller's body.
+Nested public calls propagate to the outer boundary so an interrupted command batch
+cannot continue after a nested backend failure.
+
+This is not transaction rollback. Callback mutations, backend writes or event-handler
+side effects performed before a panic may already have happened. Reconcile the
+business system and authorization before constructing a fresh shell. Closing the
+queue prevents new factories from starting; an already running producer factory may
+finish, but the faulted shell will not execute its command. Hosts with other UI in the
+same viewport must account for whole-viewport output being discarded on failure.
+
+The library does not format or log panic payloads. Known String/static-str payloads
+are released; unknown user payloads are retained to avoid invoking a panicking Drop
+implementation during recovery. This is bounded per failed runtime, with no automatic
+restart. Application panic hooks run before containment and must redact sensitive
+data themselves. Panicking hooks, abort builds, double panics in unwinding destructors,
+allocator aborts, and rendering/native work outside these boundaries remain outside
+this guarantee. The failure tests demonstrate continued execution after the named
+unwind faults, not universal survival of stock-egui OOM.

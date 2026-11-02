@@ -32,7 +32,13 @@ impl Shell {
     /// [`Self::logic`] with the app state lent to actions and lifecycle callbacks.
     /// Pair with [`Self::frame_with`] using the same state.
     pub fn logic_with(&mut self, ctx: &egui::Context, app: &mut dyn std::any::Any) {
-        self.logic_at(ctx, &mut Some(app), Instant::now());
+        if self.faulted {
+            return;
+        }
+        self.contain_fault(|shell| shell.logic_at(ctx, &mut Some(app), Instant::now()));
+        if self.faulted {
+            crate::runtime::blank_faulted_frame(ctx);
+        }
     }
 
     pub(super) fn logic_at(&mut self, ctx: &egui::Context, app: &mut AppRef<'_>, wall: Instant) {

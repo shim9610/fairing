@@ -1154,6 +1154,8 @@ impl ShellBuilder {
             events: Vec::new(),
             requests: Vec::new(),
             layout: Layout::default(),
+            faulted: false,
+            boundary_active: false,
             frame_no: 0,
             last_dt: 0.0,
             mono,

@@ -59,11 +59,13 @@
 //! ```
 
 #![forbid(unsafe_code)]
+// A single scoped loan-restoration helper propagates to the runtime catch boundary.
+// All other disallowed methods remain denied, including abort and exit.
+#![cfg_attr(not(test), deny(clippy::disallowed_methods))]
 // Product builds reject explicit panic/termination paths; tests retain assertions.
 #![cfg_attr(
     not(test),
     forbid(
-        clippy::disallowed_methods,
         clippy::disallowed_macros,
         clippy::unwrap_used,
         clippy::expect_used,
@@ -169,3 +171,5 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
     feature = "chrono"
 ))]
 mod guide_probe;
+
+mod runtime;

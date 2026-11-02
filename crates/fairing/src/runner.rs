@@ -60,7 +60,12 @@ pub fn run(options: Options, app: impl FnMut(&mut egui::Ui) + 'static) -> Result
     eframe::run_native(
         &options.title,
         native_options(&options),
-        Box::new(move |_cc| Ok(Box::new(ClosureApp { app }))),
+        Box::new(move |_cc| {
+            Ok(Box::new(ClosureApp {
+                app,
+                faulted: false,
+            }))
+        }),
     )
     .map_err(|err| Error::Runner(err.to_string()))
 }
@@ -199,16 +204,36 @@ struct StateApp<S> {
 
 impl<S: std::any::Any> eframe::App for StateApp<S> {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.shell.logic_with(ctx, &mut self.state);
-        for event in self.shell.poll_events() {
-            (self.on_event)(&event);
+        if self.shell.is_faulted() {
+            return;
+        }
+        if !crate::runtime::contain(|| {
+            self.shell.logic_with(ctx, &mut self.state);
+            for event in self.shell.poll_events() {
+                (self.on_event)(&event);
+            }
+        }) {
+            self.shell.quarantine();
+        }
+        if self.shell.is_faulted() {
+            crate::runtime::blank_faulted_frame(ctx);
         }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.shell.frame_with(ui, &mut self.state);
-        for event in self.shell.poll_events() {
-            (self.on_event)(&event);
+        if self.shell.is_faulted() {
+            return;
+        }
+        if !crate::runtime::contain(|| {
+            self.shell.frame_with(ui, &mut self.state);
+            for event in self.shell.poll_events() {
+                (self.on_event)(&event);
+            }
+        }) {
+            self.shell.quarantine();
+        }
+        if self.shell.is_faulted() {
+            crate::runtime::blank_faulted_frame(ui.ctx());
         }
     }
 }
@@ -216,6 +241,7 @@ impl<S: std::any::Any> eframe::App for StateApp<S> {
 /// An adapter wrapping one `FnMut(&mut egui::Ui)` closure as an `eframe::App`.
 struct ClosureApp<F> {
     app: F,
+    faulted: bool,
 }
 
 impl<F> eframe::App for ClosureApp<F>
@@ -223,7 +249,15 @@ where
     F: FnMut(&mut egui::Ui) + 'static,
 {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        (self.app)(ui);
+        if self.faulted {
+            return;
+        }
+        if !crate::runtime::contain(|| (self.app)(ui)) {
+            self.faulted = true;
+        }
+        if self.faulted {
+            crate::runtime::blank_faulted_frame(ui.ctx());
+        }
     }
 }
 
@@ -235,16 +269,36 @@ struct ShellApp {
 
 impl eframe::App for ShellApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.shell.logic(ctx);
-        for event in self.shell.poll_events() {
-            (self.on_event)(&event);
+        if self.shell.is_faulted() {
+            return;
+        }
+        if !crate::runtime::contain(|| {
+            self.shell.logic(ctx);
+            for event in self.shell.poll_events() {
+                (self.on_event)(&event);
+            }
+        }) {
+            self.shell.quarantine();
+        }
+        if self.shell.is_faulted() {
+            crate::runtime::blank_faulted_frame(ctx);
         }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.shell.frame(ui);
-        for event in self.shell.poll_events() {
-            (self.on_event)(&event);
+        if self.shell.is_faulted() {
+            return;
+        }
+        if !crate::runtime::contain(|| {
+            self.shell.frame(ui);
+            for event in self.shell.poll_events() {
+                (self.on_event)(&event);
+            }
+        }) {
+            self.shell.quarantine();
+        }
+        if self.shell.is_faulted() {
+            crate::runtime::blank_faulted_frame(ui.ctx());
         }
     }
 }
@@ -256,6 +310,62 @@ mod tests {
     use eframe::App;
     use std::cell::Cell;
     use std::rc::Rc;
+
+    #[test]
+    #[allow(clippy::panic, reason = "synthetic event-handler fault")]
+    fn event_failure_stops_delivery_and_does_not_retry_a_partially_applied_handler(
+    ) -> crate::Result<()> {
+        let ctx = egui::Context::default();
+        let shell = Shell::builder(crate::testing::single_level_access()).build(&ctx)?;
+        shell.handle().logout();
+        shell.handle().logout();
+        let calls = Rc::new(Cell::new(0));
+        let seen = Rc::clone(&calls);
+        let mut app = ShellApp {
+            shell,
+            on_event: Box::new(move |_| {
+                seen.set(seen.get() + 1);
+                panic!("synthetic event failure");
+            }),
+        };
+        let mut frame = eframe::Frame::_new_kittest();
+        for _ in 0..3 {
+            let _ = ctx.run_logic(&egui::RawInput::default(), |ctx| app.logic(ctx, &mut frame));
+        }
+        assert!(app.shell.is_faulted());
+        assert_eq!(calls.get(), 1);
+        Ok(())
+    }
+
+    #[test]
+    #[allow(clippy::panic, reason = "synthetic raw UI failure")]
+    fn raw_runner_discards_private_output_and_calls_a_failing_ui_only_once() {
+        let ctx = egui::Context::default();
+        let calls = Rc::new(Cell::new(0));
+        let seen = Rc::clone(&calls);
+        let mut app = super::ClosureApp {
+            app: move |ui: &mut egui::Ui| {
+                seen.set(seen.get() + 1);
+                egui::Window::new("private window").show(ui.ctx(), |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| -> () {
+                        ui.label("private test drawing");
+                        ui.ctx().copy_text("private test clipboard".into());
+                        panic!("synthetic nested raw UI failure");
+                    });
+                });
+            },
+            faulted: false,
+        };
+        let mut frame = eframe::Frame::_new_kittest();
+        for _ in 0..3 {
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| app.ui(ui, &mut frame));
+            out.textures_delta.clear();
+            assert_eq!(out.shapes.len(), 0);
+            assert_eq!(out.platform_output.commands.len(), 0);
+        }
+        assert!(app.faulted);
+        assert_eq!(calls.get(), 1);
+    }
 
     #[test]
     fn state_runner_delivers_logic_only_actions_and_events_once() -> crate::Result<()> {

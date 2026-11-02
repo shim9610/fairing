@@ -636,6 +636,7 @@ mod admin_says {
 // already fired, whether the entries need listing again, what kind of secret they take.
 #[allow(clippy::struct_excessive_bools)]
 pub struct Access {
+    quarantined: bool,
     table: LevelTable,
     policy: Box<dyn AccessPolicy>,
     mode: AccessMode,
@@ -737,6 +738,9 @@ fn reference_authenticator(
 }
 
 impl Access {
+    pub(crate) fn quarantine(&mut self) {
+        self.quarantined = true;
+    }
     /// Built from `[access]`. Validation ("an unassigned gate"):
     /// - An empty level table is an error.
     /// - Two or more levels with no `default_gate` is an error.
@@ -829,6 +833,7 @@ impl Access {
             attrs: BTreeMap::new(),
         };
         Ok(Self {
+            quarantined: false,
             table,
             policy: Box::new(policy),
             mode,
@@ -861,6 +866,9 @@ impl Access {
     /// The decision skeleton: with one level, or `mode = off`, **everything passes**. Otherwise it delegates to the policy.
     #[must_use]
     pub fn allows(&self, gate: &Gate) -> bool {
+        if self.quarantined {
+            return false;
+        }
         if self.levels_open() {
             return true;
         }
@@ -875,6 +883,9 @@ impl Access {
     /// is placed).
     #[must_use]
     pub(crate) fn allows_name(&self, name: &str) -> bool {
+        if self.quarantined {
+            return false;
+        }
         if self.levels_open() {
             return true;
         }
@@ -937,6 +948,9 @@ impl Access {
     /// bar's `status.lock` shows exactly this.
     #[must_use]
     pub fn is_unlocked(&self) -> bool {
+        if self.quarantined {
+            return false;
+        }
         self.session.elevation.is_some() || self.session.subject.level > self.initial.level
     }
 
@@ -958,6 +972,9 @@ impl Access {
     /// [`AccessEvent::UnlockRequested`] and nothing more, as in `routing` mode.
     #[must_use]
     pub fn can_prompt(&self) -> bool {
+        if self.quarantined {
+            return false;
+        }
         self.mode == AccessMode::Prompt && self.table.len() > 1 && self.authenticator.is_some()
     }
 
@@ -1001,7 +1018,7 @@ impl Access {
     /// Whether the session may give `level`, or change an entry at it: anything at or below its
     /// own. Levels mean nothing with one level or `mode = off`, and then everything may.
     pub(crate) fn may_grant(&self, level: Level) -> bool {
-        self.levels_open() || level <= self.session.subject.level
+        !self.quarantined && (self.levels_open() || level <= self.session.subject.level)
     }
 
     /// One level, or `mode = off`: every gate passes.

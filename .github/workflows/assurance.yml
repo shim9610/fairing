@@ -206,6 +206,9 @@ jobs:
           suffix=""
           if [ "$RUNNER_OS" = "Windows" ]; then suffix=".exe"; fi
           target/assurance/fixed-display/display$suffix --nocapture 2>&1 | tee target/assurance/fixed-display/native.log
+      - name: Contain UI and backend unwinds without replay or output leakage
+        run: |
+          cargo test --locked -p fairing --test runtime_faults --no-default-features 2>&1 | tee target/assurance/fixed-display/runtime-faults.log
       - name: Verify actual same-process heap exhaustion on Windows
         if: runner.os == 'Windows'
         env:

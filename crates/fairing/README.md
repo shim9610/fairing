@@ -112,10 +112,14 @@ binary anyway). In the `Cargo.toml` of the binary that goes onto the device:
 [profile.release]
 lto = "fat"
 codegen-units = 1
-panic = "abort"
+panic = "unwind"
 strip = true
 opt-level = 3      # for a UI, 3 beats "s"; strip wins the size back
 ```
+
+Use `panic = "unwind"` for runtime callback containment. `panic = "abort"` bypasses
+recovery and terminates the process on a panic; allocator aborts are not unwinds.
+
 
 ## Licence
 

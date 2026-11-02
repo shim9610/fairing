@@ -325,6 +325,12 @@ impl<T> Drop for BoundedInbox<T> {
     }
 }
 impl<T> BoundedInbox<T> {
+    /// Refuse future admission without dropping accepted messages or invoking their destructors.
+    /// A factory already running may still finish; callers must stop dispatch after a fault.
+    pub fn close_admission(&self) {
+        self.budget.open.store(false, Ordering::Release);
+    }
+
     /// Receive immediately, returning one reservation.
     ///
     /// # Errors
