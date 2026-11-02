@@ -57,7 +57,7 @@ original ACK kernel.
   properties with 64 cases each, using seed 20261101. Operation sequences cap
   at 32 shell/backend operations or 64 non-UI operations. Fixed cases ensure
   the important deadline/credential boundaries execute regardless of the seed.
-- UI reachability adds 24 fixed viewport/history/modal combinations and 32 generated
+- UI reachability adds 48 fixed viewport/history/modal/motion combinations and 32 generated
   histories (up to 16 operations), with six required physical-input edges. The actual
   shell must resume ordinary UI on a quiet pass and satisfy each edge after intentional
   blockers stand aside. Kani/Verus prove the shared input decision, not the rendered

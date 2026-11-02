@@ -57,11 +57,13 @@ The corpus uses four viewport profiles, including 480×320, and generated histor
 of region activation, movement, removal, quick taps and rotation. A configured region
 is allowed to block an underlying control while active. Once it stands aside, or a
 modal owns input, that old obstruction must not make the required edge unreachable.
-There are 24 fixed profile/history/modal combinations and 32 generated histories.
+There are 48 fixed profile/history/modal/motion combinations and 32 generated histories.
+Both reduced-motion and ordinary animated transitions run through the same required edges.
 
 A witness checks the visible target rectangle, sends actual press/release events and
-observes the destination. It allows three attempts while previous-pass geometry
-settles; it cannot use a hardware-key shortcut, direct grant or host launch as a
+observes the destination. It allows three attempts, followed by two settling passes
+in reduced-motion mode or 24 in animated mode, using the harness's deterministic 60 Hz
+clock. This is a bounded input witness, not a wall-clock performance guarantee. It cannot use a hardware-key shortcut, direct grant or host launch as a
 substitute. Failures report the edge, viewport, target, layer, prompt/fault status and
 frame count. Proptest also reports a minimized operation history.
 

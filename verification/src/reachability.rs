@@ -2,7 +2,7 @@
 //! Setup may use host APIs; each claimed transition below must occur through real pointer input.
 use fairing::access::Gate;
 use fairing::gesture::{GestureRegion, Phase, RegionCx, RegionPlaceCx, RegionTouch};
-use fairing::testing::{access_config, test_shell, Harness};
+use fairing::testing::{access_config, Harness};
 use fairing::{egui, screen, Cx, LaunchAction, Level};
 use std::cell::Cell;
 use std::rc::Rc;
@@ -48,9 +48,10 @@ struct Scene {
     region: Rc<Cell<Option<egui::Rect>>>,
     witnessed: Vec<bool>,
     region_action: Rc<Cell<bool>>,
+    settle_frames: usize,
 }
 impl Scene {
-    fn new(width: u16, height: u16) -> Self {
+    fn new(width: u16, height: u16, animated: bool) -> Self {
         let mut config = access_config(&["viewer", "admin"], Some("top"));
         config.access.gates.insert("public".into(), "bottom".into());
         config
@@ -62,11 +63,14 @@ impl Scene {
             .pin_table
             .pins
             .insert("admin".into(), "1234".into());
+        config.motion.reduce = !animated;
         let target = Rc::new(Cell::new(None));
         let rect = target.clone();
         let draws = Rc::new(Cell::new(0));
         let count = draws.clone();
-        let mut h = test_shell(config, move |shell| {
+        let mut h = Harness::new(config, fairing::services::Services::null()).unwrap();
+        {
+            let shell = &mut h.shell;
             shell.add(
                 screen("start", move |ui: &mut egui::Ui, cx: &mut Cx<'_>| {
                     count.set(count.get() + 1);
@@ -86,11 +90,10 @@ impl Scene {
                     cx.launch(LaunchAction::open("start"));
                 }
             }));
-        })
-        .unwrap();
+        }
         h.set_size(f32::from(width), f32::from(height));
         h.shell.launch(LaunchAction::open("start")); // Setup, not a transition witness.
-        h.frames(4);
+        h.frames(if animated { 32 } else { 4 });
         let region = Rc::new(Cell::new(None));
         let region_action = Rc::new(Cell::new(false));
         h.shell
@@ -109,6 +112,7 @@ impl Scene {
             region,
             witnessed: vec![false; REQUIRED_EDGES.len()],
             region_action,
+            settle_frames: if animated { 24 } else { 2 },
         }
     }
 
@@ -151,6 +155,7 @@ impl Scene {
         // keyboard shortcut, or direct state mutation is allowed to satisfy the edge.
         for _ in 0..3 {
             self.h.tap(visible.center());
+            self.h.frames(self.settle_frames);
             if reached(&self.h) {
                 return;
             }
@@ -227,8 +232,8 @@ impl Scene {
 /// Replay generated geometry/input history, then discharge actual UI reachability obligations.
 /// The environment supplies UI passes and eventually releases the pointer; a configured
 /// occluder must first stand aside before an underlying control is required to work.
-pub fn exercise(width: u16, height: u16, history: &[u8], modal_occluder: bool) {
-    let mut scene = Scene::new(width, height);
+pub fn exercise(width: u16, height: u16, history: &[u8], modal_occluder: bool, animated: bool) {
+    let mut scene = Scene::new(width, height, animated);
     for operation in history.iter().take(16) {
         let target = scene.target.get().unwrap();
         match operation % 5 {
@@ -325,7 +330,7 @@ pub fn exercise(width: u16, height: u16, history: &[u8], modal_occluder: bool) {
     }
     scene.authenticate();
     scene.region.set(None);
-    scene.h.frames(3);
+    scene.h.frames(scene.settle_frames);
     assert_eq!(scene.state(), REQUIRED_EDGES[3].0);
     let back = scene.text_target("Return to start");
     scene.witness("destination -> start", back, |h| {
@@ -348,7 +353,9 @@ pub mod regressions {
         for (width, height) in [(1024, 600), (800, 480), (480, 320), (600, 800)] {
             for history in [&[][..], &[0, 3, 1, 2][..], &[3, 3, 3, 1, 0][..]] {
                 for modal in [false, true] {
-                    super::exercise(width, height, history, modal);
+                    for animated in [false, true] {
+                        super::exercise(width, height, history, modal, animated);
+                    }
                 }
             }
         }
@@ -361,9 +368,9 @@ mod generated {
     proptest! {
         #![proptest_config(ProptestConfig { cases: 32, failure_persistence: None, ..ProptestConfig::default() })]
         #[test]
-        fn rendered_paths_survive_generated_histories(profile in 0usize..4, history in prop::collection::vec(any::<u8>(), 0..17), modal in any::<bool>()) {
+        fn rendered_paths_survive_generated_histories(profile in 0usize..4, history in prop::collection::vec(any::<u8>(), 0..17), modal in any::<bool>(), animated in any::<bool>()) {
             let (width, height) = [(1024, 600), (800, 480), (480, 320), (600, 800)][profile];
-            super::exercise(width, height, &history, modal);
+            super::exercise(width, height, &history, modal, animated);
         }
     }
 }
