@@ -302,17 +302,33 @@ queue prevents new factories from starting; an already running producer factory 
 finish, but the faulted shell will not execute its command. Hosts with other UI in the
 same viewport must account for whole-viewport output being discarded on failure.
 
-The library does not format or log panic payloads. After catching an unwind, it attempts
-payload disposal under a fresh unwind boundary. If disposal panics, the replacement
-payload is disposed of next, up to eight attempts. Ordinary arbitrary payloads are
-released; they are no longer unconditionally leaked. A recursively panicking destructor
-can exhaust this budget: the final payload is retained, without running its destructor.
+The supported panic payload types are exactly `String`, `&'static str` and
+`recovery::PanicCode(u16)`. Their destruction does not run application-defined code.
+The library releases these payloads without formatting or logging string contents;
+`PanicCode` contains only an application-defined numeric diagnostic identifier.
+Expected failures must use `Result`, `AuthOutcome`, queue rejection or the relevant
+fallible API, rather than initiating an unwind. The product crates forbid explicit
+panic/abort entry points through their lint configuration; the scoped unwind propagation
+helper restores borrowed ownership before forwarding an existing callback failure.
+
+An arbitrary payload from application or dependency code is outside this contract.
+Fairing never invokes its destructor, including under a second `catch_unwind`: arbitrary
+destructors can abort, double-panic, block or allocate. The payload is retained with
+`mem::forget`, without exposing a retrieval/execution handle. This avoids running its
+cleanup code but retains any owned memory, descriptors, locks or sensitive data.
+Repeated unsupported payloads can accumulate resources; there is no global byte bound
+and shell replacement does not reclaim these objects. The contract cannot restrict
+what an external library passes to `panic_any` at runtime.
+
 `recovery::panic_cleanup_stats()` exposes saturating process-wide counts of caught
-unwinds, cleanup panics and retained final payloads. These are object counts, not a byte
-or resource bound. Repeated pathological faults can still accumulate retained resources.
-A fault guidance view which unwinds is disabled until explicitly installed again. Runner
-recovery callbacks retain their application-defined scheduling policy. Applications can
-observe retained-payload diagnostics before deciding whether to attempt recovery again.
+unwinds, supported payloads released and unsupported payloads retained, plus the last
+observed numeric code. Individual fields are atomic, not a consistent per-shell snapshot;
+string/unknown payloads do not clear the last numeric code. There is no payload formatting
+or diagnostic allocation. A fault guidance view which unwinds is disabled until explicitly
+installed again. Applications retain control of recovery scheduling and can inspect
+retention diagnostics before attempting replacement. These diagnostics are not a memory
+budget or a mechanism for recovering unknown payload resources.
+
 Application panic hooks run before containment and must redact sensitive
 data themselves. Panicking hooks, abort builds, double panics in unwinding destructors,
 allocator aborts, and rendering/native work outside these boundaries remain outside

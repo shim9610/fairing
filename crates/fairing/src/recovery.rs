@@ -5,20 +5,36 @@
 
 use std::{borrow::Cow, fmt};
 
-/// Process-wide, saturating unwind-cleanup counters. Reads are individually atomic;
-/// a snapshot can include activity from other threads. No payload contents are exposed.
+/// Numeric payload for an unexpected application fault, with no owned resources or
+/// custom destructor. Applications may use `std::panic::panic_any(PanicCode(code))`
+/// at their own unwind boundary. Fairing does not provide a helper that starts a panic.
+/// Expected failures should use `Result` or the relevant typed outcome instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PanicCode(
+    /// Application-defined code. Avoid encoding secrets in diagnostic identifiers.
+    pub u16,
+);
+
+/// Process-wide, saturating payload-cleanup counters. Reads are individually atomic;
+/// a snapshot can include activity from other threads. No string contents are exposed.
+/// Supported payloads are exactly `String`, `&'static str` and [`PanicCode`].
+/// An unknown payload is retained without invoking its destructor; this is a contract
+/// violation, not a recovery path with bounded resource use.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PanicCleanupStats {
     /// Unwinds caught at runtime containment boundaries.
     pub caught: usize,
-    /// Payload disposal attempts which themselves unwound.
-    pub cleanup_panics: usize,
-    /// Final payloads retained after the finite disposal budget was exhausted.
+    /// Supported payloads released without invoking a custom destructor.
+    pub released: usize,
+    /// Unknown payloads retained without executing their destructors.
     /// This counts objects, not bytes or resources; it is not a memory bound.
     pub retained: usize,
+    /// Most recently observed numeric payload, across all threads. String/unknown
+    /// payloads do not clear it. This is not a code associated with a particular shell.
+    pub last_code: Option<PanicCode>,
 }
 
-/// Inspect cumulative cleanup diagnostics without allocating or invoking payload code.
+/// Inspect cumulative diagnostics without allocating or invoking payload code.
 #[must_use]
 pub fn panic_cleanup_stats() -> PanicCleanupStats {
     crate::runtime::panic_cleanup_stats()

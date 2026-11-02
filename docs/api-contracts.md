@@ -12,7 +12,7 @@ test is insufficient: production mutations must also fail the relevant checks.
 
 | Documented contract | Production path | Executable evidence |
 | --- | --- | --- |
-| Runtime unwind faults latch dispatch off, deny gates and discard partial viewport/platform output; no automatic callback replay | Shell runtime boundaries, runner adapters, Access quarantine, BoundedInbox::close_admission | runtime_faults integration tests inject UI/borrowed-state/direct/queued/backend faults; runner tests inject event/raw-UI faults; unknown-payload destructor regression. Requires unwind; no business rollback or universal OOM claim. |
+| Runtime unwind faults latch dispatch off, deny gates and discard partial viewport/platform output; no automatic callback replay | Shell runtime boundaries, runner adapters, Access quarantine, BoundedInbox::close_admission | runtime_faults integration tests inject UI/borrowed-state/direct/queued/backend faults; runner tests inject event/raw-UI faults; approved-payload cleanup and subprocess controls for aborting/double-panicking unknown destructors. Requires unwind; no business rollback or universal OOM claim. |
 | Shell replacement closes old admission before construction, never replays old work, and leaves dispatch blocked on failure; recovery UI and restart policy are independent | Shell::restart_with, RecoveryUi, runner recovery callbacks | runtime_faults exercises factory errors/unwinds, rejected replacements, old-shell disposal faults and real button input; runner tests exercise automatic, request-based and failing recovery callbacks. No business/context rollback; unwind-only boundary. |
 | Icon storage failure reclaims older cache entries or omits the path; dismissal event allocation failure preserves notification/unread state; failed command factories release their slot | try_flatten, IconCache::try_get, Shell::try_dismiss_notification, ShellHandle::try_send_fallible_with | Real 16/64 MiB one-byte-exhaustion tests exercise zero-allocation cache hits, cold-icon refusal, reclamation, dismissal retry and no rejection logger calls. Stock-egui frame exhaustion is a separate failing negative control, not an acceptance result. |
 | Ordered gate levels; explicit assignments and unknown-gate defaults; one level/off bypasses policy | `Access::allows`, `LevelPolicy::allows/required` ([access guide §1–4](guide/05-access-control.md)) | Kani `ordered_gates_are_monotone_and_reflexive`; Verus `level_allows`; generated `public_access` includes Unicode/empty/unknown names and real level names preceding top/bottom aliases |
@@ -56,7 +56,8 @@ original ACK kernel.
   properties with 64 cases each, using seed 20261101. Operation sequences cap
   at 32 shell/backend operations or 64 non-UI operations. Fixed cases ensure
   the important deadline/credential boundaries execute regardless of the seed.
-- Miri interprets twenty-two fixed tests with normal isolation, validity and race
+- Miri interprets twenty-two assurance tests and the production supported-payload cleanup test
+  with normal isolation, validity and race
   checks. It covers the actual Access, PinTable, notification, calendar, unit,
   service, fixed-pool and bounded/unbounded Inbox APIs. It does not interpret the complete shell rendering
   path; generated cases run natively.
@@ -157,3 +158,17 @@ python3 verification/coverage.py
 CI uploads contract controls, per-module coverage, proof controls, Miri/Loom
 logs, fuzz corpora and BOMs. A passing run establishes the recorded contracts
 within these scopes and assumptions; it is not a device certification.
+
+## Panic payload contract
+
+Only `String`, `&'static str` and `recovery::PanicCode` payloads are supported for
+cleanup. Expected API failures use typed return values. Unknown payload destructors
+are not invoked: those objects are retained and counted, including across shell
+replacement. This preserves dispatch quarantine without claiming bounded retention.
+`PanicCleanupStats::released` replaces the earlier experimental `cleanup_panics`
+counter; `last_code` is a process-wide diagnostic, not a per-shell fault association.
+The numeric payload type provides no helper for initiating a panic inside Fairing.
+The dedicated Miri test checks supported payload cleanup with leak checking enabled;
+unknown-payload controls run natively in subprocesses because retaining those objects
+is intentional and not a leak-free contract. A local negative control which executed
+unknown destructors was rejected by the aborting-destructor regression.

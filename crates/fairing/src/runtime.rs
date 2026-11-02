@@ -1,11 +1,11 @@
 //! Runtime unwind containment. This cannot intercept allocator aborts or panic=abort.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 
 static CAUGHT: AtomicUsize = AtomicUsize::new(0);
-static CLEANUP_PANICS: AtomicUsize = AtomicUsize::new(0);
+static RELEASED: AtomicUsize = AtomicUsize::new(0);
+static LAST_CODE: AtomicU32 = AtomicU32::new(0);
 static RETAINED: AtomicUsize = AtomicUsize::new(0);
-const CLEANUP_ATTEMPTS: usize = 8;
 
 #[allow(deprecated, reason = "fetch_update supports the declared MSRV")]
 fn increment(counter: &AtomicUsize) {
@@ -17,7 +17,13 @@ fn increment(counter: &AtomicUsize) {
 pub(crate) fn panic_cleanup_stats() -> crate::recovery::PanicCleanupStats {
     crate::recovery::PanicCleanupStats {
         caught: CAUGHT.load(Ordering::Relaxed),
-        cleanup_panics: CLEANUP_PANICS.load(Ordering::Relaxed),
+        released: RELEASED.load(Ordering::Relaxed),
+        last_code: match LAST_CODE.load(Ordering::Relaxed) {
+            0 => None,
+            encoded => u16::try_from(encoded - 1)
+                .ok()
+                .map(crate::recovery::PanicCode),
+        },
         retained: RETAINED.load(Ordering::Relaxed),
     }
 }
@@ -27,23 +33,26 @@ pub(crate) fn contain(work: impl FnOnce()) -> bool {
     attempt(work).is_ok()
 }
 
-/// Drop a payload after the original unwind has finished. A destructor which unwinds
-/// produces another payload; dispose of that too, with a finite work limit. This cannot
-/// contain destructors which abort or panic twice during the same unwind.
-fn dispose_payload(mut payload: Box<dyn std::any::Any + Send>) {
-    for _ in 0..CLEANUP_ATTEMPTS {
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(payload))) {
-            Ok(()) => return,
-            Err(next) => {
-                increment(&CLEANUP_PANICS);
-                payload = next;
-            }
-        }
+/// Only exact, library-approved types may run drop glue during payload cleanup.
+/// In particular, do not call an unknown destructor even under `catch_unwind`: it can
+/// abort, cause a double panic, allocate, block or create another arbitrary payload.
+fn dispose_payload(payload: Box<dyn std::any::Any + Send>) {
+    if let Some(code) = payload.downcast_ref::<crate::recovery::PanicCode>() {
+        LAST_CODE.store(u32::from(code.0) + 1, Ordering::Relaxed);
     }
-    // An arbitrary recursively panicking destructor has no universally safe disposal.
-    // Retain only the final payload and make this fallback observable to the host.
-    increment(&RETAINED);
-    std::mem::forget(payload);
+    if payload.is::<String>()
+        || payload.is::<&'static str>()
+        || payload.is::<crate::recovery::PanicCode>()
+    {
+        drop(payload);
+        increment(&RELEASED);
+    } else {
+        // No portable, safe way exists to release an arbitrary object's owned
+        // resources without executing its destructor. Record the contract violation
+        // without formatting, retaining a callable handle, or running that code.
+        increment(&RETAINED);
+        std::mem::forget(payload);
+    }
 }
 
 /// Return a value without exposing a panic payload to callers.
@@ -94,58 +103,46 @@ mod tests {
     #[allow(
         clippy::panic,
         clippy::disallowed_methods,
-        reason = "payload destructor fault injection"
+        reason = "supported payload fault injection"
     )]
-    fn arbitrary_payload_is_released() {
-        struct Payload(Arc<AtomicUsize>);
-        impl Drop for Payload {
-            fn drop(&mut self) {
-                self.0.fetch_add(1, Ordering::Relaxed);
-            }
+    fn supported_payloads_are_released_and_numeric_codes_are_observable() {
+        let before = super::panic_cleanup_stats().released;
+        assert!(!super::contain(|| std::panic::panic_any("static message")));
+        assert!(!super::contain(|| std::panic::panic_any(String::from(
+            "owned message"
+        ))));
+        for code in [0, 7, u16::MAX] {
+            assert!(!super::contain(|| std::panic::panic_any(
+                crate::recovery::PanicCode(code)
+            )));
+            assert_eq!(
+                super::panic_cleanup_stats().last_code,
+                Some(crate::recovery::PanicCode(code))
+            );
         }
-        let drops = Arc::new(AtomicUsize::new(0));
-        let owned = Arc::clone(&drops);
-        assert!(!super::contain(|| std::panic::panic_any(Payload(owned))));
-        assert_eq!(drops.load(Ordering::Relaxed), 1);
-        assert_eq!(Arc::strong_count(&drops), 1);
-    }
-
-    #[test]
-    #[allow(
-        clippy::panic,
-        clippy::disallowed_methods,
-        reason = "payload destructor fault injection"
-    )]
-    fn a_panicking_destructor_is_contained_and_its_replacement_is_released() {
-        struct BadDrop;
-        impl Drop for BadDrop {
-            fn drop(&mut self) {
-                panic!("payload destructor fault");
-            }
-        }
-        assert!(!super::contain(|| std::panic::panic_any(BadDrop)));
+        assert!(super::panic_cleanup_stats().released >= before + 5);
         assert!(super::contain(|| {}));
     }
 
     #[test]
     #[allow(
-        clippy::disallowed_methods,
         clippy::panic,
-        reason = "recursive payload fault injection"
+        clippy::disallowed_methods,
+        reason = "unknown payload destructor fault injection"
     )]
-    fn recursively_panicking_payload_has_a_finite_cleanup_budget() {
-        struct Recursive(Arc<AtomicUsize>);
-        impl Drop for Recursive {
+    fn unknown_payload_destructor_is_never_invoked() {
+        struct Payload(Arc<AtomicUsize>);
+        impl Drop for Payload {
             fn drop(&mut self) {
                 self.0.fetch_add(1, Ordering::Relaxed);
-                std::panic::panic_any(Self(Arc::clone(&self.0)));
+                panic!("unknown destructor must not execute");
             }
         }
         let drops = Arc::new(AtomicUsize::new(0));
         let owned = Arc::clone(&drops);
         let before = super::panic_cleanup_stats().retained;
-        assert!(!super::contain(|| std::panic::panic_any(Recursive(owned))));
-        assert_eq!(drops.load(Ordering::Relaxed), super::CLEANUP_ATTEMPTS);
+        assert!(!super::contain(|| std::panic::panic_any(Payload(owned))));
+        assert_eq!(drops.load(Ordering::Relaxed), 0);
         assert!(super::panic_cleanup_stats().retained > before);
         assert!(super::contain(|| {}));
     }

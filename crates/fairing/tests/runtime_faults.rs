@@ -327,3 +327,90 @@ fn fault_guidance_is_opt_in_and_the_button_only_records_a_request() -> fairing::
     assert_eq!(output.shapes.len(), 0);
     Ok(())
 }
+
+/// Run destructive regression controls in child processes: invoking either unknown
+/// destructor would terminate that child rather than merely produce a catchable panic.
+#[test]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "panic payload and abort fault injection"
+)]
+fn unsupported_payload_destructors_are_not_executed() -> fairing::Result<()> {
+    struct AbortsOnDrop;
+    impl Drop for AbortsOnDrop {
+        fn drop(&mut self) {
+            std::process::abort();
+        }
+    }
+    struct SecondPanic;
+    impl Drop for SecondPanic {
+        fn drop(&mut self) {
+            panic!("second destructor panic");
+        }
+    }
+    struct DoublePanic(SecondPanic);
+    impl Drop for DoublePanic {
+        fn drop(&mut self) {
+            panic!("first destructor panic");
+        }
+    }
+    const CHILD_MODE: &str = "FAIRING_PAYLOAD_CONTRACT_CHILD";
+    let Ok(mode) = std::env::var(CHILD_MODE) else {
+        for mode in ["abort", "double-panic"] {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "unsupported_payload_destructors_are_not_executed",
+                    "--nocapture",
+                ])
+                .env(CHILD_MODE, mode)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "unknown {mode} destructor was executed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        return Ok(());
+    };
+    let ctx = fairing::egui::Context::default();
+    let mut shell = Shell::builder(fairing::testing::single_level_access()).build(&ctx)?;
+    shell.add(action("fault", move |_| match mode.as_str() {
+        "abort" => std::panic::panic_any(AbortsOnDrop),
+        _ => std::panic::panic_any(DoublePanic(SecondPanic)),
+    }));
+    let before = fairing::recovery::panic_cleanup_stats();
+    shell.launch(LaunchAction::run("fault"));
+    let after = fairing::recovery::panic_cleanup_stats();
+    assert!(shell.is_faulted());
+    assert!(after.retained > before.retained);
+    assert_eq!(after.released, before.released);
+    assert!(!shell.access().allows(&fairing::access::Gate::from("fault")));
+    Ok(())
+}
+
+#[test]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "typed unexpected-fault injection"
+)]
+fn supported_numeric_fault_is_released_and_quarantines_dispatch() -> fairing::Result<()> {
+    let ctx = fairing::egui::Context::default();
+    let mut shell = Shell::builder(fairing::testing::single_level_access()).build(&ctx)?;
+    let ran = Rc::new(Cell::new(false));
+    let seen = ran.clone();
+    shell.add(action("after", move |_| seen.set(true)));
+    shell.add(action("fault", |_| {
+        std::panic::panic_any(fairing::recovery::PanicCode(42))
+    }));
+    let before = fairing::recovery::panic_cleanup_stats().released;
+    shell.launch(LaunchAction::run("fault"));
+    let after = fairing::recovery::panic_cleanup_stats();
+    assert!(after.released > before);
+    assert_eq!(after.last_code, Some(fairing::recovery::PanicCode(42)));
+    shell.launch(LaunchAction::run("after"));
+    assert!(shell.is_faulted());
+    assert!(!ran.get());
+    Ok(())
+}
