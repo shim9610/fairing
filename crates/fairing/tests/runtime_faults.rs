@@ -151,3 +151,179 @@ fn a_nested_backend_failure_stops_the_outer_command_batch() -> fairing::Result<(
     assert_eq!(shell.poll_events().len(), 0);
     Ok(())
 }
+
+#[test]
+fn restart_replaces_the_shell_without_replaying_old_work() -> Result<(), Box<dyn std::error::Error>>
+{
+    let ctx = fairing::egui::Context::default();
+    let mut shell = Shell::builder(fairing::testing::single_level_access()).build(&ctx)?;
+    let old = shell.handle();
+    let payments = Rc::new(Cell::new(0));
+    let seen = payments.clone();
+    shell.add(action("pay", move |_| seen.set(seen.get() + 1)));
+    old.launch(LaunchAction::run("pay"));
+    shell.restart_with(|| {
+        assert_eq!(
+            old.try_send(fairing::shell::Command::Home)
+                .unwrap_err()
+                .kind(),
+            fairing::inbox::QueueErrorKind::Disconnected,
+            "admission must close before the factory runs"
+        );
+        let mut fresh = Shell::builder(fairing::testing::single_level_access()).build(&ctx)?;
+        let seen = payments.clone();
+        fresh.add(action("pay", move |_| seen.set(seen.get() + 1)));
+        Ok(fresh)
+    })?;
+    assert!(!shell.is_faulted());
+    shell.logic(&ctx);
+    assert_eq!(payments.get(), 0, "old queued work was replayed");
+    assert_eq!(
+        old.try_send(fairing::shell::Command::Home)
+            .unwrap_err()
+            .kind(),
+        fairing::inbox::QueueErrorKind::Disconnected
+    );
+    shell.handle().launch(LaunchAction::run("pay"));
+    shell.logic(&ctx);
+    assert_eq!(
+        payments.get(),
+        1,
+        "new handle did not reach the replacement"
+    );
+    assert!(!shell.take_restart_request());
+    Ok(())
+}
+
+#[test]
+fn failed_restart_stays_closed_and_allows_a_later_developer_attempt() -> fairing::Result<()> {
+    use fairing::recovery::RestartError;
+    let ctx = fairing::egui::Context::default();
+    let mut shell = Shell::builder(fairing::testing::single_level_access()).build(&ctx)?;
+    assert!(matches!(
+        shell.restart_with(|| Err(fairing::Error::Config("test".into()))),
+        Err(RestartError::Build(_))
+    ));
+    assert!(shell.is_faulted());
+    assert!(matches!(
+        shell.restart_with(|| panic!("synthetic factory failure")),
+        Err(RestartError::Panicked)
+    ));
+    assert!(shell.is_faulted());
+    assert!(matches!(
+        shell.restart_with(|| {
+            let mut replacement =
+                Shell::builder(fairing::testing::single_level_access()).build(&ctx)?;
+            replacement.quarantine();
+            Ok(replacement)
+        }),
+        Err(RestartError::FaultedReplacement)
+    ));
+    assert!(shell.is_faulted());
+    assert!(shell
+        .restart_with(|| Shell::builder(fairing::testing::single_level_access()).build(&ctx))
+        .is_ok());
+    assert!(!shell.is_faulted());
+    Ok(())
+}
+
+#[test]
+fn disposal_unwind_quarantines_the_replacement() -> fairing::Result<()> {
+    struct BadDrop;
+    impl Drop for BadDrop {
+        fn drop(&mut self) {
+            panic!("synthetic old callback destructor failure");
+        }
+    }
+    let ctx = fairing::egui::Context::default();
+    let mut shell = Shell::builder(fairing::testing::single_level_access()).build(&ctx)?;
+    let guard = BadDrop;
+    shell.add(action("old", move |_| {
+        let _ = &guard;
+    }));
+    let old = shell.handle();
+    let mut fresh_handle = None;
+    let result = shell.restart_with(|| {
+        let fresh = Shell::builder(fairing::testing::single_level_access()).build(&ctx)?;
+        fresh_handle = Some(fresh.handle());
+        Ok(fresh)
+    });
+    assert!(matches!(
+        result,
+        Err(fairing::recovery::RestartError::Panicked)
+    ));
+    assert!(shell.is_faulted());
+    for handle in [old, fresh_handle.unwrap()] {
+        assert_eq!(
+            handle
+                .try_send(fairing::shell::Command::Home)
+                .unwrap_err()
+                .kind(),
+            fairing::inbox::QueueErrorKind::Disconnected
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn fault_guidance_is_opt_in_and_the_button_only_records_a_request() -> fairing::Result<()> {
+    use fairing::egui::{self, Event, PointerButton, RawInput};
+    let ctx = egui::Context::default();
+    let view = fairing::recovery::RecoveryUi {
+        heading: "Application recovery".into(),
+        message: "Contact the operator at station 12".into(),
+        restart_label: Some("Request recovery".into()),
+    };
+    let mut shell = Shell::builder(fairing::testing::single_level_access()).build(&ctx)?;
+    let callbacks = Rc::new(Cell::new(0));
+    let seen = callbacks.clone();
+    shell.add(action("blocked", move |_| seen.set(seen.get() + 1)));
+    shell.quarantine();
+    let mut output = ctx.run_ui(RawInput::default(), |ui| shell.frame(ui));
+    output.textures_delta.clear();
+    assert!(
+        output.shapes.is_empty(),
+        "default shell showed an unsolicited menu"
+    );
+    // Measure the public view itself; drive actual pointer events at its button below.
+    let mut rect = egui::Rect::NOTHING;
+    ctx.run_ui(RawInput::default(), |ui| {
+        rect = view.show(ui).unwrap().rect;
+    })
+    .drop_without_applying_deltas();
+    shell.set_recovery_ui(Some(view));
+    let mut output = ctx.run_ui(RawInput::default(), |ui| shell.frame(ui));
+    output.textures_delta.clear();
+    assert!(!output.shapes.is_empty(), "opt-in guidance did not render");
+    assert!(!shell.take_restart_request());
+    for pressed in [true, false] {
+        let input = RawInput {
+            events: vec![
+                Event::PointerMoved(rect.center()),
+                Event::PointerButton {
+                    pos: rect.center(),
+                    button: PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::default(),
+                },
+            ],
+            ..Default::default()
+        };
+        ctx.run_ui(input, |ui| shell.frame(ui))
+            .drop_without_applying_deltas();
+    }
+    assert!(
+        shell.take_restart_request(),
+        "button click was not exposed to the host"
+    );
+    assert!(!shell.take_restart_request(), "request was not consumed");
+    assert!(shell.is_faulted(), "view performed an unsolicited restart");
+    shell.launch(LaunchAction::run("blocked"));
+    shell.logic(&ctx);
+    assert_eq!(callbacks.get(), 0);
+    shell.set_recovery_ui(None);
+    let mut output = ctx.run_ui(RawInput::default(), |ui| shell.frame(ui));
+    output.textures_delta.clear();
+    assert_eq!(output.shapes.len(), 0);
+    Ok(())
+}

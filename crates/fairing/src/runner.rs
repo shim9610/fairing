@@ -121,6 +121,52 @@ pub fn run_shell_with(
     build: impl FnOnce(&egui::Context) -> Result<Shell> + 'static,
     on_event: impl FnMut(&crate::ShellEvent) + 'static,
 ) -> Result<()> {
+    run_shell_with_recovery(options, build, on_event, |_, _| {})
+}
+
+/// Run with an application-controlled recovery callback.
+///
+/// `on_recovery` runs on each logic tick that begins with a quarantined shell, including
+/// when no UI pass occurs. It may call [`Shell::restart_with`] immediately, wait for
+/// [`Shell::take_restart_request`], or implement any other application policy. The
+/// library imposes no automatic/manual choice, retry count or delay. Normal dispatch
+/// resumes on a subsequent callback after successful replacement. If this callback
+/// unwinds, the current shell is quarantined and partial output is discarded.
+///
+/// Fault guidance is separately opt-in via [`crate::ShellBuilder::recovery_ui`].
+/// External business state is the application's responsibility.
+/// Use `ctx.request_repaint_after(delay)` when your policy needs a later logic tick.
+///
+/// ```no_run
+/// # fn main() -> fairing::Result<()> {
+/// use fairing::{recovery::RecoveryUi, runner, Shell, ShellConfig};
+/// fn build(ctx: &fairing::egui::Context) -> fairing::Result<Shell> {
+///     Shell::builder(ShellConfig::default()).recovery_ui(RecoveryUi {
+///         message: "Follow the operator recovery procedure.".into(),
+///         restart_label: Some("Request recovery".into()),
+///         ..Default::default()
+///     }).build(ctx)
+/// }
+/// runner::run_shell_with_recovery(runner::Options::default(), build, |_| {}, |ctx, shell| {
+///     // Application policy: this example waits for a button; an automatic policy need not.
+///     if shell.take_restart_request() {
+///         if let Err(error) = shell.restart_with(|| build(ctx)) {
+///             log::warn!("{error}");
+///         }
+///     }
+/// })
+/// # }
+/// ```
+///
+/// # Errors
+/// [`Error::Runner`] for a window or graphics failure; `build`'s error unchanged.
+#[allow(clippy::needless_pass_by_value)]
+pub fn run_shell_with_recovery(
+    options: Options,
+    build: impl FnOnce(&egui::Context) -> Result<Shell> + 'static,
+    on_event: impl FnMut(&crate::ShellEvent) + 'static,
+    on_recovery: impl FnMut(&egui::Context, &mut Shell) + 'static,
+) -> Result<()> {
     eframe::run_native(
         &options.title,
         native_options(&options),
@@ -130,6 +176,7 @@ pub fn run_shell_with(
             Ok(Box::new(ShellApp {
                 shell,
                 on_event: Box::new(on_event),
+                on_recovery: Box::new(on_recovery),
             }))
         }),
     )
@@ -179,6 +226,31 @@ pub fn run_app_with<S: std::any::Any>(
     build: impl FnOnce(&egui::Context) -> Result<(Shell, S)> + 'static,
     on_event: impl FnMut(&crate::ShellEvent) + 'static,
 ) -> Result<()> {
+    run_app_with_recovery(options, build, on_event, |_, _, _| {})
+}
+
+/// Run with an application-controlled recovery callback.
+///
+/// `on_recovery` runs on each logic tick that begins with a quarantined shell, including
+/// when no UI pass occurs. It may call [`Shell::restart_with`] immediately, wait for
+/// [`Shell::take_restart_request`], or implement any other application policy. The
+/// library imposes no automatic/manual choice, retry count or delay. Normal dispatch
+/// resumes on a subsequent callback after successful replacement. If this callback
+/// unwinds, the current shell is quarantined and partial output is discarded.
+///
+/// Fault guidance is separately opt-in via [`crate::ShellBuilder::recovery_ui`].
+/// External business state is the application's responsibility.
+/// Use `ctx.request_repaint_after(delay)` when your policy needs a later logic tick.
+///
+/// # Errors
+/// [`Error::Runner`] for a window or graphics failure; `build`'s error unchanged.
+#[allow(clippy::needless_pass_by_value)]
+pub fn run_app_with_recovery<S: std::any::Any>(
+    options: Options,
+    build: impl FnOnce(&egui::Context) -> Result<(Shell, S)> + 'static,
+    on_event: impl FnMut(&crate::ShellEvent) + 'static,
+    on_recovery: impl FnMut(&egui::Context, &mut Shell, &mut S) + 'static,
+) -> Result<()> {
     eframe::run_native(
         &options.title,
         native_options(&options),
@@ -189,22 +261,33 @@ pub fn run_app_with<S: std::any::Any>(
                 shell,
                 state,
                 on_event: Box::new(on_event),
+                on_recovery: Box::new(on_recovery),
             }))
         }),
     )
     .map_err(|err| Error::Runner(err.to_string()))
 }
 
+type StateRecovery<S> = dyn FnMut(&egui::Context, &mut Shell, &mut S);
+type ShellRecovery = dyn FnMut(&egui::Context, &mut Shell);
+
 /// A [`Shell`] plus the app's state as an `eframe::App` — the app owns both.
 struct StateApp<S> {
     shell: Shell,
     state: S,
+    on_recovery: Box<StateRecovery<S>>,
     on_event: Box<dyn FnMut(&crate::ShellEvent)>,
 }
 
 impl<S: std::any::Any> eframe::App for StateApp<S> {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.shell.is_faulted() {
+            if !crate::runtime::contain(|| {
+                (self.on_recovery)(ctx, &mut self.shell, &mut self.state);
+            }) {
+                self.shell.quarantine();
+                crate::runtime::blank_faulted_frame(ctx);
+            }
             return;
         }
         if !crate::runtime::contain(|| {
@@ -222,6 +305,7 @@ impl<S: std::any::Any> eframe::App for StateApp<S> {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         if self.shell.is_faulted() {
+            self.shell.frame_with(ui, &mut self.state);
             return;
         }
         if !crate::runtime::contain(|| {
@@ -264,12 +348,19 @@ where
 /// A [`Shell`] as an `eframe::App`.
 struct ShellApp {
     shell: Shell,
+    on_recovery: Box<ShellRecovery>,
     on_event: Box<dyn FnMut(&crate::ShellEvent)>,
 }
 
 impl eframe::App for ShellApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.shell.is_faulted() {
+            if !crate::runtime::contain(|| {
+                (self.on_recovery)(ctx, &mut self.shell);
+            }) {
+                self.shell.quarantine();
+                crate::runtime::blank_faulted_frame(ctx);
+            }
             return;
         }
         if !crate::runtime::contain(|| {
@@ -287,6 +378,7 @@ impl eframe::App for ShellApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         if self.shell.is_faulted() {
+            self.shell.frame(ui);
             return;
         }
         if !crate::runtime::contain(|| {
@@ -312,6 +404,137 @@ mod tests {
     use std::rc::Rc;
 
     #[test]
+    fn application_can_restart_automatically_without_a_view_or_click() -> crate::Result<()> {
+        let ctx = egui::Context::default();
+        let mut shell = Shell::builder(crate::testing::single_level_access()).build(&ctx)?;
+        shell.quarantine();
+        let events = Rc::new(Cell::new(0));
+        let seen = events.clone();
+        let mut app = StateApp {
+            shell,
+            state: 41usize,
+            on_event: Box::new(move |_| seen.set(seen.get() + 1)),
+            on_recovery: Box::new(|ctx, shell, state| {
+                *state += 1; // Only the application decides how to reconcile its state.
+                assert!(shell
+                    .restart_with(|| {
+                        let fresh =
+                            Shell::builder(crate::testing::single_level_access()).build(ctx)?;
+                        fresh.handle().logout();
+                        Ok(fresh)
+                    })
+                    .is_ok());
+            }),
+        };
+        let mut frame = eframe::Frame::_new_kittest();
+        let _ = ctx.run_logic(&egui::RawInput::default(), |ctx| app.logic(ctx, &mut frame));
+        assert!(!app.shell.is_faulted());
+        assert_eq!(app.state, 42);
+        assert_eq!(
+            events.get(),
+            0,
+            "normal dispatch ran inside recovery callback"
+        );
+        let _ = ctx.run_logic(&egui::RawInput::default(), |ctx| app.logic(ctx, &mut frame));
+        assert_eq!(app.state, 42, "recovery handler ran on a healthy shell");
+        assert!(events.get() > 0, "new shell did not resume dispatch");
+        Ok(())
+    }
+
+    #[test]
+    #[allow(clippy::panic, reason = "synthetic developer recovery failure")]
+    fn recovery_handler_unwind_blocks_even_a_successfully_replaced_shell() -> crate::Result<()> {
+        let ctx = egui::Context::default();
+        let mut shell = Shell::builder(crate::testing::single_level_access()).build(&ctx)?;
+        shell.quarantine();
+        let events = Rc::new(Cell::new(0));
+        let seen = events.clone();
+        let mut app = ShellApp {
+            shell,
+            on_event: Box::new(move |_| seen.set(seen.get() + 1)),
+            on_recovery: Box::new(|ctx, shell| {
+                assert!(shell
+                    .restart_with(
+                        || Shell::builder(crate::testing::single_level_access()).build(ctx)
+                    )
+                    .is_ok());
+                shell.handle().logout();
+                ctx.copy_text("private recovery output".into());
+                panic!("synthetic recovery hook failure");
+            }),
+        };
+        let mut frame = eframe::Frame::_new_kittest();
+        let output = ctx.run_logic(&egui::RawInput::default(), |ctx| app.logic(ctx, &mut frame));
+        assert_eq!(output.platform_output.commands.len(), 0);
+        assert!(app.shell.is_faulted());
+        assert_eq!(events.get(), 0);
+        assert!(app
+            .shell
+            .handle()
+            .try_send(crate::shell::Command::Home)
+            .is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn request_based_policy_stays_idle_until_the_optional_button_is_clicked() -> crate::Result<()> {
+        let ctx = egui::Context::default();
+        let view = crate::recovery::RecoveryUi {
+            restart_label: Some("Resume through application policy".into()),
+            ..Default::default()
+        };
+        let mut shell = Shell::builder(crate::testing::single_level_access())
+            .recovery_ui(view.clone())
+            .build(&ctx)?;
+        let mut button = egui::Rect::NOTHING;
+        ctx.run_ui(egui::RawInput::default(), |ui| {
+            if let Some(response) = view.show(ui) {
+                button = response.rect;
+            }
+        })
+        .drop_without_applying_deltas();
+        shell.quarantine();
+        let mut app = ShellApp {
+            shell,
+            on_event: Box::new(|_| {}),
+            on_recovery: Box::new(|ctx, shell| {
+                if shell.take_restart_request() {
+                    assert!(shell
+                        .restart_with(
+                            || Shell::builder(crate::testing::single_level_access()).build(ctx)
+                        )
+                        .is_ok());
+                }
+            }),
+        };
+        let mut frame = eframe::Frame::_new_kittest();
+        let _ = ctx.run_logic(&egui::RawInput::default(), |ctx| app.logic(ctx, &mut frame));
+        assert!(app.shell.is_faulted());
+        ctx.run_ui(egui::RawInput::default(), |ui| app.ui(ui, &mut frame))
+            .drop_without_applying_deltas();
+        for pressed in [true, false] {
+            let input = egui::RawInput {
+                events: vec![
+                    egui::Event::PointerMoved(button.center()),
+                    egui::Event::PointerButton {
+                        pos: button.center(),
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::default(),
+                    },
+                ],
+                ..Default::default()
+            };
+            ctx.run_ui(input, |ui| app.ui(ui, &mut frame))
+                .drop_without_applying_deltas();
+        }
+        assert!(app.shell.is_faulted(), "UI bypassed the developer handler");
+        let _ = ctx.run_logic(&egui::RawInput::default(), |ctx| app.logic(ctx, &mut frame));
+        assert!(!app.shell.is_faulted());
+        Ok(())
+    }
+
+    #[test]
     #[allow(clippy::panic, reason = "synthetic event-handler fault")]
     fn event_failure_stops_delivery_and_does_not_retry_a_partially_applied_handler(
     ) -> crate::Result<()> {
@@ -323,6 +546,7 @@ mod tests {
         let seen = Rc::clone(&calls);
         let mut app = ShellApp {
             shell,
+            on_recovery: Box::new(|_, _| {}),
             on_event: Box::new(move |_| {
                 seen.set(seen.get() + 1);
                 panic!("synthetic event failure");
@@ -383,6 +607,7 @@ mod tests {
         shell.handle().launch(LaunchAction::run("work"));
         let mut app = StateApp {
             shell,
+            on_recovery: Box::new(|_, _, _| {}),
             state: 0usize,
             on_event: Box::new(move |event| {
                 if matches!(event, crate::ShellEvent::SettingChanged { key, .. } if key.0.as_ref() == "app.done")
@@ -415,6 +640,7 @@ mod tests {
         shell.handle().logout();
         let mut app = ShellApp {
             shell,
+            on_recovery: Box::new(|_, _| {}),
             on_event: Box::new(move |event| {
                 if matches!(event, crate::ShellEvent::LogoutRequested) {
                     seen.set(seen.get() + 1);

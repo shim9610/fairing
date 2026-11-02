@@ -237,15 +237,17 @@ limits. No whole-application or medical-device certification follows from them.
 
 With `panic = "unwind"`, Shell frame/logic entry points, direct launch/setting/hidden
 entry dispatch and the supplied runners contain runtime callback unwinds. A failed
-shell permanently enters `is_faulted()`: access gates deny even in single-level/off
+shell enters `is_faulted()`: access gates deny even in single-level/off
 mode, command admission closes, pending commands are retained without dispatch,
 and partially generated shell events are not published. `quarantine()` lets a
-host latch the same state after its own failure. No automatic reset or replay is
-provided. Independent business workers can continue; shell polling and dispatch stop.
+host latch the same state after its own failure. Independent business workers can
+continue; normal shell polling and dispatch stop. Replacement and optional guidance
+are described below.
 
 A faulting UI pass erases its viewport's pending graphics and platform output,
 including clipboard commands. Logic/event handlers receive the same output cleanup.
-The fallback is a blank viewport; hosts can use the prepared CPU warning surface.
+The failed pass is blanked. Subsequent frames can show an opt-in `RecoveryUi`;
+without that option they remain blank. Hosts can also use the prepared CPU warning surface.
 Loan helpers restore borrowed state/resident ownership and then propagate the unwind
 to the runtime boundary. They no longer swallow a panic and resume the caller's body.
 Nested public calls propagate to the outer boundary so an interrupted command batch
@@ -253,16 +255,69 @@ cannot continue after a nested backend failure.
 
 This is not transaction rollback. Callback mutations, backend writes or event-handler
 side effects performed before a panic may already have happened. Reconcile the
-business system and authorization before constructing a fresh shell. Closing the
+business system and authorization in the application's recovery path. Closing the
 queue prevents new factories from starting; an already running producer factory may
 finish, but the faulted shell will not execute its command. Hosts with other UI in the
 same viewport must account for whole-viewport output being discarded on failure.
 
 The library does not format or log panic payloads. Known String/static-str payloads
 are released; unknown user payloads are retained to avoid invoking a panicking Drop
-implementation during recovery. This is bounded per failed runtime, with no automatic
-restart. Application panic hooks run before containment and must redact sensitive
+implementation during recovery. Developer-requested restarts or failing recovery
+callbacks/views can accumulate these retained payloads; they have no global byte bound.
+Application panic hooks run before containment and must redact sensitive
 data themselves. Panicking hooks, abort builds, double panics in unwinding destructors,
 allocator aborts, and rendering/native work outside these boundaries remain outside
 this guarantee. The failure tests demonstrate continued execution after the named
 unwind faults, not universal survival of stock-egui OOM.
+
+
+### Restart capability and optional guidance
+
+`Shell::restart_with(|| build_shell(ctx))` closes the old inbox before invoking the
+application's factory. Success installs a fresh shell and disposes of the old one.
+Queued commands and pending shell events are not transferred; old handles stay
+disconnected, so producers need the new `shell.handle()`. The new shell's builder
+supplies its configuration, services, authorization, registrations and recovery view.
+The application chooses which state to restore. The egui context, external business
+state and runner callback captures are not reset by this operation.
+
+A construction error, a factory unwind or an already quarantined replacement returns
+`RestartError` and leaves dispatch blocked. If disposing of the old shell unwinds,
+the new shell is also quarantined. A later call can attempt replacement again; there
+is no required delay, retry count, confirmation or automatic/manual policy. Error
+formatting uses generic messages; `RestartError::Build` and its error source expose
+construction details for application diagnostics. Ordinary Rust destructor and abort
+limits still apply.
+
+Guidance is off by default. Use `ShellBuilder::recovery_ui(RecoveryUi { ... })` or
+`Shell::set_recovery_ui(Some(view))` to opt in, and `set_recovery_ui(None)` to hide it.
+`heading` and `message` are developer-supplied text. `restart_label: Some(label)`
+adds a button; `None` shows guidance only. A click records a coalesced request for
+`take_restart_request()` and does not replace the shell. Changing the view clears
+an unconsumed request. This view uses ordinary egui rendering and allocation.
+
+The supplied `runner::run_shell_with_recovery` and `run_app_with_recovery` expose an
+application recovery callback on each logic tick that starts with a faulted shell.
+It receives the egui context, the mutable shell, and (for `run_app`) mutable app state.
+Only this recovery callback and the optional guidance run while the shell is faulted;
+normal shell actions and event delivery remain blocked. A recovery callback unwind
+quarantines even a shell it just replaced. Custom hosts can call the same shell APIs.
+
+For example, an application can condition replacement on the optional button:
+
+```rust
+use fairing::{recovery::RestartError, Shell, ShellConfig};
+fn recover(ctx: &fairing::egui::Context, shell: &mut Shell) -> Result<(), RestartError> {
+    if shell.take_restart_request() {
+        // Build/register the replacement appropriate to this application.
+        shell.restart_with(|| Shell::builder(ShellConfig::default()).build(ctx))?;
+    }
+    Ok(())
+}
+```
+
+An automatic policy can call `restart_with` from that callback without checking a
+button. The application owns retry scheduling, logging, state reconciliation and
+any recovery route; the library installs none of these policies. A policy that waits
+for a deadline can use `ctx.request_repaint_after(delay)` to arrange another tick.
+A successful replacement resumes normal dispatch on a subsequent runner callback.

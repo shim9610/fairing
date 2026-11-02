@@ -96,6 +96,7 @@ pub mod inbox;
 pub mod layout;
 pub mod notify;
 pub mod prelude;
+pub mod recovery;
 pub mod screen;
 pub mod services;
 pub mod settings;

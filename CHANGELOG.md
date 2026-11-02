@@ -6,6 +6,14 @@ All notable changes to the fairing crates are recorded here. The format follows
 
 ## Unreleased
 
+### Added
+
+- Developer-controlled `Shell::restart_with` and runner recovery callbacks. Fresh
+  shells use new command queues; old handles remain disconnected and old work is
+  never replayed. Failed construction/disposal leaves dispatch quarantined.
+- Opt-in `RecoveryUi` guidance and an optional button that only records a request.
+  Automatic/manual restart, timing and business-state recovery belong to the host.
+
 ### Security
 
 - Contain runtime callback unwinds at shell/runner boundaries. Quarantine failed

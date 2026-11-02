@@ -135,6 +135,8 @@ const TOUCH_GRACE: Duration = Duration::from_millis(400);
 pub struct Shell {
     faulted: bool,
     boundary_active: bool,
+    recovery_ui: Option<crate::recovery::RecoveryUi>,
+    restart_requested: bool,
     config: ShellConfig,
     theme: Theme,
     services: Services,
@@ -659,19 +661,94 @@ impl Shell {
         self.handle.clone()
     }
 
-    /// Whether a caught runtime panic has permanently quarantined this shell.
-    /// No automatic retry/reset is offered: callback business mutations cannot be rolled back.
+    /// Whether this shell is quarantined, after an unwind or an explicit host request.
+    /// Normal dispatch stays blocked until the host replaces it, for example with
+    /// [`Self::restart_with`]. Business mutations are not rolled back.
     #[must_use]
     pub const fn is_faulted(&self) -> bool {
         self.faulted
     }
 
-    /// Stop shell dispatch after an application/host failure, without running callbacks.
+    /// Stop normal shell dispatch after an application/host failure.
     /// Queued work is retained but will never execute on this shell. New sends are refused.
+    /// The first transition requests a host repaint for recovery handling/guidance.
     pub fn quarantine(&mut self) {
+        let was_faulted = self.faulted;
         self.faulted = true;
         self.access.quarantine();
         self.rx.close_admission();
+        if !was_faulted {
+            let _ = crate::runtime::contain(|| self.handle.waker().wake());
+        }
+    }
+
+    /// Replace this shell with one constructed by the application.
+    ///
+    /// The old inbox closes before `build` runs; queued work is never replayed and old
+    /// handles remain disconnected. Obtain a new handle after success. Configuration,
+    /// authentication, registrations and recovery UI come from the new shell. External
+    /// business state and egui context state are not reset or rolled back.
+    ///
+    /// The host chooses when to call this, automatically or in response to user input.
+    /// Use the host's existing egui context when building the replacement.
+    ///
+    /// # Errors
+    /// Returns [`crate::recovery::RestartError`] on construction error, an already faulted
+    /// replacement, or an unwind during construction/disposal. The current shell remains
+    /// quarantined on any failure (it may be the new shell if old-shell disposal failed).
+    /// Requires unwinding; aborts and double panics cannot be contained.
+    pub fn restart_with(
+        &mut self,
+        build: impl FnOnce() -> crate::Result<Self>,
+    ) -> std::result::Result<(), crate::recovery::RestartError> {
+        use crate::recovery::RestartError;
+        self.quarantine();
+        let result = crate::runtime::attempt(|| {
+            let replacement = build().map_err(RestartError::Build)?;
+            if replacement.is_faulted() {
+                return Err(RestartError::FaultedReplacement);
+            }
+            let old = std::mem::replace(self, replacement);
+            drop(old);
+            self.handle.waker().wake();
+            Ok(())
+        })
+        .unwrap_or(Err(RestartError::Panicked));
+        if result.is_err() {
+            self.quarantine();
+        }
+        result
+    }
+
+    /// Enable, replace or hide the optional fault view. Clears any unconsumed button request.
+    pub fn set_recovery_ui(&mut self, view: Option<crate::recovery::RecoveryUi>) {
+        self.recovery_ui = view;
+        self.restart_requested = false;
+        if self.faulted {
+            let _ = crate::runtime::contain(|| self.handle.waker().wake());
+        }
+    }
+
+    /// Consume the optional fault-view button's request. Multiple clicks coalesce.
+    /// This does not restart anything; the application decides what to do with it.
+    pub fn take_restart_request(&mut self) -> bool {
+        std::mem::take(&mut self.restart_requested)
+    }
+
+    fn show_recovery_ui(&mut self, ui: &mut egui::Ui) {
+        if !crate::runtime::contain(|| {
+            if self
+                .recovery_ui
+                .as_ref()
+                .and_then(|view| view.show(ui))
+                .is_some_and(|button| button.clicked())
+            {
+                self.restart_requested = true;
+                ui.ctx().request_repaint();
+            }
+        }) {
+            crate::runtime::blank_faulted_frame(ui.ctx());
+        }
     }
 
     fn contain_fault(&mut self, work: impl FnOnce(&mut Self)) {
@@ -1725,6 +1802,7 @@ impl Shell {
     /// [`Shell::frame`] is this with nothing lent; screens then see `cx.app::<T>() == None`.
     pub fn frame_with(&mut self, ui: &mut egui::Ui, app: &mut dyn std::any::Any) {
         if self.faulted {
+            self.show_recovery_ui(ui);
             return;
         }
         self.contain_fault(|shell| shell.frame_inner(ui, &mut Some(app)));

@@ -2,17 +2,22 @@
 
 /// Do not format/log a panic payload. Drop only known standard string payloads;
 /// arbitrary user payload destructors may panic again.
-/// Each runtime is latched off after its first failure, bounding retained payloads per runtime.
+/// Unknown payloads remain retained across developer-requested replacement/retries.
 pub(crate) fn contain(work: impl FnOnce()) -> bool {
+    attempt(work).is_ok()
+}
+
+/// Return a value without exposing an untrusted panic payload to callers.
+pub(crate) fn attempt<T>(work: impl FnOnce() -> T) -> Result<T, ()> {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)) {
-        Ok(()) => true,
+        Ok(value) => Ok(value),
         Err(payload) => {
             if payload.is::<String>() || payload.is::<&'static str>() {
                 drop(payload);
             } else {
                 std::mem::forget(payload);
             }
-            false
+            Err(())
         }
     }
 }

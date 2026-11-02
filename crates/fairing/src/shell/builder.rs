@@ -59,6 +59,7 @@ use std::time::{Duration, Instant};
 /// The shell builder. Made with [`Shell::builder`].
 pub struct ShellBuilder {
     config: ShellConfig,
+    recovery_ui: Option<crate::recovery::RecoveryUi>,
     command_capacity: usize,
     commands_per_update: usize,
     toast_capacity: usize,
@@ -224,9 +225,17 @@ impl std::fmt::Debug for ShellBuilder {
 }
 
 impl ShellBuilder {
+    /// Opt in to fault guidance and an optional request button. No restart policy is installed.
+    #[must_use]
+    pub fn recovery_ui(mut self, view: crate::recovery::RecoveryUi) -> Self {
+        self.recovery_ui = Some(view);
+        self
+    }
+
     pub(crate) fn new(config: ShellConfig) -> Self {
         Self {
             config,
+            recovery_ui: None,
             command_capacity: 1024,
             commands_per_update: 256,
             toast_capacity: crate::notify::DEFAULT_MAX_PENDING_TOASTS,
@@ -936,6 +945,7 @@ impl ShellBuilder {
     pub fn build(self, ctx: &egui::Context) -> Result<Shell> {
         let Self {
             config,
+            recovery_ui,
             command_capacity,
             commands_per_update,
             toast_capacity,
@@ -1155,6 +1165,8 @@ impl ShellBuilder {
             requests: Vec::new(),
             layout: Layout::default(),
             faulted: false,
+            recovery_ui,
+            restart_requested: false,
             boundary_active: false,
             frame_no: 0,
             last_dt: 0.0,
