@@ -172,3 +172,19 @@ The dedicated Miri test checks supported payload cleanup with leak checking enab
 unknown-payload controls run natively in subprocesses because retaining those objects
 is intentional and not a leak-free contract. A local negative control which executed
 unknown destructors was rejected by the aborting-destructor regression.
+
+## Gesture ownership and current geometry
+
+Region placement uses current shell/pane geometry and the keyboard band. Guards receive
+current area state before user drawing and are retired when inactive or removed. The
+gesture engine retains press ownership; a region-owned press cannot also advance a hidden
+corner sequence. Knock travel records maximum observed displacement, including out-and-back
+strokes. The emergency hold remains independent of region ownership.
+
+Since egui hit-tests previous-pass widgets before `Shell::frame`, a changed region map
+claiming a fresh press causes ordinary UI callbacks to be omitted for that pass. Guards
+and region callbacks still run; backend/authorization processing and queued work have
+already run, and a repaint is requested. Tests cover immediate press/release over an
+existing button, moving a region, stale held-button repeat, resize/policy/keyboard changes,
+region removal before release and ordinary input resuming after omission. This does not
+replay input or provide atomic rerouting to widgets outside a claimed region.

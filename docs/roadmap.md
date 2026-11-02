@@ -54,15 +54,18 @@ These are how the crate behaves today. Each is small, and each has a reason.
   must use a shell/state runner or implement `App::logic` and call `Shell::logic*` there.
   Backends must still use `Waker` or `next_wake`.
 - **One finger.** The gesture engine follows a single touch. A second finger is not a gesture.
-- **Strips and regions are a frame or two behind the glass.** egui decides what a press hits from
-  where things were the frame before. So a gesture region that moves, grows or first appears
-  takes a frame or two to catch up, and so does a handle's strip when the keyboard comes up.
-  While the keyboard slides in, a side strip can cover the outer 2 mm of an edge key for up to
-  two frames, about 33 ms at 60 Hz, and a bottom strip can cover the space bar's lower rim for
-  one frame from the second showing on.
-- **Corner knocks count inside regions.** The hidden entries' corner knocks are read from the raw
-  pointer, so a tap in a region over a knock corner still counts. Keep a trackpad out of the
-  corners your hidden entries use ([03 §9.3](guide/03-chrome.md#93-gesture-regions-of-your-own)).
+- **Widget hits use the previous egui pass.** Fairing's regions use current shell/pane/keyboard
+  geometry and seed current guard area rectangles before user drawing. A showing keyboard
+  reserves its target band immediately. However, egui has already computed widget hits before
+  `Shell::frame` runs. If the region map changed and a new press belongs to a region, Fairing
+  skips ordinary UI callbacks for that pass and requests a repaint. This prevents dispatch
+  to both the region and a stale widget, at the cost of one omitted ordinary-view pass.
+  Backend/authorization work and region callbacks continue. A key or other widget outside
+  the claimed region is not retroactively given a hit swallowed by the previous geometry;
+  this is not an atomic input-rerouting guarantee.
+- **Corner knocks respect region ownership.** A press beginning in a gesture region does not
+  count toward hidden-entry corner knocks. Moving outside and back does not become a still tap.
+  The emergency hold remains global ([03 §9.3](guide/03-chrome.md#93-gesture-regions-of-your-own)).
 - **The bottom edge is the nav bar's or the handles'.** With the nav bar on, a bottom gesture
   handle is refused. Turn the bar off to put one there.
 - **No image decoder.** The crate draws textures you upload. Decoding is yours

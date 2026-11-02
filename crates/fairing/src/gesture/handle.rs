@@ -675,8 +675,8 @@ impl GestureRegion for HandleRegion {
                 let floor = end_of(cx, handle.ends.1, Edge::Bottom);
                 // One Hand Operation+'s "fit to the keyboard": a strip down the keys' side would
                 // take the outer edge of their outermost keys. The keys slide, and a strip is a
-                // frame behind them (last frame's layout) with egui's hit test a frame behind
-                // that, so `keys` reaches up to where they will stop while they come up.
+                // target band is reserved as soon as they start opening, so a handle cannot
+                // capture a new touch where the keys are about to arrive.
                 let bottom = cx.keys.map_or(floor, |keys| floor.min(keys.min.y));
                 if bottom <= top {
                     return None;

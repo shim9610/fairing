@@ -1868,19 +1868,23 @@ screen reads the same `Pointer` through `cx.app::<Pointer>()` and draws it.
   as a second finger.
 - **Where regions overlap, the one added later is on top** and takes the press. That holds for
   handles too: a region added after a handle takes the presses in the strip it covers.
-- **The emergency gesture works through every region**: two seconds still in a top corner. So do
-  the hidden entries' corner knocks ([05](05-access-control.md#hidden-entry-points--the-service-menu)),
-  which are read from the raw pointer: a tap in a region over a knock corner still counts as a
-  knock, so keep a trackpad out of the corners your hidden entries use.
+- **The emergency gesture works through every region**: two seconds still in a top corner.
+  Hidden-entry corner knocks do not count presses which began in a region, including a tap
+  released in the same pass or after that region was removed. The region owns that press.
 - **Over a screen or the desktop only.** Not over the shade, the unlock prompt or the recent
   screens, and not at all with `[gesture] enabled = false`. There `place` is not asked and a press
   reaches what is under the region.
 - **`paint` draws it**, every frame it is placed, on a layer over the screens and the shade.
   A `RegionLook` carries its rect, the touch in it while there is one, the shell's time, the
   scale, the theme and the icons. Nothing is drawn by default.
-- **A frame behind, like the handles.** A region is placed from last frame's layout, and egui
-  finds what a press hits from where things were the frame before, so a region that moves, grows
-  or first appears is a frame or two behind the glass ([roadmap §4](../roadmap.md#4-known-limits)).
+- **Current shell geometry.** Placement uses the current chrome policy, screen size, pane
+  geometry and keyboard band. A showing keyboard reserves its target band immediately. Guard
+  areas are registered before user drawing with their current position and size. egui still
+  computes widget hits from the previous pass. When the region map changes and a new press
+  begins in a region, Fairing omits ordinary UI callbacks for that pass, registers the guards
+  and requests a repaint. Region callbacks and backend/authorization work continue. This can
+  leave the ordinary view blank for one pass rather than deliver the press to both handlers;
+  the input is not replayed. Widget hits outside the claimed region are not retroactively rerouted ([roadmap §4](../roadmap.md#4-known-limits)).
 
 Eight regions at most (`MAX_GESTURE_REGIONS`). The ids of the handles and the regions are one
 namespace, and a region with an id already there replaces the old one in its place.

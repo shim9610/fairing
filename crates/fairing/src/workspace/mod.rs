@@ -353,6 +353,11 @@ impl Workspace {
         rect.is_positive().then_some(rect)
     }
 
+    /// Current pane geometry for input placement before the workspace is drawn.
+    pub(crate) fn focused_pane_in(&self, content: Rect) -> Rect {
+        pane_of(self.pane_frame(content).laid, self.focus)
+    }
+
     /// Where the focused pane's screen was last laid out — the content with one pane.
     pub(crate) fn focused_pane_rect(&self) -> Rect {
         if self.split.is_some() {

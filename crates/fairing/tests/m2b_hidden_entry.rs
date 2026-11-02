@@ -569,3 +569,25 @@ fn re_registering_resets_the_trigger() -> fairing::Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn leaving_a_corner_and_returning_is_not_a_stationary_knock() -> fairing::Result<()> {
+    let mut h = test_shell(single_level_access(), |sh| {
+        sh.add(stub("factory"));
+        sh.add_hidden_entry(HiddenEntry::corners(
+            "factory",
+            [Corner::TopLeft, Corner::TopRight],
+            LaunchAction::open("factory"),
+        ));
+    })?;
+    h.frames(2);
+    let from = egui::pos2(8.0, 8.0);
+    h.press(from);
+    h.move_to(from + egui::vec2(60.0, 60.0));
+    h.move_to(from);
+    h.release(from);
+    h.frame();
+    h.tap(egui::pos2(h.screen_rect().max.x - 8.0, 8.0));
+    assert_ne!(focused(&h), Some("factory"));
+    Ok(())
+}

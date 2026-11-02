@@ -15,11 +15,11 @@
 //!  2. handle.drain()        — the command queue, through mpsc try_recv (+ M2 notify/toast/dismiss/toggle_overlay)
 //!  3. services.poll()       — pin snapshots, reconcile pending Bool targets, gather next_wake
 //!  4. access                — revalidate policy, record input, poll the authenticator
-//!  5. gestures.update()     — edge swipes and long presses (M2)
+//!  5. osk.update()          — current keyboard policy, bounds and reserved band (A5)
+//!     gestures.update()     — edge swipes and long presses (M2)
 //!     guard.update()        — the edge_guard mask · the emergency gesture (chrome.emergency) · keep_awake
 //!     overlay.update()      — consume the top pull (priority: the shade > the back gesture)
 //!     gesture back          — the left edge → Workspace::*_gesture_back (A3)
-//!     osk.update()          — wants_keyboard_input + ChromePolicy::osk (A5)
 //!     animations / workspace / desktop / toasts / heads_up / theme_fade tick
 //!     evict · registry dirty → desktop.rebuild + rebuild the overlay tiles
 //!     the overlay's Closed boundary → Paused/Resumed on the focused screen
@@ -54,8 +54,10 @@ pub(crate) mod slots;
 pub use builder::ShellBuilder;
 pub use event::ShellEvent;
 pub use handle::{Command, ShellHandle};
+#[cfg(test)]
+pub(crate) use layout::edge_zones;
 pub use layout::Layout;
-pub(crate) use layout::{compute_layout, edge_zones, LayoutInput};
+pub(crate) use layout::{compute_layout, LayoutInput};
 
 use crate::access::prompt::{Prompt, PromptAction, PromptCx, Purpose};
 use crate::access::{
@@ -239,13 +241,14 @@ pub struct Shell {
     /// The snapshot `Cx::knock_remaining` reads. Filled at the start of the frame.
     hidden_remaining: std::collections::BTreeMap<String, u8>,
     /// Where this press began (for the tap decision — paired on the release frame into a [`Tap`]).
-    tap_press: Option<egui::Pos2>,
+    tap_press: Option<(egui::Pos2, f32)>,
     /// The gesture regions — the handles and the integrator's own — in the
     /// order they were added: a later one is above an earlier one.
     gesture_regions: Vec<gesture_regions::RegionSlot>,
     /// This frame's region zones — what the engine was handed, kept for the guards and the
     /// drawing.
     region_zones: crate::gesture::RegionZones,
+    region_frame_deferred: bool,
     /// The touch a region is following, from its press to its end.
     region_track: Option<gesture_regions::RegionTrack>,
     /// What a region asked for while it heard its touch (kept for its capacity).
@@ -1362,6 +1365,7 @@ impl Shell {
     ) {
         self.last_screen = screen;
         if self.hidden.is_empty() {
+            self.tap_press = None;
             return;
         }
         let mut taps: Vec<crate::access::Tap> = Vec::new();
@@ -1376,14 +1380,23 @@ impl Shell {
                         ..
                     } => {
                         if *pressed {
-                            self.tap_press = Some(*pos);
-                        } else if let Some(press) = self.tap_press.take() {
+                            self.tap_press =
+                                self.region_zones.at(*pos).is_none().then_some((*pos, 0.0));
+                        } else if let Some((press, travel)) = self.tap_press.take() {
                             taps.push(crate::access::Tap {
                                 press,
                                 release: *pos,
-                                travel: (*pos - press).length(),
+                                travel: travel.max((*pos - press).length()),
                             });
                         }
+                    }
+                    egui::Event::PointerMoved(pos) => {
+                        if let Some((origin, travel)) = self.tap_press.as_mut() {
+                            *travel = travel.max((*pos - *origin).length());
+                        }
+                    }
+                    egui::Event::PointerGone | egui::Event::WindowFocused(false) => {
+                        self.tap_press = None;
                     }
                     egui::Event::Key {
                         key,
@@ -1900,18 +1913,9 @@ impl Shell {
         let wants_keyboard = ctx.egui_wants_keyboard_input();
         self.update_chrome(&ctx, screen, wants_keyboard, now, dt, app);
         // 6.
-        let policy = self.workspace.chrome_policy();
         let inset = self.osk.inset_bottom();
         let was = self.layout.content;
-        self.layout = compute_layout(&LayoutInput {
-            screen,
-            policy,
-            status_height: self.status_bar.enabled.then_some(self.status_bar.height),
-            nav_height: self.nav_bar.enabled.then_some(self.nav_bar.height),
-            edge_px: self.theme.metrics.edge_px,
-            osk_height: (inset > 0.5).then_some(inset),
-            rail: self.rail_input(),
-        });
+        self.layout = self.current_layout(screen);
         self.workspace.set_inset_bottom(inset);
         // **Say so when a Pane grows or shrinks**. A screen rotation, a window resize and
         // a transition to a screen with the chrome hidden all come in here. The first frame
@@ -1926,6 +1930,29 @@ impl Shell {
             self.workspace.content_resized(now_content);
         }
         self.open_rail_home(app);
+        if self.region_frame_deferred {
+            // egui already hit-tested last pass's widgets. Do not execute UI callbacks
+            // against a newly captured press with stale widget ownership. Registering
+            // only guards retires stale widgets before the next pass. Logic ran above.
+            ctx.stop_dragging();
+            self.finish_region_guards(&ctx);
+            self.paint_regions(&ctx, now);
+            self.finish_frame(
+                &ctx,
+                FrameActions {
+                    desktop: None,
+                    nav: None,
+                    status: None,
+                },
+                LateOutput::default(),
+                wake,
+                app,
+            );
+            self.paint_display_notice(&ctx);
+            self.trim_events();
+            ctx.request_repaint();
+            return;
+        }
         let layout = self.layout;
         let was_home = self.workspace.is_home();
         // 7–9.
@@ -1943,7 +1970,7 @@ impl Shell {
         }
         // 10–13.
         let late = self.draw_late(&ctx, &layout, screen, now, app);
-        self.guard_regions(&ctx);
+        self.finish_region_guards(&ctx);
         self.paint_regions(&ctx, now);
         self.finish_frame(
             &ctx,
@@ -2031,6 +2058,19 @@ impl Shell {
         self.heads_up.tick(dt, now, tokens);
     }
 
+    /// Current shell geometry, shared by gesture placement and final layout.
+    fn current_layout(&self, screen: egui::Rect) -> Layout {
+        compute_layout(&LayoutInput {
+            screen,
+            policy: self.workspace.chrome_policy(),
+            status_height: self.status_bar.enabled.then_some(self.status_bar.height),
+            nav_height: self.nav_bar.enabled.then_some(self.nav_bar.height),
+            edge_px: self.theme.metrics.edge_px,
+            osk_height: (self.osk.inset_bottom() > 0.5).then_some(self.osk.inset_bottom()),
+            rail: self.rail_input(),
+        })
+    }
+
     fn update_chrome(
         &mut self,
         ctx: &egui::Context,
@@ -2042,8 +2082,35 @@ impl Shell {
     ) {
         let tokens = self.theme.motion;
         let policy = self.workspace.chrome_policy();
-        let gesture = self.read_gestures(ctx, screen, &policy, now);
         let modal = self.prompt.is_open();
+        // OSK (A5). The prompt is the shell's own, so the screen's keyboard policy does not
+        // reach it — a screen that turned the keyboard off must not leave a password card mute.
+        let osk_mode = if modal {
+            crate::screen::OskMode::Auto
+        } else {
+            policy.osk
+        };
+        // The row cap is in millimetres, so it is this frame's resolved value. The keyboard sits
+        // above the nav bar, so the room it has is the screen less that bar.
+        let nav = if self.nav_bar.enabled && policy.nav_bar != BarMode::Hide {
+            self.nav_bar.height
+        } else {
+            0.0
+        };
+        self.osk.set_bounds(
+            self.theme.metrics.osk_max_key,
+            self.theme.metrics.osk_key_gap,
+            screen.height() - nav,
+        );
+        // The keys the focused field asked for — a PIN field gets the digits, a password the
+        // letters, whatever the device's layout is. Nothing focused leaves the keys as they are,
+        // so a keyboard going down does not change under the finger.
+        if let Some(id) = ctx.memory(egui::Memory::focused) {
+            self.osk.follow(crate::widgets::Keys::of(ctx, id));
+        }
+        self.osk
+            .update(wants_keyboard, osk_mode, screen.height(), now, dt, &tokens);
+        let gesture = self.read_gestures(ctx, screen, &policy, now);
         let gesture = self.behind_the_prompt(gesture);
         self.desktop_presses(ctx, gesture, &tokens);
         let guard = self
@@ -2064,6 +2131,7 @@ impl Shell {
         // only a corner touched and released straight away is a knock. Behind the prompt the
         // corners are glass like everything else.
         if modal {
+            self.tap_press = None;
             self.last_screen = screen;
         } else {
             self.poll_knocks(ctx, screen, now, app);
@@ -2102,33 +2170,6 @@ impl Shell {
         // The touch in a region, every frame to its end — one the regions stopped being in play
         // under is told it was taken.
         self.region_gestures(ctx, gesture, now, app);
-        // OSK (A5). The prompt is the shell's own, so the screen's keyboard policy does not
-        // reach it — a screen that turned the keyboard off must not leave a password card mute.
-        let osk_mode = if modal {
-            crate::screen::OskMode::Auto
-        } else {
-            policy.osk
-        };
-        // The row cap is in millimetres, so it is this frame's resolved value. The keyboard sits
-        // above the nav bar, so the room it has is the screen less that bar.
-        let nav = if self.nav_bar.enabled && policy.nav_bar != BarMode::Hide {
-            self.nav_bar.height
-        } else {
-            0.0
-        };
-        self.osk.set_bounds(
-            self.theme.metrics.osk_max_key,
-            self.theme.metrics.osk_key_gap,
-            screen.height() - nav,
-        );
-        // The keys the focused field asked for — a PIN field gets the digits, a password the
-        // letters, whatever the device's layout is. Nothing focused leaves the keys as they are,
-        // so a keyboard going down does not change under the finger.
-        if let Some(id) = ctx.memory(egui::Memory::focused) {
-            self.osk.follow(crate::widgets::Keys::of(ctx, id));
-        }
-        self.osk
-            .update(wants_keyboard, osk_mode, screen.height(), now, dt, &tokens);
         // Advance the animations and transitions.
         self.tick_animations(dt, now, &tokens);
         if let Some(palette) = self.theme_fade.tick(dt) {
@@ -2169,17 +2210,19 @@ impl Shell {
         policy: &crate::screen::ChromePolicy,
         now: Instant,
     ) -> Option<Gesture> {
-        // A1: a visible status bar is a top edge zone throughout (symmetrically, the bottom is
-        // the nav bar). Last frame's layout is enough, and so is last frame's policy for
-        // the policy guard's mask (it is decided within the same frame).
-        let zones = edge_zones(
-            screen,
-            self.theme.metrics.edge_px,
-            self.layout.status.map_or(0.0, |r| r.height()),
-            self.layout.nav.map_or(0.0, |r| r.height()),
-        );
+        let layout = self.current_layout(screen);
+        let zones = layout.edge_zones;
         let blocked = PolicyDriver::blocked_edges(policy);
-        self.region_zones = self.place_regions(screen, zones, blocked);
+        let previous = self.region_zones;
+        self.region_zones = self.place_regions(screen, &layout, zones, blocked);
+        self.region_frame_deferred = previous != self.region_zones
+            && ctx.input(|input| {
+                input.pointer.primary_pressed()
+                    && crate::drag::press_point(input)
+                        .is_some_and(|at| self.region_zones.at(at).is_some())
+            });
+        // Register current guard geometry before any user widgets are drawn.
+        self.guard_regions(ctx);
         let gesture = self.gestures.update(
             ctx,
             &GestureFrame {

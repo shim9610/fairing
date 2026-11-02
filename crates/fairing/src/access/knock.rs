@@ -46,7 +46,8 @@ pub struct Tap {
     pub press: Pos2,
     /// Where it came up.
     pub release: Pos2,
-    /// How far it moved between the press and the release (pt).
+    /// Maximum distance from the press observed during the stroke (pt), including
+    /// the release. Moving away and returning does not become a stationary tap.
     pub travel: f32,
 }
 

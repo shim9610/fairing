@@ -1147,6 +1147,7 @@ impl ShellBuilder {
             tap_press: None,
             gesture_regions: Vec::new(),
             region_zones: crate::gesture::RegionZones::NONE,
+            region_frame_deferred: false,
             region_track: None,
             region_out: crate::gesture::RegionOut::default(),
             last_screen: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 480.0)),
