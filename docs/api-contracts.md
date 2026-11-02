@@ -46,7 +46,8 @@ original ACK kernel.
 
 ## Bounds and assumptions
 
-- Kani proves nine harnesses and Verus verifies seven production functions.
+- Kani proves thirteen harnesses. Verus verifies nine production functions and
+  an additional quiet-pass progress obligation.
   Pool sequence proof is bounded to four operations on a two-slot u8 pool; the generation
   decision covers all u64 values. Kani treats pool-identity atomics sequentially;
   it does not prove concurrent identity creation. The access rules cover all u16 levels, all u32 counter values and every
@@ -56,7 +57,12 @@ original ACK kernel.
   properties with 64 cases each, using seed 20261101. Operation sequences cap
   at 32 shell/backend operations or 64 non-UI operations. Fixed cases ensure
   the important deadline/credential boundaries execute regardless of the seed.
-- Miri interprets twenty-two assurance tests and the production supported-payload cleanup test
+- UI reachability adds 24 fixed viewport/history/modal combinations and 32 generated
+  histories (up to 16 operations), with six required physical-input edges. The actual
+  shell must resume ordinary UI on a quiet pass and satisfy each edge after intentional
+  blockers stand aside. Kani/Verus prove the shared input decision, not the rendered
+  correspondence; native witnesses check that separately. See [UI reachability](ui-reachability.md).
+- Miri interprets twenty-four assurance tests and the production supported-payload cleanup test
   with normal isolation, validity and race
   checks. It covers the actual Access, PinTable, notification, calendar, unit,
   service, fixed-pool and bounded/unbounded Inbox APIs. It does not interpret the complete shell rendering
@@ -188,3 +194,14 @@ already run, and a repaint is requested. Tests cover immediate press/release ove
 existing button, moving a region, stale held-button repeat, resize/policy/keyboard changes,
 region removal before release and ordinary input resuming after omission. This does not
 replay input or provide atomic rerouting to widgets outside a claimed region.
+
+## UI progress and required input paths
+
+The production `shell/input_route.rs` decision is shared by the shell, Kani, Verus
+and Miri. The required six-edge UI fixture uses real egui buttons, Cancel, on-screen
+PIN keys and a region action; it never substitutes a host command or hardware-key
+shortcut for a required edge. Generated region/rotation histories precede the
+witnesses. A missing edge witness, sticky deferral or stale guard covering a modal
+fails the suite. The latter two defects are deliberate negative controls in CI.
+[Scope, fairness conditions and extension rules](ui-reachability.md) describe which
+progress properties are proved and which widget paths are checked dynamically.

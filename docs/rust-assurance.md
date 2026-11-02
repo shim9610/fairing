@@ -13,13 +13,13 @@ source-built compiler and matching LLVM coverage workflow.
 
 | Tool | Pin | Scope |
 | --- | --- | --- |
-| Kani | 0.68.0; nightly 2026-08-21 | Nine harnesses: ACK/access decisions, nonwrapping pool generations, bounded pool sequences and newest-display retention |
-| Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Postconditions on seven real ACK/access/generation/display functions |
-| Miri | nightly 2026-10-30 | Twenty fixed tests using actual Access/PinTable/notifications/services/time/units/parser/pool/Inbox/display |
+| Kani | 0.68.0; nightly 2026-08-21 | Thirteen harnesses: ACK/access, pool/display and production input-admission safety/progress |
+| Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Contracts on nine production functions plus a quiet-pass progress obligation |
+| Miri | nightly 2026-10-30 | Twenty-four assurance tests plus the production payload-cleanup test; rendering witnesses run natively |
 | Loom | 0.7.2 | Four scenarios: Inbox ordering/consumer and bounded admission/close-after-drain |
-| proptest | 1.12.0 | Fourteen properties × 512 cases plus four shell properties × 64; seed 20261101 |
+| proptest | 1.12.0 | Fourteen properties × 512, four shell properties × 64, plus UI reachability histories × 32; seed 20261101 |
 | cargo-fuzz | 0.13.2; libfuzzer-sys 0.4.13 | ASan: 20,000 ACK, 10,000 parser, 10,000 API and 2,000 shell inputs |
-| cargo-llvm-cov | 0.9.1 | Product and API-contract line/function/region coverage; latter checks twelve production modules |
+| cargo-llvm-cov | 0.9.1 | Product and API-contract line/function/region coverage; latter requires execution of the declared production modules |
 | cargo-cyclonedx | 0.5.9 | Library package dependency BOMs for default/all features on Linux x86_64 and aarch64 |
 
 Assurance tool archives and CycloneDX schemas have pinned SHA-256 values in
@@ -82,7 +82,7 @@ to delivery, per-sender order and nonblocking drains in these scenarios.
 Miri keeps its normal isolation, validity and race checks enabled. It interprets
 fixed regression inputs and real channel threads. Random-input generation runs
 natively under proptest and libFuzzer; interpreting the generators themselves
-was unnecessarily expensive. Miri's twenty cases are separate from the full
+was unnecessarily expensive. Miri's assurance cases are separate from the full
 product test suite and the generated-input campaigns.
 
 ## SBOM scope and validation
@@ -210,3 +210,13 @@ execute display retention/raster bounds; coverage requires this production modul
 The standard shell's compiled-stencil notice and preservation of accepted device
 commands have integration regressions. Stock egui/font/tessellation/native
 allocation recovery remains a blocking, unfulfilled whole-renderer requirement.
+
+## Input progress and rendered transition witnesses
+
+[UI reachability](ui-reachability.md) connects the actual input decision to an explicit
+six-edge state graph and real pointer actions. Kani/Verus prove the one-quiet-pass
+progress condition on production source; native egui tests require input witnesses
+after region/rotation histories. Mutation controls reject sticky UI deferral and
+regions improperly remaining active over a modal. These checks distinguish a logically
+permitted method call from a reachable rendered control, with stated fairness and
+configuration bounds.

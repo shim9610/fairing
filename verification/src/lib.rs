@@ -8,6 +8,13 @@ pub mod inbox;
 #[cfg(all(feature = "integration", not(fairing_loom)))]
 pub mod api;
 
+#[cfg(not(fairing_loom))]
+#[path = "../../crates/fairing/src/shell/input_route.rs"]
+pub mod input_route;
+
+#[cfg(all(feature = "integration", not(fairing_loom), not(miri)))]
+pub mod reachability;
+
 /// Exercise queued intent against a backend that acknowledges one command at a time.
 pub fn exercise_protocol(events: &[u8]) {
     use bool_ack::{reconcile, Decision};
@@ -318,5 +325,39 @@ mod schedules {
         model.preemption_bound = None;
         model.checkpoint_file = None;
         model.check(scenario);
+    }
+}
+
+#[cfg(all(test, not(fairing_loom)))]
+mod input_progress {
+    #[test]
+    fn modal_input_ownership_preempts_regions() {
+        for mask in 0u8..8 {
+            let overlay_closed = mask & 1 != 0;
+            let prompt_open = mask & 2 != 0;
+            let overview_open = mask & 4 != 0;
+            let capture =
+                super::input_route::regions_can_capture(overlay_closed, prompt_open, overview_open);
+            if prompt_open || overview_open || !overlay_closed {
+                assert!(!capture);
+            } else {
+                assert!(capture);
+            }
+        }
+    }
+
+    #[test]
+    fn any_conflict_history_has_a_quiet_frame_exit() {
+        for mask in 0u8..8 {
+            let _ =
+                super::input_route::defer_ordinary_ui(mask & 1 != 0, mask & 2 != 0, mask & 4 != 0);
+            for changed in [false, true] {
+                for claimed in [false, true] {
+                    assert!(!super::input_route::defer_ordinary_ui(
+                        changed, false, claimed
+                    ));
+                }
+            }
+        }
     }
 }

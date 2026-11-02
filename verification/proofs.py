@@ -42,6 +42,8 @@ results.append(execute("kani-access", [kani, ROOT / "verification/kani_access.rs
 results.append(execute("verus-memory", [sys.executable, ROOT / "verification/verus/memory.py"], environment))
 results.append(execute("kani-memory", [kani, ROOT / "verification/kani_memory.rs"], kani_env))
 results.append(execute("verus-display", [sys.executable, ROOT / "verification/verus/display.py"], environment))
+results.append(execute("verus-input", [sys.executable, ROOT / "verification/verus/input.py"], environment))
+results.append(execute("kani-input", [kani, ROOT / "verification/kani_input.rs"], kani_env))
 
 source = (ROOT / "crates/fairing/src/shell/bool_ack.rs").read_text()
 needle = "if reported == Some(sent)"
@@ -122,4 +124,26 @@ clip_harness = OUT / "display-clip-kani.rs"
 clip_harness.write_text(harness.replace(declaration, "mod memory {\n" + inline + "\n}"))
 results.append(execute("kani-display-clip", [kani, clip_harness], kani_env,
                        expected_failure=True, marker="VERIFICATION:- FAILED"))
+# Reject over-deferral and modal capture in both source-bound input verifiers.
+input_source = (ROOT / "crates/fairing/src/shell/input_route.rs").read_text()
+input_harness = (ROOT / "verification/kani_input.rs").read_text()
+declaration = '#[path = "../crates/fairing/src/shell/input_route.rs"]\nmod input_route;'
+if input_harness.count(declaration) != 1:
+    raise SystemExit("Review input Kani source binding")
+for name, old, new in [
+    ("input-route", "geometry_changed && fresh_primary_press && region_claimed", "geometry_changed || fresh_primary_press || region_claimed"),
+    ("modal-capture", "overlay_closed && !prompt_open && !overview_open", "overlay_closed && !overview_open"),
+]:
+    if input_source.count(old) != 1:
+        raise SystemExit("Review input mutation: " + name)
+    mutant = input_source.replace(old, new, 1)
+    input_mutant = OUT / (name + "-source.rs")
+    input_mutant.write_text(mutant)
+    results.append(execute("verus-" + name + "-negative", [sys.executable, ROOT / "verification/verus/input.py",
+                           "--source", input_mutant, "--output", OUT / (name + "-verus.rs")], environment,
+                           expected_failure=True, marker="postcondition not satisfied"))
+    input_control = OUT / (name + "-kani.rs")
+    input_control.write_text(input_harness.replace(declaration, "mod input_route {\n" + mutant + "\n}"))
+    results.append(execute("kani-" + name + "-negative", [kani, input_control], kani_env,
+                           expected_failure=True, marker="VERIFICATION:- FAILED"))
 (OUT / "summary.json").write_text(json.dumps(results, indent=2) + "\n")

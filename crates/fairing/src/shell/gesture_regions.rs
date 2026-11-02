@@ -259,7 +259,11 @@ impl Shell {
     /// Whether the regions are in play: over a screen or the desktop, with nothing of the shell's
     /// over them — the shade, the prompt, the recent screens.
     fn regions_free(&self) -> bool {
-        self.overlay.is_closed() && !self.prompt.is_open() && !self.workspace.is_overview_open()
+        super::input_route::regions_can_capture(
+            self.overlay.is_closed(),
+            self.prompt.is_open(),
+            self.workspace.is_overview_open(),
+        )
     }
 
     /// **The keyboard's band** for the regions to keep off: from the top of the keys,

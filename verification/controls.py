@@ -40,6 +40,16 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
         print(name + (": rejected broken production code" if failure else ": passed"), flush=True)
 
     scenarios = [
+        ("ui-progress", "reachability::regressions::actual_ui_edges_remain_reachable_after_input_obstacles",
+         "crates/fairing/src/shell/mod.rs",
+         [("self.region_frame_deferred =",
+           "self.region_frame_deferred |=")],
+         False, "UI transition remained unreachable"),
+        ("modal-input", "reachability::regressions::actual_ui_edges_remain_reachable_after_input_obstacles",
+         "crates/fairing/src/shell/input_route.rs",
+         [("overlay_closed && !prompt_open && !overview_open",
+           "overlay_closed && !overview_open")],
+         False, "UI transition remained unreachable"),
         ("bounded-admission", "api::regressions::memory_capacity_reuse_and_stale_handles",
          "crates/fairing/src/inbox/bounded.rs",
          [("if used >= self.budget.capacity", "if false")],

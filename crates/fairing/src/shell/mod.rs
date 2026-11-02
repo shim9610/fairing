@@ -48,6 +48,7 @@ mod env_scale;
 mod event;
 mod gesture_regions;
 mod handle;
+mod input_route;
 mod layout;
 pub(crate) mod slots;
 
@@ -2215,12 +2216,21 @@ impl Shell {
         let blocked = PolicyDriver::blocked_edges(policy);
         let previous = self.region_zones;
         self.region_zones = self.place_regions(screen, &layout, zones, blocked);
-        self.region_frame_deferred = previous != self.region_zones
-            && ctx.input(|input| {
-                input.pointer.primary_pressed()
-                    && crate::drag::press_point(input)
-                        .is_some_and(|at| self.region_zones.at(at).is_some())
-            });
+        let changed = previous != self.region_zones;
+        let (fresh_press, claimed) = if changed {
+            ctx.input(|input| {
+                let fresh = input.pointer.primary_pressed();
+                (
+                    fresh,
+                    fresh
+                        && crate::drag::press_point(input)
+                            .is_some_and(|at| self.region_zones.at(at).is_some()),
+                )
+            })
+        } else {
+            (false, false)
+        };
+        self.region_frame_deferred = input_route::defer_ordinary_ui(changed, fresh_press, claimed);
         // Register current guard geometry before any user widgets are drawn.
         self.guard_regions(ctx);
         let gesture = self.gestures.update(
