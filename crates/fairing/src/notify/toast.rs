@@ -93,6 +93,8 @@ pub(crate) enum ToastAction {
 pub struct ToastQueue {
     queue: VecDeque<Toast>,
     pending_capacity: usize,
+    overflow: super::OverflowPolicy,
+    display_status: crate::memory::DisplayStatus,
     retry_after: Option<Instant>,
     allocation_blocked: bool,
     visible: Vec<ActiveToast>,
@@ -129,6 +131,8 @@ impl ToastQueue {
         Self {
             queue: VecDeque::new(),
             pending_capacity: super::DEFAULT_MAX_PENDING_TOASTS,
+            overflow: super::OverflowPolicy::RejectNew,
+            display_status: crate::memory::DisplayStatus::default(),
             retry_after: None,
             allocation_blocked: false,
             visible: Vec::new(),
@@ -139,6 +143,51 @@ impl ToastQueue {
             layout: None,
             rests: Vec::new(),
         }
+    }
+
+    /// Choose whether full pending display storage preserves old or newest items.
+    #[must_use]
+    pub fn with_overflow_policy(mut self, policy: super::OverflowPolicy) -> Self {
+        self.overflow = policy;
+        self
+    }
+    /// Current omissions, without acknowledging or allocating another display item.
+    #[must_use]
+    pub const fn display_status(&self) -> crate::memory::DisplayStatus {
+        self.display_status
+    }
+    /// Read and acknowledge omitted-display observations without creating an alert allocation.
+    pub fn take_display_status(&mut self) -> crate::memory::DisplayStatus {
+        std::mem::take(&mut self.display_status)
+    }
+    fn evict_pending(&mut self) -> bool {
+        if self.queue.pop_front().is_none() {
+            return false;
+        }
+        self.display_status.discarded = self.display_status.discarded.saturating_add(1);
+        true
+    }
+    fn reclaim_oldest(&mut self) -> bool {
+        self.icons.clear();
+        if self.visible.is_empty() {
+            self.evict_pending()
+        } else {
+            self.visible.remove(0);
+            self.display_status.discarded = self.display_status.discarded.saturating_add(1);
+            true
+        }
+    }
+    fn pending_slot(&mut self) -> Result<(), super::AdmissionError> {
+        if self.pending_capacity == 0 {
+            return Err(super::AdmissionError::Full);
+        }
+        if self.queue.len() >= self.pending_capacity
+            && (self.overflow == super::OverflowPolicy::RejectNew || !self.evict_pending())
+        {
+            self.display_status.discarded = self.display_status.discarded.saturating_add(1);
+            return Err(super::AdmissionError::Full);
+        }
+        Ok(())
     }
 
     /// Draw each toast with `painter` instead of the built-in card.
@@ -173,7 +222,15 @@ impl ToastQueue {
     #[must_use]
     pub fn with_pending_capacity(mut self, capacity: usize) -> Self {
         self.pending_capacity = capacity.min(65_536);
-        self.queue.truncate(self.pending_capacity);
+        let discarded = self.queue.len().saturating_sub(self.pending_capacity);
+        if self.overflow == super::OverflowPolicy::KeepLatest {
+            while self.queue.len() > self.pending_capacity {
+                self.evict_pending();
+            }
+        } else {
+            self.queue.truncate(self.pending_capacity);
+            self.display_status.discarded = self.display_status.discarded.saturating_add(discarded);
+        }
         self
     }
 
@@ -194,6 +251,7 @@ impl ToastQueue {
             .saturating_add(super::admission::icon_bytes(toast.icon.as_ref()))
             > super::MAX_TOAST_TEXT_BYTES
         {
+            self.display_status.discarded = self.display_status.discarded.saturating_add(1);
             return Err(super::Rejected {
                 kind: super::AdmissionError::TooLarge,
                 value: toast,
@@ -214,17 +272,17 @@ impl ToastQueue {
         {
             return Ok(());
         }
-        if self.queue.len() >= self.pending_capacity {
-            return Err(super::Rejected {
-                kind: super::AdmissionError::Full,
-                value: toast,
-            });
+        if let Err(kind) = self.pending_slot() {
+            return Err(super::Rejected { kind, value: toast });
         }
-        if self.queue.try_reserve(1).is_err() {
-            return Err(super::Rejected {
-                kind: super::AdmissionError::AllocationFailed,
-                value: toast,
-            });
+        while self.queue.try_reserve(1).is_err() {
+            self.display_status.allocation_failed = true;
+            if self.overflow != super::OverflowPolicy::KeepLatest || !self.reclaim_oldest() {
+                return Err(super::Rejected {
+                    kind: super::AdmissionError::AllocationFailed,
+                    value: toast,
+                });
+            }
         }
         self.queue.push_back(toast);
         Ok(())
@@ -236,6 +294,7 @@ impl ToastQueue {
     /// Full, oversized text or failed fallible growth.
     pub fn try_push_text(&mut self, text: &str) -> Result<(), super::AdmissionError> {
         if text.len() > super::MAX_TOAST_TEXT_BYTES {
+            self.display_status.discarded = self.display_status.discarded.saturating_add(1);
             return Err(super::AdmissionError::TooLarge);
         }
         if let Some(item) = self
@@ -253,11 +312,20 @@ impl ToastQueue {
         {
             return Ok(());
         }
-        if self.queue.len() >= self.pending_capacity {
-            return Err(super::AdmissionError::Full);
+        self.pending_slot()?;
+        loop {
+            match Toast::try_new(text) {
+                Ok(toast) => return self.try_push(toast).map_err(|error| error.kind()),
+                Err(super::AdmissionError::AllocationFailed) => {
+                    self.display_status.allocation_failed = true;
+                    if self.overflow != super::OverflowPolicy::KeepLatest || !self.reclaim_oldest()
+                    {
+                        return Err(super::AdmissionError::AllocationFailed);
+                    }
+                }
+                Err(error) => return Err(error),
+            }
         }
-        self.try_push(Toast::try_new(text)?)
-            .map_err(|error| error.kind())
     }
 
     /// Frame stage 5: fill slots, expire, animate. `true` while something is moving.
@@ -586,6 +654,7 @@ fn paint_toast(
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, reason = "assert admitted display fixtures")]
 mod tests {
     use super::{ToastPhase, ToastQueue};
     use crate::notify::{Level, Toast};
@@ -598,6 +667,41 @@ mod tests {
 
     fn toast_metrics() -> crate::theme::ToastMetrics {
         crate::theme::ComponentMetrics::default().toast
+    }
+
+    #[test]
+    fn keep_latest_evicts_pending_text_but_invalid_input_and_duplicates_do_not() {
+        let mut queue = ToastQueue::new(1, Duration::from_secs(1))
+            .with_pending_capacity(2)
+            .with_overflow_policy(crate::notify::OverflowPolicy::KeepLatest);
+        queue.try_push_text("old").expect("first");
+        queue.try_push_text("middle").expect("second");
+        queue.try_push_text("latest").expect("replace oldest");
+        assert!(queue
+            .queue
+            .iter()
+            .map(|t| t.text.as_str())
+            .eq(["middle", "latest"]));
+        assert_eq!(queue.take_display_status().discarded, 1);
+        queue.try_push_text("latest").expect("deduplicate");
+        assert!(!queue.take_display_status().is_reduced());
+        let too_big = "x".repeat(crate::notify::MAX_TOAST_TEXT_BYTES + 1);
+        assert_eq!(
+            queue.try_push_text(&too_big),
+            Err(crate::notify::AdmissionError::TooLarge)
+        );
+        assert!(queue
+            .queue
+            .iter()
+            .map(|t| t.text.as_str())
+            .eq(["middle", "latest"]));
+        assert_eq!(queue.take_display_status().discarded, 1);
+        let mut disabled = queue.with_pending_capacity(0);
+        assert_eq!(disabled.take_display_status().discarded, 2);
+        assert_eq!(
+            disabled.try_push_text("none"),
+            Err(crate::notify::AdmissionError::Full)
+        );
     }
 
     /// A6: two visible, the third queued. A new one lifts the previous by 8 px.

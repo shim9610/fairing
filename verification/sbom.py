@@ -79,7 +79,7 @@ for profile in ["default", "all-features"]:
         destination = OUT / profile / target
         destination.mkdir(parents=True, exist_ok=True)
         for package, directory in [("fairing", ROOT / "crates/fairing"), ("fairing-widgets", ROOT / "crates/fairing-widgets"),
-                                   ("fairing-process", ROOT / "crates/fairing-process"), ("fairing-fixed-heap", ROOT / "crates/fairing-fixed-heap"), ("xtask", ROOT / "xtask")]:
+                                   ("fairing-fixed-heap", ROOT / "crates/fairing-fixed-heap"), ("xtask", ROOT / "xtask")]:
             generated = directory / (filename + ".json")
             data = json.loads(generated.read_text())
             validator.validate(data)
@@ -111,9 +111,9 @@ for profile in ["default", "all-features"]:
             validator.validate(data)
             generated.write_text(json.dumps(data, indent=2) + "\n")
             names = {item["name"] for item in data.get("components", [])}
-            if package in {"fairing", "fairing-widgets", "fairing-process"} and not names:
+            if package in {"fairing", "fairing-widgets"} and not names:
                 raise SystemExit("Empty product dependency BOM")
-            if package in {"fairing", "fairing-widgets", "fairing-process"} and names & {"fairing-fixed-heap", "talc", "spinning_top", "allocator-api2"}:
+            if package in {"fairing", "fairing-widgets"} and names & {"fairing-fixed-heap", "talc", "spinning_top", "allocator-api2"}:
                 raise SystemExit("Diagnostic allocator leaked into the product dependency graph")
             if names & {"loom", "proptest", "libfuzzer-sys", "fairing-assurance"}:
                 raise SystemExit("Development/tool dependencies leaked into the library BOM")

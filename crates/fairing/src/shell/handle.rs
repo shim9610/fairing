@@ -9,12 +9,16 @@ use crate::inbox::{
     BoundedInbox, BoundedSender, Inbox, QueueCapacityError, QueueErrorKind, QueueStats,
     TryBuildSendError, TrySendError,
 };
-use crate::notify::{Notification, NotificationId, Toast};
+use crate::notify::{Notification, NotificationId, Toast, ToastInput};
 use crate::screen::LaunchAction;
 use crate::services::Waker;
 use crate::settings::{SettingKey, SettingValue};
 use crate::theme::MotionTokens;
 use crate::workspace::InstanceId;
+use std::sync::{
+    atomic::{AtomicU8, Ordering},
+    Arc,
+};
 
 /// A shell command. All of them are `Send`.
 #[derive(Debug, Clone, PartialEq)]
@@ -78,6 +82,7 @@ pub enum Command {
 pub struct ShellHandle {
     tx: BoundedSender<Command>,
     waker: Waker,
+    display_omissions: Arc<AtomicU8>,
 }
 
 impl ShellHandle {
@@ -90,7 +95,14 @@ impl ShellHandle {
         capacity: usize,
     ) -> Result<(Self, BoundedInbox<Command>), QueueCapacityError> {
         let (tx, rx) = Inbox::bounded(capacity)?;
-        Ok((Self { tx, waker }, rx))
+        Ok((
+            Self {
+                tx,
+                waker,
+                display_omissions: Arc::new(AtomicU8::new(0)),
+            },
+            rx,
+        ))
     }
 
     /// Send a command and wake the UI. `false` if full or the shell is gone.
@@ -142,8 +154,32 @@ impl ShellHandle {
             .try_send_fallible_with(|| Toast::try_new(text).map(Command::Toast));
         if result.is_ok() {
             self.waker.wake();
+        } else {
+            let bits = if matches!(
+                result,
+                Err(TryBuildSendError::Build(
+                    crate::notify::AdmissionError::AllocationFailed
+                ))
+            ) {
+                3
+            } else {
+                1
+            };
+            self.display_omissions.fetch_or(bits, Ordering::Relaxed);
         }
         result
+    }
+
+    pub(super) fn display_status(&self, acknowledge: bool) -> crate::memory::DisplayStatus {
+        let bits = if acknowledge {
+            self.display_omissions.swap(0, Ordering::Relaxed)
+        } else {
+            self.display_omissions.load(Ordering::Relaxed)
+        };
+        crate::memory::DisplayStatus {
+            discarded: usize::from(bits & 1),
+            allocation_failed: bits & 2 != 0,
+        }
     }
 
     /// Queue capacity, outstanding reservations, high-water mark and full rejections.
@@ -226,8 +262,19 @@ impl ShellHandle {
     }
 
     /// A toast, from any thread. Either `"text"` or a [`Toast`].
-    pub fn toast(&self, toast: impl Into<Toast>) {
-        self.post_with(|| Command::Toast(toast.into()));
+    pub fn toast<'a>(&self, toast: impl Into<ToastInput<'a>>) {
+        match toast.into() {
+            ToastInput::Text(text) => {
+                // Reporting through a user logger could allocate after an OOM rejection.
+                // Call try_toast when the producer needs the admission error.
+                let _ = self.try_toast(text);
+            }
+            ToastInput::Value(toast) => {
+                if self.try_send(Command::Toast(toast)).is_err() {
+                    self.display_omissions.fetch_or(1, Ordering::Relaxed);
+                }
+            }
+        }
     }
 
     /// Dismiss a notification.

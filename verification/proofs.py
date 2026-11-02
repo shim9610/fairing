@@ -41,6 +41,7 @@ results.append(execute("verus-access", [sys.executable, ROOT / "verification/ver
 results.append(execute("kani-access", [kani, ROOT / "verification/kani_access.rs"], kani_env))
 results.append(execute("verus-memory", [sys.executable, ROOT / "verification/verus/memory.py"], environment))
 results.append(execute("kani-memory", [kani, ROOT / "verification/kani_memory.rs"], kani_env))
+results.append(execute("verus-display", [sys.executable, ROOT / "verification/verus/display.py"], environment))
 
 source = (ROOT / "crates/fairing/src/shell/bool_ack.rs").read_text()
 needle = "if reported == Some(sent)"
@@ -90,6 +91,9 @@ needle = "current.checked_add(1)"
 if memory_source.count(needle) != 1:
     raise SystemExit("Review the generation negative control")
 mutant = memory_source.replace(needle, "Some(current.wrapping_add(1))", 1)
+# Generated inline modules keep their production child-module source path.
+display_source = ROOT / "crates/fairing-widgets/src/memory/display.rs"
+mutant = mutant.replace('#[path = "memory/display.rs"]\nmod display;', '#[path = ' + json.dumps(str(display_source)) + ']\nmod display;')
 source_path = OUT / "memory-wrap-source.rs"
 source_path.write_text(mutant)
 results.append(execute("verus-memory-wrap", [sys.executable, ROOT / "verification/verus/memory.py",
@@ -102,5 +106,20 @@ if harness.count(declaration) != 1:
 harness_path = OUT / "memory-wrap-kani.rs"
 harness_path.write_text(harness.replace(declaration, "mod memory {\n" + mutant + "\n}"))
 results.append(execute("kani-memory-wrap", [kani, harness_path], kani_env,
+                       expected_failure=True, marker="VERIFICATION:- FAILED"))
+# A viewport must select the newest bounded suffix, not the older full window.
+display_text = display_source.read_text()
+needle = "retained - limit"
+if display_text.count(needle) != 1: raise SystemExit("Review display-clipping mutation")
+display_mutant = OUT / "display-clip-source.rs"
+display_mutant.write_text(display_text.replace(needle, "0", 1))
+results.append(execute("verus-display-clip", [sys.executable, ROOT / "verification/verus/display.py",
+                       "--source", display_mutant, "--output", OUT / "display-clip-verus.rs"], environment,
+                       expected_failure=True, marker="postcondition not satisfied"))
+inline = memory_source.replace('#[path = "memory/display.rs"]\nmod display;',
+                               '#[path = ' + json.dumps(str(display_mutant)) + ']\nmod display;')
+clip_harness = OUT / "display-clip-kani.rs"
+clip_harness.write_text(harness.replace(declaration, "mod memory {\n" + inline + "\n}"))
+results.append(execute("kani-display-clip", [kani, clip_harness], kani_env,
                        expected_failure=True, marker="VERIFICATION:- FAILED"))
 (OUT / "summary.json").write_text(json.dumps(results, indent=2) + "\n")

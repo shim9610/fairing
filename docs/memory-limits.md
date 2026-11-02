@@ -8,6 +8,52 @@ feature was removed: egui/epaint and remaining infallible Rust allocations can
 abort, so that feature could not provide continued operation under exhaustion.
 The diagnostic allocator is isolated from the product dependency graph below.
 
+## Allocation-free display copies and raster fallback
+
+`memory::DisplayWindow<T, N>` retains only N inline Copy samples. New samples
+replace the oldest display copies. Bulk input visits at most N source elements,
+`recent(limit)` exposes only the newest limited suffix in chronological order,
+and no heap allocation, factory, destructor or overflow list is involved.
+Original acquisition records stay with the caller. N = 0 omits all display samples.
+Choose N for the caller's stack/static budget; payload references still refer to
+caller-owned storage. Debug reports metadata rather than sample contents.
+
+```rust
+use fairing::memory::{DisplayWindow, paint_display_warning};
+let samples = [1u32, 2, 3, 4, 5];
+let mut displayed = DisplayWindow::<u32, 3>::new();
+let status = displayed.extend(&samples);
+assert!(displayed.recent(2).copied().eq([4, 5]));
+let mut emergency_rgba = [0u8; 96 * 12 * 4];
+if status.is_reduced() {
+    paint_display_warning(&mut emergency_rgba, [96, 12], 96 * 12)?;
+}
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+`paint_image_preview` borrows validated RGBA8 source data and writes directly to
+an already allocated output surface within its pixel budget. It does not clone
+the source, decode, allocate a second image or upload a texture. Nearest-neighbour
+sampling reduces the image to the output size. Information lost on either axis
+is reported even if the other axis grows. Reduced previews include the fixed
+DISPLAY LIMITED notice; a surface too small for its text gets a warning-colour
+corner. Invalid/overflowing geometry is refused before modifying the output.
+
+`paint_display_warning` clears a prepared RGBA8 surface and paints the same
+notice using fixed bitmap glyphs. It has no String, font loader, glyph atlas,
+egui context or allocation. Both functions reject bad dimensions and output
+sizes above the caller's pixel budget. The host must present/reuse the prepared
+surface through its backend; these CPU functions do not establish that a later
+`ColorImage` construction, `load_texture`, stock egui frame or GPU upload is fallible.
+They are portable CPU rendering primitives, not a replacement for the complete
+interactive egui shell or a GPU zero-copy claim.
+
+Real 16/64 MiB exhausted-arena trials execute these exact APIs in the same process.
+They require clipping and visible warning pixels while even a one-byte reserve
+fails, 10,000 continued preallocated work commands and no allocation in that
+window/preview/warning/work interval. Separate checks require failed text/frost
+work to be omitted, and old toast storage to be freed before replacement.
+
 ## Command admission and work count
 
 ```rust
@@ -54,6 +100,11 @@ center.try_push(Notification::try_new(NotificationId(1), "Device ready")?)?;
 
 Use `Shell::try_toast(&str)` for direct display admission and
 `ShellHandle::try_toast(&str)` for fallible command/text construction.
+The void `toast` conveniences now accept `ToastInput`: &str and &String take the
+same fallible path, while String and Toast transfer existing ownership. A custom
+type previously implementing Into<Toast> must explicitly convert to Toast first.
+Caller-side `Toast::new`, formatting and owned payload construction can still
+allocate before admission; prefer borrowed text or the fallible constructors.
 `Shell::try_notify` and `NotificationCenter::try_push` return rejected notification
 ownership. Errors distinguish Full, TooLarge and AllocationFailed. A queued
 notification/toast command may later be refused by its display retention budget;
@@ -63,8 +114,26 @@ The waiting toast queue defaults to 64 items, excluding the configured visible
 slots. `toast_queue_capacity(0)` disables new toasts; values through 65,536 are
 accepted. `ToastQueue::with_pending_capacity` configures a standalone queue.
 `try_push` preserves rejected ownership; `try_push_text` checks capacity before
-copying borrowed text. Duplicate text/severity renews or deduplicates existing
+copying borrowed text. Standalone ToastQueue keeps RejectNew compatibility;
+ShellBuilder defaults to KeepLatest. `toast_overflow_policy(RejectNew)` restores
+refusal. KeepLatest drops the oldest pending display text before constructing its
+replacement. On a fallible allocation failure it clears optional icon caches and
+reclaims older visible/pending toasts before retrying; every retry consumes an
+old item, so it cannot spin indefinitely. If reclamation is insufficient, it
+returns AllocationFailed and omits the new display item. `take_display_status`
+reports discarded items/allocation failures without allocating a warning message.
+The shell shows a compiled DISPLAY LIMITED stencil until the status is
+acknowledged. `report_display_status` lets an application report clipped views
+through the same notice. The ordinary egui adapter submits geometry and can still
+allocate in egui; the separate raw CPU warning raster is the allocation-free path.
+Handle-side text construction still reports failure to its caller; it cannot
+mutate the UI thread's retained items. A startup-allocated shared atomic flag
+coalesces rejected handle toasts into the shell notice until acknowledgment;
+recording the flag needs no allocation, lock or extra command slot. It does not
+invoke a wake callback on failure. Duplicate text/severity renews or deduplicates existing
 items. Text plus owned glyph capacity is limited to 4,096 bytes per toast.
+Void handle toast helpers omit rejected display work without invoking a logger;
+use try_toast or try_send to observe and respond to their errors.
 
 Notifications have a hard item cap including persistent entries. Zero selects
 100 rather than unlimited retention; the standalone constructor caps the setting
@@ -87,14 +156,22 @@ banner; failed owned toast/banner text copies and icon-coordinate copies omit
 that display work. These paths do not establish that every egui operation is
 fallible: egui can allocate before or after these calls.
 
+Card frost processing validates source geometry, declines screenshot requests
+above 16,777,216 physical pixels, and reduces its output to at most 16,384 texels.
+All blur work/output buffers reserve fallibly; a failure drops the optional work
+and leaves the card opaque. Adaptive shrink uses u64 accumulators and a reusable
+column buffer. The incoming screenshot/egui texture allocation remains upstream.
+
 Existing `new`/Into constructors and user callbacks may still allocate
 infallibly. Use the explicit try APIs before copying untrusted borrowed input;
 passing an already-created String cannot recover an earlier caller allocation.
-Same-process renderer recovery from complete exhaustion remains unsupported.
-The optional Linux [process supervisor](../crates/fairing-process/README.md)
-keeps an independent work engine running when the renderer aborts, without
-modifying egui. It requires an explicit application model/intent boundary;
-it does not transparently move existing shell callbacks to another process.
+Whole stock-egui renderer recovery from complete heap exhaustion is not established.
+The process-supervision implementation has been removed. The guarantees above
+cover the named owned storage and CPU raster paths; they do not turn arbitrary
+egui callbacks, fonts/tessellation, startup or GPU/native allocation into fallible
+operations. Completing a whole-shell guarantee requires those rendering paths to
+propagate refusal or run through an allocation-free presentation backend. A green
+bounded-display test is not evidence that this remaining requirement is complete.
 
 ## Backend channels and object storage
 

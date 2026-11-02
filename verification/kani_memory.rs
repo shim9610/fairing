@@ -47,3 +47,28 @@ fn bounded_pool_operations_preserve_size_and_reject_removed_and_foreign_keys() {
         }
     }
 }
+
+#[kani::proof]
+#[kani::unwind(32)]
+fn fixed_display_retains_latest_data_without_overflow_storage() {
+    let samples: [u8; 4] = kani::any();
+    let mut view = memory::DisplayWindow::<u8, 2>::new();
+    if kani::any() {
+        let status = view.extend(&samples);
+        assert_eq!(status.discarded, 2);
+    } else {
+        for value in samples {
+            view.push(value);
+        }
+    }
+    assert_eq!(view.len(), 2);
+    let mut all = view.recent(usize::MAX);
+    assert_eq!(all.next(), samples.get(2));
+    assert_eq!(all.next(), samples.get(3));
+    assert_eq!(all.next(), None);
+    assert_eq!(view.recent(1).next(), samples.get(3));
+    assert_eq!(view.view_status(1).discarded, 1);
+    let mut zero = memory::DisplayWindow::<u8, 0>::new();
+    assert_eq!(zero.extend(&samples).discarded, 4);
+    assert_eq!(zero.recent(usize::MAX).next(), None);
+}

@@ -116,7 +116,7 @@ quote                           ^1         MIT OR Apache-2.0                    
 raw-window-handle               ^0.6       MIT OR Apache-2.0 OR Zlib                            via eframe(runner) (shim9610, 2026-09-02)
 read-fonts                      ^0.41      MIT OR Apache-2.0                                    via egui · eframe(runner) (shim9610, 2026-09-02)
 rustix                          ^0.38      Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT  via eframe(runner) (shim9610, 2026-09-02)
-rustix                          ^1         Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT  runner and optional isolated renderer process limits/polling (shim9610, 2026-11-01)
+rustix                          ^1         Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT  via eframe(runner) (shim9610, 2026-09-02)
 scoped-tls                      ^1         MIT/Apache-2.0                                       via eframe(runner) (shim9610, 2026-09-02)
 scopeguard                      ^1         MIT OR Apache-2.0                                    via egui · eframe(runner) (shim9610, 2026-09-02)
 self_cell                       ^1         Apache-2.0 OR GPL-2.0-only                           via egui · eframe(runner) · an OR, so Apache-2.0 is chosen (shim9610, 2026-09-02)

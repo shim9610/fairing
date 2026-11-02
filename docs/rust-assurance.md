@@ -13,13 +13,13 @@ source-built compiler and matching LLVM coverage workflow.
 
 | Tool | Pin | Scope |
 | --- | --- | --- |
-| Kani | 0.68.0; nightly 2026-08-21 | Eight harnesses: ACK/access decisions, nonwrapping pool generations and bounded pool sequences |
-| Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Postconditions on six real ACK/access/generation functions |
-| Miri | nightly 2026-10-30 | Nineteen fixed tests using actual Access/PinTable/notifications/services/time/units/parser/pool/Inbox |
+| Kani | 0.68.0; nightly 2026-08-21 | Nine harnesses: ACK/access decisions, nonwrapping pool generations, bounded pool sequences and newest-display retention |
+| Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Postconditions on seven real ACK/access/generation/display functions |
+| Miri | nightly 2026-10-30 | Twenty fixed tests using actual Access/PinTable/notifications/services/time/units/parser/pool/Inbox/display |
 | Loom | 0.7.2 | Four scenarios: Inbox ordering/consumer and bounded admission/close-after-drain |
-| proptest | 1.12.0 | Thirteen properties × 512 cases plus four shell properties × 64; seed 20261101 |
+| proptest | 1.12.0 | Fourteen properties × 512 cases plus four shell properties × 64; seed 20261101 |
 | cargo-fuzz | 0.13.2; libfuzzer-sys 0.4.13 | ASan: 20,000 ACK, 10,000 parser, 10,000 API and 2,000 shell inputs |
-| cargo-llvm-cov | 0.9.1 | Product and API-contract line/function/region coverage; latter checks eleven production modules |
+| cargo-llvm-cov | 0.9.1 | Product and API-contract line/function/region coverage; latter checks twelve production modules |
 | cargo-cyclonedx | 0.5.9 | Library package dependency BOMs for default/all features on Linux x86_64 and aarch64 |
 
 Assurance tool archives and CycloneDX schemas have pinned SHA-256 values in
@@ -82,7 +82,7 @@ to delivery, per-sender order and nonblocking drains in these scenarios.
 Miri keeps its normal isolation, validity and race checks enabled. It interprets
 fixed regression inputs and real channel threads. Random-input generation runs
 natively under proptest and libFuzzer; interpreting the generators themselves
-was unnecessarily expensive. Miri's nineteen cases are separate from the full
+was unnecessarily expensive. Miri's twenty cases are separate from the full
 product test suite and the generated-input campaigns.
 
 ## SBOM scope and validation
@@ -106,10 +106,10 @@ edge kinds as component properties, pass schema validation again, and have no
 unresolved dependency references. A missing package in the original export
 fails generation. The approved product lockfile must remain unchanged.
 
-There are twelve product BOMs: three libraries × two targets × two feature profiles.
+There are eight product BOMs: two libraries × two targets × two feature profiles.
 Four diagnostic allocator and four xtask BOMs describe the unpublished tools.
 The default standalone allocator graph is empty; its global feature is lab-only.
-The BOM gate rejects allocator diagnostic dependencies in all three product graphs. These are
+The BOM gate rejects allocator diagnostic dependencies in either product graph. These are
 resolved library/package dependency inventories. A final device application
 must generate its own BOM with its own lockfile, features, native dependencies
 and firmware. The all-features fairing graph legitimately includes `image`
@@ -124,8 +124,8 @@ fallible recovery and the remaining unsupported infallible abort separately.
 Local correction validation passes all 14 strict audit stages (1,835 tests passed,
 16 ignored), 36 native API tests, nineteen Miri tests, four Loom scenarios and
 all four mutation controls. Normal/16 MiB/64 MiB trials pass real exhausted-arena
-refusal, preallocated work and deferred display recovery. The earlier sixteen BOMs passed
-schema/graph validation; the UI product graphs include no diagnostic allocator.
+refusal, preallocated work and deferred display recovery. Sixteen BOMs pass
+schema/graph validation; neither product graph includes the diagnostic allocator.
 Fresh hosted artifacts provide per-commit fuzz/coverage totals rather than
 reusing the earlier allocator-prototype coverage figures.
 The [contract map](api-contracts.md) records the exact guarantees and assumptions.
@@ -142,7 +142,6 @@ cargo deny --manifest-path verification/Cargo.toml --config verification/deny.to
 python3 verification/install.py all
 python3 verification/proofs.py
 python3 verification/memory.py
-python3 verification/process.py
 PROPTEST_CASES=512 PROPTEST_RNG_SEED=20261101 \
   cargo test --locked --manifest-path verification/Cargo.toml --lib
 RUSTFLAGS='--cfg fairing_loom' \
@@ -188,28 +187,26 @@ sends racing receiver destruction; that race runs with real channels natively
 and under Miri. The close-after-drain Loom case checks closed admission. See
 [the contract map](api-contracts.md) for sequence limits and assumptions.
 
-## Optional renderer process isolation
 
-The `process-isolation` job tests the new Linux process API natively and runs real
-unmodified-egui UI/tessellation allocation aborts in a 16 MiB diagnostic arena.
-Its independent engine must continue work, reap the failed renderer and accept a
-fresh generation's current model. Watchdog, partial/oversized frames, duplicated
-intent sequence, wrong context, action overflow and authority invalidation are
-separate failure cases. Two negative baseline probes require an actual allocation
-abort; a fabricated child exit does not satisfy the OOM checks. A separate eframe
-window integration checks model application through private IPC under Xvfb/Mesa.
+## Same-process bounded display recovery — 2026-11-02
 
-Local validation of the optional process feature passes all fourteen strict audit
-stages (1,846 tests passed, sixteen ignored), Rust 1.95 all-feature checks and the
-aarch64 runner/process check. Ten native process tests and one compiled usage
-example cover fixed framing, authority invalidation, generation refusal and batch
-spooling; eleven process scenarios and the real-window check pass. Twenty BOMs
-pass schema/graph validation, and all 323 registry package/version/source/checksum
-identities remain unchanged.
+The renderer process/IPC implementation has been removed. The fixed-display CI
+job executes the exact product memory source on Linux and Windows. Its Windows
+step additionally runs the same-process 16 MiB exhausted-arena trial; Linux's
+memory-modes job runs both 16 and 64 MiB trials.
 
-Per-run timing, RSS (resident set size), virtual-address size and thread observations
-are saved in `target/assurance/process/summary.json` and `window.json`. These are
-local/hosted x86_64 observations, not an MCU measurement or worst-case timing proof.
-The process API has native execution evidence; the existing Kani/Verus/Miri and
-Loom evidence remains scoped to the contracts named above. The SBOM export now
-includes fairing-process, bringing the total to twenty target/feature BOMs.
+The trials exhaust the arena until a one-byte reserve fails. Inline newest-sample
+retention, bounded borrowed-image preview, warning rasterization and 10,000
+preallocated work commands must continue with zero allocations in their measured
+interval. Other checks require actual old-text reclamation before replacement
+and omitted text/real product frost work after fallible failure. These are
+same-process CPU/storage guarantees, not an egui frame or GPU-presentation proof.
+
+Kani checks both individual and bulk insertion of four arbitrary samples into a
+two-slot window, its chronological newest suffix and zero capacity. Verus checks
+the exact display_skip production body for every usize input. Both must reject a
+zero-skip mutation semantically. The public property, Miri and ASan API suites
+execute display retention/raster bounds; coverage requires this production module.
+The standard shell's compiled-stencil notice and preservation of accepted device
+commands have integration regressions. Stock egui/font/tessellation/native
+allocation recovery remains a blocking, unfulfilled whole-renderer requirement.

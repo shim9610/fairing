@@ -32,7 +32,7 @@ for package in metadata["packages"]:
     key = package["name"], package["version"]
     source = package["source"]
     if source is None:
-        expected = {"fairing": root / "crates/fairing/Cargo.toml", "fairing-widgets": root / "crates/fairing-widgets/Cargo.toml", "fairing-fixed-heap": root / "crates/fairing-fixed-heap/Cargo.toml", "fairing-process": root / "crates/fairing-process/Cargo.toml", "fairing-assurance": root / "verification/Cargo.toml"}
+        expected = {"fairing": root / "crates/fairing/Cargo.toml", "fairing-widgets": root / "crates/fairing-widgets/Cargo.toml", "fairing-fixed-heap": root / "crates/fairing-fixed-heap/Cargo.toml", "fairing-assurance": root / "verification/Cargo.toml"}
         if Path(package["manifest_path"]).resolve() != expected.get(package["name"]):
             raise SystemExit(f"Unapproved local dependency: {key}")
     elif source != "registry+https://github.com/rust-lang/crates.io-index":

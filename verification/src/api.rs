@@ -963,6 +963,7 @@ mod generated {
         #[test] fn public_access(bytes in prop::collection::vec(any::<u8>(), 1..65)) { super::access_contract(&bytes); }
         #[test] fn public_authentication(bytes in prop::collection::vec(any::<u8>(), 0..65)) { super::authentication_contract(&bytes); }
         #[test] fn public_display(bytes in prop::collection::vec(any::<u8>(), 0..65)) { super::display_contract(&bytes); }
+        #[test] fn public_bounded_display(bytes in prop::collection::vec(any::<u8>(), 0..73)) { super::bounded_display_contract(&bytes); }
         #[test] fn public_notifications(bytes in prop::collection::vec(any::<u8>(), 1..65)) { super::notification_contract(&bytes); }
         #[test] fn public_calendar(utc in any::<u64>(), offset in any::<i32>()) { super::time_contract(utc, offset); }
         #[test] fn public_services(a in any::<Option<u16>>(), b in any::<Option<u16>>()) { super::services_contract([a,b]); }
@@ -1025,6 +1026,19 @@ mod regressions {
             }
             assert_eq!(tx.stats().outstanding, 0);
             assert!(!tx.stats().receiver_open);
+        }
+    }
+
+    #[test]
+    fn bounded_display_without_fonts_or_dynamic_render_storage() {
+        for input in [
+            vec![],
+            vec![0],
+            vec![4, 4],
+            vec![255; 72],
+            (0..72).collect(),
+        ] {
+            super::bounded_display_contract(&input);
         }
     }
 
@@ -1101,4 +1115,64 @@ mod regressions {
             }
         }
     }
+}
+
+/// Bounded display copies must preserve the newest values and validate surfaces before writing.
+pub fn bounded_display_contract(bytes: &[u8]) {
+    use fairing::memory::{
+        display_warning_tile, paint_display_warning, paint_image_preview, DisplayWindow,
+    };
+    let mut bulk = DisplayWindow::<u8, 8>::new();
+    let status = bulk.extend(bytes);
+    assert_eq!(status.discarded, bytes.len().saturating_sub(8));
+    assert!(bulk
+        .recent(8)
+        .copied()
+        .eq(bytes.iter().skip(bytes.len().saturating_sub(8)).copied()));
+    assert_eq!(bulk.take_status(), status);
+    bulk.clear();
+    assert!(bulk.is_empty());
+    let mut window = DisplayWindow::<u8, 8>::new();
+    let mut expected = std::collections::VecDeque::new();
+    for chunk in bytes.chunks(3).take(24) {
+        let prior = expected.len();
+        for &value in chunk {
+            expected.push_back(value);
+        }
+        let lost = prior.saturating_add(chunk.len()).saturating_sub(8);
+        while expected.len() > 8 {
+            expected.pop_front();
+        }
+        assert_eq!(window.extend(chunk).discarded, lost);
+        let limit = usize::from(chunk.first().copied().unwrap_or(0));
+        assert!(window.recent(limit).copied().eq(expected
+            .iter()
+            .skip(expected.len().saturating_sub(limit))
+            .copied()));
+    }
+    let mut target = [0u8; 96 * 12 * 4];
+    paint_display_warning(&mut target, [96, 12], 96 * 12).unwrap();
+    assert!(target
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .any(|p| p == &[255, 208, 64, 255]));
+    let (size, prepared) = display_warning_tile();
+    assert_eq!(size, [96, 12]);
+    assert_eq!(target.as_chunks::<4>().0, prepared);
+    let before = target;
+    let width = usize::from(bytes.first().copied().unwrap_or(0));
+    let height = usize::from(bytes.get(1).copied().unwrap_or(0));
+    let source = [0u8; 64];
+    let mut small = [0u8; 16];
+    let original = small;
+    let result = paint_image_preview(&source, [width, height], &mut small, [2, 2], 4);
+    if width.checked_mul(height) == Some(16) && width != 0 && height != 0 {
+        assert!(result.is_ok());
+    } else {
+        assert!(result.is_err());
+        assert_eq!(small, original);
+    }
+    assert!(paint_display_warning(&mut target, [usize::MAX, 2], usize::MAX).is_err());
+    assert_eq!(target, before);
 }

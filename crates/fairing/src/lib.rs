@@ -117,9 +117,6 @@ pub mod runner;
 /// types stop matching** — and that failure is hard to diagnose, because the compiler says `Ui`
 /// is not `Ui`. Going through this re-export (`fairing::egui::Ui`) makes a mismatch impossible.
 pub use egui;
-/// Optional Linux process supervision; independent work engines may use fairing-process directly.
-#[cfg(feature = "process")]
-pub use fairing_process as process;
 
 /// **The element layer, re-exported verbatim.**
 ///

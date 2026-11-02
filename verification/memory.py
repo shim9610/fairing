@@ -26,7 +26,7 @@ for capacity in [None, 16 * 1024 * 1024, 64 * 1024 * 1024]:
     with path.open("w") as log:
         result = subprocess.run(command, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
     text = path.read_text()
-    if result.returncode or (capacity is not None and (f"capacity={capacity}" not in text or "recoverable-pressure:" not in text)):
+    if result.returncode or (capacity is not None and (f"capacity={capacity}" not in text or ("recoverable-pressure:" not in text or "bounded-display:" not in text))):
         print(text[-12000:])
         raise SystemExit(f"Memory mode failed: {path}")
     results.append({"capacity": capacity, "command": command, "exit_code": result.returncode, "log": str(path)})

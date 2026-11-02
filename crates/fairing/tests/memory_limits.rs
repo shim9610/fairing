@@ -61,3 +61,100 @@ fn shell_rejects_invalid_resource_configuration() {
         .build(&ctx)
         .is_err());
 }
+
+#[test]
+fn producer_display_failures_are_coalesced_until_acknowledged() -> fairing::Result<()> {
+    let ctx = fairing::egui::Context::default();
+    let mut shell = Shell::builder(fairing::testing::single_level_access())
+        .command_queue_capacity(1)
+        .build(&ctx)?;
+    let handle = shell.handle();
+    let oversized = "x".repeat(fairing::notify::MAX_TOAST_TEXT_BYTES + 1);
+    assert!(handle.try_toast(&oversized).is_err());
+    handle.clone().toast(&oversized);
+    assert_eq!(shell.take_display_status().discarded, 1);
+    assert!(!shell.take_display_status().is_reduced());
+    handle.try_send(Command::Home).unwrap();
+    handle.toast("queue is full");
+    assert_eq!(shell.take_display_status().discarded, 1);
+    assert_eq!(handle.queue_stats().outstanding, 1);
+    Ok(())
+}
+
+#[test]
+fn latest_display_retention_does_not_evict_an_accepted_device_command() -> fairing::Result<()> {
+    let ctx = fairing::egui::Context::default();
+    let mut shell = Shell::builder(fairing::testing::single_level_access())
+        .toast_queue_capacity(1)
+        .command_queue_capacity(4)
+        .build(&ctx)?;
+    let ran = Rc::new(RefCell::new(0u32));
+    let observed = Rc::clone(&ran);
+    shell.add(action("device", move |_| *observed.borrow_mut() += 1));
+    let handle = shell.handle();
+    handle.toast("old");
+    let latest = String::from("latest");
+    handle.toast(&latest);
+    assert_eq!(
+        latest, "latest",
+        "borrowed toast input retains caller ownership"
+    );
+    handle
+        .try_send(Command::Launch(LaunchAction::run("device")))
+        .unwrap();
+    shell.logic(&ctx);
+    assert_eq!(*ran.borrow(), 1);
+    assert_eq!(handle.queue_stats().outstanding, 0);
+    assert_eq!(shell.take_display_status().discarded, 1);
+    assert_eq!(shell.toasts().pending(), 1);
+    for frame in 0..3 {
+        let output = ctx.run_ui(
+            fairing::egui::RawInput {
+                time: Some(f64::from(frame) / 60.0),
+                ..Default::default()
+            },
+            |ui| shell.frame(ui),
+        );
+        output.drop_without_applying_deltas();
+    }
+    assert_eq!(*ran.borrow(), 1);
+    assert!(shell
+        .toasts()
+        .visible()
+        .iter()
+        .any(|t| t.toast.text == "latest"));
+    assert!(!shell
+        .toasts()
+        .visible()
+        .iter()
+        .any(|t| t.toast.text == "old"));
+    Ok(())
+}
+
+#[test]
+fn display_loss_uses_the_prepared_warning_until_acknowledged() -> fairing::Result<()> {
+    let ctx = fairing::egui::Context::default();
+    let mut shell = Shell::builder(fairing::testing::single_level_access()).build(&ctx)?;
+    shell.report_display_status(fairing::memory::DisplayStatus {
+        discarded: 1,
+        allocation_failed: false,
+    });
+    let warning_shapes = |output: &fairing::egui::FullOutput| {
+        output.shapes.iter().filter(|shape| {
+        matches!(&shape.shape, fairing::egui::Shape::Rect(rect) if rect.fill == fairing::egui::Color32::from_rgb(255,208,64)
+            && (rect.rect.width() - 2.0).abs() < 0.0001 && (rect.rect.height() - 2.0).abs() < 0.0001)
+    }).count()
+    };
+    let mut observed = false;
+    for _ in 0..3 {
+        let output = ctx.run_ui(fairing::egui::RawInput::default(), |ui| shell.frame(ui));
+        observed |= warning_shapes(&output) > 0;
+        output.drop_without_applying_deltas();
+    }
+    assert!(observed);
+    assert_eq!(shell.take_display_status().discarded, 1);
+    let output = ctx.run_ui(fairing::egui::RawInput::default(), |ui| shell.frame(ui));
+    assert_eq!(warning_shapes(&output), 0);
+    output.drop_without_applying_deltas();
+    Ok(())
+}

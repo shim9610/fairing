@@ -1,8 +1,15 @@
 //! Inline fixed-capacity object storage. The container itself never allocates.
 //!
 //! Stored values may own their own allocations; a `String` in this pool still owns
-//! its character buffer. Choose inline payloads or the application's fixed global
-//! heap when those allocations also need a hard bound.
+//! its character buffer. `DisplayWindow` provides copy-only inline display retention;
+//! a fixed global heap alone cannot make infallible egui allocation recoverable.
+
+#[path = "memory/display.rs"]
+mod display;
+pub use self::display::{
+    display_warning_tile, paint_display_warning, paint_image_preview, DisplayStatus, DisplayWindow,
+    WarningSurfaceError,
+};
 
 use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};

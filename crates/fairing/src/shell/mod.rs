@@ -111,8 +111,8 @@ use crate::i18n::Strings;
 use crate::icons::{CustomIconId, IconDef, IconPainter, IconSet};
 use crate::motion::{AnimationStore, ReleaseRule, MAX_DT};
 use crate::notify::{
-    HeadsUp, HeadsUpAction, Notification, NotificationCenter, NotificationId, Toast, ToastAction,
-    ToastQueue,
+    HeadsUp, HeadsUpAction, Notification, NotificationCenter, NotificationId, ToastAction,
+    ToastInput, ToastQueue,
 };
 use crate::screen::{
     ActionDecl, BackAction, BarMode, CxParts, CxRequest, Decl, DeclKind, LaunchAction, LaunchMode,
@@ -222,6 +222,7 @@ pub struct Shell {
     notifications: NotificationCenter,
     /// The toast queue (M2).
     toasts: ToastQueue,
+    display_status: crate::memory::DisplayStatus,
     /// The heads-up banner (M2).
     heads_up: HeadsUp,
     /// The theme cross-fade (M2, A7).
@@ -979,7 +980,15 @@ impl Shell {
             notification.at = self.services.clock.now();
         }
         let id = notification.id;
-        let change = self.notifications.try_push(notification)?;
+        let change = match self.notifications.try_push(notification) {
+            Ok(change) => change,
+            Err(error) => {
+                self.display_status.discarded = self.display_status.discarded.saturating_add(1);
+                self.display_status.allocation_failed |=
+                    error.kind() == crate::notify::AdmissionError::AllocationFailed;
+                return Err(error);
+            }
+        };
         let Some(notification) = self.notifications.get(id) else {
             return Ok(change);
         };
@@ -1004,8 +1013,13 @@ impl Shell {
     }
 
     /// A toast (directly, from the UI thread).
-    pub fn toast(&mut self, toast: impl Into<Toast>) {
-        self.toasts.push(toast.into());
+    pub fn toast<'a>(&mut self, toast: impl Into<ToastInput<'a>>) {
+        match toast.into() {
+            ToastInput::Text(text) => {
+                let _ = self.toasts.try_push_text(text);
+            }
+            ToastInput::Value(toast) => self.toasts.push(toast),
+        }
     }
 
     /// Fallibly construct/admit a bounded text toast; refuse it without stopping other work.
@@ -1017,6 +1031,20 @@ impl Shell {
         text: &str,
     ) -> std::result::Result<(), crate::notify::AdmissionError> {
         self.toasts.try_push_text(text)
+    }
+
+    /// Read and acknowledge display omissions caused by toast retention/reclamation.
+    /// Reporting does not enqueue another toast or allocate warning text.
+    pub fn take_display_status(&mut self) -> crate::memory::DisplayStatus {
+        self.display_status.merge(self.handle.display_status(true));
+        self.display_status.merge(self.toasts.take_display_status());
+        self.display_status
+            .merge(self.heads_up.take_display_status());
+        std::mem::take(&mut self.display_status)
+    }
+    /// Record application display clipping; retain the warning until `take_display_status` acknowledges it.
+    pub fn report_display_status(&mut self, status: crate::memory::DisplayStatus) {
+        self.display_status.merge(status);
     }
 
     /// Dismiss a notification. `false` for a persistent one.
@@ -1366,23 +1394,16 @@ impl Shell {
         {
             return None;
         }
-        let left = match self
-            .config
-            .desktop
-            .rail
-            .trim()
-            .to_ascii_lowercase()
-            .as_str()
-        {
-            "left" => true,
-            "right" => false,
-            "none" | "" => return None,
-            other => {
-                log::warn!(
-                    "[desktop] rail = \"{other}\" is not a known value (none | left | right)"
-                );
-                return None;
-            }
+        let rail = self.config.desktop.rail.trim();
+        let left = if rail.eq_ignore_ascii_case("left") {
+            true
+        } else if rail.eq_ignore_ascii_case("right") {
+            false
+        } else if rail.is_empty() || rail.eq_ignore_ascii_case("none") {
+            return None;
+        } else {
+            log::warn!("[desktop] rail = \"{rail}\" is not a known value (none | left | right)");
+            return None;
         };
         let fraction = if self.config.desktop.rail_width > 0.0 {
             self.config.desktop.rail_width.clamp(0.1, 0.5)
@@ -1774,6 +1795,7 @@ impl Shell {
             wake,
             app,
         );
+        self.paint_display_notice(&ctx);
         // 16. The events go out through poll_events.
         self.trim_events();
         let elapsed = started.elapsed();
@@ -1783,6 +1805,52 @@ impl Shell {
                 self.frame_no,
                 elapsed.as_secs_f64() * 1000.0
             );
+        }
+    }
+
+    // The ordinary egui adapter uses the compiled bitmap, not text layout/font loading.
+    // egui shape submission/tessellation may still allocate; the raw CPU raster path is separate.
+    fn paint_display_notice(&self, ctx: &egui::Context) {
+        let mut status = self.display_status;
+        status.merge(self.handle.display_status(false));
+        status.merge(self.toasts.display_status());
+        status.merge(self.heads_up.display_status());
+        if !status.is_reduced() {
+            return;
+        }
+        let (size, pixels) = crate::memory::display_warning_tile();
+        let viewport = ctx.viewport_rect();
+        if !viewport.is_finite() || !viewport.is_positive() {
+            return;
+        }
+        let origin = viewport.left_top() + egui::vec2(4.0, 4.0);
+        let painter = ctx
+            .layer_painter(egui::LayerId::new(
+                egui::Order::Tooltip,
+                egui::Id::unique("fairing.display_notice"),
+            ))
+            .with_clip_rect(ctx.viewport_rect());
+        painter.rect_filled(
+            egui::Rect::from_min_size(origin, egui::vec2(192.0, 24.0)),
+            0.0,
+            egui::Color32::from_rgb(24, 24, 24),
+        );
+        for (y, row) in pixels.chunks(size[0]).enumerate() {
+            for (x, pixel) in row.iter().enumerate() {
+                if *pixel != [255, 208, 64, 255] {
+                    continue;
+                }
+                let x = f32::from(u8::try_from(x).unwrap_or(0));
+                let y = f32::from(u8::try_from(y).unwrap_or(0));
+                painter.rect_filled(
+                    egui::Rect::from_min_size(
+                        origin + egui::vec2(x * 2.0, y * 2.0),
+                        egui::vec2(2.0, 2.0),
+                    ),
+                    0.0,
+                    egui::Color32::from_rgb(255, 208, 64),
+                );
+            }
         }
     }
 

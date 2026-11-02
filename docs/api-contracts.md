@@ -1,5 +1,8 @@
 # Public API contracts and verification
 
+The process/IPC implementation is removed. Whole stock-egui heap-exhaustion recovery
+is not established; see [the exact owned-path scope](memory-limits.md).
+
 The assurance suite checks the contracts below against the production sources
 and public APIs. The table distinguishes exhaustive decision proofs from
 generated or bounded executions. A tool installation or a green placeholder
@@ -21,13 +24,14 @@ test is insufficient: production mutations must also fail the relevant checks.
 | Bounded admission shares capacity across clones, preserves rejected ownership, skips rejected factories and returns slots; update budget preserves accepted order | `Inbox::bounded`, `ShellHandle::try_send*`, builder limits ([memory limits](memory-limits.md)) | `public_memory` FIFO oracle; native/Miri close races and factory unwinding; Loom atomic-admission scenarios; shell cap-2/budget-1 integration regression |
 | Inline pool handles remain pool-specific and removed generations never revive | `FixedPool`, `next_generation` ([memory limits](memory-limits.md)) | `public_memory` live/stale/foreign-key model, Miri and API fuzzer; Kani four-operation two-slot sequences and all u64 generations; Verus exact generation body; both reject generation wrap |
 | Display retention refuses or defers optional work under pressure; diagnostic allocator stays outside product graphs | `try_toast/try_notify`, ToastQueue, NotificationCenter ([memory limits](memory-limits.md)) | `public_display` and hard-cap notification properties, native/Miri fixed cases, real 16/64 MiB exhausted-arena factory/text failures, continued preallocated queue work and display resumption; BOM gate rejects diagnostic allocator edges in either product |
+| Newest-only inline display retention and clipped chronological views; bounded CPU preview/warning have no allocation or font dependency | `memory::DisplayWindow`, `paint_image_preview`, `paint_display_warning` ([memory guide](memory-limits.md)) | Native FIFO oracle including zero capacity, privacy and geometry cases; generated/Miri/fuzz API contracts; Kani four arbitrary samples in a two-slot window; Verus exact viewport arithmetic over usize inputs; both reject a broken clipping body; real 16/64 MiB exhaustion keeps CPU warning/preview and 10,000 work commands running with zero allocations |
+| Pending display loss never evicts an accepted device command; optional backdrop processing refuses allocation failure | `ToastQueue` KeepLatest, Shell builder/status, actual card-frost source | Latest-display/command integration regression; invalid/duplicate input retention tests; actual exhausted-arena oldest-text replacement, skipped text/blur work; bounded/invalid-image processor tests |
 | Notification ids deduplicate; source groups stay contiguous; persistent items resist dismissal; hard caps include persistent entries, refusing new overflow; gated content hides | `NotificationCenter`, `shows_content` ([notification source](../crates/fairing/src/notify/center.rs)) | `public_notifications` checks invariants after up to 64 operations; fixed persistent-flood/refusal regressions; Miri, libFuzzer and a cap-removal mutation |
 | Every service polls once with the supplied time and the minimum reported deadline wins | `Services::poll/custom` ([services guide §1](guide/06-services.md)) | `public_services`, two independently recorded backend types; Miri fixed deadline/missing-deadline cases |
 | UTC conversion saturates, calendar fields are valid, formatting clears a reused buffer and changing hour convention preserves shape | `WallTime`, `ClockFormat` ([services guide: clocks](guide/06-services.md)) | `public_calendar` with arbitrary u64/i32 inputs, inverse Gregorian conversion and all formats; Miri boundary values and API fuzzer |
 | Pixel conversion clamps; changing a container changes fractional references without changing physical, finger or text terms | `round_u8/round_i8`, `Dim`, `Scale::in_container` ([unit source](../crates/fairing-widgets/src/unit.rs)) | `public_units` uses arbitrary f32 bit patterns, NaN/infinities and arbitrary u16 dimensions; Miri/fuzzer; compile-fail anchor contracts remain in product documentation tests |
 | Invalid ratios/grid dimensions fail validation; malformed configuration and credential debug/error output do not reveal entered secrets | `ShellConfig::from_toml`, `Access::from_config`, `Credential::Debug` ([configuration guide](guide/07-config-reference.md)) | Generated `public_configuration`, `credential_debug_is_independent_of_contents`, parser/redaction properties, Miri fixed cases and parser/API fuzz targets |
-| Renderer failure cannot stop the separate engine in the exercised Linux configuration; malformed/stale/replayed/overflow intents fail closed | `fairing-process::Host/Worker` ([process integration](../crates/fairing-process/README.md)) | Native framing/context/sequence tests; actual unchanged-egui UI/tessellation OOM and recovery, watchdog, partial/oversized/replayed/wrong-context/flood fixtures; real eframe window model receipt. No exhaustive concurrency/OS/GPU proof |
-| Tool dependencies stay outside product packages; dependency inventories match the locked target/feature graph | Published manifests, primary lockfile and package BOMs | Input approvals/audit/deny; twelve product and eight diagnostic/utility CycloneDX BOMs, official schema validation and reconciliation with Cargo normal/build edges |
+| Tool dependencies stay outside product packages; dependency inventories match the locked target/feature graph | Published manifests, primary lockfile and package BOMs | Input approvals/audit/deny; eight product and eight diagnostic/utility CycloneDX BOMs, official schema validation and reconciliation with Cargo normal/build edges |
 
 Test names in this table are in
 [`verification/src/api.rs`](../verification/src/api.rs),
@@ -39,17 +43,17 @@ original ACK kernel.
 
 ## Bounds and assumptions
 
-- Kani proves eight harnesses and Verus verifies six production functions.
+- Kani proves nine harnesses and Verus verifies seven production functions.
   Pool sequence proof is bounded to four operations on a two-slot u8 pool; the generation
   decision covers all u64 values. Kani treats pool-identity atomics sequentially;
   it does not prove concurrent identity creation. The access rules cover all u16 levels, all u32 counter values and every
   optional attempt limit. They are exhaustive decision proofs, not a proof of
   the complete egui application.
-- Native tests contain thirteen properties with 512 cases each and four shell
+- Native tests contain fourteen properties with 512 cases each and four shell
   properties with 64 cases each, using seed 20261101. Operation sequences cap
   at 32 shell/backend operations or 64 non-UI operations. Fixed cases ensure
   the important deadline/credential boundaries execute regardless of the seed.
-- Miri interprets nineteen fixed tests with normal isolation, validity and race
+- Miri interprets twenty fixed tests with normal isolation, validity and race
   checks. It covers the actual Access, PinTable, notification, calendar, unit,
   service, fixed-pool and bounded/unbounded Inbox APIs. It does not interpret the complete shell rendering
   path; generated cases run natively.

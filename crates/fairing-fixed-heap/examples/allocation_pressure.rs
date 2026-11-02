@@ -4,6 +4,10 @@
     reason = "allocation trial reports its verified mode"
 )]
 
+// Actual product source; no copy of the blur implementation in the failure probe.
+#[path = "../../fairing/src/overlay/backdrop.rs"]
+mod backdrop;
+
 use fairing::{inbox::Inbox, memory::FixedPool, LaunchAction, Shell, ShellConfig};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -79,6 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     #[cfg(feature = "global")]
     {
+        bounded_display_pressure()?;
         recoverable_pressure()?;
         let stats = fairing_fixed_heap::try_stats().ok_or("allocator busy")?;
         if stats.claimed_bytes > stats.capacity {
@@ -186,5 +191,128 @@ fn recoverable_pressure() -> Result<(), Box<dyn std::error::Error>> {
         return Err("deferred display did not resume".into());
     }
     println!("recoverable-pressure: allocation refused; bounded work continued; deferred display resumed");
+    Ok(())
+}
+
+/// Same-process, actual exhausted-arena checks for bounded display admission and CPU rendering.
+#[cfg(feature = "global")]
+#[allow(
+    clippy::too_many_lines,
+    reason = "real-pressure integration fixture keeps the exhausted interval explicit"
+)]
+fn bounded_display_pressure() -> Result<(), Box<dyn std::error::Error>> {
+    use fairing::memory::{
+        display_warning_tile, paint_display_warning, paint_image_preview, DisplayWindow,
+    };
+    use fairing::notify::{AdmissionError, OverflowPolicy, ToastQueue};
+    use std::time::Duration;
+    let samples: Vec<u32> = (0..10000).collect();
+    let source = vec![128u8; 512 * 512 * 4];
+    let screenshot = egui::ColorImage::new([16, 16], vec![egui::Color32::WHITE; 256]);
+    let old_text = "o".repeat(4096);
+    let new_text = "n".repeat(4096);
+    let oversized = "x".repeat(4097);
+    let mut heads_up = fairing::notify::HeadsUp::new(88.0);
+    let banner_note =
+        fairing::notify::Notification::new(fairing::notify::NotificationId(50), new_text.clone());
+    let banner_tokens = fairing::Theme::default().motion;
+    let banner_now = std::time::Instant::now();
+    let mut window = DisplayWindow::<u32, 32>::new();
+    let mut pixels = [0u8; 64 * 64 * 4];
+    let mut warning = [0u8; 96 * 12 * 4];
+    let mut recent = ToastQueue::new(1, Duration::from_secs(1))
+        .with_pending_capacity(1)
+        .with_overflow_policy(OverflowPolicy::KeepLatest);
+    recent.try_push_text(&old_text)?;
+    let mut empty = ToastQueue::new(1, Duration::from_secs(1))
+        .with_pending_capacity(1)
+        .with_overflow_policy(OverflowPolicy::KeepLatest);
+    let context = egui::Context::default();
+    let mut shell = fairing::Shell::builder(fairing::testing::single_level_access())
+        .command_queue_capacity(2)
+        .build(&context)?;
+    let handle = shell.handle();
+    let (work, receive) = fairing::inbox::Inbox::<u32>::bounded(2)?;
+    let mut ballast: Vec<Vec<u8>> = Vec::new();
+    ballast.try_reserve_exact(1024)?;
+    ballast.resize_with(1024, Vec::new);
+    let mut exhausted = false;
+    'fill: for buffer in &mut ballast {
+        let mut bytes = fairing_fixed_heap::try_stats()
+            .ok_or("allocator busy")?
+            .available_bytes
+            .max(2)
+            / 2;
+        loop {
+            if buffer.try_reserve_exact(bytes).is_ok() {
+                break;
+            }
+            if bytes <= 1 {
+                exhausted = true;
+                break 'fill;
+            }
+            bytes /= 2;
+        }
+    }
+    // From here to ballast release: no formatting/boxing or new fixture allocation.
+    let before = fairing_fixed_heap::try_stats().map(|s| s.total_allocations);
+    let status = window.extend(&samples);
+    let clipped = status.discarded == 9968 && window.recent(4).copied().eq(9996..10000);
+    let preview = paint_image_preview(&source, [512, 512], &mut pixels, [64, 64], 4096)
+        .is_ok_and(fairing::memory::DisplayStatus::is_reduced);
+    let warned = paint_display_warning(&mut warning, [96, 12], 96 * 12).is_ok()
+        && warning
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|p| p == &[255, 208, 64, 255]);
+    let (_, prepared) = display_warning_tile();
+    let prepared_matches = warning.as_chunks::<4>().0 == prepared;
+    let omitted = empty.try_push_text(&new_text) == Err(AdmissionError::AllocationFailed)
+        && empty.take_display_status().allocation_failed;
+    shell.toast(new_text.as_str());
+    let local_omitted = shell.take_display_status().allocation_failed;
+    handle.toast(&new_text);
+    let convenience_omitted = local_omitted
+        && shell.take_display_status().allocation_failed
+        && handle.queue_stats().outstanding == 0;
+    heads_up.show(&banner_note, banner_now, &banner_tokens);
+    let banner_omitted =
+        heads_up.visible().is_none() && heads_up.take_display_status().allocation_failed;
+    let blur_omitted = matches!(
+        backdrop::frost(&screenshot),
+        Err(backdrop::FrostError::AllocationFailed)
+    );
+    let mut continued = true;
+    for i in 0..10000u32 {
+        continued &= work.try_send(i).is_ok() && receive.try_recv() == Ok(i);
+    }
+    let after = fairing_fixed_heap::try_stats().map(|s| s.total_allocations);
+    let zero_allocations = before.is_some() && before == after;
+    // The oldest pending text is actually freed before constructing its replacement.
+    let replaced = recent.try_push_text(&new_text).is_ok()
+        && recent.pending() == 1
+        && recent.take_display_status().discarded == 1;
+    let rejected_oversize = recent.try_push_text(&oversized) == Err(AdmissionError::TooLarge)
+        && recent.pending() == 1
+        && recent.take_display_status().discarded == 1;
+    drop(ballast);
+    if !(exhausted
+        && clipped
+        && preview
+        && warned
+        && prepared_matches
+        && omitted
+        && convenience_omitted
+        && blur_omitted
+        && banner_omitted
+        && continued
+        && zero_allocations
+        && replaced
+        && rejected_oversize)
+    {
+        return Err("bounded display pressure invariant failed".into());
+    }
+    println!("bounded-display: actual one-byte exhaustion; oldest text freed/replaced; preview clipped; warning raster painted; failed banner/blur/text omitted; 10000 work commands continued; zero allocations in clipped preview/warning/work interval");
     Ok(())
 }

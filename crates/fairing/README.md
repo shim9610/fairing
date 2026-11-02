@@ -70,7 +70,6 @@ drive `Shell::frame` from an eframe app you already have.
 | `mock` | on | Mock backends — clock, power, Wi-Fi, Bluetooth, display, audio, network and device info — for development |
 | `runner` | off | An eframe window bootstrap (`runner::run_shell`) |
 | `runner-x11` | off | The same, with X11 as well as Wayland on Linux |
-| `process` | off | Optional Linux renderer supervision via `fairing::process`; the engine can depend on fairing-process alone without egui |
 | `chrono` | off | A clock that follows the system time zone and daylight saving |
 
 The touch widgets, the theme tokens and the unit system live in
@@ -141,3 +140,10 @@ Rust paths can abort on OOM. The unpublished allocator is now a separate diagnos
 with no dependency edge from either product crate. Whole-renderer continued
 operation under complete exhaustion remains unsupported. See the
 [memory guide](https://github.com/shim9610/fairing/blob/HEAD/docs/memory-limits.md).
+
+
+Display pressure uses bounded inline histories and borrowed-image/bitmap-warning
+CPU raster functions under `fairing::memory`. Shell pending toasts default to
+KeepLatest; `toast_overflow_policy(RejectNew)` restores refusal. Omission status
+shows a compiled warning until acknowledged. These owned-path guarantees do not
+establish whole stock-egui frame/GPU recovery from complete heap exhaustion.

@@ -189,7 +189,7 @@ fn builds(root: &Path, cargo: &str) -> Vec<Step> {
                 "-p",
                 "fairing",
                 "--features",
-                "runner,process",
+                "runner",
                 "--target",
                 target,
             ],

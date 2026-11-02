@@ -276,6 +276,36 @@ impl From<String> for Toast {
     }
 }
 
+/// Input to a toast convenience method. Borrowed text is copied only after admission,
+/// using fallible allocation; an existing toast or String transfers ownership.
+#[derive(Debug)]
+pub enum ToastInput<'a> {
+    /// Text whose allocation may be skipped or retried after reclaiming display storage.
+    Text(&'a str),
+    /// A toast already constructed by the caller.
+    Value(Toast),
+}
+impl<'a> From<&'a str> for ToastInput<'a> {
+    fn from(text: &'a str) -> Self {
+        Self::Text(text)
+    }
+}
+impl<'a> From<&'a String> for ToastInput<'a> {
+    fn from(text: &'a String) -> Self {
+        Self::Text(text)
+    }
+}
+impl From<String> for ToastInput<'_> {
+    fn from(text: String) -> Self {
+        Self::Value(Toast::new(text))
+    }
+}
+impl From<Toast> for ToastInput<'_> {
+    fn from(toast: Toast) -> Self {
+        Self::Value(toast)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{builtin, IconRef, Level, Notification, NotificationId};

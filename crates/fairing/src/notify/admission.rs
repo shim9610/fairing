@@ -108,3 +108,13 @@ pub(crate) fn notification_bytes(item: &super::Notification) -> usize {
         .saturating_add(action)
         .saturating_add(item.gate.as_ref().map_or(0, |gate| cow_bytes(&gate.0)))
 }
+
+/// Overflow policy for optional pending display items, separate from command admission.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum OverflowPolicy {
+    /// Preserve retained items and return Full.
+    #[default]
+    RejectNew,
+    /// Discard the oldest pending display item to keep the latest one.
+    KeepLatest,
+}

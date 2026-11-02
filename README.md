@@ -86,9 +86,10 @@ slightly wrong. fairing is that shell, once, with the hard parts already decided
 - **Recoverable display admission.** Bound queued toasts and retained notifications;
   fallible text/buffer allocation refuses or defers optional display work. The global
   fixed-heap option was withdrawn because egui cannot universally recover from OOM.
-  See [memory limits](docs/memory-limits.md) for supported paths and the isolated lab.
-  The optional Linux [process supervisor](crates/fairing-process/README.md) keeps
-  an independent engine running across renderer failure without modifying egui.
+  Inline display histories now keep newest samples; borrowed-image preview and
+  compiled warning rasterization work without allocation. The shell reclaims older
+  optional toasts and reports reduced display. Whole stock-egui OOM recovery remains
+  unestablished; [memory limits](docs/memory-limits.md) records the exact scope.
 - **Little is hard-wired.** Every chrome surface takes configuration and
   declarations; the bars, toasts, banners, keyboard keys, the shade's tiles and panel,
   the desktop cells, the lock screen, the unlock prompt, the recent screens and every
@@ -376,9 +377,8 @@ Honest gaps, not a roadmap:
 
 | Crate | Role |
 |---|---|
-| `fairing-process` | Optional Linux renderer supervision and bounded private IPC; independent of egui |
 | `fairing-fixed-heap` | Unpublished allocation-failure diagnostic, isolated from product dependencies; one reviewed unsafe arena claim |
-| `fairing` | The shell. `fairing-widgets`, `egui`, `serde`, `toml` and `log`; features `mock`, `overlay`, `osk`, `brand` and `settings` on by default, `runner`/`runner-x11` (eframe) and `chrono` optional; `process` adds Linux renderer supervision |
+| `fairing` | The shell. `fairing-widgets`, `egui`, `serde`, `toml` and `log`; features `mock`, `overlay`, `osk`, `brand` and `settings` on by default, `runner`/`runner-x11` (eframe) and `chrono` optional |
 | `fairing-widgets` | The element layer, usable without the shell: touch widgets, theme tokens, the `du`/`mm` unit system, icons and motion. `egui`, `serde` and `log` |
 | `xtask` | The audit, the dependency allow-list, the icon compiler, the licence notices |
 

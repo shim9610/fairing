@@ -1796,6 +1796,18 @@ impl Overlay {
             return;
         }
         if first && self.backdrop.is_none() {
+            let pixels = viewport.size() * ctx.pixels_per_point();
+            let area = f64::from(pixels.x).ceil() * f64::from(pixels.y).ceil();
+            if !pixels.x.is_finite()
+                || !pixels.y.is_finite()
+                || pixels.x <= 0.0
+                || pixels.y <= 0.0
+                || !area.is_finite()
+                || area > backdrop::MAX_SOURCE_PIXELS as f64
+            {
+                self.put_down_glass();
+                return;
+            }
             let (tx, rx) = crate::inbox::Inbox::pair();
             self.pending_shot = Some(PendingShot {
                 rx,
@@ -1825,7 +1837,11 @@ impl Overlay {
             }
             return;
         };
-        let frosted = backdrop::frost(&image);
+        let Ok(frosted) = backdrop::frost(&image) else {
+            self.put_down_glass();
+            return;
+        };
+        drop(image);
         let texture = ctx.load_texture(
             "fairing.overlay.backdrop",
             frosted,

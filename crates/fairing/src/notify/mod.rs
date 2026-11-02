@@ -14,8 +14,8 @@ mod model;
 mod toast;
 
 pub use admission::{
-    AdmissionError, Rejected, DEFAULT_MAX_PENDING_TOASTS, MAX_NOTIFICATION_TEXT_BYTES,
-    MAX_TOAST_TEXT_BYTES,
+    AdmissionError, OverflowPolicy, Rejected, DEFAULT_MAX_PENDING_TOASTS,
+    MAX_NOTIFICATION_TEXT_BYTES, MAX_TOAST_TEXT_BYTES,
 };
 pub use center::{shows_content, CenterChange, NotificationCenter};
 pub(crate) use heads_up::HeadsUpAction;
@@ -25,7 +25,7 @@ pub use hooks::{
     HeadsUpCx, HeadsUpLayout, HeadsUpLayoutCx, HeadsUpPainter, ToastCx, ToastLayout, ToastLayoutCx,
     ToastPainter,
 };
-pub use model::{Level, Notification, NotificationId, Toast};
+pub use model::{Level, Notification, NotificationId, Toast, ToastInput};
 pub(crate) use toast::ToastAction;
 #[doc(hidden)]
 pub use toast::{ActiveToast, ToastPhase, ToastQueue};

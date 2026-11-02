@@ -62,6 +62,7 @@ pub struct ShellBuilder {
     command_capacity: usize,
     commands_per_update: usize,
     toast_capacity: usize,
+    toast_overflow: crate::notify::OverflowPolicy,
     services: Option<Services>,
     theme: Option<Theme>,
     palettes: Option<(Palette, Palette)>,
@@ -229,6 +230,7 @@ impl ShellBuilder {
             command_capacity: 1024,
             commands_per_update: 256,
             toast_capacity: crate::notify::DEFAULT_MAX_PENDING_TOASTS,
+            toast_overflow: crate::notify::OverflowPolicy::KeepLatest,
             services: None,
             theme: None,
             palettes: None,
@@ -259,6 +261,14 @@ impl ShellBuilder {
             widget_painters: crate::widgets::WidgetPainters::new(),
             gesture_handle_painter: None,
         }
+    }
+
+    /// Pending toast overflow. Default `KeepLatest` discards only older display items.
+    /// Accepted commands, notification records and persistent alerts are unaffected.
+    #[must_use]
+    pub fn toast_overflow_policy(mut self, policy: crate::notify::OverflowPolicy) -> Self {
+        self.toast_overflow = policy;
+        self
     }
 
     /// Fixed command slots shared by all handles; default 1,024.
@@ -929,6 +939,7 @@ impl ShellBuilder {
             command_capacity,
             commands_per_update,
             toast_capacity,
+            toast_overflow,
             services,
             theme,
             palettes,
@@ -1085,7 +1096,8 @@ impl ShellBuilder {
             usize::from(config.notify.max_visible),
             Duration::from_millis(config.notify.toast_ms),
         )
-        .with_pending_capacity(toast_capacity);
+        .with_pending_capacity(toast_capacity)
+        .with_overflow_policy(toast_overflow);
         let mut heads_up = HeadsUp::new(theme.metrics.heads_up_height);
         notify_hooks.install(&mut toasts, &mut heads_up);
         let theme_fade = ThemeFade::idle(theme.palette);
@@ -1182,6 +1194,7 @@ impl ShellBuilder {
             osk,
             notifications,
             toasts,
+            display_status: crate::memory::DisplayStatus::default(),
             heads_up,
             theme_fade,
             overlay_was_closed: true,

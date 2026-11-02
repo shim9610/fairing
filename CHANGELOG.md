@@ -8,6 +8,19 @@ All notable changes to the fairing crates are recorded here. The format follows
 
 ### Security
 
+- Remove the optional renderer process/IPC implementation. Its Linux-only boundary
+  does not implement same-process display reclamation or bounded rendering.
+- Add inline newest-sample retention, allocation-free borrowed-image preview and
+  bitmap warning rasterization. Oversized/invalid surfaces are refused before writes.
+  No registry package/version or global allocator is added.
+- Make shell pending toasts keep newest display text by default, reclaim older
+  optional display items on fallible allocation failure and expose omission status.
+  Accepted device-command ordering and protected notification records are retained.
+- Bound and fallibly allocate card-frost processing; large views become coarser
+  and failed optional work leaves an opaque card.
+- Avoid heads-up deadline overflow for Duration::MAX; unrepresentable deadlines
+  retain the banner until dismissed rather than panicking.
+
 - Withdraw the production fixed-heap feature: imposing a global hard limit cannot
   make infallible egui/Rust OOM recoverable. Keep the unpublished allocator only as
   an isolated failure-injection diagnostic, outside product dependency graphs.
@@ -19,18 +32,9 @@ All notable changes to the fairing crates are recorded here. The format follows
   failure, reclaim toast icon caches and retry visible storage after 100 ms.
 - Require actual exhausted-arena refusal, continued preallocated queue work and
   display recovery after memory release; the lab abort control is not a production
-  recovery acceptance test. Same-process complete renderer OOM recovery remains unsupported;
-  the optional Linux supervisor instead keeps an independent work engine alive.
+  recovery acceptance test. Whole-renderer no-abort behavior is still unsupported.
 
 ### Added
-
-- Optional `fairing-process` Linux supervisor and `fairing/process` re-export:
-  private inherited Unix streams, fixed model/intent bounds, non-wrapping generations,
-  immediate authority-context invalidation, per-model watchdogs, child address-space
-  limits, reaping and finite restart backoff. The engine independently authorizes intents.
-- Separate engine/window examples, real egui UI/tessellation OOM survival/restart trials,
-  malformed/partial/replayed/context/overflow protocol checks and a real-window CI check.
-  egui remains unchanged; no registry package or version is added.
 
 - Public `Inbox::bounded`, `BoundedSender`/`BoundedInbox`, ownership-preserving
   `Full`/`Disconnected` errors, lazy factories, bounded drains and queue statistics.
@@ -47,6 +51,10 @@ All notable changes to the fairing crates are recorded here. The format follows
 
 ### Changed
 
+- Shell::toast and ShellHandle::toast accept ToastInput so borrowed text uses
+  fallible construction. String and Toast still transfer ownership; custom
+  Into<Toast> types need explicit conversion. Void handle toast rejection omits
+  display work without logging after allocation failure.
 - Command::Notify/Toast/SetMotion now carry values inline; remove Box::new at
   explicit command construction sites. Rejected command ownership stays inline
   too, avoiding an allocation while reporting an allocation failure.
@@ -55,7 +63,8 @@ All notable changes to the fairing crates are recorded here. The format follows
 
 - Shell commands now have a default 1,024-slot limit and a 256-command update
   budget. `send` returns false on full as well as closed; void convenience methods
-  log refusal. Accepted work is not evicted. Use fallible APIs for critical work.
+  generally log refusal (toast helpers omit it). Accepted work is not evicted.
+  Use fallible APIs for critical work.
 
 - Upgrade egui, eframe and their paint crates from 0.36.2 to 0.37.0. The runner retains
   bundled fonts, GL and OS clipboard support. eframe's overdue-Wayland-redraw fallback
