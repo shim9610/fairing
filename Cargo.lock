@@ -672,6 +672,7 @@ version = "0.1.0"
 dependencies = [
  "egui",
  "fairing",
+ "log",
  "spinning_top",
  "talc",
 ]

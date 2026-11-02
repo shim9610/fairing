@@ -16,8 +16,15 @@ allocators are outside its budget. Do not select it as a device recovery policy.
 
 The example requires real fallible display operations to refuse memory, release
 reservations and resume after memory is freed, while preallocated work continues.
-An isolated infallible-allocation control demonstrates the remaining abort.
-That failure is a documented limitation, not a passing production recovery test.
+The exhaustion checks include cache hits, cold-icon refusal and cache reclamation,
+notification dismissal deferral/retry, fallible command factories and rejection paths
+that must not invoke an application logger. They keep shell panic quarantine clear.
+
+Separate infallible-allocation and stock-egui-frame controls demonstrate the remaining
+abort. The frame control prepares `RawInput` before exhausting the arena, then calls
+`Context::run_ui` on the warmed context. That failure is a documented limitation,
+not a passing production recovery test. Run both controls through
+`python3 verification/memory.py` (Linux); the main pressure trial also runs on Windows.
 
 Only this diagnostic crate has a scoped unsafe static-arena ownership transfer;
 allocator mechanics and spinlock synchronization are upstream. Both UI crates

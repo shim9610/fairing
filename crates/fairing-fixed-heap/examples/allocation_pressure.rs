@@ -10,7 +10,23 @@ mod backdrop;
 
 use fairing::{inbox::Inbox, memory::FixedPool, LaunchAction, Shell, ShellConfig};
 
+static LOG_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+struct CountingLogger;
+impl log::Log for CountingLogger {
+    fn enabled(&self, _: &log::Metadata<'_>) -> bool {
+        true
+    }
+    fn log(&self, _: &log::Record<'_>) {
+        LOG_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+    fn flush(&self) {}
+}
+static LOGGER: CountingLogger = CountingLogger;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    log::set_logger(&LOGGER)?;
+    log::set_max_level(log::LevelFilter::Warn);
+    let exhaust_frame = std::env::args().any(|arg| arg == "--egui-frame-exhaust");
     #[cfg(feature = "global")]
     if std::env::args().any(|arg| arg == "--infallible-exhaust") {
         // Expected to abort only in verification/memory.py's isolated negative control.
@@ -83,6 +99,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     #[cfg(feature = "global")]
     {
+        if exhaust_frame {
+            let input = fairing::egui::RawInput::default();
+            let ArenaPressure { ballast, exhausted } = exhaust_arena()?;
+            if !exhausted {
+                drop(ballast);
+                return Err("arena exhaustion fixture failed".into());
+            }
+            // Negative control: ordinary stock-egui frame entry can still abort before Shell runs.
+            ctx.run_ui(input, |ui| shell.frame(ui))
+                .drop_without_applying_deltas();
+            drop(ballast);
+            return Err("stock egui frame unexpectedly survived exhaustive pressure".into());
+        }
         bounded_display_pressure()?;
         recoverable_pressure()?;
         let stats = fairing_fixed_heap::try_stats().ok_or("allocator busy")?;
@@ -95,6 +124,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(feature = "global"))]
     println!("system heap: bounded queue and fixed object pool checks passed");
     Ok(())
+}
+
+#[cfg(feature = "global")]
+struct ArenaPressure {
+    ballast: Vec<Vec<u8>>,
+    exhausted: bool,
+}
+
+#[cfg(feature = "global")]
+fn exhaust_arena() -> Result<ArenaPressure, Box<dyn std::error::Error>> {
+    let mut ballast = Vec::new();
+    ballast.try_reserve_exact(1024)?;
+    ballast.resize_with(1024, Vec::<u8>::new);
+    for buffer in &mut ballast {
+        let mut size = fairing_fixed_heap::try_stats()
+            .ok_or("allocator busy")?
+            .available_bytes
+            .max(2)
+            / 2;
+        loop {
+            if buffer.try_reserve_exact(size).is_ok() {
+                break;
+            }
+            if size <= 1 {
+                return Ok(ArenaPressure {
+                    ballast,
+                    exhausted: true,
+                });
+            }
+            size /= 2;
+        }
+    }
+    Ok(ArenaPressure {
+        ballast,
+        exhausted: false,
+    })
 }
 
 /// Exhaust the real diagnostic arena, exercise fallible display paths and resume after release.
@@ -232,6 +297,25 @@ fn bounded_display_pressure() -> Result<(), Box<dyn std::error::Error>> {
         .command_queue_capacity(2)
         .build(&context)?;
     let handle = shell.handle();
+    let notification_id = fairing::notify::NotificationId(888);
+    shell.try_notify(fairing::notify::Notification::new(
+        notification_id,
+        "retain until event fits",
+    ))?;
+    drop(shell.poll_events()); // No spare event buffer may mask an allocation failure.
+    let reject_shell = fairing::Shell::builder(fairing::testing::single_level_access())
+        .command_queue_capacity(1)
+        .build(&context)?;
+    let reject_handle = reject_shell.handle();
+    reject_handle.home(); // Full queue before exhaustion; later convenience sends must not log.
+    let icon = fairing::icons::find("check").ok_or("missing fixture icon")?;
+    let mut cold_icons = fairing::icons::IconCache::new();
+    let mut warm_icons = fairing::icons::IconCache::new().with_capacity_limit(2);
+    let _ = warm_icons.try_get(icon, 24.0)?;
+    let painter = context.layer_painter(egui::LayerId::background());
+    let mut icon_set = fairing::icons::IconSet::new();
+    let icon_theme = fairing::Theme::default();
+    let icon_style = fairing::icons::IconStyle::default();
     let (work, receive) = fairing::inbox::Inbox::<u32>::bounded(2)?;
     let mut ballast: Vec<Vec<u8>> = Vec::new();
     ballast.try_reserve_exact(1024)?;
@@ -255,7 +339,31 @@ fn bounded_display_pressure() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     // From here to ballast release: no formatting/boxing or new fixture allocation.
+    let log_before = LOG_CALLS.load(std::sync::atomic::Ordering::Relaxed);
     let before = fairing_fixed_heap::try_stats().map(|s| s.total_allocations);
+    let cached_hit = warm_icons.try_get(icon, 24.0).is_ok();
+    let flattened_omitted = fairing::icons::flatten(icon, 24.0).polylines.is_empty()
+        && fairing::icons::try_flatten(icon, 24.0).is_err();
+    let cold_omitted =
+        cold_icons.get(icon, 24.0).is_none() && cold_icons.display_status().allocation_failed;
+    let unknown_omitted = !icon_set.paint(
+        &painter,
+        egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(24.0, 24.0)),
+        &fairing::icons::IconRef::Builtin("missing-pressure-fixture"),
+        &icon_style,
+        &icon_theme,
+    );
+    let dismissal_deferred = shell.try_dismiss_notification(notification_id)
+        == Err(AdmissionError::AllocationFailed)
+        && shell.notifications().get(notification_id).is_some()
+        && shell.notifications().unread() == 1;
+    reject_handle.home();
+    reject_handle.back();
+    reject_handle.notify(fairing::notify::Notification::new(
+        fairing::notify::NotificationId(0),
+        String::new(),
+    ));
+    let no_rejection_log = LOG_CALLS.load(std::sync::atomic::Ordering::Relaxed) == log_before;
     let status = window.extend(&samples);
     let clipped = status.discarded == 9968 && window.recent(4).copied().eq(9996..10000);
     let preview = paint_image_preview(&source, [512, 512], &mut pixels, [64, 64], 4096)
@@ -287,8 +395,24 @@ fn bounded_display_pressure() -> Result<(), Box<dyn std::error::Error>> {
     for i in 0..10000u32 {
         continued &= work.try_send(i).is_ok() && receive.try_recv() == Ok(i);
     }
+    let factory_refused = matches!(
+        handle.try_send_fallible_with(
+            || fairing::notify::Toast::try_new(&new_text).map(fairing::shell::Command::Toast)
+        ),
+        Err(fairing::inbox::TryBuildSendError::Build(
+            AdmissionError::AllocationFailed
+        ))
+    ) && handle.queue_stats().outstanding == 0;
+    let command_admitted = handle
+        .try_send_fallible_with(|| Ok::<_, AdmissionError>(fairing::shell::Command::Home))
+        .is_ok();
+    let not_faulted = !shell.is_faulted() && !reject_shell.is_faulted();
     let after = fairing_fixed_heap::try_stats().map(|s| s.total_allocations);
     let zero_allocations = before.is_some() && before == after;
+    // A cold cache cannot grow; reclaim the old warm entry before retrying the same-sized path.
+    let icon_reclaimed = warm_icons.try_get(icon, 32.0).is_ok()
+        && warm_icons.len() == 1
+        && warm_icons.display_status().allocation_failed;
     // The oldest pending text is actually freed before constructing its replacement.
     let replaced = recent.try_push_text(&new_text).is_ok()
         && recent.pending() == 1
@@ -297,7 +421,29 @@ fn bounded_display_pressure() -> Result<(), Box<dyn std::error::Error>> {
         && recent.pending() == 1
         && recent.take_display_status().discarded == 1;
     drop(ballast);
+    let dismissal_resumed = shell.try_dismiss_notification(notification_id) == Ok(true)
+        && shell.notifications().get(notification_id).is_none()
+        && shell
+            .poll_events()
+            .iter()
+            .filter(|event| {
+                matches!(event,
+            fairing::ShellEvent::NotificationDismissed(id) if *id == notification_id)
+            })
+            .count()
+            == 1;
     if !(exhausted
+        && cached_hit
+        && flattened_omitted
+        && cold_omitted
+        && unknown_omitted
+        && dismissal_deferred
+        && dismissal_resumed
+        && no_rejection_log
+        && factory_refused
+        && command_admitted
+        && icon_reclaimed
+        && not_faulted
         && clipped
         && preview
         && warned
@@ -313,6 +459,7 @@ fn bounded_display_pressure() -> Result<(), Box<dyn std::error::Error>> {
     {
         return Err("bounded display pressure invariant failed".into());
     }
+    println!("fallible-ui-storage: cache hit without allocation; cold icons omitted; old icon cache reclaimed; dismissal deferred then reported once; command factory reservation returned; rejection logger not invoked");
     println!("bounded-display: actual one-byte exhaustion; oldest text freed/replaced; preview clipped; warning raster painted; failed banner/blur/text omitted; 10000 work commands continued; zero allocations in clipped preview/warning/work interval");
     Ok(())
 }

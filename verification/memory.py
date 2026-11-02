@@ -26,19 +26,21 @@ for capacity in [None, 16 * 1024 * 1024, 64 * 1024 * 1024]:
     with path.open("w") as log:
         result = subprocess.run(command, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
     text = path.read_text()
-    if result.returncode or (capacity is not None and (f"capacity={capacity}" not in text or ("recoverable-pressure:" not in text or "bounded-display:" not in text))):
+    if result.returncode or (capacity is not None and (f"capacity={capacity}" not in text or ("recoverable-pressure:" not in text or "bounded-display:" not in text or "fallible-ui-storage:" not in text))):
         print(text[-12000:])
         raise SystemExit(f"Memory mode failed: {path}")
     results.append({"capacity": capacity, "command": command, "exit_code": result.returncode, "log": str(path)})
     if capacity is not None:
-        path = OUT / (name + "-exhaustion.log")
-        with path.open("w") as log:
-            control = subprocess.run([str(target / "debug/examples/allocation_pressure"), "--infallible-exhaust"],
-                                     cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT,
-                                     preexec_fn=no_core_dump)
-        if control.returncode == 0 or "memory allocation" not in path.read_text():
-            raise SystemExit(f"Infallible exhaustion did not fail as expected: {path}")
-        results.append({"capacity": capacity, "unsupported_infallible_lab_control": True,
-                        "exit_code": control.returncode, "log": str(path)})
+        for label, argument in [("infallible-allocation", "--infallible-exhaust"),
+                                ("stock-egui-frame", "--egui-frame-exhaust")]:
+            path = OUT / (name + "-" + label + ".log")
+            with path.open("w") as log:
+                control = subprocess.run([str(target / "debug/examples/allocation_pressure"), argument],
+                                         cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT,
+                                         preexec_fn=no_core_dump)
+            if control.returncode == 0 or "memory allocation" not in path.read_text():
+                raise SystemExit(f"Unsupported {label} exhaustion did not fail as expected: {path}")
+            results.append({"capacity": capacity, "unsupported_infallible_lab_control": label,
+                            "exit_code": control.returncode, "log": str(path)})
     (OUT / "summary.json").write_text(json.dumps(results, indent=2) + "\n")
     print(name + ": verified capacity, reuse, and exhaustion behavior", flush=True)

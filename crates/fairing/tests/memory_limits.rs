@@ -158,3 +158,40 @@ fn display_loss_uses_the_prepared_warning_until_acknowledged() -> fairing::Resul
     output.drop_without_applying_deltas();
     Ok(())
 }
+
+#[test]
+fn fallible_shell_factory_releases_reservation_and_skips_closed_or_full_work() -> fairing::Result<()>
+{
+    use fairing::inbox::TryBuildSendError;
+    let ctx = fairing::egui::Context::default();
+    let shell = Shell::builder(fairing::testing::single_level_access())
+        .command_queue_capacity(1)
+        .build(&ctx)?;
+    let handle = shell.handle();
+    assert!(matches!(
+        handle.try_send_fallible_with(|| Err("cannot allocate payload")),
+        Err(TryBuildSendError::Build("cannot allocate payload"))
+    ));
+    assert_eq!(handle.queue_stats().outstanding, 0);
+    handle
+        .try_send_fallible_with(|| Ok::<_, ()>(Command::Home))
+        .unwrap();
+    let calls = std::cell::Cell::new(0);
+    assert!(matches!(
+        handle.try_send_fallible_with(|| {
+            calls.set(calls.get() + 1);
+            Ok::<_, ()>(Command::Back)
+        }),
+        Err(TryBuildSendError::Queue(QueueErrorKind::Full))
+    ));
+    drop(shell);
+    assert!(matches!(
+        handle.try_send_fallible_with(|| {
+            calls.set(calls.get() + 1);
+            Ok::<_, ()>(Command::Back)
+        }),
+        Err(TryBuildSendError::Queue(QueueErrorKind::Disconnected))
+    ));
+    assert_eq!(calls.get(), 0);
+    Ok(())
+}

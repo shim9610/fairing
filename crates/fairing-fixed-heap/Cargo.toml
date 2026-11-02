@@ -33,6 +33,7 @@ panic = "deny"
 indexing_slicing = "warn"
 
 [dev-dependencies]
+log = { workspace = true }
 egui = { workspace = true }
 fairing = { path = "../fairing", version = "0.1.0", default-features = false }
 

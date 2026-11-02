@@ -1152,6 +1152,10 @@ impl Shell {
     /// Reporting does not enqueue another toast or allocate warning text.
     pub fn take_display_status(&mut self) -> crate::memory::DisplayStatus {
         self.display_status.merge(self.handle.display_status(true));
+        self.display_status
+            .merge(self.icons.cache.take_display_status());
+        #[cfg(feature = "osk")]
+        self.display_status.merge(self.osk.0.take_display_status());
         self.display_status.merge(self.toasts.take_display_status());
         self.display_status
             .merge(self.heads_up.take_display_status());
@@ -1162,13 +1166,38 @@ impl Shell {
         self.display_status.merge(status);
     }
 
-    /// Dismiss a notification. `false` for a persistent one.
+    /// Dismiss a notification. `false` for a persistent/missing item or unavailable event storage.
+    /// If storage is unavailable the notification is retained; use [`Self::try_dismiss_notification`]
+    /// to distinguish that case and retry later.
     pub fn dismiss_notification(&mut self, id: NotificationId) -> bool {
-        let ok = self.notifications.dismiss(id);
-        if ok {
+        self.try_dismiss_notification(id).unwrap_or(false)
+    }
+
+    /// Reserve the dismissal event before removing a notification. Failure leaves both the
+    /// retained notification and its unread state unchanged; nothing is reported as completed.
+    ///
+    /// # Errors
+    /// Event storage cannot grow. No logging, rendering or warning allocation is performed.
+    pub fn try_dismiss_notification(
+        &mut self,
+        id: NotificationId,
+    ) -> std::result::Result<bool, crate::notify::AdmissionError> {
+        if self
+            .notifications
+            .get(id)
+            .is_none_or(|note| note.persistent)
+        {
+            return Ok(false);
+        }
+        if self.events.try_reserve(1).is_err() {
+            self.display_status.allocation_failed = true;
+            return Err(crate::notify::AdmissionError::AllocationFailed);
+        }
+        let dismissed = self.notifications.dismiss(id);
+        if dismissed {
             self.events.push(ShellEvent::NotificationDismissed(id));
         }
-        ok
+        Ok(dismissed)
     }
 
     /// Replace the motion tokens (the tuning tool, `examples/motion_lab.rs`). The gesture engine's
@@ -1938,6 +1967,9 @@ impl Shell {
     fn paint_display_notice(&self, ctx: &egui::Context) {
         let mut status = self.display_status;
         status.merge(self.handle.display_status(false));
+        status.merge(self.icons.cache.display_status());
+        #[cfg(feature = "osk")]
+        status.merge(self.osk.0.display_status());
         status.merge(self.toasts.display_status());
         status.merge(self.heads_up.display_status());
         if !status.is_reduced() {

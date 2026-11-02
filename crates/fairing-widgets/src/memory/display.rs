@@ -7,7 +7,7 @@ pub struct DisplayStatus {
     /// Display items/samples omitted by retention, view limits or rejection.
     /// Merged observations may overlap; this is not a count of lost acquisition records.
     pub discarded: usize,
-    /// Optional display allocation failed and its work was omitted.
+    /// An optional display allocation failed. Reclamation may subsequently have succeeded.
     pub allocation_failed: bool,
 }
 impl DisplayStatus {

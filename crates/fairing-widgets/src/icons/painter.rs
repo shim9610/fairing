@@ -24,8 +24,7 @@
 use super::{IconDef, Seg};
 use egui::epaint::{PathShape, PathStroke};
 use egui::{Color32, Painter, Pos2, Rect, Shape, Stroke, Vec2};
-use std::collections::HashMap;
-use std::rc::Rc;
+use std::collections::TryReserveError;
 
 /// One flattened subpath. The coordinates are pixels with **the icon's top-left as the origin**.
 #[derive(Debug, Clone, PartialEq)]
@@ -75,59 +74,64 @@ impl Builder {
 
     /// Push out the subpath collected so far. A single-point one (`M12 20h.01` and the like) is
     /// doubled so the round cap makes a dot.
-    fn flush(&mut self, closed: bool) {
-        match self.current.len() {
-            0 => {}
-            1 => {
-                let point = self.current.first().copied().unwrap_or(Pos2::ZERO);
-                self.current.clear();
-                self.polylines.push(Polyline {
-                    points: vec![point, point],
-                    closed: false,
-                });
-            }
-            _ => self.polylines.push(Polyline {
-                points: std::mem::take(&mut self.current),
-                closed,
-            }),
+    fn flush(&mut self, closed: bool) -> Result<(), TryReserveError> {
+        if self.current.is_empty() {
+            return Ok(());
         }
+        self.polylines.try_reserve(1)?;
+        let single = self.current.len() == 1;
+        if let Some(point) = self.current.first().copied().filter(|_| single) {
+            self.current.try_reserve(1)?;
+            self.current.push(point);
+        }
+        self.polylines.push(Polyline {
+            points: std::mem::take(&mut self.current),
+            closed: closed && !single,
+        });
+        Ok(())
     }
 
-    /// Called just before a drawing command. Straight after a `Z`, it restarts from the start point.
-    fn resume(&mut self) {
+    fn resume(&mut self) -> Result<(), TryReserveError> {
         if self.current.is_empty() {
             if let Some(start) = self.pending.take() {
+                self.current.try_reserve(1)?;
                 self.cursor = start;
                 self.current.push(start);
             }
         }
+        Ok(())
     }
 
-    fn move_to(&mut self, point: Pos2) {
-        self.flush(false);
+    fn move_to(&mut self, point: Pos2) -> Result<(), TryReserveError> {
+        self.flush(false)?;
+        self.current.try_reserve(1)?;
         self.pending = None;
         self.cursor = point;
         self.current.push(point);
+        Ok(())
     }
 
-    fn line_to(&mut self, point: Pos2) {
-        self.resume();
+    fn line_to(&mut self, point: Pos2) -> Result<(), TryReserveError> {
+        self.resume()?;
+        self.current.try_reserve(1)?;
         self.cursor = point;
         self.current.push(point);
+        Ok(())
     }
 
-    fn close(&mut self) {
+    fn close(&mut self) -> Result<(), TryReserveError> {
         let start = self.current.first().copied();
-        self.flush(true);
+        self.flush(true)?;
         self.pending = start;
         if let Some(start) = start {
             self.cursor = start;
         }
+        Ok(())
     }
 
-    fn finish(mut self) -> Vec<Polyline> {
-        self.flush(false);
-        self.polylines
+    fn finish(mut self) -> Result<Vec<Polyline>, TryReserveError> {
+        self.flush(false)?;
+        Ok(self.polylines)
     }
 }
 
@@ -135,19 +139,32 @@ impl Builder {
 ///
 /// The coordinate system is pixels with the icon's top-left as the origin. Curves are subdivided
 /// evenly into 4–16 pieces by size, and the same `(def, size_px)` always gives
-/// the same result (it is deterministic).
+/// the same result (it is deterministic). If allocation fails, returns an empty path;
+/// use [`try_flatten`] to distinguish that omission from an empty definition.
 #[must_use]
 pub fn flatten(def: &IconDef, size_px: f32) -> Flattened {
+    try_flatten(def, size_px).unwrap_or_else(|_| Flattened {
+        polylines: Vec::new(),
+        fill: def.fill,
+    })
+}
+
+/// Flatten using fallible storage throughout. No partially built path is returned.
+///
+/// # Errors
+/// The path's point/subpath buffers cannot grow. All temporary storage is released.
+pub fn try_flatten(def: &IconDef, size_px: f32) -> Result<Flattened, TryReserveError> {
     let scale = size_px / 24.0;
     let n = subdivisions(size_px);
     let map = |x: f32, y: f32| Pos2::new(x * scale, y * scale);
     let mut build = Builder::new();
     for seg in def.segs {
         match *seg {
-            Seg::M(x, y) => build.move_to(map(x, y)),
-            Seg::L(x, y) => build.line_to(map(x, y)),
+            Seg::M(x, y) => build.move_to(map(x, y))?,
+            Seg::L(x, y) => build.line_to(map(x, y))?,
             Seg::Q(cx, cy, x, y) => {
-                build.resume();
+                build.resume()?;
+                build.current.try_reserve(n)?;
                 let (p0, p1, p2) = (build.cursor, map(cx, cy), map(x, y));
                 for i in 1..=n {
                     let t = i as f32 / n as f32;
@@ -160,7 +177,8 @@ pub fn flatten(def: &IconDef, size_px: f32) -> Flattened {
                 build.cursor = p2;
             }
             Seg::C(ax, ay, bx, by, x, y) => {
-                build.resume();
+                build.resume()?;
+                build.current.try_reserve(n)?;
                 let (p0, p1, p2, p3) = (build.cursor, map(ax, ay), map(bx, by), map(x, y));
                 for i in 1..=n {
                     let t = i as f32 / n as f32;
@@ -178,40 +196,135 @@ pub fn flatten(def: &IconDef, size_px: f32) -> Flattened {
                 }
                 build.cursor = p3;
             }
-            Seg::Z => build.close(),
+            Seg::Z => build.close()?,
         }
     }
-    Flattened {
-        polylines: build.finish(),
+    Ok(Flattened {
+        polylines: build.finish()?,
         fill: def.fill,
-    }
+    })
 }
 
-/// The polyline cache per icon path and pixel size. Owned by the shell.
-///
-/// The key is the path itself — where its segments live, how many there are, and whether it
-/// fills — not [`IconDef::name`], so two icons that share a name (two registrations, or a
-/// registration and a built-in) still draw as themselves.
-#[derive(Debug, Default)]
+/// A cache lookup could not produce an icon. No partial icon is returned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IconCacheError {
+    /// Capacity zero disables cached icon display.
+    Disabled,
+    /// Storage still could not grow after reclaiming older cached paths.
+    AllocationFailed,
+}
+impl std::fmt::Display for IconCacheError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Disabled => "icon cache disabled",
+            Self::AllocationFailed => "icon storage unavailable",
+        })
+    }
+}
+impl std::error::Error for IconCacheError {}
+
+#[derive(Debug)]
+struct CacheEntry {
+    key: (usize, usize, bool, u32),
+    flat: Flattened,
+}
+
+/// Bounded per-path/size cache; default 128 entries, oldest-created paths reclaimed first.
+/// Keys include segment identity, segment count, fill and rounded size (not the icon name).
+/// Entries own their paths directly; no infallible reference-count allocation is needed.
+#[derive(Debug)]
 pub struct IconCache {
-    entries: HashMap<(usize, usize, bool, u32), Rc<Flattened>>,
+    entries: Vec<CacheEntry>,
+    capacity: usize,
+    status: crate::memory::DisplayStatus,
+}
+
+impl Default for IconCache {
+    fn default() -> Self {
+        Self {
+            entries: Vec::new(),
+            capacity: 128,
+            status: crate::memory::DisplayStatus::default(),
+        }
+    }
 }
 
 impl IconCache {
-    /// An empty cache.
+    /// An empty cache with at most 128 entries.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Take it from the cache, or flatten and insert it. The key's size is the rounded integer pixel size.
-    pub fn get(&mut self, def: &IconDef, size_px: f32) -> Rc<Flattened> {
+    /// Set the entry limit, dropping oldest entries if necessary. Zero disables icon display.
+    /// This does not allocate and is an entry limit, not a process or renderer byte budget.
+    #[must_use]
+    pub fn with_capacity_limit(mut self, capacity: usize) -> Self {
+        self.capacity = capacity;
+        let remove = self.entries.len().saturating_sub(capacity);
+        self.entries.drain(..remove);
+        self
+    }
+
+    /// Borrow a cached path, or omit it if storage is unavailable. Observe [`Self::display_status`]
+    /// or use [`Self::try_get`] for the reason. The borrow ends before the next cache mutation.
+    pub fn get(&mut self, def: &IconDef, size_px: f32) -> Option<&Flattened> {
+        self.try_get(def, size_px).ok()
+    }
+
+    /// Borrow or build a complete cached path with fallible allocations. A cache hit does not allocate.
+    /// On failure, reclaim oldest cached paths one at a time and retry; never spin without reclamation.
+    ///
+    /// # Errors
+    /// Capacity is zero, or allocation still fails after all old paths have been reclaimed.
+    pub fn try_get(&mut self, def: &IconDef, size_px: f32) -> Result<&Flattened, IconCacheError> {
+        if self.capacity == 0 {
+            self.status.discarded = self.status.discarded.saturating_add(1);
+            return Err(IconCacheError::Disabled);
+        }
         let px = size_px.round().max(1.0) as u32;
         let key = (def.segs.as_ptr().addr(), def.segs.len(), def.fill, px);
-        self.entries
-            .entry(key)
-            .or_insert_with(|| Rc::new(flatten(def, px as f32)))
-            .clone()
+        if let Some(index) = self.entries.iter().position(|entry| entry.key == key) {
+            return self
+                .entries
+                .get(index)
+                .map(|entry| &entry.flat)
+                .ok_or(IconCacheError::AllocationFailed);
+        }
+        if self.entries.len() >= self.capacity {
+            self.entries.remove(0);
+        }
+        loop {
+            let built = self
+                .entries
+                .try_reserve_exact(1)
+                .and_then(|()| try_flatten(def, px as f32));
+            if let Ok(flat) = built {
+                self.entries.push(CacheEntry { key, flat });
+                return self
+                    .entries
+                    .last()
+                    .map(|entry| &entry.flat)
+                    .ok_or(IconCacheError::AllocationFailed);
+            }
+            self.status.allocation_failed = true;
+            if self.entries.is_empty() {
+                self.status.discarded = self.status.discarded.saturating_add(1);
+                return Err(IconCacheError::AllocationFailed);
+            }
+            self.entries.remove(0);
+        }
+    }
+
+    /// Omission/pressure observations without allocation.
+    #[must_use]
+    pub const fn display_status(&self) -> crate::memory::DisplayStatus {
+        self.status
+    }
+
+    /// Take and acknowledge pressure observations.
+    pub fn take_display_status(&mut self) -> crate::memory::DisplayStatus {
+        std::mem::take(&mut self.status)
     }
 
     /// The entry count.
@@ -226,9 +339,9 @@ impl IconCache {
         self.entries.is_empty()
     }
 
-    /// Throw it all away (when the theme or the scale changed and the size distribution is different).
+    /// Release paths and cache metadata. Does not clear unacknowledged pressure observations.
     pub fn clear(&mut self) {
-        self.entries.clear();
+        self.entries = Vec::new();
     }
 }
 
@@ -266,13 +379,17 @@ pub fn paint(
     if size <= 0.0 || color == Color32::TRANSPARENT {
         return;
     }
-    let flat = cache.get(def, size);
+    let Some(flat) = cache.get(def, size) else {
+        return;
+    };
     let offset = (rect.center() - Vec2::splat(size / 2.0)).to_vec2();
     let cap = stroke_px / 2.0;
+    let mut omitted = 0usize;
     for line in &flat.polylines {
         if flat.fill {
             if line.points.len() >= 3 {
                 let Some(points) = translated(line, offset) else {
+                    omitted = omitted.saturating_add(1);
                     continue;
                 };
                 painter.add(Shape::Path(PathShape::convex_polygon(
@@ -299,6 +416,7 @@ pub fn paint(
             }
             _ => {
                 let Some(points) = translated(line, offset) else {
+                    omitted = omitted.saturating_add(1);
                     continue;
                 };
                 let stroke = PathStroke::new(stroke_px, color);
@@ -315,6 +433,10 @@ pub fn paint(
                 }
             }
         }
+    }
+    if omitted != 0 {
+        cache.status.allocation_failed = true;
+        cache.status.discarded = cache.status.discarded.saturating_add(omitted);
     }
 }
 
@@ -346,6 +468,27 @@ mod tests {
         segs: &[Seg::M(12.0, 20.0), Seg::L(12.01, 20.0)],
         fill: false,
     };
+
+    #[test]
+    fn retention_limit_reclaims_oldest_created_path_and_zero_omits() {
+        let mut cache = IconCache::new().with_capacity_limit(2);
+        assert!(cache.try_get(&MINUS, 24.0).is_ok());
+        assert!(cache.try_get(&MINUS, 32.0).is_ok());
+        assert!(cache.try_get(&MINUS, 24.0).is_ok()); // Hits do not allocate or reorder.
+        assert!(cache.try_get(&MINUS, 48.0).is_ok());
+        assert_eq!(cache.len(), 2);
+        let sizes: Vec<_> = cache.entries.iter().map(|entry| entry.key.3).collect();
+        assert_eq!(sizes, [32, 48]);
+        assert!(!cache.display_status().is_reduced()); // Cache eviction did not omit this icon.
+        let mut cache = cache.with_capacity_limit(0);
+        assert!(cache.is_empty());
+        assert_eq!(
+            cache.try_get(&MINUS, 24.0),
+            Err(super::IconCacheError::Disabled)
+        );
+        assert_eq!(cache.take_display_status().discarded, 1);
+        assert!(!cache.display_status().is_reduced());
+    }
 
     #[test]
     fn flatten_scales_to_size() {
@@ -533,12 +676,13 @@ mod tests {
     #[test]
     fn cache_is_keyed_by_rounded_size() {
         let mut cache = IconCache::new();
-        let a = cache.get(&MINUS, 24.2);
-        let b = cache.get(&MINUS, 23.8);
-        assert!(std::rc::Rc::ptr_eq(&a, &b));
+        let a = cache.get(&MINUS, 24.2).map(std::ptr::from_ref);
+        let b = cache.get(&MINUS, 23.8).map(std::ptr::from_ref);
+        assert!(a.is_some());
+        assert_eq!(a, b);
         assert_eq!(cache.len(), 1);
-        let c = cache.get(&MINUS, 32.0);
-        assert!(!std::rc::Rc::ptr_eq(&a, &c));
+        let c = cache.get(&MINUS, 32.0).map(std::ptr::from_ref);
+        assert!(c.is_some());
         assert_eq!(cache.len(), 2);
         cache.clear();
         assert!(cache.is_empty());

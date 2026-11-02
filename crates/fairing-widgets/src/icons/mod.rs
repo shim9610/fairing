@@ -15,7 +15,7 @@ pub mod parametric;
 
 pub use crossfade::ParamFade;
 pub use generated::ICONS;
-pub use painter::{flatten, paint, Flattened, IconCache, Polyline};
+pub use painter::{flatten, paint, try_flatten, Flattened, IconCache, IconCacheError, Polyline};
 
 use crate::theme::{ColorRole, Theme};
 use egui::{Color32, Painter, Rect};
@@ -259,8 +259,6 @@ pub struct IconSet {
     pub cache: IconCache,
     custom: Vec<IconDef>,
     painters: Vec<IconPainter>,
-    /// Built-in icon names already warned about. The same typo is not reported again every frame.
-    warned: std::collections::BTreeSet<String>,
 }
 
 impl IconSet {
@@ -304,12 +302,8 @@ impl IconSet {
         match icon {
             IconRef::Builtin(name) => {
                 let Some(def) = find(name) else {
-                    // It warns **once**. This is called every frame, so left as it is the log pours out,
-                    // and passing quietly leaves an integrator unable to find the typo — an icon not
-                    // showing with nothing said about it is the worst of the two.
-                    if self.warned.insert((*name).to_owned()) {
-                        log::warn!("no built-in icon named \"{name}\" - check the spelling");
-                    }
+                    // Omit invalid optional display work without allocating diagnostics.
+                    // The caller can observe false and decide how/when to report it.
                     return false;
                 };
                 paint(

@@ -6,6 +6,20 @@ All notable changes to the fairing crates are recorded here. The format follows
 
 ## Unreleased
 
+### Changed
+
+- Make icon flattening and cache admission fallible, bound caches to 128 entries by
+  default, reclaim oldest paths before retrying and omit icons when storage cannot
+  grow. `IconCache::get` now returns `Option<&Flattened>` instead of `Rc<Flattened>`;
+  `try_get` exposes the error. The cache owns paths without reference-count allocation.
+- Reserve notification dismissal events before deleting retained/unread state;
+  expose `try_dismiss_notification` so callers can retry after allocation failure.
+- Add `ShellHandle::try_send_fallible_with`. Rejection conveniences and unknown icon
+  lookup no longer invoke user loggers that could allocate while memory is exhausted.
+- Extend real 16/64 MiB exhaustion checks for these paths. An ordinary stock-egui
+  frame still fails the separate exhaustive-heap negative control; full renderer
+  OOM survival remains unsupported.
+
 ### Added
 
 - Developer-controlled `Shell::restart_with` and runner recovery callbacks. Fresh

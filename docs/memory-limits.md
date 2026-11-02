@@ -173,6 +173,48 @@ operations. Completing a whole-shell guarantee requires those rendering paths to
 propagate refusal or run through an allocation-free presentation backend. A green
 bounded-display test is not evidence that this remaining requirement is complete.
 
+## Icon storage, deferred dismissal and producer rejection
+
+Icon curve flattening reserves every point/subpath buffer fallibly. `try_flatten`
+returns an allocation error; the compatibility `flatten` returns an empty path if
+it cannot build the complete result. No partial cache entry is published.
+`IconCache` owns paths directly, avoiding an infallible `Rc::new` on cache misses.
+It defaults to 128 entries; `with_capacity_limit(n)` selects another entry limit,
+including zero to omit cached icon display. This limits entries, not all renderer
+bytes. A hit allocates nothing. New entries replace the oldest-created paths at
+capacity; allocation failures reclaim older paths one at a time before retrying.
+Each retry removes an entry, so failure cannot create an unbounded retry loop.
+If reclamation is insufficient, drawing omits the icon and records display status.
+
+`IconCache::get` now returns `Option<&Flattened>` instead of `Rc<Flattened>`.
+Handle `None`, and end the borrowed view before mutating the cache again. `try_get`
+returns `IconCacheError` for callers needing the reason. `clear` releases both
+paths and metadata. The cache, shell, toast/banner and keyboard status paths expose
+allocation failures without allocating diagnostic text. Unknown built-in icon names
+return `false` from `IconSet::paint` without invoking a logger.
+
+`Shell::try_dismiss_notification` reserves its completion event before deleting
+anything. If allocation fails, it returns `AdmissionError::AllocationFailed` and
+preserves the notification and unread state. The Boolean convenience returns false;
+a later application attempt can complete once memory is available. A queued dismissal
+is not automatically re-enqueued on refusal and produces no completion event.
+Persistent/missing items return false without reserving event storage.
+
+`ShellHandle::try_send_fallible_with` reserves a command slot before running a
+fallible payload factory. Full/closed queues skip the factory; factory failure
+returns the slot and does not wake or log. Void handle conveniences no longer log
+rejections, because an application logger could allocate or panic in an already
+exhausted process. Use try APIs and queue statistics for explicit handling. Successful
+sends still call the configured host wake path; callbacks remain application code.
+
+The actual exhausted-arena trials require cache hits, cold-icon omission, cache
+reclamation, deferred dismissal followed by exactly one completion, returned factory
+reservations, and no rejection logger calls. These cases remain outside the panic
+quarantine state and keep the preallocated work queue running. The separate stock-egui
+frame negative control prepares input before exhaustion, then demonstrates that
+ordinary `Context::run_ui` still aborts under complete heap exhaustion. These storage
+fixes do not establish panic/abort-free operation of the entire interactive renderer.
+
 ## Backend channels and object storage
 
 ```rust
@@ -227,8 +269,8 @@ return errors, reservations must be released, protected notifications must
 remain, and a preallocated queue must continue processing. Toast display waits
 without retrying before 100 ms and resumes after ballast is released.
 
-An isolated infallible-allocation child still aborts. That negative diagnostic
-records why the global production option was withdrawn; an abort is not an
+Isolated infallible-allocation and stock-egui-frame children still abort. Those
+negative diagnostics record why the global production option was withdrawn; an abort is not an
 acceptable production recovery result. Native tests, Miri, Loom, generated
 inputs and the API fuzzer cover the bounded contracts with their documented
 limits. No whole-application or medical-device certification follows from them.

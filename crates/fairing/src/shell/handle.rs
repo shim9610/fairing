@@ -140,6 +140,22 @@ impl ShellHandle {
         result
     }
 
+    /// Reserve a command slot before a fallible payload factory runs.
+    /// A failed factory releases its reservation without logging or waking the UI.
+    ///
+    /// # Errors
+    /// Queue full/closed or the factory's own error. A rejected factory is not invoked.
+    pub fn try_send_fallible_with<E>(
+        &self,
+        make: impl FnOnce() -> Result<Command, E>,
+    ) -> Result<(), TryBuildSendError<E>> {
+        let result = self.tx.try_send_fallible_with(make);
+        if result.is_ok() {
+            self.waker.wake();
+        }
+        result
+    }
+
     /// Send text using fallible bounded construction, without a per-message Box.
     /// A full command queue skips text allocation. Admission is not display completion.
     ///
@@ -189,15 +205,13 @@ impl ShellHandle {
     }
 
     fn post(&self, command: Command) {
-        if let Err(error) = self.try_send(command) {
-            log::warn!("ShellHandle: {error}, command rejected");
-        }
+        // Rejection must not call an application logger that may allocate under pressure.
+        // Try APIs and queue_stats expose refusal to hosts that need diagnostics/retry.
+        let _ = self.try_send(command);
     }
 
     fn post_with(&self, make: impl FnOnce() -> Command) {
-        if let Err(error) = self.try_send_with(make) {
-            log::warn!("ShellHandle: {error}, command rejected");
-        }
+        let _ = self.try_send_with(make);
     }
 
     /// Launch (the shell checks the gate).

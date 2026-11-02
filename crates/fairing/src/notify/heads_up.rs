@@ -150,11 +150,14 @@ impl Banner {
 impl HeadsUp {
     /// Missing optional-banner storage, without allocating another notification.
     #[must_use]
-    pub const fn display_status(&self) -> crate::memory::DisplayStatus {
-        self.display_status
+    pub fn display_status(&self) -> crate::memory::DisplayStatus {
+        let mut status = self.display_status;
+        status.merge(self.icons.display_status());
+        status
     }
     /// Acknowledge omitted-banner observations.
     pub fn take_display_status(&mut self) -> crate::memory::DisplayStatus {
+        self.display_status.merge(self.icons.take_display_status());
         std::mem::take(&mut self.display_status)
     }
 

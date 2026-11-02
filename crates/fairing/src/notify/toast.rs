@@ -153,11 +153,14 @@ impl ToastQueue {
     }
     /// Current omissions, without acknowledging or allocating another display item.
     #[must_use]
-    pub const fn display_status(&self) -> crate::memory::DisplayStatus {
-        self.display_status
+    pub fn display_status(&self) -> crate::memory::DisplayStatus {
+        let mut status = self.display_status;
+        status.merge(self.icons.display_status());
+        status
     }
     /// Read and acknowledge omitted-display observations without creating an alert allocation.
     pub fn take_display_status(&mut self) -> crate::memory::DisplayStatus {
+        self.display_status.merge(self.icons.take_display_status());
         std::mem::take(&mut self.display_status)
     }
     fn evict_pending(&mut self) -> bool {

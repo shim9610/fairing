@@ -221,6 +221,13 @@ impl std::fmt::Debug for Osk {
 }
 
 impl Osk {
+    pub(crate) fn display_status(&self) -> crate::memory::DisplayStatus {
+        self.icons.display_status()
+    }
+    pub(crate) fn take_display_status(&mut self) -> crate::memory::DisplayStatus {
+        self.icons.take_display_status()
+    }
+
     /// From `[osk]`.
     #[must_use]
     pub fn from_config(cfg: &OskConfig) -> Self {
