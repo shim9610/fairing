@@ -385,7 +385,7 @@ impl Authenticator for Accounts {
         vec![AuthMethod::Password { needs_user: true, keys: Keys::Latin }]
     }
 
-    fn submit(&mut self, credential: Credential, now: Instant) -> AuthOutcome {
+    fn submit(&mut self, _request: fairing::access::AuthRequestId, credential: Credential, now: Instant) -> AuthOutcome {
         let Credential::Password { user: Some(user), secret } = credential else {
             return AuthOutcome::Denied { message: "Enter a user and a password".into() };
         };
@@ -455,7 +455,8 @@ use std::time::Instant;
 
 struct Badges {
     /// Badge numbers from the reader thread.
-    read: Receiver<String>,
+    read: Receiver<(fairing::access::AuthRequestId, String)>,
+    start: Box<dyn FnMut(fairing::access::AuthRequestId)>,
 }
 
 impl Authenticator for Badges {
@@ -463,21 +464,20 @@ impl Authenticator for Badges {
         vec![AuthMethod::External { label: "Badge".into() }]
     }
 
-    fn begin(&mut self, _gate: &Gate, _now: Instant) {
-        // A badge swiped while nothing asked belongs to nobody: without this, the next
-        // prompt — hours later, someone else's — would open on it.
-        while self.read.try_recv().is_ok() {}
+    fn begin(&mut self, request: fairing::access::AuthRequestId, _gate: &Gate, _now: Instant) {
+        // The worker must retain this token with the operation, including after cancel.
+        (self.start)(request);
     }
 
-    fn submit(&mut self, credential: Credential, _now: Instant) -> AuthOutcome {
+    fn submit(&mut self, _request: fairing::access::AuthRequestId, credential: Credential, _now: Instant) -> AuthOutcome {
         match credential {
             Credential::External(bytes) => check(&String::from_utf8_lossy(&bytes)),
             _ => AuthOutcome::Pending,
         }
     }
 
-    fn poll(&mut self, _now: Instant) -> Option<AuthOutcome> {
-        self.read.try_recv().ok().map(|badge| check(&badge))
+    fn poll(&mut self, _now: Instant) -> Option<fairing::access::AuthResponse> {
+        self.read.try_recv().ok().map(|(request, badge)| request.respond(check(&badge)))
     }
 
     fn attach(&mut self, waker: Waker) {
@@ -487,6 +487,13 @@ impl Authenticator for Badges {
 }
 # fn check(_badge: &str) -> AuthOutcome { AuthOutcome::Pending }
 ```
+
+Authentication implementors receive a Fairing-issued `AuthRequestId` in `begin` and
+`submit`. `poll` returns `Option<AuthResponse>`: retain the request token with the
+original work and return `request.respond(outcome)`. Do not stamp a late result with
+the most recent token. A terminal response consumes its token; if the prompt remains
+open after a refusal, Fairing calls `begin` with a fresh token for the next attempt.
+`PinTable::check` remains available for synchronous use outside a shell.
 
 ### 5.4 `settings.credentials` — when the authenticator manages its entries
 

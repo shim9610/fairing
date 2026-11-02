@@ -269,6 +269,7 @@ pub struct Shell {
     focus_covered: bool,
     /// The unlock prompt and the lock screen.
     prompt: Prompt,
+    auth_request: Option<crate::access::AuthRequestId>,
     /// What asked for an unlock behind the lock screen — asked again once it is gone.
     after_lock: Option<(Gate, Option<LaunchAction>)>,
     /// Last frame's OSK target (the `OskToggled` boundary).
@@ -675,6 +676,7 @@ impl Shell {
     pub fn quarantine(&mut self) {
         let was_faulted = self.faulted;
         self.faulted = true;
+        self.auth_request = None;
         self.access.quarantine();
         self.rx.close_admission();
         if !was_faulted {
@@ -747,6 +749,7 @@ impl Shell {
                 ui.ctx().request_repaint();
             }
         }) {
+            self.recovery_ui = None;
             crate::runtime::blank_faulted_frame(ui.ctx());
         }
     }
@@ -978,6 +981,7 @@ impl Shell {
     /// [`cancel`](Authenticator::cancel) first. Where the new one offers nothing, the prompt goes,
     /// as in `routing`.
     pub fn set_authenticator(&mut self, authenticator: impl Authenticator + 'static) {
+        self.auth_request = None;
         if self.prompt.is_open() {
             // The one going out stops what it was doing: a wait ends with an answer or with
             // `cancel`, never by being dropped mid-check.
@@ -1006,8 +1010,11 @@ impl Shell {
             Purpose::Unlock { gate, .. } => (gate.clone(), self.access.hint(gate)),
             Purpose::Lock => (crate::access::prompt::LOCK_GATE, None),
         };
+        let Some(request) = self.new_auth_request() else {
+            return;
+        };
         if let Some(auth) = self.access.authenticator_mut() {
-            auth.begin(&gate, now);
+            auth.begin(request, &gate, now);
         }
         self.prompt.open(purpose, methods, hint, now);
     }
@@ -3854,8 +3861,11 @@ impl Shell {
             // Whatever was being dragged ends here (A9).
             self.gestures.cancel_held_over();
             let now = self.mono;
+            let Some(request) = self.new_auth_request() else {
+                return;
+            };
             if let Some(auth) = self.access.authenticator_mut() {
-                auth.begin(&gate, now);
+                auth.begin(request, &gate, now);
             }
         }
         self.prompt
@@ -3918,10 +3928,10 @@ impl Shell {
                 .access
                 .authenticator_mut()
                 .and_then(|auth| auth.poll(now));
-            // What the authenticator reports is the state to follow: the shell makes the
-            // transition and does not second-guess it.
-            if let Some(outcome) = outcome {
-                self.apply_outcome(outcome, app);
+            if let Some(response) = outcome {
+                if self.auth_request == Some(response.request) {
+                    self.finish_auth_outcome(response.outcome, app);
+                }
             }
         }
     }
@@ -4034,8 +4044,11 @@ impl Shell {
             self.overlay.close(&self.theme.motion);
         }
         self.gestures.cancel_held_over();
+        let Some(request) = self.new_auth_request() else {
+            return;
+        };
         if let Some(auth) = self.access.authenticator_mut() {
-            auth.begin(&crate::access::prompt::LOCK_GATE, self.mono);
+            auth.begin(request, &crate::access::prompt::LOCK_GATE, self.mono);
         }
         // A new lock starts with nothing waiting behind it.
         self.after_lock = None;
@@ -4080,15 +4093,34 @@ impl Shell {
     /// Cancel, always has a way past an answer that never comes.
     fn submit_credential(&mut self, credential: Credential, app: &mut AppRef<'_>) {
         let now = self.mono;
+        let Some(request) = self.new_auth_request() else {
+            return;
+        };
         let called_off = self.prompt.take_wait();
         let outcome = self.access.authenticator_mut().map(|auth| {
             if called_off {
                 auth.cancel();
             }
-            auth.submit(credential, now)
+            auth.submit(request, credential, now)
         });
         if let Some(outcome) = outcome {
-            self.apply_outcome(outcome, app);
+            self.finish_auth_outcome(outcome, app);
+        }
+    }
+
+    fn finish_auth_outcome(&mut self, outcome: AuthOutcome, app: &mut AppRef<'_>) {
+        self.apply_outcome(outcome, app);
+        // A terminal refusal consumes its token too. External readers need a fresh
+        // challenge to accept another credential without closing/reopening the prompt.
+        if self.auth_request.is_none() && !self.faulted {
+            if let Some(gate) = self.prompt.gate() {
+                let Some(request) = self.new_auth_request() else {
+                    return;
+                };
+                if let Some(auth) = self.access.authenticator_mut() {
+                    auth.begin(request, &gate, self.mono);
+                }
+            }
         }
     }
 
@@ -4096,6 +4128,9 @@ impl Shell {
     /// `unlock_mode` and runs what the prompt was opened for — through the gate again.
     fn apply_outcome(&mut self, outcome: AuthOutcome, app: &mut AppRef<'_>) {
         let now = self.mono;
+        if !matches!(outcome, AuthOutcome::Pending) {
+            self.auth_request = None;
+        }
         let Some(gate) = self.prompt.gate() else {
             return;
         };
@@ -4182,7 +4217,17 @@ impl Shell {
     /// Close the prompt without an answer — Cancel, back, a downgrade, the lock coming up, the
     /// lock screen's Continue, the integrator vouching for someone. The authenticator is always
     /// told: a wait ends with an answer or with `cancel`, and a reader stops listening.
+    fn new_auth_request(&mut self) -> Option<crate::access::AuthRequestId> {
+        self.auth_request = crate::access::AuthRequestId::issue();
+        if self.auth_request.is_none() {
+            // Exhaustion never reuses an identifier, including across shell replacements.
+            self.quarantine();
+        }
+        self.auth_request
+    }
+
     fn cancel_prompt(&mut self) {
+        self.auth_request = None;
         if let Some(auth) = self.access.authenticator_mut() {
             auth.cancel();
         }

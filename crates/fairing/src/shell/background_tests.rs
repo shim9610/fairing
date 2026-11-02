@@ -197,10 +197,19 @@ fn continuous_repaint_policy_does_not_spin_hidden_logic() -> crate::Result<()> {
 }
 
 struct PendingAuth {
+    request: Option<crate::access::AuthRequestId>,
     ready: Rc<Cell<bool>>,
     polls: Rc<Cell<usize>>,
 }
 impl Authenticator for PendingAuth {
+    fn begin(
+        &mut self,
+        request: crate::access::AuthRequestId,
+        _: &crate::access::Gate,
+        _: Instant,
+    ) {
+        self.request = Some(request);
+    }
     fn methods(&self) -> Vec<AuthMethod> {
         vec![AuthMethod::Pin {
             len: 1,
@@ -208,15 +217,25 @@ impl Authenticator for PendingAuth {
             shuffle: false,
         }]
     }
-    fn submit(&mut self, _: Credential, _: Instant) -> AuthOutcome {
+    fn submit(
+        &mut self,
+        request: crate::access::AuthRequestId,
+        _: Credential,
+        _: Instant,
+    ) -> AuthOutcome {
+        self.request = Some(request);
         AuthOutcome::Pending
     }
-    fn poll(&mut self, _: Instant) -> Option<AuthOutcome> {
-        self.polls.set(self.polls.get() + 1);
-        self.ready.take().then_some(AuthOutcome::Granted(Subject {
-            level: Level(1),
-            ..Subject::default()
-        }))
+    fn poll(&mut self, _: Instant) -> Option<crate::access::AuthResponse> {
+        let request = self.request?;
+        let outcome = {
+            self.polls.set(self.polls.get() + 1);
+            self.ready.take().then_some(AuthOutcome::Granted(Subject {
+                level: Level(1),
+                ..Subject::default()
+            }))
+        };
+        outcome.map(|outcome| request.respond(outcome))
     }
     fn cancel(&mut self) {
         self.ready.set(false);
@@ -229,6 +248,7 @@ fn queued_logout_cancels_a_ready_hidden_authentication_reply() -> crate::Result<
     let ready = Rc::new(Cell::new(false));
     let polls = Rc::new(Cell::new(0));
     let auth = PendingAuth {
+        request: None,
         ready: Rc::clone(&ready),
         polls: Rc::clone(&polls),
     };
@@ -252,6 +272,7 @@ fn a_ready_authentication_reply_runs_its_action_without_a_ui_pass() -> crate::Re
     let ready = Rc::new(Cell::new(false));
     let polls = Rc::new(Cell::new(0));
     let auth = PendingAuth {
+        request: None,
         ready: Rc::clone(&ready),
         polls,
     };

@@ -8,6 +8,7 @@ use std::rc::Rc;
 use std::time::Instant;
 
 struct DeferredAuth {
+    request: Option<fairing::access::AuthRequestId>,
     ready: Rc<Cell<bool>>,
     calls: Rc<RefCell<Vec<String>>>,
     pending: bool,
@@ -22,7 +23,8 @@ impl Authenticator for DeferredAuth {
         }]
     }
 
-    fn begin(&mut self, gate: &Gate, _: Instant) {
+    fn begin(&mut self, request: fairing::access::AuthRequestId, gate: &Gate, _: Instant) {
+        self.request = Some(request);
         self.calls
             .borrow_mut()
             .push(format!("begin {}", gate.as_str()));
@@ -30,22 +32,32 @@ impl Authenticator for DeferredAuth {
         self.ready.set(false);
     }
 
-    fn submit(&mut self, _: Credential, _: Instant) -> AuthOutcome {
+    fn submit(
+        &mut self,
+        request: fairing::access::AuthRequestId,
+        _: Credential,
+        _: Instant,
+    ) -> AuthOutcome {
+        self.request = Some(request);
         self.pending = true;
         self.calls.borrow_mut().push("submit".into());
         AuthOutcome::Pending
     }
 
-    fn poll(&mut self, _: Instant) -> Option<AuthOutcome> {
-        if !self.pending || !self.ready.take() {
-            return None;
-        }
-        self.pending = false;
-        Some(AuthOutcome::Granted(Subject {
-            id: Some("old-user".into()),
-            level: Level(2),
-            ..Subject::default()
-        }))
+    fn poll(&mut self, _: Instant) -> Option<fairing::access::AuthResponse> {
+        let request = self.request?;
+        let outcome = {
+            if !self.pending || !self.ready.take() {
+                return None;
+            }
+            self.pending = false;
+            Some(AuthOutcome::Granted(Subject {
+                id: Some("old-user".into()),
+                level: Level(2),
+                ..Subject::default()
+            }))
+        };
+        outcome.map(|outcome| request.respond(outcome))
     }
 
     fn cancel(&mut self) {
@@ -74,6 +86,7 @@ fn rig_with_timeout(seconds: u64) -> fairing::Result<Rig> {
     let calls = Rc::new(RefCell::new(Vec::new()));
     let runs = Rc::new(Cell::new(0));
     let auth = DeferredAuth {
+        request: None,
         ready: Rc::clone(&ready),
         calls: Rc::clone(&calls),
         pending: false,
@@ -299,5 +312,123 @@ fn relock_and_logout_keep_the_authentication_lockout() -> fairing::Result<()> {
     h.key(egui::Key::Num2);
     assert!(!h.shell.lock_screen_visible());
     assert_eq!(h.shell.access().session().subject.level, Level(1));
+    Ok(())
+}
+
+/// Deliberately retains replies across cancel: correlation must be enforced by the shell.
+struct RetainingReader {
+    requests: Rc<RefCell<Vec<fairing::access::AuthRequestId>>>,
+    replies: Rc<RefCell<std::collections::VecDeque<fairing::access::AuthResponse>>>,
+}
+impl Authenticator for RetainingReader {
+    fn methods(&self) -> Vec<AuthMethod> {
+        vec![AuthMethod::External {
+            label: "Reader".into(),
+        }]
+    }
+    fn begin(&mut self, request: fairing::access::AuthRequestId, _: &Gate, _: Instant) {
+        self.requests.borrow_mut().push(request);
+    }
+    fn submit(
+        &mut self,
+        request: fairing::access::AuthRequestId,
+        _: Credential,
+        _: Instant,
+    ) -> AuthOutcome {
+        self.requests.borrow_mut().push(request);
+        AuthOutcome::Pending
+    }
+    fn poll(&mut self, _: Instant) -> Option<fairing::access::AuthResponse> {
+        self.replies.borrow_mut().pop_front()
+    }
+}
+
+#[test]
+#[allow(
+    clippy::unwrap_used,
+    reason = "assert challenge issuance in regression test"
+)]
+fn stale_and_duplicate_replies_cannot_authorize_another_challenge() -> fairing::Result<()> {
+    let requests = Rc::new(RefCell::new(Vec::new()));
+    let replies = Rc::new(RefCell::new(std::collections::VecDeque::new()));
+    let auth = RetainingReader {
+        requests: requests.clone(),
+        replies: replies.clone(),
+    };
+    let runs = Rc::new(Cell::new(0));
+    let count = runs.clone();
+    let mut h = Harness::from_builder(move |ctx| {
+        let mut shell = Shell::builder(access_config(&["viewer", "admin"], Some("top")))
+            .authenticator(auth)
+            .build(ctx)?;
+        for id in ["first", "second"] {
+            let count = count.clone();
+            shell.add(action(id, move |_| count.set(count.get() + 1)));
+        }
+        Ok(shell)
+    })?;
+    let grant = || {
+        AuthOutcome::Granted(Subject {
+            level: Level(1),
+            ..Subject::default()
+        })
+    };
+    h.shell.launch(LaunchAction::run("first"));
+    let old = *requests.borrow().last().unwrap();
+    h.shell.launch(LaunchAction::run("second"));
+    let current = *requests.borrow().last().unwrap();
+    assert_ne!(old, current);
+    replies.borrow_mut().push_back(old.respond(grant()));
+    h.frames(2);
+    assert_eq!(runs.get(), 0);
+    assert_eq!(h.shell.access().session().subject.level, Level(0));
+    replies
+        .borrow_mut()
+        .push_back(current.respond(AuthOutcome::Denied {
+            message: "Try again".into(),
+        }));
+    h.frames(2);
+    let retry = *requests.borrow().last().unwrap();
+    assert_ne!(current, retry);
+    replies.borrow_mut().push_back(current.respond(grant()));
+    h.frames(2);
+    assert_eq!(runs.get(), 0);
+    replies.borrow_mut().push_back(retry.respond(grant()));
+    h.frames(2);
+    assert_eq!(runs.get(), 1);
+    h.shell.launch(LaunchAction::Logout);
+    h.shell.launch(LaunchAction::run("first"));
+    let next = *requests.borrow().last().unwrap();
+    assert_ne!(current, next);
+    replies.borrow_mut().push_back(current.respond(grant()));
+    h.frames(2);
+    assert_eq!(runs.get(), 1);
+    replies.borrow_mut().push_back(next.respond(grant()));
+    h.frames(2);
+    assert_eq!(runs.get(), 2);
+    let ctx = h.ctx.clone();
+    let replacement_auth = RetainingReader {
+        requests: requests.clone(),
+        replies: replies.clone(),
+    };
+    let count = runs.clone();
+    h.shell
+        .restart_with(move || {
+            let mut shell = Shell::builder(access_config(&["viewer", "admin"], Some("top")))
+                .authenticator(replacement_auth)
+                .build(&ctx)?;
+            shell.add(action("first", move |_| count.set(count.get() + 1)));
+            Ok(shell)
+        })
+        .map_err(|_| fairing::Error::Config("test replacement failed".into()))?;
+    h.shell.launch(LaunchAction::run("first"));
+    let replacement = *requests.borrow().last().unwrap();
+    assert_ne!(replacement, next);
+    replies.borrow_mut().push_back(next.respond(grant()));
+    h.frames(2);
+    assert_eq!(runs.get(), 2);
+    replies.borrow_mut().push_back(replacement.respond(grant()));
+    h.frames(2);
+    assert_eq!(runs.get(), 3);
     Ok(())
 }

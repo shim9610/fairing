@@ -208,7 +208,8 @@ pub fn authentication_contract(bytes: &[u8]) {
         let op = byte % 6;
         if op == 5 {
             table.cancel();
-            table.begin(&Gate::from("another-gate"), now);
+            // PinTable uses the default no-op begin hook. Shell challenge changes
+            // are exercised through the request-bearing Reader fixture below.
             continue;
         }
         let outcome = if op == 4 {
@@ -238,7 +239,7 @@ pub fn authentication_contract(bytes: &[u8]) {
                 2 => Credential::Pattern(vec![8, 7, 6, 3]),
                 _ => Credential::Pattern(vec![0, 1, 2, 5]),
             };
-            table.submit(credential, now)
+            table.check(credential, now)
         };
         last_granted = false;
         if let Some(until) = locked_until.filter(|&until| seconds < until) {
@@ -627,6 +628,7 @@ pub fn backend_contract(bytes: &[u8]) {
 }
 
 struct Reader {
+    request: Option<fairing::access::AuthRequestId>,
     answer: Rc<RefCell<Option<AuthOutcome>>>,
     calls: Rc<RefCell<Vec<&'static str>>>,
 }
@@ -636,10 +638,17 @@ impl Authenticator for Reader {
             label: "Reader".into(),
         }]
     }
-    fn submit(&mut self, _: Credential, _: Instant) -> AuthOutcome {
+    fn submit(
+        &mut self,
+        request: fairing::access::AuthRequestId,
+        _: Credential,
+        _: Instant,
+    ) -> AuthOutcome {
+        self.request = Some(request);
         AuthOutcome::Pending
     }
-    fn begin(&mut self, _: &Gate, _: Instant) {
+    fn begin(&mut self, request: fairing::access::AuthRequestId, _: &Gate, _: Instant) {
+        self.request = Some(request);
         self.calls.borrow_mut().push("begin");
         self.answer.borrow_mut().take();
     }
@@ -651,8 +660,10 @@ impl Authenticator for Reader {
         self.calls.borrow_mut().push("refused");
         None
     }
-    fn poll(&mut self, _: Instant) -> Option<AuthOutcome> {
-        self.answer.borrow_mut().take()
+    fn poll(&mut self, _: Instant) -> Option<fairing::access::AuthResponse> {
+        let request = self.request?;
+        let outcome = self.answer.borrow_mut().take();
+        outcome.map(|outcome| request.respond(outcome))
     }
 }
 
@@ -666,6 +677,7 @@ pub fn grant_contract(held: u16, candidate: u16, lock: bool, policy_passes: bool
     let calls = Rc::new(RefCell::new(Vec::new()));
     let mut shell = Shell::builder(cfg)
         .authenticator(Reader {
+            request: None,
             answer: Rc::clone(&answer),
             calls: Rc::clone(&calls),
         })
@@ -709,6 +721,7 @@ pub fn cancellation_contract(boundary: u8) {
     let calls = Rc::new(RefCell::new(Vec::new()));
     let mut shell = Shell::builder(configured())
         .authenticator(Reader {
+            request: None,
             answer: Rc::clone(&answer),
             calls: Rc::clone(&calls),
         })
@@ -762,6 +775,7 @@ pub fn expiry_contract(seconds: u8, boundary: u8, input: bool, kind: u8) {
     let answer = Rc::new(RefCell::new(None));
     let mut shell = Shell::builder(cfg)
         .authenticator(Reader {
+            request: None,
             answer: Rc::clone(&answer),
             calls: Rc::new(RefCell::new(Vec::new())),
         })

@@ -60,6 +60,12 @@ pub struct TrySendError<T> {
     message: T,
 }
 impl<T> TrySendError<T> {
+    pub(super) fn disconnected(message: T) -> Self {
+        Self {
+            kind: QueueErrorKind::Disconnected,
+            message,
+        }
+    }
     /// The rejection reason.
     #[must_use]
     pub const fn kind(&self) -> QueueErrorKind {

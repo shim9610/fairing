@@ -302,10 +302,17 @@ queue prevents new factories from starting; an already running producer factory 
 finish, but the faulted shell will not execute its command. Hosts with other UI in the
 same viewport must account for whole-viewport output being discarded on failure.
 
-The library does not format or log panic payloads. Known String/static-str payloads
-are released; unknown user payloads are retained to avoid invoking a panicking Drop
-implementation during recovery. Developer-requested restarts or failing recovery
-callbacks/views can accumulate these retained payloads; they have no global byte bound.
+The library does not format or log panic payloads. After catching an unwind, it attempts
+payload disposal under a fresh unwind boundary. If disposal panics, the replacement
+payload is disposed of next, up to eight attempts. Ordinary arbitrary payloads are
+released; they are no longer unconditionally leaked. A recursively panicking destructor
+can exhaust this budget: the final payload is retained, without running its destructor.
+`recovery::panic_cleanup_stats()` exposes saturating process-wide counts of caught
+unwinds, cleanup panics and retained final payloads. These are object counts, not a byte
+or resource bound. Repeated pathological faults can still accumulate retained resources.
+A fault guidance view which unwinds is disabled until explicitly installed again. Runner
+recovery callbacks retain their application-defined scheduling policy. Applications can
+observe retained-payload diagnostics before deciding whether to attempt recovery again.
 Application panic hooks run before containment and must redact sensitive
 data themselves. Panicking hooks, abort builds, double panics in unwinding destructors,
 allocator aborts, and rendering/native work outside these boundaries remain outside

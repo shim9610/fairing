@@ -741,3 +741,10 @@ admission use `Inbox::bounded(capacity)`, `try_send`/`try_send_with` and
 `drain_up_to(limit)` at the service boundary. Handle `Full` without waiting on the
 UI thread, and wake the UI after an accepted backend update. Payload bytes need
 an additional budget; see [memory limits](../memory-limits.md).
+
+For a connection selected from runtime configuration, use `Inbox::configured(InboxConfig {
+capacity: InboxCapacity::Bounded(1024), batch_limit: 256 })`. The same API accepts
+`InboxCapacity::Unbounded` for a trusted, rate-controlled producer; its storage is then
+unlimited but each `drain()` still respects `batch_limit`. `ConfiguredSender::try_send`
+returns rejected messages without eviction. A zero batch limit pauses default draining.
+Existing `Inbox::pair()` remains unbounded; use `drain_up_to(limit)` to bound its work.

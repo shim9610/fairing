@@ -56,7 +56,7 @@ original ACK kernel.
   properties with 64 cases each, using seed 20261101. Operation sequences cap
   at 32 shell/backend operations or 64 non-UI operations. Fixed cases ensure
   the important deadline/credential boundaries execute regardless of the seed.
-- Miri interprets twenty fixed tests with normal isolation, validity and race
+- Miri interprets twenty-two fixed tests with normal isolation, validity and race
   checks. It covers the actual Access, PinTable, notification, calendar, unit,
   service, fixed-pool and bounded/unbounded Inbox APIs. It does not interpret the complete shell rendering
   path; generated cases run natively.
@@ -72,11 +72,11 @@ original ACK kernel.
   previously authorized intent may finish after a later subject change; newly
   denied writes do not change that intent. A fresh failure is terminal in the
   ACK-kernel model. Integrators must honor these backend assumptions.
-- The reader fixture obeys `Authenticator::cancel/begin`: those calls discard
-  the earlier response. Tests verify the shell calls them before polling a new
-  challenge. An authenticator that returns a canceled result violates that
-  integration contract; the trait supplies no response-generation identifier
-  for the shell to independently identify such a result.
+- Authentication replies carry an opaque Fairing-issued request token. The shell checks
+  that token against the active request and consumes terminal responses once. Backends
+  retain the original token with asynchronous work, including work completing after cancel.
+  Tokens correlate trusted backend results; they do not authenticate a network peer.
+
 - Generated deadline cases exercise the deterministic frame-only timeline.
   Integer-second deadlines are exact; the ±1 ms probes allow less than 1 µs
   of interval rounding in the frame's f32 representation. Existing product

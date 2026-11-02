@@ -5,6 +5,25 @@
 
 use std::{borrow::Cow, fmt};
 
+/// Process-wide, saturating unwind-cleanup counters. Reads are individually atomic;
+/// a snapshot can include activity from other threads. No payload contents are exposed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PanicCleanupStats {
+    /// Unwinds caught at runtime containment boundaries.
+    pub caught: usize,
+    /// Payload disposal attempts which themselves unwound.
+    pub cleanup_panics: usize,
+    /// Final payloads retained after the finite disposal budget was exhausted.
+    /// This counts objects, not bytes or resources; it is not a memory bound.
+    pub retained: usize,
+}
+
+/// Inspect cumulative cleanup diagnostics without allocating or invoking payload code.
+#[must_use]
+pub fn panic_cleanup_stats() -> PanicCleanupStats {
+    crate::runtime::panic_cleanup_stats()
+}
+
 /// Why [`crate::Shell::restart_with`] could not install an operational shell.
 #[non_exhaustive]
 pub enum RestartError {

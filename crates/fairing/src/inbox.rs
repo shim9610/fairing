@@ -23,10 +23,13 @@ use std::sync::mpsc::TryRecvError;
 
 #[path = "inbox/bounded.rs"]
 mod bounded;
+#[path = "inbox/configured.rs"]
+mod configured;
 pub use bounded::{
     BoundedInbox, BoundedSender, QueueCapacityError, QueueErrorKind, QueueStats, TryBuildSendError,
     TrySendError, MAX_BOUNDED_CAPACITY,
 };
+pub use configured::{ConfiguredInbox, ConfiguredSender, InboxCapacity, InboxConfig};
 
 impl<T> Inbox<T> {
     /// A preallocated bounded transport exposing no blocking send or receive.
@@ -100,7 +103,15 @@ impl<T> Inbox<T> {
         self.rx.try_recv()
     }
 
-    /// Everything that has arrived **so far**, in order. Ends the moment the queue is empty rather
+    /// At most `limit` currently available items. Continued production cannot extend the batch.
+    pub fn drain_up_to(&self, limit: usize) -> impl Iterator<Item = T> + '_ {
+        self.drain().take(limit)
+    }
+
+    /// Available items, in order. This is not a snapshot and has no batch limit.
+    /// Prefer `drain_up_to` or a configured inbox at service boundaries.
+    ///
+    /// Ends the moment the queue is empty rather
     /// than waiting for the next message, which is what separates it from `Receiver::iter`.
     pub fn drain(&self) -> impl Iterator<Item = T> + '_ {
         std::iter::from_fn(|| self.try_recv().ok())

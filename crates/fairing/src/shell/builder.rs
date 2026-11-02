@@ -319,7 +319,7 @@ impl ShellBuilder {
     /// # struct Badges;
     /// # impl Authenticator for Badges {
     /// #     fn methods(&self) -> Vec<AuthMethod> { Vec::new() }
-    /// #     fn submit(&mut self, _: Credential, _: std::time::Instant) -> AuthOutcome { AuthOutcome::Pending }
+    /// #     fn submit(&mut self, _request: fairing::access::AuthRequestId, _: Credential, _: std::time::Instant) -> AuthOutcome { AuthOutcome::Pending }
     /// # }
     /// # let ctx = egui::Context::default();
     /// let shell = fairing::Shell::builder(fairing::ShellConfig::default())
@@ -1214,6 +1214,7 @@ impl ShellBuilder {
             overlay_was_closed: true,
             focus_covered: false,
             prompt,
+            auth_request: None,
             after_lock: None,
             osk_was_shown: false,
             split_was: false,

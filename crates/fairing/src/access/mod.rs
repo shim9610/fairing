@@ -18,8 +18,8 @@ pub(crate) mod prompt;
 pub(crate) mod rules;
 
 pub use auth::{
-    AdminResult, AuthMethod, AuthOutcome, Authenticator, Credential, CredentialAdmin,
-    CredentialEntry, PinTable, MAX_PIN_LEN,
+    AdminResult, AuthMethod, AuthOutcome, AuthRequestId, AuthResponse, Authenticator, Credential,
+    CredentialAdmin, CredentialEntry, PinTable, MAX_PIN_LEN,
 };
 pub use knock::{
     Corner, HiddenEntry, KnockInput, KnockStep, KnockTrigger, Tap, TapKnock, Zone, ZoneKnock,
@@ -1480,7 +1480,12 @@ mod tests {
                 keys: crate::widgets::Keys::Latin,
             }]
         }
-        fn submit(&mut self, _: super::Credential, _: Instant) -> super::AuthOutcome {
+        fn submit(
+            &mut self,
+            _request: crate::access::AuthRequestId,
+            _: super::Credential,
+            _: Instant,
+        ) -> super::AuthOutcome {
             super::AuthOutcome::Pending
         }
         fn admin(&mut self) -> Option<&mut dyn super::CredentialAdmin> {
