@@ -68,8 +68,15 @@ fn text_position(h: &mut Harness, wanted: &str) -> Pos2 {
 }
 
 fn tap_key(h: &mut Harness, label: &str) {
-    let rect = h.shell.osk().key_rect(label).expect("required OSK key missing");
-    assert!(h.screen_rect().contains_rect(rect), "OSK key outside viewport");
+    let rect = h
+        .shell
+        .osk()
+        .key_rect(label)
+        .expect("required OSK key missing");
+    assert!(
+        h.screen_rect().contains_rect(rect),
+        "OSK key outside viewport"
+    );
     h.tap(rect.center());
     h.frames(2);
 }
@@ -78,7 +85,10 @@ fn type_into_each_field(h: &mut Harness, form: &Rc<RefCell<Form>>) {
     let first = form.borrow().first.center();
     h.tap(first);
     h.frames(32);
-    assert!(h.shell.osk().is_shown(), "history blocked the digits keyboard");
+    assert!(
+        h.shell.osk().is_shown(),
+        "history blocked the digits keyboard"
+    );
     assert!(
         matches!(h.shell.osk().layout(), OskLayout::NumPad { .. }),
         "history retained the wrong keyboard layout"
@@ -87,20 +97,39 @@ fn type_into_each_field(h: &mut Harness, form: &Rc<RefCell<Form>>) {
     let before = form.borrow().digits.clone();
     let untouched = form.borrow().latin.clone();
     tap_key(h, "7");
-    assert_eq!(form.borrow().digits, before + "7", "OSK typed into the wrong field");
-    assert_eq!(form.borrow().latin, untouched, "OSK changed the inactive field");
+    assert_eq!(
+        form.borrow().digits,
+        before + "7",
+        "OSK typed into the wrong field"
+    );
+    assert_eq!(
+        form.borrow().latin,
+        untouched,
+        "OSK changed the inactive field"
+    );
 
     let second = form.borrow().second.center();
     h.tap(second);
     h.frames(32);
-    assert!(h.shell.osk().is_shown(), "history blocked the Latin keyboard");
+    assert!(
+        h.shell.osk().is_shown(),
+        "history blocked the Latin keyboard"
+    );
     assert_eq!(h.shell.osk().layout(), &OskLayout::Qwerty);
     h.key(egui::Key::End);
     let before = form.borrow().latin.clone();
     let untouched = form.borrow().digits.clone();
     tap_key(h, "a");
-    assert_eq!(form.borrow().latin, before + "a", "OSK focus was not transferred");
-    assert_eq!(form.borrow().digits, untouched, "OSK leaked into the old field");
+    assert_eq!(
+        form.borrow().latin,
+        before + "a",
+        "OSK focus was not transferred"
+    );
+    assert_eq!(
+        form.borrow().digits,
+        untouched,
+        "OSK leaked into the old field"
+    );
 }
 
 fn exercise(opener: Opener, animated: bool, history: &[u8]) {
@@ -122,9 +151,10 @@ fn exercise(opener: Opener, animated: bool, history: &[u8]) {
         second_id: egui::Id::NULL,
     }));
     let state = Rc::clone(&form);
-    h.shell.add(screen("form", move |ui: &mut egui::Ui, cx: &mut Cx<'_>| {
-        state.borrow_mut().draw(ui, cx, opener);
-    }));
+    h.shell
+        .add(screen("form", move |ui: &mut egui::Ui, cx: &mut Cx<'_>| {
+            state.borrow_mut().draw(ui, cx, opener);
+        }));
     h.shell.launch(LaunchAction::open("form"));
     h.frames(32);
     for &operation in history {
@@ -163,16 +193,21 @@ fn exercise(opener: Opener, animated: bool, history: &[u8]) {
         assert!(!h.shell.is_faulted(), "history entered fault quarantine");
     }
     if !h.shell.overlay().is_closed() {
-        let panel = h.shell.overlay().frame().panel.expect("overlay panel missing");
+        let panel = h
+            .shell
+            .overlay()
+            .frame()
+            .panel
+            .expect("overlay panel missing");
         let viewport = h.screen_rect();
-        let scrim = Rect::from_min_max(
-            egui::pos2(viewport.left(), panel.bottom()),
-            viewport.max,
-        );
+        let scrim = Rect::from_min_max(egui::pos2(viewport.left(), panel.bottom()), viewport.max);
         assert!(scrim.is_positive(), "overlay dismissal has no input target");
         h.tap(scrim.center());
         h.frames(32);
-        assert!(h.shell.overlay().is_closed(), "history blocked overlay dismissal");
+        assert!(
+            h.shell.overlay().is_closed(),
+            "history blocked overlay dismissal"
+        );
     }
     // An ordinary outside tap dismisses an open dropdown. No focus/memory reset.
     h.tap(egui::pos2(800.0, 240.0));
@@ -185,14 +220,23 @@ fn exercise(opener: Opener, animated: bool, history: &[u8]) {
     let target = text_position(&mut h, "Bravo");
     h.tap(target);
     h.frames(32);
-    assert_eq!(form.borrow().selected, 1, "keyboard history blocked popup selection");
+    assert_eq!(
+        form.borrow().selected,
+        1,
+        "keyboard history blocked popup selection"
+    );
     type_into_each_field(&mut h, &form);
     assert!(!h.shell.is_faulted());
 }
 
 #[test]
 fn popup_keyboard_and_overlay_histories_preserve_real_input_paths() {
-    for opener in [Opener::Anchored, Opener::Grid, Opener::Sheet, Opener::Search] {
+    for opener in [
+        Opener::Anchored,
+        Opener::Grid,
+        Opener::Sheet,
+        Opener::Search,
+    ] {
         for animated in [false, true] {
             for history in [
                 &[][..],

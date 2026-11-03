@@ -12,7 +12,7 @@ import tempfile
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--only", action="append", choices=[
     "back-handler", "back-projection", "auth-correlation", "command-budget", "expiry-order", "ui-progress", "modal-input",
-    "bounded-admission", "launch-gates", "notification-cap", "inbox-delivery", "retained-lifetime", "numeric-owner", "hold-admission", "wheel-admission", "restore-delegation", "pointer-projection", "capture-application", "hold-completion-latch",
+    "bounded-admission", "launch-gates", "notification-cap", "inbox-delivery", "retained-lifetime", "numeric-owner", "hold-admission", "wheel-admission", "restore-delegation", "pointer-projection", "capture-application", "hold-completion-latch", "focus-isolation", "popup-retirement",
 ], help="Run selected controls; omitting this option runs the complete CI suite")
 args = parser.parse_args()
 ROOT = Path(__file__).resolve().parents[1]
@@ -62,6 +62,15 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
         print(name + (": rejected broken production code" if failure else ": passed"), flush=True)
 
     scenarios = [
+        ("focus-isolation", "widget_lifecycle::histories::closed_menu_cleanup_preserves_the_other_fields_focus",
+         "crates/fairing-widgets/src/interaction/mod.rs",
+         [("ctx.memory_mut(|memory| memory.surrender_focus(id));",
+           "ctx.memory_mut(|memory| { if let Some(focused) = memory.focused() { memory.surrender_focus(focused); } });")],
+         False, "history blocked text"),
+        ("popup-retirement", "widget_lifecycle::histories::outside_dismissal_consumes_one_click_and_releases_the_next",
+         "crates/fairing-widgets/src/interaction/mod.rs",
+         [("state.interactable = false;", "state.interactable = true;")],
+         False, "dismissed popup blocked the next peer click"),
         ("wheel-admission", "widget_lifecycle::a_wheel_requires_a_fresh_drag_after_its_owner_is_interrupted",
          "crates/fairing-widgets/src/interaction/concrete.rs",
          [("Some(saved) => saved.captured,", "Some(_saved) => true,")],

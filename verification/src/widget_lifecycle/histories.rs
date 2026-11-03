@@ -3,7 +3,9 @@
 use super::{pointer, Menu, Runner};
 use fairing::egui::{self, Event, Modifiers, Pos2, Rect};
 use fairing::fairing_widgets::WidgetCx;
-use fairing::widgets::{BigButton, FieldLook, Keys, NumberField, Opener, TextField, Trigger, WheelPicker};
+use fairing::widgets::{
+    BigButton, FieldLook, Keys, NumberField, Opener, TextField, Trigger, WheelPicker,
+};
 use proptest::prelude::*;
 use std::time::Duration;
 
@@ -110,7 +112,10 @@ impl Scene {
 
     fn frame(&mut self, runner: &mut Runner, events: Vec<Event>) {
         runner.frame(events, |ui, cx| self.draw(ui, cx));
-        assert!(self.number.is_finite(), "history produced a nonfinite number");
+        assert!(
+            self.number.is_finite(),
+            "history produced a nonfinite number"
+        );
         assert!(
             self.wheel < WHEEL.len(),
             "history produced an invalid wheel index"
@@ -156,8 +161,14 @@ impl Scene {
         self.menu.enabled = true;
         self.menu.parent_enabled = true;
         self.idle(runner, 2);
-        assert!(!self.popup_visible(runner), "retired popup revived in history");
-        assert_eq!(self.hold_count, before, "retired press completed in history");
+        assert!(
+            !self.popup_visible(runner),
+            "retired popup revived in history"
+        );
+        assert_eq!(
+            self.hold_count, before,
+            "retired press completed in history"
+        );
     }
 
     /// Contract preconditions are explicit: visible/enabled controls, released pointer,
@@ -199,7 +210,11 @@ impl Scene {
         let completed = self.hold_count;
         self.frame(runner, pointer(self.hold_rect.center(), true));
         self.idle(runner, SETTLE);
-        assert_eq!(self.hold_count, completed + 1, "history blocked a fresh hold");
+        assert_eq!(
+            self.hold_count,
+            completed + 1,
+            "history blocked a fresh hold"
+        );
         self.idle(runner, SETTLE);
         assert_eq!(self.hold_count, completed + 1, "one hold completed twice");
         self.frame(runner, pointer(self.hold_rect.center(), false));
@@ -239,8 +254,12 @@ impl Scene {
 }
 
 fn profile(index: u8) -> (Opener, Trigger) {
-    let opener = [Opener::Anchored, Opener::Grid, Opener::Sheet, Opener::Search]
-        [usize::from(index % 4)];
+    let opener = [
+        Opener::Anchored,
+        Opener::Grid,
+        Opener::Sheet,
+        Opener::Search,
+    ][usize::from(index % 4)];
     let kind = [
         Trigger::Button,
         Trigger::Field(FieldLook::Outlined),
@@ -260,8 +279,7 @@ fn exercise(profile_index: u8, history: &[u8]) {
     let mut scene = Scene::new(opener, kind);
     scene.idle(&mut runner, 3);
     for &operation in history {
-        runner.dt = [1.0 / 120.0, 1.0 / 60.0, 1.0 / 15.0, 0.25]
-            [usize::from(operation / 16 % 4)];
+        runner.dt = [1.0 / 120.0, 1.0 / 60.0, 1.0 / 15.0, 0.25][usize::from(operation / 16 % 4)];
         match operation % 16 {
             0 => scene.tap(&mut runner, scene.menu.trigger.center()),
             1 => scene.tap(&mut runner, OUTSIDE),
@@ -334,7 +352,10 @@ proptest! {
         max_shrink_iters: 2048,
         failure_persistence: Some(Box::new(
             proptest::test_runner::FileFailurePersistence::Direct(
-                "target/assurance/ui-histories/proptest-regressions.txt"
+                concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../target/assurance/ui-histories/proptest-regressions.txt"
+                )
             )
         )),
         ..ProptestConfig::default()
@@ -352,4 +373,31 @@ proptest! {
 #[test]
 fn closed_menu_cleanup_preserves_the_other_fields_focus() {
     exercise(3, &[5, 6, 0, 1, 5]);
+}
+
+#[test]
+fn outside_dismissal_consumes_one_click_and_releases_the_next() {
+    for opener in [
+        Opener::Anchored,
+        Opener::Grid,
+        Opener::Sheet,
+        Opener::Search,
+    ] {
+        let mut runner = Runner::new();
+        let mut scene = Scene::new(opener, Trigger::Button);
+        scene.idle(&mut runner, 3);
+        scene.tap(&mut runner, scene.menu.trigger.center());
+        scene.idle(&mut runner, SETTLE);
+        assert!(scene.popup_visible(&runner), "initial popup failed to open");
+        let before = scene.menu.hits;
+        scene.tap(&mut runner, scene.menu.peer.center());
+        assert_eq!(scene.menu.hits, before, "popup dismissal clicked through");
+        // No settling loop, pointer retry or Context reset between these clicks.
+        scene.tap(&mut runner, scene.menu.peer.center());
+        assert_eq!(
+            scene.menu.hits,
+            before + 1,
+            "dismissed popup blocked the next peer click"
+        );
+    }
 }
