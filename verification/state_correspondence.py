@@ -529,14 +529,14 @@ def main():
     evidence = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
                 for p in OUT.rglob('*') if p.is_file() and PROBE not in p.parents and p != receipt
                 and p.suffix in {'.rs', '.json'}}
-    report = {'state_representation': 'proved', 'native_built': True,
-              'scope': 'Lossless source-derived canonical state representation; not operation semantics',
+    report = {'source_structure_status': 'proved', 'whole_ui_state_status': 'unproved', 'native_built': True,
+              'scope': 'Product datatype field/variant reconstruction only; complete runtime state and operational abstraction are unproved',
               'profiles': profiles, 'configurations': configurations,
               'verified_native_schemas': len(proven), 'configuration_theorems': len(terms),
               'operations_and_progress': 'not-claimed', 'inputs': before,
               'commands': COMMANDS, 'evidence': evidence}
     receipt.write_text(json.dumps(report, indent=2) + '\n')
-    print('CONCRETE_STATE_REPRESENTATION_PROVED: ' + str(len(proven))
+    print('SOURCE_STRUCTURE_PROVED; WHOLE_UI_STATE_UNPROVED: ' + str(len(proven))
           + ' native schemas; ' + str(len(terms)) + ' configuration theorems', flush=True)
 
 

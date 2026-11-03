@@ -241,12 +241,71 @@ impl VisitMut for Tamper {
     }
 }
 
+
+struct UiQueries;
+impl VisitMut for UiQueries {
+    fn visit_item_impl_mut(&mut self, item: &mut syn::ItemImpl) {
+        let owner = match &*item.self_ty {
+            syn::Type::Path(p) => p.path.segments.last().map(|s| s.ident.to_string()),
+            _ => None,
+        };
+        if let Some(owner) = owner {
+            for value in &item.items {
+                if let syn::ImplItem::Fn(method) = value {
+                    let name = method.sig.ident.to_string();
+                    if (owner == "Focus" && name == "focused")
+                        || (owner == "Memory" && ["focus", "focused"].contains(&name.as_str()))
+                    {
+                        println!("{{\"record\":\"query\",\"owner\":{},\"method\":{},\"body\":{}}}",
+                            json(&owner), json(&name), json(&method.block.to_token_stream().to_string()));
+                    }
+                }
+            }
+        }
+        visit_mut::visit_item_impl_mut(self, item);
+    }
+}
+
+
+struct MutateFocusQuery(bool);
+impl VisitMut for MutateFocusQuery {
+    fn visit_item_impl_mut(&mut self, item: &mut syn::ItemImpl) {
+        let focus = match &*item.self_ty {
+            syn::Type::Path(p) => p.path.is_ident("Focus"),
+            _ => false,
+        };
+        if focus {
+            for value in &mut item.items {
+                if let syn::ImplItem::Fn(method) = value {
+                    if method.sig.ident == "focused" {
+                        method.block = syn::parse_quote!({ None });
+                        self.0 = true;
+                    }
+                }
+            }
+        }
+        visit_mut::visit_item_impl_mut(self, item);
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = env::args().skip(1);
     let path = args.next().ok_or("missing source path")?;
     let origin = args.next().ok_or("missing source identity")?;
     if args.next().is_some() { return Err("unexpected argument".into()); }
     let mut file = syn::parse_file(&fs::read_to_string(&path)?)?;
+    if origin == "--mutate-focus-query" {
+        let mut mutation = MutateFocusQuery(false);
+        mutation.visit_file_mut(&mut file);
+        if !mutation.0 { return Err("no native Focus::focused query to mutate".into()); }
+        fs::write(Path::new(&path), quote!(#file).to_string())?;
+        return Ok(());
+    }
+    if origin == "--inspect-egui" {
+        Inspector.visit_file_mut(&mut file);
+        UiQueries.visit_file_mut(&mut file);
+        return Ok(());
+    }
     if origin == "--inspect-expanded" {
         Inspector.visit_file_mut(&mut file);
         return Ok(());
