@@ -160,8 +160,11 @@ impl Callbacks for StateTypes {
             }
             let blocks:Vec<_>=body.basic_blocks.iter().enumerate()
                 .map(|(i,b)|format!("{{\"block\":{},\"statement_locations\":{}}}",i,b.statements.len()+1)).collect();
+            let visibility=if matches!(tcx.def_kind(local),DefKind::Fn|DefKind::AssocFn) {
+                format!("{:?}",tcx.visibility(def))
+            } else {"expression-body".to_owned()};
             roots.push(format!("{{\"record\":\"body\",\"definition\":{},\"visibility\":{},\"arguments\":{},\"locals\":[{}],\"locations\":[{}]}}",
-                string(&tcx.def_path_str(def)),string(&format!("{:?}",tcx.visibility(def))),body.arg_count,locals.join(","),blocks.join(",")));
+                string(&tcx.def_path_str(def)),string(&visibility),body.arg_count,locals.join(","),blocks.join(",")));
         }
         imported.drain();
         let destination=PathBuf::from(env::var_os("FAIRING_STATE_TYPES_OUT").expect("state import output"));

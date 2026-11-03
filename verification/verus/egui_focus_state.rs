@@ -4,7 +4,8 @@ use vstd::prelude::*;
 verus! {
 pub type Id = u64;
 pub enum Direction { None, Up, Right, Down, Left, Next, Previous }
-// Field domains retain the complete native filter, layer and rectangle values.
+// Filter, Layer and the complete cache representation are parameters.
+// No mathematical-map abstraction is substituted for the cache's iteration/storage state.
 pub struct Owner<Filter> { pub id:Id, pub filter:Filter }
 pub struct NativeFocus<Filter,Layer,Rect> {
     pub focused_widget:Option<Owner<Filter>>,
@@ -16,7 +17,7 @@ pub struct NativeFocus<Filter,Layer,Rect> {
     pub focus_direction:Direction,
     pub top_modal_layer:Option<Layer>,
     pub top_modal_layer_current_frame:Option<Layer>,
-    pub focus_widgets_cache:Map<Id,Rect>,
+    pub focus_widgets_cache:Rect,
 }
 pub struct History {pub previous:Option<Id>,pub two_passes_ago:Option<Id>}
 pub struct Modal<Layer> {pub previous:Option<Layer>,pub current:Option<Layer>}
@@ -28,7 +29,7 @@ pub struct Navigation<Filter,Layer,Rect> {
     pub last_interested:Option<Id>,
     pub direction:Direction,
     pub modal:Modal<Layer>,
-    pub candidates:Map<Id,Rect>,
+    pub candidates:Rect,
 }
 pub open spec fn encode<F,L,R>(s:NativeFocus<F,L,R>)->Navigation<F,L,R> {
     Navigation {

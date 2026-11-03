@@ -217,15 +217,16 @@ def main():
         str((ROOT / p).relative_to(ROOT)): hashlib.sha256((ROOT / p).read_bytes()).hexdigest()
         for p in extra_inputs}:
         raise SystemExit('UI state proof inputs changed during native compilation')
-    report = {'component': 'egui-focus-state-domain', 'status': 'proved',
+    report = {'component': 'egui-focus-record-and-current-query', 'status': 'proved',
               'whole_ui_state_status': 'unproved', 'native_source_archive': pin,
-              'scope': 'All Focus fields, all FocusDirection variants, all viewport-map sizes and exact native focused-query composition',
+              'scope': 'Independent focus-record reconstruction and exact native focused-query composition; concrete cache/shared-store encoding remains unproved',
               'inputs': before | extra_inputs, 'commands': commands,
               'native_fields': FOCUS_FIELDS, 'native_queries': queries,
               'other_egui_state_domains': 'not-claimed',
+              'concrete_shared_store_refinement': 'unproved',
               'native_expansion_sha256': hashlib.sha256(expansion.read_bytes()).hexdigest()}
     receipt.write_text(json.dumps(report, indent=2) + '\n')
-    print('NATIVE_FOCUS_STATE_DOMAIN_PROVED; WHOLE_UI_STATE_UNPROVED', flush=True)
+    print('FOCUS_RECORD_AND_QUERY_PROVED; WHOLE_UI_STATE_UNPROVED', flush=True)
 
 
 if __name__ == '__main__':
