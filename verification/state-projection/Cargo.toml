@@ -1,0 +1,22 @@
+[package]
+name = "fairing-state-projection"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[workspace]
+
+[lib]
+proc-macro = true
+
+[[bin]]
+name = "instrument"
+path = "src/instrument.rs"
+
+[dependencies]
+proc-macro2 = "=1.0.107"
+quote = "=1.0.47"
+syn = { version = "=2.0.119", features = ["full", "visit-mut"] }
+
+[lints]

@@ -1,0 +1,45 @@
+name: Concrete state correspondence
+
+on:
+  pull_request:
+  push: { branches: [main] }
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_BUILD_JOBS: "2"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  representation:
+    if: github.repository == 'shim9610/fairing'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Verify source-bound lossless state representation
+        run: python3 verification/state_correspondence.py
+      - name: Preserve proof receipts and counterexamples
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: concrete-state-correspondence
+          retention-days: 14
+          path: |
+            target/assurance/state-correspondence/summary.json
+            target/assurance/state-correspondence/source-manifest.json
+            target/assurance/state-correspondence/configuration-summary.json
+            target/assurance/state-correspondence/*.log
+            target/assurance/state-correspondence/configurations-*.rs
+            target/assurance/state-correspondence/control-*.rs
+            target/assurance/state-correspondence/*/compiled-projections.json
+            target/assurance/state-correspondence/*/*-bodies.json
+            target/assurance/state-correspondence/*/correspondence-*.rs
