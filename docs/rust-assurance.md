@@ -13,9 +13,9 @@ source-built compiler and matching LLVM coverage workflow.
 
 | Tool | Pin | Scope |
 | --- | --- | --- |
-| Kani | 0.68.0; nightly 2026-08-21 | Twenty-one harnesses: ACK/access and response correlation, pool/display, production input admission, Back dispatch and retained-owner partition/operation/lifetime contracts |
-| Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Contracts on seventeen production functions plus a quiet-pass progress obligation |
-| Miri | nightly 2026-10-30 | Twenty-six assurance tests, six production interaction-adapter tests and the production payload-cleanup test; rendering witnesses run natively |
+| Kani | 0.68.0; nightly 2026-08-21 | Thirty harnesses: ACK/access and response correlation, pool/display, production input admission, Back dispatch and retained-owner partition/operation/lifetime contracts |
+| Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Contracts on twenty-nine production functions plus quiet-pass progress and four concrete-carrier composition/noninterference obligations |
+| Miri | nightly 2026-10-30 | Twenty-eight assurance tests, six production interaction-adapter tests and the production payload-cleanup test; rendering witnesses run natively |
 | Loom | 0.7.2 | Four scenarios: Inbox ordering/consumer and bounded admission/close-after-drain |
 | proptest | 1.12.0 | CI: 512 cases per property, including shell ordering, transition traces and UI reachability; seed 20261101 |
 | cargo-fuzz | 0.13.2; libfuzzer-sys 0.4.13 | ASan: 20,000 ACK, 10,000 parser, 10,000 API and 2,000 shell inputs |

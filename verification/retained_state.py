@@ -15,7 +15,7 @@ def sites(source):
         ["backend." + m for m in re.findall(
             r"\.\s*((?:get|insert|remove)_(?:temp|persisted)\w*)\s*(?=\(|::<)", source)]
         + ["lifecycle." + m for m in re.findall(
-            r"crate::interaction::(?:rules::)?(\w+)\s*(?=\(|::<)", source)]
+            r"crate::interaction::(?:(?:rules|concrete)::)?(\w+)\s*(?=\(|::<)", source)]
     ).items()))
 
 

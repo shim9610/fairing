@@ -11,7 +11,7 @@
   "interaction/mod.rs": {
     "review": "Owner adapter: observes the proved lease before cloning a payload; only explicit store renews ownership.",
     "sites": {
-      "backend.get_temp_raw": 2,
+      "backend.get_temp_raw": 1,
       "backend.insert_temp": 1,
       "backend.remove_temp_raw": 1
     }
@@ -19,9 +19,11 @@
   "widgets/button.rs": {
     "review": "Press-scoped hold progress/reporting state; a fresh press cannot inherit old completion.",
     "sites": {
+      "lifecycle.hold_admitted": 1,
+      "lifecycle.hold_finish": 1,
       "lifecycle.load": 1,
-      "lifecycle.store": 2,
-      "lifecycle.step": 1
+      "lifecycle.pointer": 1,
+      "lifecycle.store": 2
     }
   },
   "widgets/dropdown.rs": {
@@ -95,9 +97,11 @@
   "widgets/wheel.rs": {
     "review": "Mounted animation and separate fresh-press capture admission; expiration seeds from current caller selection.",
     "sites": {
-      "lifecycle.load": 1,
-      "lifecycle.store": 1,
-      "lifecycle.step": 1
+      "lifecycle.apply_capture": 1,
+      "lifecycle.capture_step": 1,
+      "lifecycle.load_capture": 1,
+      "lifecycle.pointer": 1,
+      "lifecycle.store": 1
     }
   }
 }

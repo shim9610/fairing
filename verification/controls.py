@@ -12,7 +12,7 @@ import tempfile
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--only", action="append", choices=[
     "back-handler", "back-projection", "auth-correlation", "command-budget", "expiry-order", "ui-progress", "modal-input",
-    "bounded-admission", "launch-gates", "notification-cap", "inbox-delivery", "retained-lifetime", "numeric-owner", "hold-admission", "wheel-admission",
+    "bounded-admission", "launch-gates", "notification-cap", "inbox-delivery", "retained-lifetime", "numeric-owner", "hold-admission", "wheel-admission", "restore-delegation", "pointer-projection", "capture-application", "hold-completion-latch",
 ], help="Run selected controls; omitting this option runs the complete CI suite")
 args = parser.parse_args()
 ROOT = Path(__file__).resolve().parents[1]
@@ -63,17 +63,33 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
 
     scenarios = [
         ("wheel-admission", "widget_lifecycle::a_wheel_requires_a_fresh_drag_after_its_owner_is_interrupted",
-         "crates/fairing-widgets/src/widgets/wheel.rs",
-         [("active: drum.captured", "active: true")],
+         "crates/fairing-widgets/src/interaction/concrete.rs",
+         [("Some(saved) => saved.captured,", "Some(_saved) => true,")],
          False, "an old drag changed a returned wheel"),
         ("hold-admission", "widget_lifecycle::an_old_held_pointer_cannot_arm_a_returned_button",
-         "crates/fairing-widgets/src/widgets/button.rs",
-         [("active: matches!(state, Some(RING_ARMED | RING_DONE))", "active: state.is_some()")],
+         "crates/fairing-widgets/src/interaction/concrete.rs",
+         [("Some(HoldPhase::Armed | HoldPhase::Done)", "Some(HoldPhase::Idle | HoldPhase::Armed | HoldPhase::Done)")],
          False, "an old held pointer armed a retired button"),
         ("retained-lifetime", "widget_lifecycle::every_interruption_prefix_preserves_popup_and_peer_operations",
-         "crates/fairing-widgets/src/interaction/mod.rs",
-         [("let continuous = rules::live(\n                    saved.seen,\n                    now,\n                    matches!(lifetime, Lifetime::Press),\n                    fresh_press,\n                );", "let continuous = true;")],
+         "crates/fairing-widgets/src/interaction/concrete.rs",
+         [("else if !rules::adjacent(saved.seen, pass.now)", "else if false")],
          False, "a retired popup revived"),
+        ("restore-delegation", "widget_lifecycle::every_interruption_prefix_preserves_popup_and_peer_operations",
+         "crates/fairing-widgets/src/interaction/mod.rs",
+         [('select(\n                    Some(saved),\n                    Pass {\n                        now,\n                        enabled,\n                        lifetime,\n                        fresh_press,\n                    },\n                )', "Some(&saved.payload)")],
+         False, "a retired popup revived"),
+        ("pointer-projection", "widget_lifecycle::a_zero_duration_hold_completes_once_per_fresh_press",
+         "crates/fairing-widgets/src/interaction/mod.rs",
+         [("fresh, down, held:", "fresh: false, down, held:")],
+         False, "zero-duration hold must complete exactly once per fresh press"),
+        ("capture-application", "widget_lifecycle::a_wheel_requires_a_fresh_drag_after_its_owner_is_interrupted",
+         "crates/fairing-widgets/src/widgets/wheel.rs",
+         [("drum = crate::interaction::concrete::apply_capture(drum, transition);", "let _ = crate::interaction::concrete::apply_capture(drum, transition);")],
+         False, "a fresh wheel drag remained blocked after interruption"),
+        ("hold-completion-latch", "widget_lifecycle::a_completed_hold_cannot_refire_when_its_animation_progress_changes",
+         "crates/fairing-widgets/src/interaction/concrete.rs",
+         [("else if matches!(previous, HoldPhase::Done)", "else if matches!(previous, HoldPhase::Done) && full")],
+         False, "a completed hold re-fired when animation progress changed"),
         ("numeric-owner", "widget_lifecycle::stale_numeric_drafts_cannot_override_authoritative_values",
          "crates/fairing-widgets/src/widgets/number_field.rs",
          [("d.seed_bits == self.value.to_bits() && d.seed == figure(*self.value, self.decimals)", "true"),

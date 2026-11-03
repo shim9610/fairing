@@ -123,6 +123,69 @@ A caller update, including one too small to change the displayed decimal, supers
 an older draft. Disabling a field through a parent UI also retires editing state.
 These changes keep public API signatures and caller-owned selections/buffers intact.
 
+## Concrete carrier correspondence
+
+The product now stores the types in `interaction/concrete.rs` directly:
+`Session<T>` contains the real last-seen stamp and payload; `Pass` contains the
+current pass, enablement, scope and fresh-press observation. `HoldPhase` is the
+actual cached hold state. `Capture<T>` contains the actual input ownership bit
+and the complete animation/value payload. These are not verifier-only replicas.
+
+Both tools verify twelve unchanged production function bodies. Lease membership
+is independently specified with integer arithmetic over every pair of u64 values,
+including future stamps, gaps and the maximum value. The timestamped capture has
+exactly one of seven groups: Disabled, Missing, Future, Expired, ReplacedPress,
+Idle or Captured. Restoration yields the original borrowed payload exactly when
+its lease is live; it does not renew the stamp or clone a payload.
+
+The actual hold phase and six pointer observations are converted to protocol
+states/operations by verified functions. Admission is not inferred from cache
+presence or implementation refusal. The independent promise allows a fresh owned
+start regardless of old storage, requires active ownership for continuation or
+completion, and cancels previous ownership on a fresh unowned press even when
+stale dragged/stopped flags coexist. Kani found the latter combination during
+refinement; both affected harnesses pass after the production operation mapping
+was corrected.
+
+Completion stays latched for an admitted press independently of later animation
+progress. A native witness changes the actual ring animation after completion;
+a precise mutation restoring the old progress-dependent latch must refire and
+fail. This avoids assuming monotonic animation progress in the input contract.
+
+Verus proves noninterference for arbitrary payload **types**, not a finite set of
+sample animation values. Equal input ownership gives equal admission irrespective
+of all animation/value data, and applying a capture result preserves that payload.
+It also proves total/unique membership for sequences of timestamped captures of
+arbitrary length and all their joint state combinations. This composition theorem
+does not establish that egui's heterogeneous map has been mapped to those sequences.
+
+The egui storage lookup/downcast/clone, response observation and actual assignment
+of the result are concrete integration boundaries. Miri exercises the real storage
+adapter. Native mutations bypass restoration, corrupt the fresh-press binding and
+omit capture-result application; matching public widget witnesses must reject them.
+The derived Clone implementations are not called by the Verus proof and have no
+Verus Clone specification; the proof covers borrowed selection and value moves.
+
+## Compiler-derived type inventory
+
+`verification/state_schema.py` asks the pinned compiler for private and hidden type
+metadata for both product crates, with minimal and all features on Linux x86_64.
+It compares module-level named struct/enum/union/type-alias declarations, generic bounds,
+field type and variant payload against `verification/state-schema.json`. No numeric
+compiler IDs or source positions are kept. Added/removed fields or variants fail
+CI until their state correspondence is reviewed; stripped or unresolved metadata
+fails extraction rather than silently omitting an entry.
+
+The current profiles contain 776 and 648 declarations respectively; 15 declarations
+are direct inputs to the lifecycle/concrete-carrier proofs. These counts describe
+type declarations, not reachable states or verified application behavior. Other
+declarations remain explicitly unmapped. The inventory includes configuration,
+rendering and builder types as well as retained state and does not enumerate
+function-local types and anonymous callback environments, arbitrary integrator types or upstream internals.
+It is an omission guard and a worklist for further refinement, not the requested
+whole-state completeness theorem. Compiler runs record the exact source inputs;
+a local `--skip-build` report is explicitly marked as not freshly compiled.
+
 ## Backend inventory and concrete witnesses
 
 `verification/retained-state.json` classifies the retained egui backend sites in the
@@ -160,8 +223,8 @@ protocol histories, Miri and the shell fuzzer also check the production kernel.
 checks receipts against the current product source **and** independent verifier
 specifications, the exact raw predicate fields and Back product bindings, and the
 backend inventory. A stale receipt or changed inventory fails CI. The status report
-records four discharged component obligations: Back dispatch, owner partition,
-owner operation outcomes, and timestamp lifetime.
+records the discharged Back/protocol obligations separately from concrete carrier
+partition/refinement, unbounded capture-product partition and payload noninterference.
 
 The requested whole-application theorem still needs:
 

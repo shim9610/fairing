@@ -43,6 +43,11 @@ raw_fields = re.findall(r'pub (\w+): bool,', protocol.read_text().split('pub(cra
 if len(raw_fields) != 4 or set(raw_fields) != {'present', 'enabled', 'continuous', 'active'}:
  raise SystemExit('Interaction projection changed; review the independent specification before proving operations')
 interaction_checked = proved('interaction', [protocol, ROOT / 'verification/kani_interaction.rs', ROOT / 'verification/verus/interaction.py'])
+concrete_checked = proved('concrete', [
+ ROOT / 'crates/fairing-widgets/src/interaction/concrete.rs', protocol,
+ ROOT / 'verification/kani_concrete.rs', ROOT / 'verification/verus/concrete.py',
+ ROOT / 'verification/verus/interaction.py', ROOT / 'verification/state-schema.json',
+])
 inventory = audit()
 obligations = [
  {'id': 'back-dispatch-partition', 'status': 'discharged' if checked else 'open',
@@ -53,6 +58,14 @@ obligations = [
   'scope': 'All five independently specified operations in every raw protocol state: immediate specified result, no refusal of a promised operation, start and finish after arbitrary prior protocol state.'},
  {'id': 'retained-owner-lifetime', 'status': 'discharged' if interaction_checked else 'open',
   'scope': 'All pairs of u64 timestamps and both scope/fresh-press predicates; future and wrapped timestamps never revive ownership.'},
+ {'id': 'concrete-retained-partition', 'status': 'discharged' if concrete_checked else 'open',
+  'scope': 'Exact product Session<Capture<T>>, Pass and Lifetime types; all stored timestamps and enum variants, seven independent concrete groups, arbitrary payload type T.'},
+ {'id': 'concrete-admission-refinement', 'status': 'discharged' if concrete_checked else 'open',
+  'scope': 'Actual lease restoration, HoldPhase decoding and six pointer observations refine protocol admission; fresh unowned presses cannot reuse old capture; completion stays latched under arbitrary progress changes.'},
+ {'id': 'retained-owner-product-partition', 'status': 'discharged' if concrete_checked else 'open',
+  'scope': 'Verus: every sequence length and every joint combination of timestamped capture carriers has total unique membership. The upstream egui map-to-sequence relation is not proved.'},
+ {'id': 'capture-payload-noninterference', 'status': 'discharged' if concrete_checked else 'open',
+  'scope': 'Generic in both payload types: equal input ownership yields equal admission regardless of all animation/value data; actual capture application preserves the payload.'},
 ]
 components_complete = all(item['status'] == 'discharged' for item in obligations)
 # These are actual unverified boundaries, not verifier errors or discharged claims.
@@ -66,7 +79,8 @@ boundaries = [
 ]
 report = {'target_guarantee': 'Every reachable state is covered, and every specification-permitted interaction is always executable with its promised outcome.',
           'whole_app_status': 'incomplete', 'implemented_components_status': 'proved' if components_complete else 'incomplete',
-          'obligations': obligations, 'backend_inventory': inventory, 'unproved_boundaries': boundaries}
+          'obligations': obligations, 'backend_inventory': inventory, 'unproved_boundaries': boundaries,
+          'type_inventory_scope': 'Compiler-derived named product declarations in minimal/all feature Linux builds; declarations outside the concrete-carrier/protocol models remain unproved'}
 out = ROOT / 'target/assurance/proofs/state-obligations.json'
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text(json.dumps(report, indent=2) + '\n')

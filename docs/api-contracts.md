@@ -52,10 +52,18 @@ production bodies in [`access/rules.rs`](../crates/fairing/src/access/rules.rs);
 the adapter adds contracts and visibility only. Kani/Verus also check the
 original ACK kernel.
 
+The actual retained `Session`/`Capture`/`HoldPhase` carriers and their conversion to
+protocol state are now direct verifier inputs. The generic proof quantifies over
+all animation/value payload types; unbounded sequence composition is a separate
+lemma. Compiler-derived private type inventories guard declaration coverage in
+minimal/all-feature Linux builds. This does not prove the joint abstraction of
+the entire shell, layout, egui map and application callbacks; see
+[concrete correspondence](formal-operability.md#concrete-carrier-correspondence).
+
 ## Bounds and assumptions
 
-- Kani proves twenty-one harnesses. Verus verifies seventeen production functions and
-  an additional quiet-pass progress obligation.
+- Kani proves thirty harnesses. Verus verifies twenty-nine production functions,
+  quiet-pass progress and four concrete-carrier proof obligations.
   Pool sequence proof is bounded to four operations on a two-slot u8 pool; the generation
   decision covers all u64 values. Kani treats pool-identity atomics sequentially;
   it does not prove concurrent identity creation. The access rules cover all u16 levels, all u32 counter values and every
@@ -78,7 +86,7 @@ original ACK kernel.
   shell must resume ordinary UI on a quiet pass and satisfy each edge after intentional
   blockers stand aside. Kani/Verus prove the shared input decision, not the rendered
   correspondence; native witnesses check that separately. See [UI reachability](ui-reachability.md).
-- Miri interprets twenty-five assurance tests and the production supported-payload cleanup test
+- Miri interprets twenty-eight assurance tests, six production storage-adapter tests and the production supported-payload cleanup test
   with normal isolation, validity and race
   checks. It covers the actual Access, PinTable, notification, calendar, unit,
   service, fixed-pool and bounded/unbounded Inbox APIs, plus a fixed logic-only
@@ -117,17 +125,17 @@ graph consistency, not runtime behavior.
 
 ## Controls and coverage
 
-`verification/proofs.py` requires both verifiers to reject sixteen mutations:
+`verification/proofs.py` requires both verifiers to reject twenty-one mutations:
 reversed ACK condition, stale-response acceptance, reversed level order, accepting
 an unknown grant, wrapping failure count, excluding lockout equality, wrapping a
-pool generation, broken display clipping, excessive input deferral, modal capture, a missing Back group, ignoring a permitted Back operation, accepting future owner timestamps, retaining an expired owner, refusing a new start due to stale ownership, and retaining activity after completion.
+pool generation, broken display clipping, excessive input deferral, modal capture, a missing Back group, ignoring a permitted Back operation, accepting future owner timestamps, retaining an expired owner, refusing a new start due to stale ownership, retaining activity after completion, ignoring concrete disablement, confusing cached/active holds, reusing capture on a fresh unowned press, losing the completion latch, and treating arbitrary cached animation as capture.
 The controls require a semantic verification error; compilation errors fail
 the control instead of counting as a successful rejection.
 
 `verification/controls.py` copies the sources into a disposable directory,
 checks a passing baseline, then breaks production gate delegation,
 notification cap enforcement, bounded factory admission, Inbox delivery, input progress,
-modal priority, response correlation, the per-update command budget, deadline ordering, Back snapshot binding, Back handler execution, retained-owner expiration, numeric caller-value validation active hold admission and wheel capture admission separately. The matching
+modal priority, response correlation, the per-update command budget, deadline ordering, Back snapshot binding, Back handler execution, retained-owner expiration, numeric caller-value validation active hold admission, wheel capture admission, restoration delegation, fresh-pointer projection, capture-result application and completion latching separately. The matching
 public API/Loom test must fail with its expected assertion. Working sources
 and published dependencies remain intact.
 

@@ -677,3 +677,56 @@ fn a_wheel_requires_a_fresh_drag_after_its_owner_is_interrupted() {
         );
     }
 }
+
+#[test]
+fn a_completed_hold_cannot_refire_when_its_animation_progress_changes() {
+    use fairing::motion::Tween;
+    use fairing::widgets::BigButton;
+    use std::time::Duration;
+    let mut r = Runner::new();
+    let mut id = egui::Id::NULL;
+    let mut rect = Rect::NOTHING;
+    r.frame(vec![], |ui, cx| {
+        let button = BigButton::new("hold")
+            .long_press(Duration::from_millis(100))
+            .show(ui, cx);
+        id = button.response.id;
+        rect = button.response.rect;
+    });
+    let mut completed = 0;
+    let mut draw = |ui: &mut egui::Ui, cx: &mut WidgetCx<'_>| {
+        completed += usize::from(
+            BigButton::new("hold")
+                .long_press(Duration::from_millis(100))
+                .show(ui, cx)
+                .long_pressed(),
+        );
+    };
+    r.frame(pointer(rect.center(), true), &mut draw);
+    for _ in 0..16 {
+        r.frame(vec![], &mut draw);
+    }
+    drop(draw);
+    assert_eq!(completed, 1, "initial hold did not complete");
+    // Public animation storage can be changed independently of the retained press.
+    r.anims.animate(
+        id.with("ring").with(egui::Id::unique("lifecycle")),
+        0.0,
+        Tween::instant(),
+        r.frame,
+    );
+    for _ in 0..16 {
+        r.frame(vec![], |ui, cx| {
+            completed += usize::from(
+                BigButton::new("hold")
+                    .long_press(Duration::from_millis(100))
+                    .show(ui, cx)
+                    .long_pressed(),
+            );
+        });
+    }
+    assert_eq!(
+        completed, 1,
+        "a completed hold re-fired when animation progress changed"
+    );
+}

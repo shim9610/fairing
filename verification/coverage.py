@@ -31,7 +31,7 @@ product = {str(Path(item["filename"]).resolve().relative_to(ROOT)): item["summar
 required = ["fairing/src/access/auth.rs", "fairing/src/access/mod.rs", "fairing/src/access/rules.rs",
             "fairing/src/shell/mod.rs", "fairing/src/shell/input_route.rs", "fairing/src/shell/back_route.rs", "fairing/src/services/mod.rs", "fairing/src/notify/center.rs",
             "fairing/src/time.rs", "fairing/src/inbox.rs", "fairing/src/inbox/bounded.rs",
-            "fairing-widgets/src/interaction/mod.rs", "fairing-widgets/src/interaction/rules.rs",
+            "fairing-widgets/src/interaction/mod.rs", "fairing-widgets/src/interaction/rules.rs", "fairing-widgets/src/interaction/concrete.rs",
             "fairing-widgets/src/memory.rs", "fairing-widgets/src/memory/display.rs", "fairing-widgets/src/unit.rs"]
 for path in required:
     summary = product.get("crates/" + path)

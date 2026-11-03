@@ -58,6 +58,29 @@ jobs:
           rustfmt --check verification/kani_input.rs
           rustfmt --check verification/kani_back.rs
           rustfmt --check verification/kani_interaction.rs
+          rustfmt --check verification/kani_concrete.rs
+
+  state-schema:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install pinned compiler for private type metadata
+        run: |
+          nightly="$(python3 -c 'import json; print(json.load(open("verification/tools.json"))["nightly"])')"
+          rustup toolchain install "$nightly" --profile minimal
+      - name: Require reviewed concrete fields and variants in both feature profiles
+        run: python3 verification/state_schema.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: state-schema-results
+          path: |
+            target/assurance/state-schema/summary.json
+            target/assurance/state-schema/unreviewed-schema.json
+            target/assurance/state-schema/*/compiler.log
+          retention-days: 14
 
   proofs:
     needs: inputs

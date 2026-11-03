@@ -1,18 +1,9 @@
 //! Retained interaction state has an owner and a render-pass lifetime.
+pub(crate) mod concrete;
 pub(crate) mod rules;
-use rules::{Operation, Snapshot};
-
-#[derive(Clone, Copy)]
-pub(crate) enum Lifetime {
-    Mounted,
-    Press,
-}
-
-#[derive(Clone)]
-struct Session<T> {
-    seen: u64,
-    payload: T,
-}
+pub(crate) use concrete::Lifetime;
+use concrete::{Pass, Session};
+use rules::Snapshot;
 
 pub(crate) fn load<T: Clone + Send + Sync + 'static>(
     ctx: &egui::Context,
@@ -20,39 +11,48 @@ pub(crate) fn load<T: Clone + Send + Sync + 'static>(
     enabled: bool,
     lifetime: Lifetime,
 ) -> Option<T> {
+    load_by(ctx, id, enabled, lifetime, concrete::restore::<T>)
+}
+
+pub(crate) fn load_capture<T: Clone + Send + Sync + 'static>(
+    ctx: &egui::Context,
+    id: egui::Id,
+    enabled: bool,
+    lifetime: Lifetime,
+) -> Option<concrete::Capture<T>> {
+    load_by(ctx, id, enabled, lifetime, concrete::restore_capture::<T>)
+}
+
+fn load_by<T: Clone + Send + Sync + 'static>(
+    ctx: &egui::Context,
+    id: egui::Id,
+    enabled: bool,
+    lifetime: Lifetime,
+    select: for<'a> fn(Option<&'a Session<T>>, Pass) -> Option<&'a T>,
+) -> Option<T> {
     let now = ctx.cumulative_pass_nr();
     let fresh_press = ctx.input(|i| i.pointer.primary_pressed());
     ctx.data_mut(|data| {
         let raw = egui::util::id_type_map::RawKey::new::<Session<T>>(id);
-        let keep = data
+        let payload = data
             .get_temp_raw(raw)
             .and_then(|value| value.downcast_ref::<Session<T>>())
-            .is_some_and(|saved| {
-                let continuous = rules::live(
-                    saved.seen,
-                    now,
-                    matches!(lifetime, Lifetime::Press),
-                    fresh_press,
-                );
-                rules::step(
-                    Snapshot {
-                        present: true,
+            .and_then(|saved| {
+                select(
+                    Some(saved),
+                    Pass {
+                        now,
                         enabled,
-                        continuous,
-                        active: true,
+                        lifetime,
+                        fresh_press,
                     },
-                    Operation::Observe,
                 )
-                .active
-            });
-        if keep {
-            data.get_temp_raw(raw)
-                .and_then(|value| value.downcast_ref::<Session<T>>())
-                .map(|saved| saved.payload.clone())
-        } else {
+            })
+            .cloned();
+        if payload.is_none() {
             data.remove::<Session<T>>(id);
-            None
         }
+        payload
     })
 }
 
@@ -100,3 +100,20 @@ pub(crate) fn snapshot(active: bool) -> Snapshot {
 
 #[cfg(test)]
 mod tests;
+
+pub(crate) fn pointer(response: &egui::Response) -> concrete::Pointer {
+    let (fresh, down) = response.ctx.input(|input| {
+        (
+            input.pointer.primary_pressed(),
+            input.pointer.primary_down(),
+        )
+    });
+    concrete::Pointer {
+        fresh,
+        down,
+        held: response.is_pointer_button_down_on(),
+        clicked: response.clicked(),
+        dragged: response.dragged(),
+        stopped: response.drag_stopped(),
+    }
+}

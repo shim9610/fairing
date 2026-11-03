@@ -29,8 +29,14 @@ def execute(name, command, env, expected_failure=False, marker=""):
     return {"name": name, "exit_code": result.returncode, "expected_failure": expected_failure, "log": str(log)}
 
 
-def receipt(name, paths):
-    inputs = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+def hashes(paths):
+    return {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+
+
+def receipt(name, paths, before=None):
+    inputs = hashes(paths)
+    if before is not None and before != inputs:
+        raise SystemExit("Proof inputs changed during verification: " + name)
     (OUT / (name + "-receipt.json")).write_text(json.dumps({"inputs": inputs}, indent=2) + "\n")
 
 
@@ -64,6 +70,15 @@ results.append(execute("kani-interaction", [kani, ROOT / "verification/kani_inte
 if hashlib.sha256(interaction_source.read_bytes()).hexdigest() != interaction_digest:
     raise SystemExit("Interaction source changed while proofs were running")
 receipt("interaction", [interaction_source, ROOT / "verification/kani_interaction.rs", ROOT / "verification/verus/interaction.py"])
+
+concrete_source = ROOT / "crates/fairing-widgets/src/interaction/concrete.rs"
+concrete_inputs = [concrete_source, interaction_source, ROOT / "verification/kani_concrete.rs",
+                   ROOT / "verification/verus/concrete.py", ROOT / "verification/verus/interaction.py",
+                   ROOT / "verification/state-schema.json"]
+concrete_before = hashes(concrete_inputs)
+results.append(execute("verus-concrete", [sys.executable, ROOT / "verification/verus/concrete.py"], environment))
+results.append(execute("kani-concrete", [kani, ROOT / "verification/kani_concrete.rs"], kani_env))
+receipt("concrete", concrete_inputs, concrete_before)
 
 
 source = (ROOT / "crates/fairing/src/shell/bool_ack.rs").read_text()
@@ -207,6 +222,32 @@ for name, old, new in [
                            expected_failure=True, marker="postcondition not satisfied"))
     path = OUT / (name + "-kani.rs")
     path.write_text(interaction_harness.replace(declaration, "mod rules {\n" + mutant + "\n}"))
+    results.append(execute("kani-" + name, [kani, path], kani_env,
+                           expected_failure=True, marker="VERIFICATION:- FAILED"))
+
+concrete_text = concrete_source.read_text()
+concrete_harness = (ROOT / "verification/kani_concrete.rs").read_text()
+declaration = '#[path = "../crates/fairing-widgets/src/interaction/concrete.rs"]\nmod concrete;'
+rules_declaration = '#[path = "../crates/fairing-widgets/src/interaction/rules.rs"]\nmod rules;'
+if concrete_harness.count(declaration) != 1 or concrete_harness.count(rules_declaration) != 1:
+    raise SystemExit("Review concrete carrier source bindings")
+for name, old, new in [
+    ("concrete-disabled", "if !pass.enabled", "if false"),
+    ("concrete-hold-alias", "Some(HoldPhase::Armed | HoldPhase::Done)", "Some(HoldPhase::Idle | HoldPhase::Armed | HoldPhase::Done)"),
+    ("concrete-fresh-boundary", "if pointer.fresh {\n        if pointer.held || pointer.clicked {\n            Operation::Start\n        } else {\n            Operation::Cancel\n        }\n    } else if pointer.stopped", "if pointer.fresh && (pointer.held || pointer.clicked) {\n        Operation::Start\n    } else if pointer.stopped"),
+    ("concrete-completion-latch", "else if matches!(previous, HoldPhase::Done)", "else if false"),
+    ("concrete-animation-alias", "Some(saved) => saved.captured,", "Some(_saved) => true,"),
+]:
+    if concrete_text.count(old) != 1: raise SystemExit("Review concrete mutation: " + name)
+    mutant = concrete_text.replace(old, new, 1)
+    source_path = OUT / (name + "-source.rs"); source_path.write_text(mutant)
+    results.append(execute("verus-" + name, [sys.executable, ROOT / "verification/verus/concrete.py", "--source", source_path,
+                           "--output", OUT / (name + "-verus.rs")], environment,
+                           expected_failure=True, marker="postcondition not satisfied"))
+    path = OUT / (name + "-kani.rs")
+    harness = concrete_harness.replace(declaration, "mod concrete {\n" + mutant + "\n}")
+    harness = harness.replace(rules_declaration, '#[path = ' + json.dumps(str(interaction_source)) + ']\nmod rules;')
+    path.write_text(harness)
     results.append(execute("kani-" + name, [kani, path], kani_env,
                            expected_failure=True, marker="VERIFICATION:- FAILED"))
 (OUT / "summary.json").write_text(json.dumps(results, indent=2) + "\n")

@@ -40,6 +40,7 @@
 
 use super::{WheelLook, WheelRow};
 use crate::cx::WidgetCx as Cx;
+use crate::interaction::concrete::Capture;
 use crate::motion::{Animated, Mode};
 use crate::theme::ColorRole;
 use crate::unit::round_u8;
@@ -136,81 +137,63 @@ impl<'a> WheelPicker<'a> {
             response.mark_changed();
         }
         let id = ui.scope_id().with(self.id_salt);
-        let mut drum: Drum = crate::interaction::load::<Drum>(
+        let mut drum: Capture<Drum> = crate::interaction::load_capture::<Drum>(
             ui.ctx(),
             id,
             self.enabled && ui.is_enabled(),
             crate::interaction::Lifetime::Mounted,
         )
-        .unwrap_or(Drum {
-            pos: Animated::new(as_f32(wanted)),
-            caller: false,
+        .unwrap_or(Capture {
+            payload: Drum {
+                pos: Animated::new(as_f32(wanted)),
+                caller: false,
+            },
             captured: false,
         });
 
         // The caller moved the value while the drum was at rest, or while it was still turning
         // to the caller's last value: turn to it, the short way round on a joined drum.
-        let resting = drum.pos.mode() == Mode::Idle || drum.caller;
-        if resting && index_at(drum.pos.target(), count, self.wrap) != wanted {
-            let target = self.turn_to(drum.pos.value(), wanted, count);
-            drum.pos.to(target, cx.theme.motion.switch);
-            drum.caller = true;
+        let resting = drum.payload.pos.mode() == Mode::Idle || drum.payload.caller;
+        if resting && index_at(drum.payload.pos.target(), count, self.wrap) != wanted {
+            let target = self.turn_to(drum.payload.pos.value(), wanted, count);
+            drum.payload.pos.to(target, cx.theme.motion.switch);
+            drum.payload.caller = true;
         }
         // egui can retain a held pointer across a missing/disabled widget. A mounted
         // animation is not proof of a live drag; only a fresh press can start capture.
-        let fresh = ui.input(|input| input.pointer.primary_pressed())
-            && (response.is_pointer_button_down_on() || response.clicked());
-        let operation = if fresh {
-            crate::interaction::rules::Operation::Start
-        } else if response.drag_stopped() || response.clicked() {
-            crate::interaction::rules::Operation::Finish
-        } else if response.is_pointer_button_down_on() || response.dragged() {
-            crate::interaction::rules::Operation::Continue
-        } else {
-            crate::interaction::rules::Operation::Cancel
-        };
-        let transition = crate::interaction::rules::step(
-            crate::interaction::rules::Snapshot {
-                present: true,
-                enabled: self.enabled && ui.is_enabled(),
-                continuous: true,
-                active: drum.captured,
-            },
-            operation,
+        let transition = crate::interaction::concrete::capture_step(
+            Some(&drum),
+            self.enabled && ui.is_enabled(),
+            crate::interaction::pointer(&response),
         );
-        drum.captured = transition.active && ui.input(|input| input.pointer.primary_down());
-        let admitted = matches!(
-            transition.effect,
-            crate::interaction::rules::Effect::Began
-                | crate::interaction::rules::Effect::Continued
-                | crate::interaction::rules::Effect::Completed
-        );
+        drum = crate::interaction::concrete::apply_capture(drum, transition);
+        let admitted = transition.admitted;
         if admitted {
             // The drum owns this live gesture; the surrounding page swipe leaves it alone.
             crate::drag::claim_if_held(&response);
-            if self.steer(ui, cx, &response, rect, row_h, &mut drum.pos) {
-                drum.caller = false;
+            if self.steer(ui, cx, &response, rect, row_h, &mut drum.payload.pos) {
+                drum.payload.caller = false;
             }
         }
         let dt = ui.input(|i| i.stable_dt);
-        if drum.pos.tick(dt) {
+        if drum.payload.pos.tick(dt) {
             ui.ctx().request_repaint();
         }
 
         // A turn to the caller's value keeps that value: the rows it passes on the way are not
         // changes the operator made.
-        if !drum.caller {
-            let index = index_at(drum.pos.value(), count, self.wrap);
+        if !drum.payload.caller {
+            let index = index_at(drum.payload.pos.value(), count, self.wrap);
             if index != *self.selected {
                 *self.selected = index;
                 response.mark_changed();
             }
         }
-        if drum.pos.mode() == Mode::Idle {
-            drum.caller = false;
+        if drum.payload.pos.mode() == Mode::Idle {
+            drum.payload.caller = false;
         }
         crate::interaction::store(ui.ctx(), id, drum);
-        self.paint(ui, cx, rect, row_h, drum.pos.value());
+        self.paint(ui, cx, rect, row_h, drum.payload.pos.value());
         response
     }
 
@@ -374,8 +357,6 @@ struct Drum {
     pos: Animated<f32>,
     /// Turning to a value the caller set, not one the finger chose.
     caller: bool,
-    /// A fresh press admitted by the owner protocol, independently of animation.
-    captured: bool,
 }
 
 /// A row's index for a drum position: the position modulo the count with `wrap`, and only the
