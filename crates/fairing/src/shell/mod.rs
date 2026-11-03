@@ -40,6 +40,7 @@
 //! 16. events       — the integrator takes them with poll_events
 //! ```
 
+mod back_route;
 mod background;
 #[cfg(all(test, feature = "mock"))]
 mod background_tests;
@@ -3686,33 +3687,39 @@ impl Shell {
 
     /// The frame's own back — see [`Shell::launch_in`] for why there are two.
     fn back_in(&mut self, app: &mut AppRef<'_>) {
-        // Where stage 12's prompt is up, back is the prompt's.
-        if self.prompt.is_open() {
-            if !self.prompt.is_lock_screen() {
+        let group = back_route::classify(back_route::BackState {
+            faulted: self.faulted,
+            prompt: self.prompt.is_open(),
+            lock: self.prompt.is_lock_screen(),
+            info: self.desktop.info_open(),
+            overlay: !self.overlay.is_closed(),
+            keyboard: self.osk.is_shown(),
+            overview: self.workspace.is_overview_open(),
+            home: self.workspace.is_home(),
+        });
+        match back_route::dispatch(group) {
+            back_route::BackTarget::Ignore => return,
+            back_route::BackTarget::CancelPrompt => {
                 self.cancel_prompt();
+                return;
             }
-            return;
-        }
-        // An icon's info popover goes before anything under it moves.
-        if self.desktop.info_open() {
-            self.desktop.close_info(&self.theme.motion);
-            return;
-        }
-        if !self.overlay.is_closed() {
-            self.overlay.close(&self.theme.motion);
-            return;
-        }
-        if self.osk.is_shown() {
-            self.osk.hide();
-            return;
-        }
-        if self.workspace.is_overview_open() {
-            let tokens = self.theme.motion;
-            self.workspace.close_overview(&tokens);
-            return;
-        }
-        if self.workspace.is_home() {
-            return;
+            back_route::BackTarget::CloseInfo => {
+                self.desktop.close_info(&self.theme.motion);
+                return;
+            }
+            back_route::BackTarget::CloseOverlay => {
+                self.overlay.close(&self.theme.motion);
+                return;
+            }
+            back_route::BackTarget::HideKeyboard => {
+                self.osk.hide();
+                return;
+            }
+            back_route::BackTarget::CloseOverview => {
+                self.workspace.close_overview(&self.theme.motion);
+                return;
+            }
+            back_route::BackTarget::Workspace => {}
         }
         let consumed = self
             .with_parts(app, |workspace, registry, parts| {

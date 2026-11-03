@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verify the production kernel, then require both verifiers to reject a broken acknowledgement check."""
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -44,6 +45,13 @@ results.append(execute("kani-memory", [kani, ROOT / "verification/kani_memory.rs
 results.append(execute("verus-display", [sys.executable, ROOT / "verification/verus/display.py"], environment))
 results.append(execute("verus-input", [sys.executable, ROOT / "verification/verus/input.py"], environment))
 results.append(execute("kani-input", [kani, ROOT / "verification/kani_input.rs"], kani_env))
+back_checked_source = ROOT / "crates/fairing/src/shell/back_route.rs"
+back_digest = hashlib.sha256(back_checked_source.read_bytes()).hexdigest()
+results.append(execute("verus-back", [sys.executable, ROOT / "verification/verus/back.py"], environment))
+results.append(execute("kani-back", [kani, ROOT / "verification/kani_back.rs"], kani_env))
+if hashlib.sha256(back_checked_source.read_bytes()).hexdigest() != back_digest:
+    raise SystemExit("Back source changed while proofs were running")
+(OUT / "back-receipt.json").write_text(json.dumps({"source_sha256": back_digest}) + "\n")
 
 source = (ROOT / "crates/fairing/src/shell/bool_ack.rs").read_text()
 needle = "if reported == Some(sent)"
@@ -147,4 +155,30 @@ for name, old, new in [
     input_control.write_text(input_harness.replace(declaration, "mod input_route {\n" + mutant + "\n}"))
     results.append(execute("kani-" + name + "-negative", [kani, input_control], kani_env,
                            expected_failure=True, marker="VERIFICATION:- FAILED"))
+# Neither a missing state group nor dropping an allowed operation may pass.
+back_source = (ROOT / "crates/fairing/src/shell/back_route.rs").read_text()
+back_harness = (ROOT / "verification/kani_back.rs").read_text()
+declaration = '#[path = "../crates/fairing/src/shell/back_route.rs"]\nmod back_route;'
+if back_harness.count(declaration) != 1: raise SystemExit("Review Back source binding")
+for name, old, new in [
+    ("missing-keyboard-group", "else if s.keyboard", "else if false"),
+    ("blocked-keyboard-operation", "BackGroup::Keyboard => BackTarget::HideKeyboard", "BackGroup::Keyboard => BackTarget::Ignore"),
+]:
+    if back_source.count(old) != 1: raise SystemExit("Review Back mutation: " + name)
+    mutant = back_source.replace(old, new, 1)
+    source_path = OUT / (name + "-source.rs")
+    source_path.write_text(mutant)
+    results.append(execute("verus-" + name, [sys.executable, ROOT / "verification/verus/back.py", "--source", source_path,
+                           "--output", OUT / (name + "-verus.rs")], environment,
+                           expected_failure=True, marker="postcondition not satisfied"))
+    harness = OUT / (name + "-kani.rs")
+    harness.write_text(back_harness.replace(declaration, "mod back_route {\n" + mutant + "\n}"))
+    results.append(execute("kani-" + name, [kani, harness], kani_env,
+                           expected_failure=True, marker="VERIFICATION:- FAILED"))
+(OUT / "summary.json").write_text(json.dumps(results, indent=2) + "\n")
+
+# A successful component proof must never masquerade as the requested whole-app theorem.
+subprocess.run([sys.executable, ROOT / "verification/proof_obligations.py"], check=True)
+results.append(execute("whole-app-claim-guard", [sys.executable, ROOT / "verification/proof_obligations.py", "--require-whole-app"],
+                       environment, expected_failure=True, marker="OPEN_PROOF_OBLIGATIONS"))
 (OUT / "summary.json").write_text(json.dumps(results, indent=2) + "\n")

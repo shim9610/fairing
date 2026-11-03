@@ -55,6 +55,7 @@ jobs:
           rustfmt --check verification/kani_access.rs
           rustfmt --check verification/kani_memory.rs
           rustfmt --check verification/kani_input.rs
+          rustfmt --check verification/kani_back.rs
 
   proofs:
     needs: inputs

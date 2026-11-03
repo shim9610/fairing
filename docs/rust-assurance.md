@@ -13,8 +13,8 @@ source-built compiler and matching LLVM coverage workflow.
 
 | Tool | Pin | Scope |
 | --- | --- | --- |
-| Kani | 0.68.0; nightly 2026-08-21 | Fourteen harnesses: ACK/access and response correlation, pool/display and production input-admission safety/progress |
-| Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Contracts on ten production functions plus a quiet-pass progress obligation |
+| Kani | 0.68.0; nightly 2026-08-21 | Seventeen harnesses: ACK/access and response correlation, pool/display and production input-admission safety/progress |
+| Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Contracts on twelve production functions plus a quiet-pass progress obligation |
 | Miri | nightly 2026-10-30 | Twenty-five assurance tests plus the production payload-cleanup test; rendering witnesses run natively |
 | Loom | 0.7.2 | Four scenarios: Inbox ordering/consumer and bounded admission/close-after-drain |
 | proptest | 1.12.0 | CI: 512 cases per property, including shell ordering, transition traces and UI reachability; seed 20261101 |
@@ -226,4 +226,16 @@ oracle adds 8,748 fixed traces, 128 generated traces, twelve deadline scenarios 
 an interpreted Miri trace. The shell ASan target calls the same oracle with inputs
 up to 96 bytes; native controls must reject omitted correlation, budget overflow and
 expiration after command dispatch. `controls.py --only expiry-order` replays one
-control during development; CI runs all nine baselines and all nine mutations.
+control during development; CI runs all eleven baselines and all eleven mutations.
+
+## Formal operability status
+
+The production Back dispatcher has a source-bound, total/disjoint partition proof
+over its eight predicates and nine groups, plus specified target selection. Both
+verifiers reject a missing group and a refused permitted operation. Native controls
+also reject an incorrect product snapshot and an omitted handler.
+
+The [whole-application obligations](formal-operability.md) remain open beyond this
+projection. The proof artifact includes `state-obligations.json`; requiring the
+whole-app theorem currently fails with `OPEN_PROOF_OBLIGATIONS`. The CI check for
+this refusal guards against promoting component proofs to a whole-app guarantee.

@@ -10,7 +10,7 @@ import tempfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--only", action="append", choices=[
-    "auth-correlation", "command-budget", "expiry-order", "ui-progress", "modal-input",
+    "back-handler", "back-projection", "auth-correlation", "command-budget", "expiry-order", "ui-progress", "modal-input",
     "bounded-admission", "launch-gates", "notification-cap", "inbox-delivery",
 ], help="Run selected controls; omitting this option runs the complete CI suite")
 args = parser.parse_args()
@@ -24,6 +24,12 @@ results = []
 with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as temporary:
     checkout = Path(temporary) / "source"
     shutil.copytree(ROOT, checkout, ignore=shutil.ignore_patterns(".git", "target", "__pycache__", "*.pyc"))
+    # copytree preserves original timestamps. A cached mutant can be newer than a
+    # fresh source copy, so force product/harness freshness before the first baseline.
+    # Keep dependency caches; mutation writes/restoration refresh subsequent source mtimes.
+    for tree in [checkout / "crates", checkout / "verification"]:
+        for source in tree.rglob("*.rs"):
+            source.touch()
     def run(name, test, *, loom=False, failure=False, marker=""):
         env = dict(os.environ, CARGO_INCREMENTAL="0")
         env["CARGO_TARGET_DIR"] = str(ROOT / ("target/assurance-control-loom" if loom else "target/assurance-controls"))
@@ -33,7 +39,13 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
         command = ["cargo", "test", "--locked", "--manifest-path", str(checkout / "verification/Cargo.toml")]
         if loom:
             command += ["--no-default-features", "--features", "loom"]
-        command += ["--lib", test, "--", "--exact"]
+        if test.startswith("product/"):
+            _, integration, test_name = test.split("/")
+            command = ["cargo", "test", "--locked", "--manifest-path", str(checkout / "Cargo.toml"),
+                       "-p", "fairing", "--no-default-features", "--features", "mock,overlay,settings,osk",
+                       "--test", integration, test_name, "--", "--exact"]
+        else:
+            command += ["--lib", test, "--", "--exact"]
         path = OUT / (name + ".log")
         with path.open("w") as log:
             result = subprocess.run(command, cwd=checkout, env=env, stdout=log, stderr=subprocess.STDOUT)
@@ -49,6 +61,15 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
         print(name + (": rejected broken production code" if failure else ": passed"), flush=True)
 
     scenarios = [
+        ("back-handler", "product/m7_osk_fixes/a_tap_on_empty_space_after_back_does_not_reopen",
+         "crates/fairing/src/shell/mod.rs",
+         [("back_route::BackTarget::HideKeyboard => {\n                self.osk.hide();",
+           "back_route::BackTarget::HideKeyboard => {")],
+         False, "back did not close it"),
+        ("back-projection", "product/m7_osk_fixes/a_tap_on_empty_space_after_back_does_not_reopen",
+         "crates/fairing/src/shell/mod.rs",
+         [("keyboard: self.osk.is_shown(),", "keyboard: false,")],
+         False, "Back must retain the active field"),
         ("expiry-order", "transitions::deadlines::expiry_preempts_backlogged_commands_at_the_inclusive_boundary",
          "crates/fairing/src/shell/background.rs",
          [("self.expire_access(now);\n        let commands_pending = self.drain_commands(app);",
