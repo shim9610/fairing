@@ -174,5 +174,10 @@ impl Callbacks for StateTypes {
 fn main() {
     let mut args:Vec<_>=env::args().skip(1).collect();
     if args.is_empty() {args.push("rustc".to_owned());}
+    if !args.iter().any(|arg|arg == "--sysroot" || arg.starts_with("--sysroot=")) {
+        if let Some(root)=env::var_os("FAIRING_RUSTC_SYSROOT") {
+            args.push("--sysroot".to_owned()); args.push(root.to_string_lossy().into_owned());
+        }
+    }
     rustc_driver::compiler_entrypoint(&args,&mut StateTypes);
 }

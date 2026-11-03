@@ -31,15 +31,16 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     channel = state_schema.NIGHTLY
     run('install-compiler-interface', ['rustup', 'toolchain', 'install', channel,
-        '--profile', 'minimal', '--component', 'rustc-dev'])
+        '--profile', 'minimal', '--component', 'rustc-dev,llvm-tools-preview'])
     run('compiler-version', ['rustup', 'run', channel, 'rustc', '--version', '--verbose'])
-    run('build-importer', ['cargo', '+' + channel, 'build', '--locked',
-        '--manifest-path', TOOL / 'Cargo.toml', '--target-dir', ROOT / 'target/type-importer'])
     sysroot = subprocess.check_output(['rustup', 'run', channel, 'rustc', '--print', 'sysroot'],
                                      cwd=ROOT, text=True).strip()
+    build_env = dict(os.environ, RUSTFLAGS='-C prefer-dynamic -L native=' + str(Path(sysroot) / 'lib'))
+    run('build-importer', ['cargo', '+' + channel, 'build', '--locked',
+        '--manifest-path', TOOL / 'Cargo.toml', '--target-dir', ROOT / 'target/type-importer'], build_env)
     env = dict(os.environ, CARGO_INCREMENTAL='0', CARGO_TARGET_DIR=str(ROOT / 'target/state-type-check'),
         RUSTC_WRAPPER=str(ROOT / 'target/type-importer/debug/state-types'),
-        FAIRING_STATE_TYPES_OUT=str(OUT),
+        FAIRING_STATE_TYPES_OUT=str(OUT), FAIRING_RUSTC_SYSROOT=sysroot,
         LD_LIBRARY_PATH=str(Path(sysroot) / 'lib') + os.pathsep + os.environ.get('LD_LIBRARY_PATH', ''))
     run('import-native-state-roots', ['cargo', '+' + channel, 'check', '--locked',
         '-p', 'fairing', '-p', 'fairing-widgets', '--all-features'], env)
