@@ -32,6 +32,7 @@ impl Runner {
         events: Vec<Event>,
         mut draw: impl FnMut(&mut egui::Ui, &mut WidgetCx<'_>),
     ) {
+        self.time += f64::from(self.dt);
         self.anims.tick(self.dt, self.frame);
         let mut cx = WidgetCx {
             theme: &self.theme,
@@ -54,7 +55,6 @@ impl Runner {
         );
         self.shapes = std::mem::take(&mut output.shapes);
         output.drop_without_applying_deltas();
-        self.time += f64::from(self.dt);
         self.frame += 1;
     }
     fn text(&self, word: &str, outside: Rect) -> Option<Pos2> {

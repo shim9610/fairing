@@ -687,7 +687,11 @@ mod deadlines {
                 .borrow_mut()
                 .push_back(old.respond(AuthOutcome::Granted(subject(2))));
             frame(&mut shell, &ctx, 1.05, false);
-            assert_eq!(calls.get(), 1, "old reply replayed a completed continuation");
+            assert_eq!(
+                calls.get(),
+                1,
+                "old reply replayed a completed continuation"
+            );
         }
         assert!(!shell.is_faulted());
     }
