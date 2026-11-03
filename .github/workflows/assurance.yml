@@ -96,7 +96,9 @@ jobs:
         if: always()
         with:
           name: specification-completeness-results
-          path: target/assurance/specification/
+          path: |
+            target/assurance/specification/
+            target/assurance/ui-specification/
           retention-days: 14
 
   proofs:
@@ -113,7 +115,9 @@ jobs:
         if: always()
         with:
           name: proof-results
-          path: target/assurance/proofs/
+          path: |
+            target/assurance/proofs/
+            target/assurance/ui-specification/
           retention-days: 14
 
   properties-and-loom:

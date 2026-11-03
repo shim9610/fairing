@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check a necessary completeness condition of the current product-connected state specification.
+"""Verify the expanded UI model and audit the existing product-connected carrier projection.
 
 A single reachable collision with different required UI observations refutes
 completeness. Absence of this collision is never accepted as a universal proof.
@@ -14,6 +14,7 @@ import subprocess
 import sys
 
 import install
+import ui_specification
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'target/assurance/specification'
@@ -48,6 +49,7 @@ def fingerprints():
     files = list((ROOT / 'crates/fairing-widgets/src').rglob('*.rs'))
     files += [ROOT / 'Cargo.lock', ROOT / 'Cargo.toml', ROOT / 'verification/tools.json',
               ROOT / 'verification/state-schema.json', ROOT / 'verification/verus/concrete.py', Path(__file__)]
+    files += [ROOT / 'verification/ui_specification.py', ROOT / 'verification/verus/ui_state.rs']
     return {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
             for path in sorted(files)}
 
@@ -145,6 +147,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / 'result.json').unlink(missing_ok=True)
     before = fingerprints()
+    expanded = ui_specification.verify()
     witness = OUT / 'reachable-states.json'
     witness.unlink(missing_ok=True)
     env = dict(os.environ, CARGO_INCREMENTAL='0', FAIRING_SPECIFICATION_WITNESS=str(witness))
@@ -196,21 +199,25 @@ def main():
     commands.append(execute('kani-focus-aware-control', [kani, source, '--harness', 'focus_aware_control'], kani_env))
     if before != fingerprints():
         raise RuntimeError('Product/specification inputs changed while checking completeness')
-    report = {'specification_complete': False, 'verdict': 'refuted',
+    report = {'specification_complete': False, 'verdict': 'incomplete-product-refinement',
+              'carrier_projection_verdict': 'refuted',
+              'expanded_model': {'model_status': expanded['model_status'],
+                  'theorems': expanded['theorems'], 'product_refinement': expanded['product_refinement'],
+                  'evidence': 'target/assurance/ui-specification/receipt.json'},
               'obligation': 'Equal specified states must preserve required UI observations',
               'counterexample': {'scene': data['scene'], 'same_current_view': True, 'same_context_collision': data['same_context_collision'],
                  'focused_editor': [s['focused'] for s in states],
                  'text_receiver': [s['receiver'] for s in states],
                  'missing_state_dimension': 'focused editor identity'},
-              'scope': 'A reachable supported widget subdomain refutes whole-product completeness; this check cannot certify all product states',
+              'scope': 'The product-connected carrier-only view is refuted. The expanded joint model has proved partitions, but its total product projection remains open.',
               'trusted_boundary': 'Native execution establishes witness reachability and the product-connected view; solvers validate the resulting specification obligation',
               'inputs': before,
               'evidence_sha256': {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                   for path in [witness, OUT / 'obligation-verus.rs', OUT / 'refutation-verus.rs', OUT / 'obligation-kani.rs']},
               'commands': commands}
     (OUT / 'result.json').write_text(json.dumps(report, indent=2) + '\n')
-    print('STATE_SPECIFICATION_INCOMPLETE: identical current state views route the same text input to different editors')
-    print('Verus and Kani rejected completeness and verified the refutation; result: ' + str(OUT / 'result.json'))
+    print('STATE_SPECIFICATION_INCOMPLETE: joint model verified; total concrete projection and input realization remain open')
+    print('Verus and Kani refuted the carrier-only projection; result: ' + str(OUT / 'result.json'))
     return 2
 
 

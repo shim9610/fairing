@@ -1,9 +1,11 @@
 # State specification completeness
 
-`python3 verification/specification.py` checks the specification itself. It is a
-strict gate: the current abstraction fails a necessary condition and the command
-returns **2**. The corresponding CI job is expected to remain red until its
-obligation is discharged. The rejection is a model gap, not a failing editor.
+`python3 verification/specification.py` verifies the expanded joint model and
+audits the existing carrier-only projection. The expanded model has twelve proved
+theorems, while the carrier-only projection fails a necessary condition. Total
+product refinement is still open, so this strict command returns **2** and its CI
+job remains red. The carrier counterexample is a representation gap, not a failing
+editor.
 
 ## Obligation
 
@@ -20,11 +22,12 @@ tag hides which editor owns input. Here `O` includes the focused editor identity
 and the recipient of the same next text event. Focus is retained UI state, not a
 fresh environment choice that can be assumed independently of the concrete state.
 
-The current repository has component specifications rather than a complete joint
-abstraction. The checker tests a necessary supported subdomain before those
-components can be promoted to a whole-product state specification. A collision
-on this subdomain is sufficient to reject that promotion. Passing this particular
-check would not establish totality or adequacy over every other product state.
+The repository now has an [expanded joint model](joint-state-specification.md)
+with proved model partitions and operation eligibility. Its total projection from
+concrete runtime state remains open. The carrier-only product-connected view
+checked below still omits focus identity. A collision on this supported subdomain
+rejects treating that view as the total projection. Passing this particular check
+would not establish totality or adequacy over every other product state.
 
 ## Executed counterexample
 
