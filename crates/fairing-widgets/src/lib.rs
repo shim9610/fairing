@@ -91,6 +91,7 @@ pub mod error;
 pub mod fit;
 pub mod fonts;
 pub mod icons;
+mod interaction;
 pub mod memory;
 pub mod motion;
 pub mod theme;

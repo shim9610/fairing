@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -11,7 +12,7 @@ import tempfile
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--only", action="append", choices=[
     "back-handler", "back-projection", "auth-correlation", "command-budget", "expiry-order", "ui-progress", "modal-input",
-    "bounded-admission", "launch-gates", "notification-cap", "inbox-delivery",
+    "bounded-admission", "launch-gates", "notification-cap", "inbox-delivery", "retained-lifetime", "numeric-owner",
 ], help="Run selected controls; omitting this option runs the complete CI suite")
 args = parser.parse_args()
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +62,16 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
         print(name + (": rejected broken production code" if failure else ": passed"), flush=True)
 
     scenarios = [
+        ("retained-lifetime", "widget_lifecycle::every_interruption_prefix_preserves_popup_and_peer_operations",
+         "crates/fairing-widgets/src/interaction/mod.rs",
+         [("let continuous = rules::live(\n                    saved.seen,\n                    now,\n                    matches!(lifetime, Lifetime::Press),\n                    fresh_press,\n                );", "let continuous = true;")],
+         False, "a retired popup revived"),
+        ("numeric-owner", "widget_lifecycle::stale_numeric_drafts_cannot_override_authoritative_values",
+         "crates/fairing-widgets/src/widgets/number_field.rs",
+         [("d.seed_bits == self.value.to_bits() && d.seed == figure(*self.value, self.decimals)", "true"),
+          ("draft.seed_bits == self.value.to_bits() && draft.seed == shown", "true"),
+          ("d.seed_bits == self.value.to_bits() && d.seed == shown", "true")],
+         False, "a stale numeric draft overwrote the authoritative value"),
         ("back-handler", "product/m7_osk_fixes/a_tap_on_empty_space_after_back_does_not_reopen",
          "crates/fairing/src/shell/mod.rs",
          [("back_route::BackTarget::HideKeyboard => {\n                self.osk.hide();",
@@ -119,9 +130,12 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
         run(name + "-baseline", test, loom=loom)
         changed = original
         for old, new in changes:
-            if changed.count(old) != 1:
+            pattern = re.compile(r"\s+".join(re.escape(token) for token in old.split()))
+            matches = list(pattern.finditer(changed))
+            if len(matches) != 1:
                 raise SystemExit(f"Review mutation boundary in {relative}")
-            changed = changed.replace(old, new, 1)
+            match = matches[0]
+            changed = changed[:match.start()] + new + changed[match.end():]
         path.write_text(changed)
         (OUT / (name + ".mutation.json")).write_text(json.dumps({"path": relative, "changes": changes}, indent=2) + "\n")
         try:

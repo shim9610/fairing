@@ -138,7 +138,13 @@ impl<'a> WheelPicker<'a> {
             response.mark_changed();
         }
         let id = ui.scope_id().with(self.id_salt);
-        let mut drum: Drum = ui.data(|d| d.get_temp::<Drum>(id)).unwrap_or(Drum {
+        let mut drum: Drum = crate::interaction::load::<Drum>(
+            ui.ctx(),
+            id,
+            self.enabled && ui.is_enabled(),
+            crate::interaction::Lifetime::Mounted,
+        )
+        .unwrap_or(Drum {
             pos: Animated::new(as_f32(wanted)),
             caller: false,
         });
@@ -172,7 +178,7 @@ impl<'a> WheelPicker<'a> {
         if drum.pos.mode() == Mode::Idle {
             drum.caller = false;
         }
-        ui.data_mut(|d| d.insert_temp(id, drum));
+        crate::interaction::store(ui.ctx(), id, drum);
         self.paint(ui, cx, rect, row_h, drum.pos.value());
         response
     }

@@ -37,6 +37,7 @@ universal interaction progress; see [formal operability obligations](formal-oper
 | Pending display loss never evicts an accepted device command; optional backdrop processing refuses allocation failure | `ToastQueue` KeepLatest, Shell builder/status, actual card-frost source | Latest-display/command integration regression; invalid/duplicate input retention tests; actual exhausted-arena oldest-text replacement, skipped text/blur work; bounded/invalid-image processor tests |
 | Notification ids deduplicate; source groups stay contiguous; persistent items resist dismissal; hard caps include persistent entries, refusing new overflow; gated content hides | `NotificationCenter`, `shows_content` ([notification source](../crates/fairing/src/notify/center.rs)) | `public_notifications` checks invariants after up to 64 operations; fixed persistent-flood/refusal regressions; Miri, libFuzzer and a cap-removal mutation |
 | Back routing covers every valuation of its observed predicates, selects exactly one group and dispatches each independently permitted Back to its specified target | `Shell::back_in` → `back_route::classify/dispatch` | Kani three harnesses and Verus contracts on exact source; all 256 predicate valuations and nine disjoint groups; both reject a missing group and a refused permitted operation; native field/keyboard controls reject wrong snapshot binding and an omitted hide call. This is dispatch, not whole-UI operability. |
+| Retained interaction owners have a total, disjoint state partition; every independently promised lifecycle operation has its specified immediate outcome | Private `interaction::rules` kernel and egui owner adapter | Kani four harnesses; Verus exact-source membership/admission/outcome/lifetime contracts over all raw protocol predicates and u64 timestamps. Native 448 dropdown histories/896 recovery suffixes plus other retained-owner witnesses; source inventory and two production-wiring controls. See [formal operability](formal-operability.md) for concrete refinement boundaries. |
 | Every service polls once with the supplied time and the minimum reported deadline wins | `Services::poll/custom` ([services guide §1](guide/06-services.md)) | `public_services`, two independently recorded backend types; Miri fixed deadline/missing-deadline cases |
 | UTC conversion saturates, calendar fields are valid, formatting clears a reused buffer and changing hour convention preserves shape | `WallTime`, `ClockFormat` ([services guide: clocks](guide/06-services.md)) | `public_calendar` with arbitrary u64/i32 inputs, inverse Gregorian conversion and all formats; Miri boundary values and API fuzzer |
 | Pixel conversion clamps; changing a container changes fractional references without changing physical, finger or text terms | `round_u8/round_i8`, `Dim`, `Scale::in_container` ([unit source](../crates/fairing-widgets/src/unit.rs)) | `public_units` uses arbitrary f32 bit patterns, NaN/infinities and arbitrary u16 dimensions; Miri/fuzzer; compile-fail anchor contracts remain in product documentation tests |
@@ -53,7 +54,7 @@ original ACK kernel.
 
 ## Bounds and assumptions
 
-- Kani proves seventeen harnesses. Verus verifies twelve production functions and
+- Kani proves twenty-one harnesses. Verus verifies seventeen production functions and
   an additional quiet-pass progress obligation.
   Pool sequence proof is bounded to four operations on a two-slot u8 pool; the generation
   decision covers all u64 values. Kani treats pool-identity atomics sequentially;
@@ -66,7 +67,7 @@ original ACK kernel.
   It compares observable effects after every operation and requires a successful retry
   without restarting away the current state. One fixed trace also runs under Miri;
   ASan fuzzing reuses the oracle. See [the exact matrix](ui-reachability.md#commandreply-transition-oracle).
-- Native tests contain fourteen properties with 512 cases each and four shell
+- Native tests contain fifteen properties with 512 cases each and four shell
   properties with a default of 64 cases each, using seed 20261101. CI sets
   `PROPTEST_CASES=512`, overriding every generated property's default. Operation sequences cap
   at 32 shell/backend operations or 64 non-UI operations. Fixed cases ensure
@@ -116,22 +117,22 @@ graph consistency, not runtime behavior.
 
 ## Controls and coverage
 
-`verification/proofs.py` requires both verifiers to reject twelve mutations:
+`verification/proofs.py` requires both verifiers to reject sixteen mutations:
 reversed ACK condition, stale-response acceptance, reversed level order, accepting
 an unknown grant, wrapping failure count, excluding lockout equality, wrapping a
-pool generation, broken display clipping, excessive input deferral, modal capture, a missing Back group and ignoring a permitted Back operation.
+pool generation, broken display clipping, excessive input deferral, modal capture, a missing Back group, ignoring a permitted Back operation, accepting future owner timestamps, retaining an expired owner, refusing a new start due to stale ownership, and retaining activity after completion.
 The controls require a semantic verification error; compilation errors fail
 the control instead of counting as a successful rejection.
 
 `verification/controls.py` copies the sources into a disposable directory,
 checks a passing baseline, then breaks production gate delegation,
 notification cap enforcement, bounded factory admission, Inbox delivery, input progress,
-modal priority, response correlation, the per-update command budget, deadline ordering, Back snapshot binding and Back handler execution separately. The matching
+modal priority, response correlation, the per-update command budget, deadline ordering, Back snapshot binding, Back handler execution, retained-owner expiration and numeric caller-value validation separately. The matching
 public API/Loom test must fail with its expected assertion. Working sources
 and published dependencies remain intact.
 
 `verification/coverage.py` reports product code executed by the contract suite.
-It fails if any of fourteen claimed production modules has no executed source
+It fails if any of the declared production modules has no executed source
 lines. cargo-llvm-cov's dependency selection must explicitly instrument both
 product crates; its default dependency-path filter excludes non-registry
 dependencies. The command therefore disables that default report filter and

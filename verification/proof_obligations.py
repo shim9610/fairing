@@ -6,9 +6,12 @@ import json
 from pathlib import Path
 import re
 
+from retained_state import audit
+
 ROOT = Path(__file__).resolve().parents[1]
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--require-whole-app', action='store_true')
+p.add_argument('--require-components', action='store_true', help='Require all implemented component proofs and source inventory')
 a = p.parse_args()
 source = ROOT / 'crates/fairing/src/shell/back_route.rs'
 caller = (ROOT / 'crates/fairing/src/shell/mod.rs').read_text()
@@ -28,29 +31,47 @@ projection = caller[start:end]
 for field, expression in expected.items():
  if projection.count(field + ': ' + expression + ',') != 1:
   raise SystemExit('Back projection no longer binds the specified product field: ' + field)
-receipt_path = ROOT / 'target/assurance/proofs/back-receipt.json'
-receipt = json.loads(receipt_path.read_text()) if receipt_path.exists() else {}
-checked = receipt.get('source_sha256') == hashlib.sha256(source.read_bytes()).hexdigest()
+def proved(name, paths):
+ receipt_path = ROOT / ('target/assurance/proofs/' + name + '-receipt.json')
+ receipt = json.loads(receipt_path.read_text()) if receipt_path.exists() else {}
+ expected = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+ return receipt.get('inputs') == expected
+
+checked = proved('back', [source, ROOT / 'verification/kani_back.rs', ROOT / 'verification/verus/back.py'])
+protocol = ROOT / 'crates/fairing-widgets/src/interaction/rules.rs'
+raw_fields = re.findall(r'pub (\w+): bool,', protocol.read_text().split('pub(crate) enum Group')[0])
+if len(raw_fields) != 4 or set(raw_fields) != {'present', 'enabled', 'continuous', 'active'}:
+ raise SystemExit('Interaction projection changed; review the independent specification before proving operations')
+interaction_checked = proved('interaction', [protocol, ROOT / 'verification/kani_interaction.rs', ROOT / 'verification/verus/interaction.py'])
+inventory = audit()
 obligations = [
  {'id': 'back-dispatch-partition', 'status': 'discharged' if checked else 'open',
-  'scope': 'All 256 valuations of the eight observed Back predicates, nine disjoint groups, specified handler selection. Not widget operability.'},
- {'id': 'whole-state-partition', 'status': 'open',
-  'scope': 'All retained shell/widget state, egui memory/areas/focus/capture, and integrator callback state must refine a complete semantic partition.'},
- {'id': 'whole-operation-specification', 'status': 'open',
-  'scope': 'Every promised public interaction needs independent preconditions/outcomes. Back dispatch does not define all UI operations.'},
- {'id': 'state-and-transition-refinement', 'status': 'open',
-  'scope': 'Every real retained-state transition must preserve the abstraction relation; a matching dispatch table alone is insufficient.'},
- {'id': 'concrete-input-refinement', 'status': 'open',
-  'scope': 'egui hit testing, clipping, z-order, focus and capture must realize the specified invocation, beyond finitely executed witnesses.'},
- {'id': 'termination-and-progress', 'status': 'open',
-  'scope': 'Specified operations need a proved result/progress bound. Arbitrary on_back/UI callbacks have no verified termination/effect contracts.'},
+  'scope': 'All 256 valuations of eight Back predicates, nine disjoint groups and specified handler selection.'},
+ {'id': 'retained-owner-partition', 'status': 'discharged' if interaction_checked else 'open',
+  'scope': 'All 16 raw valuations of present/enabled/continuous/active, five independent disjoint groups.'},
+ {'id': 'retained-owner-operations', 'status': 'discharged' if interaction_checked else 'open',
+  'scope': 'All five independently specified operations in every raw protocol state: immediate specified result, no refusal of a promised operation, start and finish after arbitrary prior protocol state.'},
+ {'id': 'retained-owner-lifetime', 'status': 'discharged' if interaction_checked else 'open',
+  'scope': 'All pairs of u64 timestamps and both scope/fresh-press predicates; future and wrapped timestamps never revive ownership.'},
 ]
-complete = all(item['status'] == 'discharged' for item in obligations)
+components_complete = all(item['status'] == 'discharged' for item in obligations)
+# These are actual unverified boundaries, not verifier errors or discharged claims.
+boundaries = [
+ {'id': 'complete-concrete-abstraction',
+  'scope': 'Shell/workspace/gesture state, widget geometry/animation, arbitrary caller fields, and upstream egui memory do not yet have a proved joint abstraction into the component protocols.'},
+ {'id': 'input-realization',
+  'scope': 'Headless pointer/keyboard witnesses and production-wiring mutations test the adapter; no formal proof covers upstream hit testing, layout, clipping, z-order or focus/capture implementation.'},
+ {'id': 'callback-progress',
+  'scope': 'The library accepts ordinary Rust screen, painter, backend and on_back callbacks without machine-checked termination/effect contracts.'},
+]
 report = {'target_guarantee': 'Every reachable state is covered, and every specification-permitted interaction is always executable with its promised outcome.',
-          'whole_app_status': 'proved' if complete else 'incomplete', 'obligations': obligations}
+          'whole_app_status': 'incomplete', 'implemented_components_status': 'proved' if components_complete else 'incomplete',
+          'obligations': obligations, 'backend_inventory': inventory, 'unproved_boundaries': boundaries}
 out = ROOT / 'target/assurance/proofs/state-obligations.json'
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text(json.dumps(report, indent=2) + '\n')
 print(json.dumps(report, indent=2))
-if a.require_whole_app and not complete:
- raise SystemExit('OPEN_PROOF_OBLIGATIONS: whole-app operability has not been proved')
+if a.require_components and not components_complete:
+ raise SystemExit('MISSING_COMPONENT_EVIDENCE: rerun both verifiers on current product and specification inputs')
+if a.require_whole_app:
+ raise SystemExit('OPEN_PROOF_OBLIGATIONS: concrete abstraction, input realization and callback progress remain unproved')

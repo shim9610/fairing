@@ -29,6 +29,11 @@ def execute(name, command, env, expected_failure=False, marker=""):
     return {"name": name, "exit_code": result.returncode, "expected_failure": expected_failure, "log": str(log)}
 
 
+def receipt(name, paths):
+    inputs = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+    (OUT / (name + "-receipt.json")).write_text(json.dumps({"inputs": inputs}, indent=2) + "\n")
+
+
 verus = install.tool("verus")
 kani = install.tool("kani")
 environment = dict(os.environ, VERUS=str(verus))
@@ -51,7 +56,15 @@ results.append(execute("verus-back", [sys.executable, ROOT / "verification/verus
 results.append(execute("kani-back", [kani, ROOT / "verification/kani_back.rs"], kani_env))
 if hashlib.sha256(back_checked_source.read_bytes()).hexdigest() != back_digest:
     raise SystemExit("Back source changed while proofs were running")
-(OUT / "back-receipt.json").write_text(json.dumps({"source_sha256": back_digest}) + "\n")
+receipt("back", [back_checked_source, ROOT / "verification/kani_back.rs", ROOT / "verification/verus/back.py"])
+interaction_source = ROOT / "crates/fairing-widgets/src/interaction/rules.rs"
+interaction_digest = hashlib.sha256(interaction_source.read_bytes()).hexdigest()
+results.append(execute("verus-interaction", [sys.executable, ROOT / "verification/verus/interaction.py"], environment))
+results.append(execute("kani-interaction", [kani, ROOT / "verification/kani_interaction.rs"], kani_env))
+if hashlib.sha256(interaction_source.read_bytes()).hexdigest() != interaction_digest:
+    raise SystemExit("Interaction source changed while proofs were running")
+receipt("interaction", [interaction_source, ROOT / "verification/kani_interaction.rs", ROOT / "verification/verus/interaction.py"])
+
 
 source = (ROOT / "crates/fairing/src/shell/bool_ack.rs").read_text()
 needle = "if reported == Some(sent)"
@@ -175,10 +188,31 @@ for name, old, new in [
     harness.write_text(back_harness.replace(declaration, "mod back_route {\n" + mutant + "\n}"))
     results.append(execute("kani-" + name, [kani, harness], kani_env,
                            expected_failure=True, marker="VERIFICATION:- FAILED"))
+
+interaction_source_text = interaction_source.read_text()
+interaction_harness = (ROOT / "verification/kani_interaction.rs").read_text()
+declaration = '#[path = "../crates/fairing-widgets/src/interaction/rules.rs"]\nmod rules;'
+if interaction_harness.count(declaration) != 1: raise SystemExit("Review interaction source binding")
+for name, old, new in [
+    ("lifetime-future", "seen == now || seen.checked_add(1) == Some(now)", "seen >= now || seen.checked_add(1) == Some(now)"),
+    ("expired-owner", "else if !s.continuous", "else if false"),
+    ("stale-blocks-start", "Operation::Start => s.present && s.enabled", "Operation::Start => s.present && s.enabled && s.continuous"),
+    ("finish-stays-active", "active: false,\n                    effect: Effect::Completed", "active: true,\n                    effect: Effect::Completed"),
+]:
+    if interaction_source_text.count(old) != 1: raise SystemExit("Review lifecycle mutation: " + name)
+    mutant = interaction_source_text.replace(old, new, 1)
+    path = OUT / (name + "-source.rs"); path.write_text(mutant)
+    results.append(execute("verus-" + name, [sys.executable, ROOT / "verification/verus/interaction.py", "--source", path,
+                           "--output", OUT / (name + "-verus.rs")], environment,
+                           expected_failure=True, marker="postcondition not satisfied"))
+    path = OUT / (name + "-kani.rs")
+    path.write_text(interaction_harness.replace(declaration, "mod rules {\n" + mutant + "\n}"))
+    results.append(execute("kani-" + name, [kani, path], kani_env,
+                           expected_failure=True, marker="VERIFICATION:- FAILED"))
 (OUT / "summary.json").write_text(json.dumps(results, indent=2) + "\n")
 
 # A successful component proof must never masquerade as the requested whole-app theorem.
-subprocess.run([sys.executable, ROOT / "verification/proof_obligations.py"], check=True)
+subprocess.run([sys.executable, ROOT / "verification/proof_obligations.py", "--require-components"], check=True)
 results.append(execute("whole-app-claim-guard", [sys.executable, ROOT / "verification/proof_obligations.py", "--require-whole-app"],
                        environment, expected_failure=True, marker="OPEN_PROOF_OBLIGATIONS"))
 (OUT / "summary.json").write_text(json.dumps(results, indent=2) + "\n")

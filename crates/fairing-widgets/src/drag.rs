@@ -52,8 +52,9 @@ pub fn claim_if_held(response: &egui::Response) {
 #[must_use]
 pub fn claimed(ctx: &egui::Context) -> bool {
     let pass = ctx.cumulative_pass_nr();
+    let fresh_press = ctx.input(|input| input.pointer.primary_pressed());
     ctx.data(|d| d.get_temp::<u64>(egui::Id::unique(KEY)))
-        .is_some_and(|at| pass <= at.saturating_add(1))
+        .is_some_and(|at| crate::interaction::rules::live(at, pass, true, fresh_press))
 }
 
 /// Where the kept regions are: the pass each was said in, and its rect.
@@ -69,7 +70,7 @@ pub fn keep(ctx: &egui::Context, rect: egui::Rect) {
     let pass = ctx.cumulative_pass_nr();
     ctx.data_mut(|d| {
         let kept: &mut Vec<(u64, egui::Rect)> = d.get_temp_mut_or_default(egui::Id::unique(KEPT));
-        kept.retain(|(at, _)| pass <= at.saturating_add(1));
+        kept.retain(|(at, _)| crate::interaction::rules::live(*at, pass, false, false));
         kept.push((pass, rect));
     });
 }
@@ -80,8 +81,9 @@ pub fn kept(ctx: &egui::Context, origin: egui::Pos2) -> bool {
     let pass = ctx.cumulative_pass_nr();
     ctx.data(|d| d.get_temp::<Vec<(u64, egui::Rect)>>(egui::Id::unique(KEPT)))
         .is_some_and(|kept| {
-            kept.iter()
-                .any(|(at, rect)| pass <= at.saturating_add(1) && rect.contains(origin))
+            kept.iter().any(|(at, rect)| {
+                crate::interaction::rules::live(*at, pass, false, false) && rect.contains(origin)
+            })
         })
 }
 

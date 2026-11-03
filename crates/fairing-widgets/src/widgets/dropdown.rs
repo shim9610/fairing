@@ -291,7 +291,13 @@ impl<'a> Dropdown<'a> {
     pub fn show(self, ui: &mut egui::Ui, cx: &mut Cx<'_>) -> Response {
         let t = Tokens::read(ui, cx);
         let id = ui.scope_id().with(self.id_salt);
-        let mut open = ui.data(|d| d.get_temp::<bool>(id).unwrap_or(false));
+        let mut open = crate::interaction::load::<bool>(
+            ui.ctx(),
+            id,
+            self.enabled && ui.is_enabled(),
+            crate::interaction::Lifetime::Mounted,
+        )
+        .unwrap_or(false);
         let was_open = open;
         // The bound the list is placed inside and clipped to: where this was called, not the
         // window. Inside a screen that is the screen's own pane — less whatever lies over the
@@ -308,7 +314,13 @@ impl<'a> Dropdown<'a> {
             },
         );
         if response.clicked() {
-            open = !open;
+            let operation = if open {
+                crate::interaction::rules::Operation::Cancel
+            } else {
+                crate::interaction::rules::Operation::Start
+            };
+            open = crate::interaction::rules::step(crate::interaction::snapshot(open), operation)
+                .active;
         }
         let ink = Ink::of(cx, self.enabled);
         let face = Face {
@@ -351,9 +363,19 @@ impl<'a> Dropdown<'a> {
             };
             match picked {
                 Pick::None => {}
-                Pick::Dismissed => open = false,
+                Pick::Dismissed => {
+                    open = crate::interaction::rules::step(
+                        crate::interaction::snapshot(open),
+                        crate::interaction::rules::Operation::Cancel,
+                    )
+                    .active;
+                }
                 Pick::At(index) => {
-                    open = false;
+                    open = crate::interaction::rules::step(
+                        crate::interaction::snapshot(open),
+                        crate::interaction::rules::Operation::Finish,
+                    )
+                    .active;
                     if index != *self.selected {
                         *self.selected = index;
                         response.mark_changed();
@@ -364,9 +386,12 @@ impl<'a> Dropdown<'a> {
         let open = open && self.enabled;
         if !open {
             // A closed search forgets what was typed: reopening it shows the whole list again.
-            ui.data_mut(|d| d.remove_temp::<String>(id.with("query")));
+            let _ = crate::interaction::take::<String>(ui.ctx(), id.with("query"));
+            crate::interaction::forget_focus(ui.ctx(), id.with("field"));
+            crate::interaction::retire_area(ui.ctx(), egui::LayerId::new(LAYER, id.with("shield")));
+            crate::interaction::retire_area(ui.ctx(), egui::LayerId::new(LAYER, id.with("list")));
         }
-        ui.data_mut(|d| d.insert_temp(id, open));
+        crate::interaction::store(ui.ctx(), id, open);
         response
     }
 
@@ -1227,7 +1252,13 @@ impl<'a> Dropdown<'a> {
         ink: Ink,
     ) -> Pick {
         let query_id = id.with("query");
-        let mut query = ui.data(|d| d.get_temp::<String>(query_id).unwrap_or_default());
+        let mut query = crate::interaction::load::<String>(
+            ui.ctx(),
+            query_id,
+            self.enabled && ui.is_enabled(),
+            crate::interaction::Lifetime::Mounted,
+        )
+        .unwrap_or_default();
         let matches = self.matches(&query);
         let shown_rows = u16::try_from(matches.len())
             .unwrap_or(u16::MAX)
@@ -1270,7 +1301,7 @@ impl<'a> Dropdown<'a> {
                 edge_fades(ui.painter(), rows, ground, t.target * FADE_ROWS, out);
             }
         });
-        ui.data_mut(|d| d.insert_temp(query_id, query));
+        crate::interaction::store(ui.ctx(), query_id, query);
         dismissed(ui, pick, shield_tapped, &place)
     }
 

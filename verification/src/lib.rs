@@ -364,3 +364,9 @@ mod input_progress {
         }
     }
 }
+
+#[cfg(not(fairing_loom))]
+pub mod interaction;
+
+#[cfg(all(test, feature = "integration", not(fairing_loom), not(miri)))]
+mod widget_lifecycle;

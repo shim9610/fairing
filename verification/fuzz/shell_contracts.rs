@@ -6,6 +6,7 @@ libfuzzer_sys::fuzz_target!(|data: &[u8]| {
         usize::from(data.get(1).copied().unwrap_or(0) % 3 + 1),
     );
     fairing_assurance::api::shell_contract(data);
+    fairing_assurance::interaction::contract(data);
     fairing_assurance::api::backend_contract(data);
     if data.len() >= 5 {
         fairing_assurance::api::grant_contract(

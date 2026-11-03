@@ -48,6 +48,7 @@ jobs:
         run: |
           cargo run -p xtask --locked -- integrity
           python3 verification/check-inputs.py
+          python3 verification/retained_state.py
           cargo audit --file verification/Cargo.lock
           cargo deny --manifest-path verification/Cargo.toml --config verification/deny.toml check
           cargo fmt --manifest-path verification/Cargo.toml -- --check
@@ -56,6 +57,7 @@ jobs:
           rustfmt --check verification/kani_memory.rs
           rustfmt --check verification/kani_input.rs
           rustfmt --check verification/kani_back.rs
+          rustfmt --check verification/kani_interaction.rs
 
   proofs:
     needs: inputs
@@ -117,6 +119,7 @@ jobs:
           mkdir -p target/assurance/logs
           nightly="$(python3 -c 'import json; print(json.load(open("verification/tools.json"))["nightly"])')"
           cargo "+$nightly" miri test --locked --manifest-path verification/Cargo.toml --lib 2>&1 | tee target/assurance/logs/miri.log
+          cargo "+$nightly" miri test --locked -p fairing-widgets --no-default-features --lib interaction::tests 2>&1 | tee target/assurance/logs/miri-interaction.log
           cargo "+$nightly" miri test --locked -p fairing --lib runtime::tests::supported_payloads_are_released_and_numeric_codes_are_observable -- --exact 2>&1 | tee target/assurance/logs/miri-payloads.log
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()

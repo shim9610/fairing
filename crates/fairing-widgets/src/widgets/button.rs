@@ -560,11 +560,17 @@ struct Hold {
 fn hold(ui: &egui::Ui, cx: &mut Cx<'_>, id: egui::Id, pressed: bool, duration: Duration) -> Hold {
     let ring_id = id.with("ring");
     let state_id = id.with("ring.state");
-    let state = ui.data(|data| data.get_temp::<u8>(state_id));
+    let state = crate::interaction::load::<u8>(
+        ui.ctx(),
+        state_id,
+        true,
+        crate::interaction::Lifetime::Press,
+    );
+    let pressed = pressed && (state.is_some() || ui.input(|input| input.pointer.primary_pressed()));
     if state.is_none() {
         // A button seen for the first time: the ring is planted at 0.
         cx.animate(ring_id, 0.0, Tween::instant());
-        ui.data_mut(|data| data.insert_temp(state_id, RING_IDLE));
+        crate::interaction::store(ui.ctx(), state_id, RING_IDLE);
     }
     let state = state.unwrap_or(RING_IDLE);
 
@@ -585,9 +591,7 @@ fn hold(ui: &egui::Ui, cx: &mut Cx<'_>, id: egui::Id, pressed: bool, duration: D
         (true, true, RING_ARMED) => (RING_DONE, true),
         (true, true, other) => (other, false),
     };
-    if next != state {
-        ui.data_mut(|data| data.insert_temp(state_id, next));
-    }
+    crate::interaction::store(ui.ctx(), state_id, next);
     let done = next == RING_DONE;
     let mut scale = 1.0;
     if progress > 0.0 {

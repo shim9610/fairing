@@ -627,39 +627,54 @@ fn press_key(response: &Response) -> egui::Id {
 
 /// Whether the long press already fired during the press that is ending now.
 fn fired_this_press(ui: &egui::Ui, response: &Response) -> bool {
-    ui.data(|d| d.get_temp::<PressState>(press_key(response)))
-        .is_some_and(|(_, _, fired)| fired)
+    crate::interaction::load::<PressState>(
+        ui.ctx(),
+        press_key(response),
+        response.enabled(),
+        crate::interaction::Lifetime::Press,
+    )
+    .is_some_and(|(_, _, fired)| fired)
 }
 
 /// Times the press and answers on the frame it crosses the threshold.
 fn long_press(ui: &egui::Ui, cx: &Cx<'_>, response: &Response) -> bool {
     let key = press_key(response);
     if !response.is_pointer_button_down_on() {
-        ui.data_mut(|d| d.remove::<PressState>(key));
+        let _ = crate::interaction::take::<PressState>(ui.ctx(), key);
         return false;
     }
     let now = ui.input(|i| i.time);
     let Some(at) = ui.ctx().pointer_interact_pos() else {
         return false;
     };
-    let Some((start, origin, fired)) = ui.data(|d| d.get_temp::<PressState>(key)) else {
+    let Some((start, origin, fired)) = crate::interaction::load::<PressState>(
+        ui.ctx(),
+        key,
+        response.enabled(),
+        crate::interaction::Lifetime::Press,
+    ) else {
+        if !ui.input(|input| input.pointer.primary_pressed()) {
+            return false;
+        }
         // From where the finger came down: the slop below is measured from there.
         let origin = ui.input(crate::drag::press_point).unwrap_or(at);
-        ui.data_mut(|d| d.insert_temp(key, (now, origin, false)));
+        crate::interaction::store(ui.ctx(), key, (now, origin, false));
         return false;
     };
     if fired {
+        crate::interaction::store(ui.ctx(), key, (start, origin, fired));
         return false;
     }
     // Moving past the slop is a drag — the list scrolls, and this press is no longer a long one.
     if (at - origin).length() > cx.theme.motion.slop_px {
-        ui.data_mut(|d| d.remove::<PressState>(key));
+        let _ = crate::interaction::take::<PressState>(ui.ctx(), key);
         return false;
     }
     if now - start < cx.theme.motion.long_press.as_secs_f64() {
+        crate::interaction::store(ui.ctx(), key, (start, origin, fired));
         return false;
     }
-    ui.data_mut(|d| d.insert_temp(key, (start, origin, true)));
+    crate::interaction::store(ui.ctx(), key, (start, origin, true));
     true
 }
 
