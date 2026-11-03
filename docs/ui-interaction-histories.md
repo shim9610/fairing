@@ -27,7 +27,9 @@ It does not allow a widget's unexpected disabled state or a missing hit target
 to excuse a promised operation.
 
 The final selected option, text, numeric bits, wheel selection and new hold count
-are compared with a separate pristine execution of the same suffix. Historical
+are compared with a separate pristine execution of the same suffix. Its asserted
+public outcome is cached once per widget profile to avoid redrawing an identical
+reference for every generated history; subject Contexts are never shared or reset. Historical
 callback counts and caller values are intentionally distinguished from the new
 operation's effects. Each result also has a direct expected-outcome assertion:
 agreement between two faulty runs is not sufficient.
@@ -91,6 +93,12 @@ in transient artifacts.
 
 The dedicated UI interaction histories workflow runs the native suite. Existing
 Rust assurance also runs these tests through its integration test workspace.
+Two native semantic controls mutate production cleanup in disposable checkouts:
+focus-isolation clears the currently focused field instead of only the retiring
+owner; popup-retirement leaves the retired area interactable. Each baseline must
+pass and each mutation must fail its specific runtime assertion. Compilation
+failures do not count as detection.
+
 No additional product dependency or public API is introduced.
 
 ## Scope

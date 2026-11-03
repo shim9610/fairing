@@ -25,6 +25,10 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Record the tested revision and compiler
+        run: |
+          mkdir -p target/assurance/ui-histories
+          { git rev-parse HEAD; rustc --version --verbose; cargo --version; } > target/assurance/ui-histories/build.txt
       - name: Replay retained-context histories and shrink failing traces
         env:
           PROPTEST_CASES: "128"

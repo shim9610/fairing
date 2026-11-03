@@ -133,6 +133,14 @@ fn type_into_each_field(h: &mut Harness, form: &Rc<RefCell<Form>>) {
 }
 
 fn exercise(opener: Opener, animated: bool, history: &[u8]) {
+    let result = std::panic::catch_unwind(|| exercise_inner(opener, animated, history));
+    if let Err(payload) = result {
+        eprintln!("Shell history replay: opener={opener:?}, animated={animated}, history={history:?}");
+        std::panic::resume_unwind(payload);
+    }
+}
+
+fn exercise_inner(opener: Opener, animated: bool, history: &[u8]) {
     let mut config = single_level_access();
     config.motion.reduce = !animated;
     config.osk.layout = "qwerty".into();

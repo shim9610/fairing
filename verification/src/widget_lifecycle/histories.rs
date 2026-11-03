@@ -7,7 +7,10 @@ use fairing::widgets::{
     BigButton, FieldLook, Keys, NumberField, Opener, TextField, Trigger, WheelPicker,
 };
 use proptest::prelude::*;
+use std::sync::OnceLock;
 use std::time::Duration;
+
+type Outcome = (usize, String, u64, usize, usize);
 
 const WHEEL: [&str; 5] = ["zero", "one", "two", "three", "four"];
 const OUTSIDE: Pos2 = Pos2::new(940.0, 840.0);
@@ -182,7 +185,7 @@ impl Scene {
     }
 
     /// All suffix outcomes are checked, not merely whether a widget was drawn.
-    fn promised_suffix(&mut self, runner: &mut Runner) -> (usize, String, u64, usize, usize) {
+    fn promised_suffix(&mut self, runner: &mut Runner) -> Outcome {
         self.recover(runner);
         let hits = self.menu.hits;
         self.tap(runner, self.menu.peer.center());
@@ -272,8 +275,29 @@ fn profile(index: u8) -> (Opener, Trigger) {
     (opener, kind)
 }
 
+// The pristine comparator is independent of each subject's retained Context.
+// Cache only its already-asserted public outcomes, never a subject or UI storage.
+fn expected(profile_index: u8) -> &'static Outcome {
+    static OUTCOMES: [OnceLock<Outcome>; 28] = [const { OnceLock::new() }; 28];
+    OUTCOMES[usize::from(profile_index)].get_or_init(|| {
+        let (opener, kind) = profile(profile_index);
+        let mut runner = Runner::new();
+        let mut fresh = Scene::new(opener, kind);
+        fresh.idle(&mut runner, 3);
+        fresh.promised_suffix(&mut runner)
+    })
+}
+
 /// Each byte has a documented operation and timing; shrinking retains exact replay.
 fn exercise(profile_index: u8, history: &[u8]) {
+    let result = std::panic::catch_unwind(|| exercise_inner(profile_index, history));
+    if let Err(payload) = result {
+        eprintln!("UI history replay: profile={profile_index}, history={history:?}");
+        std::panic::resume_unwind(payload);
+    }
+}
+
+fn exercise_inner(profile_index: u8, history: &[u8]) {
     let (opener, kind) = profile(profile_index);
     let mut runner = Runner::new();
     let mut scene = Scene::new(opener, kind);
@@ -309,14 +333,9 @@ fn exercise(profile_index: u8, history: &[u8]) {
     }
     let actual = scene.promised_suffix(&mut runner);
 
-    // Separate pristine execution is a behavioral comparator. The subject Context
-    // survives its entire history; only business values are set in the suffix.
-    let mut fresh_runner = Runner::new();
-    let mut fresh = Scene::new(opener, kind);
-    fresh.idle(&mut fresh_runner, 3);
     assert_eq!(
-        actual,
-        fresh.promised_suffix(&mut fresh_runner),
+        &actual,
+        expected(profile_index),
         "prior history changed the promised suffix outcome"
     );
 }
