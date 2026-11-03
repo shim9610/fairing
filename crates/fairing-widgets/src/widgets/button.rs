@@ -563,10 +563,26 @@ fn hold(ui: &egui::Ui, cx: &mut Cx<'_>, id: egui::Id, pressed: bool, duration: D
     let state = crate::interaction::load::<u8>(
         ui.ctx(),
         state_id,
-        true,
+        ui.is_enabled(),
         crate::interaction::Lifetime::Press,
     );
-    let pressed = pressed && (state.is_some() || ui.input(|input| input.pointer.primary_pressed()));
+    let operation = if !pressed {
+        crate::interaction::rules::Operation::Cancel
+    } else if ui.input(|input| input.pointer.primary_pressed()) {
+        crate::interaction::rules::Operation::Start
+    } else {
+        crate::interaction::rules::Operation::Continue
+    };
+    let pressed = crate::interaction::rules::step(
+        crate::interaction::rules::Snapshot {
+            present: true,
+            enabled: ui.is_enabled(),
+            continuous: state.is_some(),
+            active: matches!(state, Some(RING_ARMED | RING_DONE)),
+        },
+        operation,
+    )
+    .active;
     if state.is_none() {
         // A button seen for the first time: the ring is planted at 0.
         cx.animate(ring_id, 0.0, Tween::instant());
@@ -588,8 +604,8 @@ fn hold(ui: &egui::Ui, cx: &mut Cx<'_>, id: egui::Id, pressed: bool, duration: D
     let (next, completed) = match (pressed, full, state) {
         (false, _, _) => (RING_IDLE, false),
         (true, false, _) => (RING_ARMED, false),
-        (true, true, RING_ARMED) => (RING_DONE, true),
-        (true, true, other) => (other, false),
+        (true, true, RING_DONE) => (RING_DONE, false),
+        (true, true, _) => (RING_DONE, true),
     };
     crate::interaction::store(ui.ctx(), state_id, next);
     let done = next == RING_DONE;

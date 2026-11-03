@@ -140,12 +140,17 @@ These concrete probes allow layout/animation frames to settle; they do not estab
 a zero-frame input-realization theorem.
 Other witnesses check stale numeric drafts (including update concurrent with blur
 and changes below displayed precision), interrupted pattern completion/restart,
-keyboard request expiry/disable, and a new hold after an old completed hold.
+keyboard request expiry/disable, a new hold after an old completed hold, and
+a still-held pointer while a button is withdrawn or disabled. A returning button
+requires a fresh Start; an idle cached entry cannot authorize Continue. Zero-duration
+holds complete exactly once per fresh press. A wheel keeps animation and input
+capture separate; an old held drag cannot change a returning wheel, while a fresh
+drag still works.
 Adapter unit tests check that consumers cannot renew absent owners, expired payloads
 are not cloned, and fresh press/mount lifetimes differ as specified.
 
-Native mutation controls separately bypass the actual lease and remove numeric
-caller-value validation. Passing abstract proofs cannot hide disconnected product
+Native mutation controls separately bypass the actual lease, remove numeric
+caller-value validation, treat an idle hold entry as active, and bypass wheel capture admission. Passing abstract proofs cannot hide disconnected product
 wiring: these broken adapters must fail their concrete contract tests. Generated
 protocol histories, Miri and the shell fuzzer also check the production kernel.
 

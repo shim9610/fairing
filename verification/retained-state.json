@@ -20,7 +20,8 @@
     "review": "Press-scoped hold progress/reporting state; a fresh press cannot inherit old completion.",
     "sites": {
       "lifecycle.load": 1,
-      "lifecycle.store": 2
+      "lifecycle.store": 2,
+      "lifecycle.step": 1
     }
   },
   "widgets/dropdown.rs": {
@@ -92,10 +93,11 @@
     }
   },
   "widgets/wheel.rs": {
-    "review": "Mounted animated position; expiration seeds from current caller selection.",
+    "review": "Mounted animation and separate fresh-press capture admission; expiration seeds from current caller selection.",
     "sites": {
       "lifecycle.load": 1,
-      "lifecycle.store": 1
+      "lifecycle.store": 1,
+      "lifecycle.step": 1
     }
   }
 }

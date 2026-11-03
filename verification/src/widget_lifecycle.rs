@@ -479,3 +479,201 @@ fn a_new_hold_cannot_inherit_a_completed_or_interrupted_hold() {
         "a fresh hold remained blocked after its owner returned"
     );
 }
+
+#[test]
+fn an_old_held_pointer_cannot_arm_a_returned_button() {
+    use fairing::widgets::BigButton;
+    use std::time::Duration;
+    for interruption in 0..3 {
+        let mut r = Runner::new();
+        let mut rect = Rect::NOTHING;
+        let mut completed = 0;
+        let mut draw = |ui: &mut egui::Ui,
+                        cx: &mut WidgetCx<'_>,
+                        visible: bool,
+                        enabled: bool,
+                        parent: bool| {
+            ui.add_enabled_ui(parent, |ui| {
+                if visible {
+                    let result = BigButton::new("hold")
+                        .enabled(enabled)
+                        .long_press(Duration::from_millis(100))
+                        .show(ui, cx);
+                    rect = result.response.rect;
+                    completed += usize::from(result.long_pressed());
+                }
+            });
+        };
+        r.frame(vec![], |ui, cx| draw(ui, cx, true, true, true));
+        drop(draw);
+        let at = rect.center();
+        let mut draw = |ui: &mut egui::Ui,
+                        cx: &mut WidgetCx<'_>,
+                        visible: bool,
+                        enabled: bool,
+                        parent: bool| {
+            ui.add_enabled_ui(parent, |ui| {
+                if visible {
+                    completed += usize::from(
+                        BigButton::new("hold")
+                            .enabled(enabled)
+                            .long_press(Duration::from_millis(100))
+                            .show(ui, cx)
+                            .long_pressed(),
+                    );
+                }
+            });
+        };
+        r.frame(pointer(at, true), |ui, cx| draw(ui, cx, true, true, true));
+        r.frame(vec![], |ui, cx| {
+            draw(
+                ui,
+                cx,
+                interruption != 0,
+                interruption != 1,
+                interruption != 2,
+            )
+        });
+        for _ in 0..16 {
+            r.frame(vec![], |ui, cx| draw(ui, cx, true, true, true));
+        }
+        drop(draw);
+        assert_eq!(
+            completed, 0,
+            "an old held pointer armed a retired button: {interruption}"
+        );
+        let mut draw = |ui: &mut egui::Ui, cx: &mut WidgetCx<'_>| {
+            completed += usize::from(
+                BigButton::new("hold")
+                    .long_press(Duration::from_millis(100))
+                    .show(ui, cx)
+                    .long_pressed(),
+            );
+        };
+        r.frame(pointer(at, false), &mut draw);
+        r.frame(pointer(at, true), &mut draw);
+        for _ in 0..16 {
+            r.frame(vec![], &mut draw);
+        }
+        drop(draw);
+        assert_eq!(
+            completed, 1,
+            "a fresh press remained blocked after retiring old capture"
+        );
+    }
+}
+
+#[test]
+fn a_zero_duration_hold_completes_once_per_fresh_press() {
+    use fairing::widgets::BigButton;
+    use std::time::Duration;
+    let mut r = Runner::new();
+    let mut rect = Rect::NOTHING;
+    r.frame(vec![], |ui, cx| {
+        rect = BigButton::new("hold")
+            .long_press(Duration::ZERO)
+            .show(ui, cx)
+            .response
+            .rect;
+    });
+    let at = rect.center();
+    let mut count = 0;
+    for expected in 1..=2 {
+        let mut draw = |ui: &mut egui::Ui, cx: &mut WidgetCx<'_>| {
+            count += usize::from(
+                BigButton::new("hold")
+                    .long_press(Duration::ZERO)
+                    .show(ui, cx)
+                    .long_pressed(),
+            );
+        };
+        r.frame(pointer(at, true), &mut draw);
+        for _ in 0..4 {
+            r.frame(vec![], &mut draw);
+        }
+        r.frame(pointer(at, false), &mut draw);
+        drop(draw);
+        assert_eq!(
+            count, expected,
+            "zero-duration hold must complete exactly once per fresh press"
+        );
+    }
+}
+
+#[test]
+fn a_wheel_requires_a_fresh_drag_after_its_owner_is_interrupted() {
+    use fairing::widgets::WheelPicker;
+    let options = ["zero", "one", "two", "three", "four"];
+    for interruption in 0..3 {
+        let mut r = Runner::new();
+        let mut value = 2;
+        let mut rect = Rect::NOTHING;
+        r.frame(vec![], |ui, cx| {
+            rect = WheelPicker::new("wheel", &options, &mut value)
+                .show(ui, cx)
+                .rect;
+        });
+        let start = rect.center();
+        let moved = start - egui::vec2(0.0, rect.height() / 5.0);
+        let draw = |ui: &mut egui::Ui,
+                    cx: &mut WidgetCx<'_>,
+                    value: &mut usize,
+                    visible: bool,
+                    enabled: bool,
+                    parent: bool| {
+            ui.add_enabled_ui(parent, |ui| {
+                if visible {
+                    WheelPicker::new("wheel", &options, value)
+                        .enabled(enabled)
+                        .show(ui, cx);
+                }
+            });
+        };
+        // Use this same scope for the warm-up and all subsequent input.
+        r.frame(vec![], |ui, cx| draw(ui, cx, &mut value, true, true, true));
+        r.frame(pointer(start, true), |ui, cx| {
+            draw(ui, cx, &mut value, true, true, true)
+        });
+        r.frame(vec![Event::PointerMoved(moved)], |ui, cx| {
+            draw(ui, cx, &mut value, true, true, true)
+        });
+        r.frame(vec![], |ui, cx| {
+            draw(
+                ui,
+                cx,
+                &mut value,
+                interruption != 0,
+                interruption != 1,
+                interruption != 2,
+            )
+        });
+        value = 2;
+        let after = moved - egui::vec2(0.0, rect.height() / 5.0);
+        r.frame(vec![Event::PointerMoved(after)], |ui, cx| {
+            draw(ui, cx, &mut value, true, true, true)
+        });
+        r.frame(pointer(after, false), |ui, cx| {
+            draw(ui, cx, &mut value, true, true, true)
+        });
+        for _ in 0..16 {
+            r.frame(vec![], |ui, cx| draw(ui, cx, &mut value, true, true, true));
+        }
+        assert_eq!(
+            value, 2,
+            "an old drag changed a returned wheel: {interruption}"
+        );
+        r.frame(pointer(start, true), |ui, cx| {
+            draw(ui, cx, &mut value, true, true, true)
+        });
+        r.frame(vec![Event::PointerMoved(moved)], |ui, cx| {
+            draw(ui, cx, &mut value, true, true, true)
+        });
+        r.frame(pointer(moved, false), |ui, cx| {
+            draw(ui, cx, &mut value, true, true, true)
+        });
+        assert_ne!(
+            value, 2,
+            "a fresh wheel drag remained blocked after interruption"
+        );
+    }
+}

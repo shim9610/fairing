@@ -12,7 +12,7 @@ import tempfile
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--only", action="append", choices=[
     "back-handler", "back-projection", "auth-correlation", "command-budget", "expiry-order", "ui-progress", "modal-input",
-    "bounded-admission", "launch-gates", "notification-cap", "inbox-delivery", "retained-lifetime", "numeric-owner",
+    "bounded-admission", "launch-gates", "notification-cap", "inbox-delivery", "retained-lifetime", "numeric-owner", "hold-admission", "wheel-admission",
 ], help="Run selected controls; omitting this option runs the complete CI suite")
 args = parser.parse_args()
 ROOT = Path(__file__).resolve().parents[1]
@@ -62,6 +62,14 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
         print(name + (": rejected broken production code" if failure else ": passed"), flush=True)
 
     scenarios = [
+        ("wheel-admission", "widget_lifecycle::a_wheel_requires_a_fresh_drag_after_its_owner_is_interrupted",
+         "crates/fairing-widgets/src/widgets/wheel.rs",
+         [("active: drum.captured", "active: true")],
+         False, "an old drag changed a returned wheel"),
+        ("hold-admission", "widget_lifecycle::an_old_held_pointer_cannot_arm_a_returned_button",
+         "crates/fairing-widgets/src/widgets/button.rs",
+         [("active: matches!(state, Some(RING_ARMED | RING_DONE))", "active: state.is_some()")],
+         False, "an old held pointer armed a retired button"),
         ("retained-lifetime", "widget_lifecycle::every_interruption_prefix_preserves_popup_and_peer_operations",
          "crates/fairing-widgets/src/interaction/mod.rs",
          [("let continuous = rules::live(\n                    saved.seen,\n                    now,\n                    matches!(lifetime, Lifetime::Press),\n                    fresh_press,\n                );", "let continuous = true;")],

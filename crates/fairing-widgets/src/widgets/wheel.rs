@@ -124,8 +124,6 @@ impl<'a> WheelPicker<'a> {
                 Sense::hover()
             },
         );
-        // The drum follows the finger, and says so: the rail's page swipe leaves this drag alone.
-        crate::drag::claim_if_held(&response);
         let count = self.options.len();
         if count == 0 {
             return response;
@@ -147,6 +145,7 @@ impl<'a> WheelPicker<'a> {
         .unwrap_or(Drum {
             pos: Animated::new(as_f32(wanted)),
             caller: false,
+            captured: false,
         });
 
         // The caller moved the value while the drum was at rest, or while it was still turning
@@ -157,9 +156,41 @@ impl<'a> WheelPicker<'a> {
             drum.pos.to(target, cx.theme.motion.switch);
             drum.caller = true;
         }
-        if self.enabled && self.steer(ui, cx, &response, rect, row_h, &mut drum.pos) {
-            // The finger took over: from here the rows passed are the operator's choice.
-            drum.caller = false;
+        // egui can retain a held pointer across a missing/disabled widget. A mounted
+        // animation is not proof of a live drag; only a fresh press can start capture.
+        let fresh = ui.input(|input| input.pointer.primary_pressed())
+            && (response.is_pointer_button_down_on() || response.clicked());
+        let operation = if fresh {
+            crate::interaction::rules::Operation::Start
+        } else if response.drag_stopped() || response.clicked() {
+            crate::interaction::rules::Operation::Finish
+        } else if response.is_pointer_button_down_on() || response.dragged() {
+            crate::interaction::rules::Operation::Continue
+        } else {
+            crate::interaction::rules::Operation::Cancel
+        };
+        let transition = crate::interaction::rules::step(
+            crate::interaction::rules::Snapshot {
+                present: true,
+                enabled: self.enabled && ui.is_enabled(),
+                continuous: true,
+                active: drum.captured,
+            },
+            operation,
+        );
+        drum.captured = transition.active && ui.input(|input| input.pointer.primary_down());
+        let admitted = matches!(
+            transition.effect,
+            crate::interaction::rules::Effect::Began
+                | crate::interaction::rules::Effect::Continued
+                | crate::interaction::rules::Effect::Completed
+        );
+        if admitted {
+            // The drum owns this live gesture; the surrounding page swipe leaves it alone.
+            crate::drag::claim_if_held(&response);
+            if self.steer(ui, cx, &response, rect, row_h, &mut drum.pos) {
+                drum.caller = false;
+            }
         }
         let dt = ui.input(|i| i.stable_dt);
         if drum.pos.tick(dt) {
@@ -343,6 +374,8 @@ struct Drum {
     pos: Animated<f32>,
     /// Turning to a value the caller set, not one the finger chose.
     caller: bool,
+    /// A fresh press admitted by the owner protocol, independently of animation.
+    captured: bool,
 }
 
 /// A row's index for a drum position: the position modulo the count with `wrap`, and only the
