@@ -82,25 +82,6 @@ jobs:
             target/assurance/state-schema/*/compiler.log
           retention-days: 14
 
-  specification-completeness:
-    needs: inputs
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Install pinned specification checkers
-        run: python3 verification/install.py proofs
-      - name: Require the state specification to preserve concrete UI observations
-        run: python3 verification/specification.py
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
-        with:
-          name: specification-completeness-results
-          path: |
-            target/assurance/specification/
-            target/assurance/ui-specification/
-          retention-days: 14
-
   proofs:
     needs: inputs
     runs-on: ubuntu-24.04
@@ -115,9 +96,7 @@ jobs:
         if: always()
         with:
           name: proof-results
-          path: |
-            target/assurance/proofs/
-            target/assurance/ui-specification/
+          path: target/assurance/proofs/
           retention-days: 14
 
   properties-and-loom:

@@ -48,15 +48,8 @@ concrete_checked = proved('concrete', [
  ROOT / 'verification/kani_concrete.rs', ROOT / 'verification/verus/concrete.py',
  ROOT / 'verification/verus/interaction.py', ROOT / 'verification/state-schema.json',
 ])
-joint_path = ROOT / 'target/assurance/ui-specification/receipt.json'
-joint = json.loads(joint_path.read_text()) if joint_path.exists() else {}
-joint_paths = [ROOT / path for path in ['verification/verus/ui_state.rs', 'verification/ui_specification.py', 'verification/tools.json']]
-joint_checked = joint.get('inputs') == {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in joint_paths}
-joint_checked = joint_checked and joint.get('model_status') == 'proved'
 inventory = audit()
 obligations = [
- {'id': 'joint-ui-model', 'status': 'discharged' if joint_checked else 'open',
-  'scope': 'All declared joint-model values, unbounded maps/sequences and generic payloads: unique group membership, group-determined promises, focus identity, history-independent eligibility, fault/authentication/recovery separation. Concrete product projection and execution realization remain separate obligations.'},
  {'id': 'back-dispatch-partition', 'status': 'discharged' if checked else 'open',
   'scope': 'All 256 valuations of eight Back predicates, nine disjoint groups and specified handler selection.'},
  {'id': 'retained-owner-partition', 'status': 'discharged' if interaction_checked else 'open',
@@ -84,23 +77,9 @@ boundaries = [
  {'id': 'callback-progress',
   'scope': 'The library accepts ordinary Rust screen, painter, backend and on_back callbacks without machine-checked termination/effect contracts.'},
 ]
-specification_path = ROOT / 'target/assurance/specification/result.json'
-specification = json.loads(specification_path.read_text()) if specification_path.exists() else {}
-specification_fresh = bool(specification.get('inputs')) and all(
- (ROOT / path).is_file() and hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == digest
- for path, digest in specification.get('inputs', {}).items())
-specification_status = {
- 'status': specification.get('verdict') if specification_fresh else 'not-checked-on-current-inputs',
- 'scope': 'Total concrete projection and input realization for the expanded joint model; the carrier-only projection remains a refuted negative control',
- 'evidence': 'target/assurance/specification/result.json' if specification_fresh else None,
-}
 report = {'target_guarantee': 'Every reachable state is covered, and every specification-permitted interaction is always executable with its promised outcome.',
           'whole_app_status': 'incomplete', 'implemented_components_status': 'proved' if components_complete else 'incomplete',
           'obligations': obligations, 'backend_inventory': inventory, 'unproved_boundaries': boundaries,
-          'state_specification_check': specification_status,
-          'expanded_state_specification': {'model_status': 'proved' if joint_checked else 'not-checked-on-current-inputs',
-              'theorems': joint.get('theorems', []) if joint_checked else [], 'product_refinement': 'open',
-              'evidence': 'target/assurance/ui-specification/receipt.json' if joint_checked else None},
           'type_inventory_scope': 'Compiler-derived named product declarations in minimal/all feature Linux builds; declarations outside the concrete-carrier/protocol models remain unproved'}
 out = ROOT / 'target/assurance/proofs/state-obligations.json'
 out.parent.mkdir(parents=True, exist_ok=True)

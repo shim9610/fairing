@@ -239,17 +239,3 @@ The [whole-application obligations](formal-operability.md) remain open beyond th
 projection. The proof artifact includes `state-obligations.json`; requiring the
 whole-app theorem currently fails with `OPEN_PROOF_OBLIGATIONS`. The CI check for
 this refusal guards against promoting component proofs to a whole-app guarantee.
-
-## State specification gate
-
-The [joint UI model](joint-state-specification.md) is checked by
-`verification/ui_specification.py`: twelve Verus theorems and ten semantic
-mutation controls. Its receipt is required by the component proof job. This
-checks model partitions and contracts; concrete product refinement stays open.
-
-`verification/specification.py` also verifies the joint model and preserves the
-carrier-only projection counterexample using reachable editor records. Both
-checkers refute that projection. The strict job exits 2 while total product
-refinement is open; successful model proofs do not turn the whole-state claim
-green. See
-[specification completeness](specification-completeness.md).

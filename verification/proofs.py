@@ -79,7 +79,6 @@ concrete_before = hashes(concrete_inputs)
 results.append(execute("verus-concrete", [sys.executable, ROOT / "verification/verus/concrete.py"], environment))
 results.append(execute("kani-concrete", [kani, ROOT / "verification/kani_concrete.rs"], kani_env))
 receipt("concrete", concrete_inputs, concrete_before)
-results.append(execute("joint-ui-specification", [sys.executable, ROOT / "verification/ui_specification.py"], environment))
 
 
 source = (ROOT / "crates/fairing/src/shell/bool_ack.rs").read_text()

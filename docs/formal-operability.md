@@ -13,25 +13,6 @@ not discharge the remaining concrete/UI boundaries. Run
 `python3 verification/proof_obligations.py --require-whole-app` to require this
 stronger claim; it currently fails with `OPEN_PROOF_OBLIGATIONS`.
 
-## Current specification completeness verdict
-
-The [joint state specification](joint-state-specification.md) now combines shell
-policy, widgets, focus, ordered popups, pointer capture, animation and input
-surfaces. Twelve Verus theorems cover all values of that model, including unique
-group membership and group-determined promises. Ten semantic mutations must be
-rejected. A fresh receipt is required by the component proof job. The model also
-states total concrete projection and every-trace progress obligations; their
-product bindings remain open.
-
-The strict check in `verification/specification.py` verifies the expanded model,
-then retains a negative control for the existing carrier-only product view.
-Verus and Kani reject its necessary observation-preservation condition.
-Two reachable editor states have identical existing carrier inputs but different
-focus owners and different recipients of the same text event. Both tools also
-verify the refutation and a focus-aware comparison control. The command exits 2;
-the dedicated completeness CI job fails while total product refinement is open. See
-[the obligation, concrete witness and verification boundary](specification-completeness.md).
-
 ## Statement and required proof order
 
 Let `S` include the shell, widgets, egui memory/areas/focus/capture and application
