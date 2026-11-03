@@ -12,7 +12,7 @@ import tempfile
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--only", action="append", choices=[
     "back-handler", "back-projection", "auth-correlation", "command-budget", "expiry-order", "ui-progress", "modal-input",
-    "bounded-admission", "launch-gates", "notification-cap", "inbox-delivery", "retained-lifetime", "numeric-owner", "hold-admission", "wheel-admission", "restore-delegation", "pointer-projection", "capture-application", "hold-completion-latch", "focus-isolation", "popup-retirement",
+    "bounded-admission", "launch-gates", "notification-cap", "inbox-delivery", "retained-lifetime", "numeric-owner", "hold-admission", "wheel-admission", "restore-delegation", "pointer-projection", "capture-application", "hold-completion-latch", "focus-isolation", "popup-retirement", "deadline-reply",
 ], help="Run selected controls; omitting this option runs the complete CI suite")
 args = parser.parse_args()
 ROOT = Path(__file__).resolve().parents[1]
@@ -62,6 +62,10 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
         print(name + (": rejected broken production code" if failure else ": passed"), flush=True)
 
     scenarios = [
+        ("deadline-reply", "transitions::deadlines::expiry_cancels_old_replies_before_replacement_and_fresh_input",
+         "crates/fairing/src/shell/background.rs",
+         [("self.expire_access(now);", "if false { self.expire_access(now); }")],
+         False, "expired challenge accepted a stale grant"),
         ("focus-isolation", "widget_lifecycle::histories::closed_menu_cleanup_preserves_the_other_fields_focus",
          "crates/fairing-widgets/src/interaction/mod.rs",
          [("ctx.memory_mut(|memory| memory.surrender_focus(id));",

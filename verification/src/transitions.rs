@@ -595,4 +595,100 @@ mod deadlines {
             }
         }
     }
+
+    #[test]
+    fn expiry_cancels_old_replies_before_replacement_and_fresh_input() {
+        for boundary in [0.999, 1.0, 1.001] {
+            for fresh in [false, true] {
+                for replacement in [false, true] {
+                    for (capacity, budget) in [(1, 1), (3, 2)] {
+                        deadline_reply_case(boundary, fresh, replacement, capacity, budget);
+                    }
+                }
+            }
+        }
+    }
+
+    fn deadline_reply_case(
+        boundary: f64,
+        fresh: bool,
+        replacement: bool,
+        capacity: usize,
+        budget: usize,
+    ) {
+        let mut cfg =
+            fairing::testing::access_config(&["viewer", "operator", "admin"], Some("top"));
+        cfg.motion.reduce = true;
+        cfg.access.unlock_mode = "switch".into();
+        cfg.access.session_timeout_secs = 1;
+        cfg.access.idle_lock_secs = 0;
+        cfg.access.gates.insert("sensitive".into(), "admin".into());
+        let ctx = egui::Context::default();
+        let requests = Rc::new(RefCell::new(Vec::new()));
+        let replies = Rc::new(RefCell::new(VecDeque::new()));
+        let calls = Rc::new(Cell::new(0));
+        let mut shell = Shell::builder(cfg)
+            .command_queue_capacity(capacity)
+            .max_commands_per_update(budget)
+            .authenticator(RetainingReader {
+                requests: requests.clone(),
+                replies: replies.clone(),
+            })
+            .build(&ctx)
+            .unwrap();
+        let seen = calls.clone();
+        shell.add(action("sensitive", move |_| seen.set(seen.get() + 1)));
+        shell.handle().set_subject(subject(1));
+        frame(&mut shell, &ctx, 0.0, false);
+        let request = || Command::RequestUnlock {
+            gate: "sensitive".into(),
+            then: Some(LaunchAction::run("sensitive")),
+        };
+        shell.handle().try_send(request()).unwrap();
+        frame(&mut shell, &ctx, 0.5, false);
+        assert!(shell.unlock_prompt_visible());
+        assert_eq!(requests.borrow().len(), 1);
+        let old = requests.borrow()[0].0;
+        replies
+            .borrow_mut()
+            .push_back(old.respond(AuthOutcome::Granted(subject(2))));
+        if replacement {
+            shell.handle().try_send(request()).unwrap();
+        }
+        frame(&mut shell, &ctx, boundary, fresh);
+        let expired = boundary >= 1.0;
+        assert_eq!(
+            calls.get(),
+            usize::from(!expired),
+            "expired challenge accepted a stale grant: boundary={boundary}, fresh={fresh}, replacement={replacement}"
+        );
+        assert_eq!(
+            shell.access().session().subject.level,
+            Level(if expired { 0 } else { 2 }),
+            "expiry and reply ordering diverged"
+        );
+        if expired {
+            if !shell.unlock_prompt_visible() {
+                shell.handle().try_send(request()).unwrap();
+            }
+            frame(&mut shell, &ctx, 1.01, false);
+            let current = requests.borrow().last().unwrap().0;
+            assert_ne!(current, old, "expired authentication token was reused");
+            replies
+                .borrow_mut()
+                .push_back(current.respond(AuthOutcome::Granted(subject(2))));
+            for time in [1.02, 1.03, 1.04] {
+                frame(&mut shell, &ctx, time, false);
+            }
+            assert_eq!(calls.get(), 1, "valid retry was blocked or executed twice");
+            assert_eq!(shell.access().session().subject.level, Level(2));
+            assert!(!shell.unlock_prompt_visible());
+            replies
+                .borrow_mut()
+                .push_back(old.respond(AuthOutcome::Granted(subject(2))));
+            frame(&mut shell, &ctx, 1.05, false);
+            assert_eq!(calls.get(), 1, "old reply replayed a completed continuation");
+        }
+        assert!(!shell.is_faulted());
+    }
 }

@@ -72,6 +72,16 @@ popup, field disable/withdrawal, overlay, resize and sleep histories, both with
 and without animation. It checks digits/Latin layout switching and verifies that
 typing affects only the intended field before and after popup selection.
 
+## Authentication timing boundaries
+
+A separate production-shell test checks 24 combinations of just-before/exactly-at/
+just-after session expiry, fresh input, same-gate replacement queued in that pass,
+and two queue capacity/budget profiles. An earlier challenge's grant must not
+survive expiry or authorize the replacement challenge. A fresh current-token
+retry must still execute exactly once. Both the old reader response and a later
+duplicate are retained by the test reader; cancellation cannot make them vanish
+from the test environment.
+
 ## Reproduction and failure reduction
 
 Run:
@@ -93,9 +103,10 @@ in transient artifacts.
 
 The dedicated UI interaction histories workflow runs the native suite. Existing
 Rust assurance also runs these tests through its integration test workspace.
-Two native semantic controls mutate production cleanup in disposable checkouts:
+Three native semantic controls mutate production code in disposable checkouts:
 focus-isolation clears the currently focused field instead of only the retiring
-owner; popup-retirement leaves the retired area interactable. Each baseline must
+owner; popup-retirement leaves the retired area interactable; deadline-reply skips
+the pre-dispatch expiry check. Each baseline must
 pass and each mutation must fail its specific runtime assertion. Compilation
 failures do not count as detection.
 

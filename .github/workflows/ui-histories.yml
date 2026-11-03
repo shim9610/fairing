@@ -36,8 +36,11 @@ jobs:
         run: |
           mkdir -p target/assurance/ui-histories
           cargo test --locked --manifest-path verification/Cargo.toml --lib widget_lifecycle:: -- --nocapture 2>&1 | tee target/assurance/ui-histories/native.log
+      - name: Check authentication replies at the expiry boundary
+        run: |
+          cargo test --locked --manifest-path verification/Cargo.toml --lib transitions::deadlines::expiry_cancels_old_replies_before_replacement_and_fresh_input -- --exact --nocapture 2>&1 | tee target/assurance/ui-histories/deadline-replies.log
       - name: Reject focus and popup cleanup defects
-        run: python3 verification/controls.py --only focus-isolation --only popup-retirement
+        run: python3 verification/controls.py --only focus-isolation --only popup-retirement --only deadline-reply
       - name: Check verification formatting
         run: cargo fmt --manifest-path verification/Cargo.toml -- --check
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -46,5 +49,5 @@ jobs:
           name: ui-interaction-histories
           path: |
             target/assurance/ui-histories/
-            target/assurance/controls/selected-focus-isolation-popup-retirement/
+            target/assurance/controls/selected-deadline-reply-focus-isolation-popup-retirement/
           retention-days: 14
