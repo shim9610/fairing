@@ -13,6 +13,17 @@ not discharge the remaining concrete/UI boundaries. Run
 `python3 verification/proof_obligations.py --require-whole-app` to require this
 stronger claim; it currently fails with `OPEN_PROOF_OBLIGATIONS`.
 
+## Current specification completeness verdict
+
+The specification itself now has a strict check in
+`verification/specification.py`. Verus and Kani reject a necessary
+observation-preservation condition of the current product-connected state view.
+Two reachable editor states have identical existing carrier inputs but different
+focus owners and different recipients of the same text event. Both tools also
+verify the refutation and a focus-aware comparison control. The command exits 2;
+the dedicated completeness CI job fails while this gap exists. See
+[the obligation, concrete witness and verification boundary](specification-completeness.md).
+
 ## Statement and required proof order
 
 Let `S` include the shell, widgets, egui memory/areas/focus/capture and application

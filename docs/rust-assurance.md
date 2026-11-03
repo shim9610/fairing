@@ -239,3 +239,12 @@ The [whole-application obligations](formal-operability.md) remain open beyond th
 projection. The proof artifact includes `state-obligations.json`; requiring the
 whole-app theorem currently fails with `OPEN_PROOF_OBLIGATIONS`. The CI check for
 this refusal guards against promoting component proofs to a whole-app guarantee.
+
+## State specification gate
+
+`verification/specification.py` checks observation preservation of the current
+state abstraction using reachable editor records. Both checkers reject the
+current completeness obligation and verify its refutation. This strict job is
+separate from successful component proofs and currently exits 2; it is not an
+expected-failure control that turns the whole-state claim green. See
+[specification completeness](specification-completeness.md).

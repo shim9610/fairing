@@ -53,6 +53,10 @@ pub enum Keys {
     Latin,
 }
 
+#[cfg(test)]
+#[path = "text_field/specification/tests.rs"]
+mod specification;
+
 impl Keys {
     fn slot(id: egui::Id) -> egui::Id {
         id.with("fairing.keys")

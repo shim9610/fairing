@@ -77,9 +77,20 @@ boundaries = [
  {'id': 'callback-progress',
   'scope': 'The library accepts ordinary Rust screen, painter, backend and on_back callbacks without machine-checked termination/effect contracts.'},
 ]
+specification_path = ROOT / 'target/assurance/specification/result.json'
+specification = json.loads(specification_path.read_text()) if specification_path.exists() else {}
+specification_fresh = bool(specification.get('inputs')) and all(
+ (ROOT / path).is_file() and hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == digest
+ for path, digest in specification.get('inputs', {}).items())
+specification_status = {
+ 'status': 'refuted-current-view' if specification_fresh and specification.get('verdict') == 'refuted' else 'not-checked-on-current-inputs',
+ 'scope': 'Necessary observation-preservation condition of the current product-connected widget state view',
+ 'evidence': 'target/assurance/specification/result.json' if specification_fresh else None,
+}
 report = {'target_guarantee': 'Every reachable state is covered, and every specification-permitted interaction is always executable with its promised outcome.',
           'whole_app_status': 'incomplete', 'implemented_components_status': 'proved' if components_complete else 'incomplete',
           'obligations': obligations, 'backend_inventory': inventory, 'unproved_boundaries': boundaries,
+          'state_specification_check': specification_status,
           'type_inventory_scope': 'Compiler-derived named product declarations in minimal/all feature Linux builds; declarations outside the concrete-carrier/protocol models remain unproved'}
 out = ROOT / 'target/assurance/proofs/state-obligations.json'
 out.parent.mkdir(parents=True, exist_ok=True)
