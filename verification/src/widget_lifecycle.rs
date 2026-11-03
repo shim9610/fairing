@@ -10,6 +10,8 @@ struct Runner {
     icons: IconSet,
     anims: AnimationStore,
     frame: u64,
+    time: f64,
+    dt: f32,
     shapes: Vec<egui::epaint::ClippedShape>,
 }
 impl Runner {
@@ -20,6 +22,8 @@ impl Runner {
             icons: IconSet::new(),
             anims: AnimationStore::new(),
             frame: 0,
+            time: 0.0,
+            dt: 1.0 / 60.0,
             shapes: vec![],
         }
     }
@@ -28,7 +32,7 @@ impl Runner {
         events: Vec<Event>,
         mut draw: impl FnMut(&mut egui::Ui, &mut WidgetCx<'_>),
     ) {
-        self.anims.tick(1.0 / 60.0, self.frame);
+        self.anims.tick(self.dt, self.frame);
         let mut cx = WidgetCx {
             theme: &self.theme,
             icons: &mut self.icons,
@@ -41,7 +45,8 @@ impl Runner {
         let mut output = self.ctx.run_ui(
             egui::RawInput {
                 screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(1000.0, 900.0))),
-                time: Some(self.frame as f64 / 60.0),
+                time: Some(self.time),
+                predicted_dt: self.dt,
                 events,
                 ..Default::default()
             },
@@ -49,6 +54,7 @@ impl Runner {
         );
         self.shapes = std::mem::take(&mut output.shapes);
         output.drop_without_applying_deltas();
+        self.time += f64::from(self.dt);
         self.frame += 1;
     }
     fn text(&self, word: &str, outside: Rect) -> Option<Pos2> {
@@ -730,3 +736,7 @@ fn a_completed_hold_cannot_refire_when_its_animation_progress_changes() {
         "a completed hold re-fired when animation progress changed"
     );
 }
+
+mod histories;
+
+mod keyboard_popup;
