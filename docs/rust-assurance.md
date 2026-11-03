@@ -13,11 +13,11 @@ source-built compiler and matching LLVM coverage workflow.
 
 | Tool | Pin | Scope |
 | --- | --- | --- |
-| Kani | 0.68.0; nightly 2026-08-21 | Thirteen harnesses: ACK/access, pool/display and production input-admission safety/progress |
-| Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Contracts on nine production functions plus a quiet-pass progress obligation |
-| Miri | nightly 2026-10-30 | Twenty-four assurance tests plus the production payload-cleanup test; rendering witnesses run natively |
+| Kani | 0.68.0; nightly 2026-08-21 | Fourteen harnesses: ACK/access and response correlation, pool/display and production input-admission safety/progress |
+| Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Contracts on ten production functions plus a quiet-pass progress obligation |
+| Miri | nightly 2026-10-30 | Twenty-five assurance tests plus the production payload-cleanup test; rendering witnesses run natively |
 | Loom | 0.7.2 | Four scenarios: Inbox ordering/consumer and bounded admission/close-after-drain |
-| proptest | 1.12.0 | Fourteen properties × 512, four shell properties × 64, plus UI reachability histories × 32; seed 20261101 |
+| proptest | 1.12.0 | CI: 512 cases per property, including shell ordering, transition traces and UI reachability; seed 20261101 |
 | cargo-fuzz | 0.13.2; libfuzzer-sys 0.4.13 | ASan: 20,000 ACK, 10,000 parser, 10,000 API and 2,000 shell inputs |
 | cargo-llvm-cov | 0.9.1 | Product and API-contract line/function/region coverage; latter requires execution of the declared production modules |
 | cargo-cyclonedx | 0.5.9 | Library package dependency BOMs for default/all features on Linux x86_64 and aarch64 |
@@ -214,9 +214,16 @@ allocation recovery remains a blocking, unfulfilled whole-renderer requirement.
 ## Input progress and rendered transition witnesses
 
 [UI reachability](ui-reachability.md) connects the actual input decision to an explicit
-six-edge state graph and real pointer actions. Kani/Verus prove the one-quiet-pass
+twelve-edge state graph and real pointer actions. Kani/Verus prove the one-quiet-pass
 progress condition on production source; native egui tests require input witnesses
 after region/rotation histories. Mutation controls reject sticky UI deferral and
 regions improperly remaining active over a modal. These checks distinguish a logically
 permitted method call from a reachable rendered control, with stated fairness and
-configuration bounds.
+configuration bounds. The corpus includes 192 fixed rendered configurations and
+24 refusal/lockout/recovery configurations. Generated trace defaults are 128 for the
+command/reply oracle and 96 for rendered paths; CI overrides both to 512. The independent queued-command/reply
+oracle adds 8,748 fixed traces, 128 generated traces, twelve deadline scenarios and
+an interpreted Miri trace. The shell ASan target calls the same oracle with inputs
+up to 96 bytes; native controls must reject omitted correlation, budget overflow and
+expiration after command dispatch. `controls.py --only expiry-order` replays one
+control during development; CI runs all nine baselines and all nine mutations.

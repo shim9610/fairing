@@ -3982,7 +3982,7 @@ impl Shell {
                 .authenticator_mut()
                 .and_then(|auth| auth.poll(now));
             if let Some(response) = outcome {
-                if self.auth_request == Some(response.request) {
+                if response.request.is_active(self.auth_request) {
                     self.finish_auth_outcome(response.outcome, app);
                 }
             }

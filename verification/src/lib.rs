@@ -8,6 +8,9 @@ pub mod inbox;
 #[cfg(all(feature = "integration", not(fairing_loom)))]
 pub mod api;
 
+#[cfg(all(feature = "integration", not(fairing_loom)))]
+pub mod transitions;
+
 #[cfg(not(fairing_loom))]
 #[path = "../../crates/fairing/src/shell/input_route.rs"]
 pub mod input_route;

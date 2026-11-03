@@ -49,6 +49,10 @@ impl AuthRequestId {
             .map(Self)
     }
 
+    pub(crate) fn is_active(self, active: Option<Self>) -> bool {
+        super::rules::response_is_current(active.map(|id| id.0), self.0)
+    }
+
     /// Associate an outcome with the operation which produced it.
     #[must_use]
     pub fn respond(self, outcome: AuthOutcome) -> AuthResponse {

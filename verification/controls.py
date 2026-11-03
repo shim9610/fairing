@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Require public API/model tests to reject broken production wiring in disposable copies."""
+import argparse
 import json
 import os
 from pathlib import Path
@@ -7,8 +8,16 @@ import shutil
 import subprocess
 import tempfile
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--only", action="append", choices=[
+    "auth-correlation", "command-budget", "expiry-order", "ui-progress", "modal-input",
+    "bounded-admission", "launch-gates", "notification-cap", "inbox-delivery",
+], help="Run selected controls; omitting this option runs the complete CI suite")
+args = parser.parse_args()
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "target/assurance/controls"
+if args.only:
+    OUT = OUT / ("selected-" + "-".join(sorted(set(args.only))))
 OUT.mkdir(parents=True, exist_ok=True)
 results = []
 
@@ -40,6 +49,19 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
         print(name + (": rejected broken production code" if failure else ": passed"), flush=True)
 
     scenarios = [
+        ("expiry-order", "transitions::deadlines::expiry_preempts_backlogged_commands_at_the_inclusive_boundary",
+         "crates/fairing/src/shell/background.rs",
+         [("self.expire_access(now);\n        let commands_pending = self.drain_commands(app);",
+           "let commands_pending = self.drain_commands(app);\n        self.expire_access(now);")],
+         False, "expiry/queue ordering diverged"),
+        ("auth-correlation", "transitions::regressions::replacement_and_duplicate_reply_history_matches_the_state_oracle",
+         "crates/fairing/src/shell/mod.rs",
+         [("if response.request.is_active(self.auth_request)", "if self.auth_request.is_some()")],
+         False, "subject diverged"),
+        ("command-budget", "transitions::regressions::finite_budget_separates_gate_retarget_from_reply_polling",
+         "crates/fairing/src/shell/mod.rs",
+         [("for _ in 0..self.commands_per_update", "for _ in 0..=self.commands_per_update")],
+         False, "queue reordered/evicted"),
         ("ui-progress", "reachability::regressions::actual_ui_edges_remain_reachable_after_input_obstacles",
          "crates/fairing/src/shell/mod.rs",
          [("self.region_frame_deferred =",
@@ -69,6 +91,8 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
          True, "assertion `left == right` failed"),
     ]
     for name, test, relative, changes, loom, marker in scenarios:
+        if args.only and name not in args.only:
+            continue
         path = checkout / relative
         original = path.read_text()
         run(name + "-baseline", test, loom=loom)

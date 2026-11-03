@@ -71,6 +71,7 @@ declaration = '#[path = "../crates/fairing/src/access/rules.rs"]\nmod rules;'
 if access_harness.count(declaration) != 1:
     raise SystemExit("Review the access mutation harness")
 for name, old, new in [
+    ("stale-response", "active == Some(response)", "active.is_some()"),
     ("level-order", "held >= required", "held <= required"),
     ("unknown-grant", "known\n        &&", "true\n        &&"),
     ("counter-wrap", "current.saturating_add(1)", "current.wrapping_add(1)"),

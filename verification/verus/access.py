@@ -12,6 +12,7 @@ parser.add_argument("--output", type=Path, default=ROOT / "target/assurance/veru
 args = parser.parse_args()
 source = args.source.read_text()
 contracts = {
+    "response_is_current": "result == match active { Some(id) => id == response, None => false }",
     "level_allows": "result == (held >= required)",
     "grant_allowed": "result == (known && (candidate > held || (lock && candidate == held)))",
     "next_failure": "result >= current, result as int == if current < u32::MAX { current as int + 1 } else { current as int }",

@@ -20,6 +20,7 @@ test is insufficient: production mutations must also fail the relevant checks.
 | Direct and queued actions, screens and setting writes check their gate when executed; changing policy revokes open screens | `Shell::launch/set_setting`, `ShellHandle`, `revalidate_access` ([access guide §2.3](guide/05-access-control.md)) | `public_shell_ordering` tracks independent expected action counts/settings through up to 32 operations; same-sender subject/launch order; gate-bypass mutation must fail screen revocation |
 | Authentication continuation re-enters the launch gate; a session boundary cancels the old check before polling | `apply_outcome`, `observe_subject_change`, `request_unlock`, `cancel_prompt` ([access guide §5](guide/05-access-control.md)) | `public_grants`; fixed `session_boundaries_cancel_before_polling_and_deadlines_are_inclusive` covers logout, same-level identity replacement, gate retargeting, lock and Back |
 | Overdue session timeout, temporary elevation and idle lock precede queued privileged work and fresh input | Frame state/expiry and access timers ([access guide §7](guide/05-access-control.md)) | `public_expiry` and fixed cases at deadline −1 ms, exactly at the deadline and +1 ms, with and without fresh input; check action refusal, unchanged setting and screen eviction |
+| Correlated replies cannot complete a canceled/replaced challenge or replay a continuation; queue batches preserve execution-time gates and FIFO admission | `AuthRequestId::is_active` → `response_is_current`, `Shell::drain_commands/tick_access` | Kani/Verus check exact token matching; `transitions` compares the real shell with an independent oracle across 8,748 matrix traces and 128 generated traces, a Miri replay and twelve deadline cases; omitted correlation, an excessive batch and late expiration must fail semantic controls |
 | PIN and pattern attempts share the stricter allowance and longer lockout; refused grants restore their cleared attempt history; reopening does not reset lockout | `PinTable::submit/refused` ([access guide §5](guide/05-access-control.md)) | `public_authentication` uses an independent attempt/deadline model for up to 64 operations; Miri fixed sequences include lock expiry equality and mixed methods |
 | Failure accounting cannot wrap; the attempt limit is inclusive | `PinTable::fail` → `next_failure/lockout_reached` | Kani `failure_accounting_never_wraps`, `lockout_is_inclusive_and_cannot_be_disabled_by_more_failures`; Verus contracts on both real functions; product regression at `u32::MAX` |
 | Accepted Boolean settings coalesce to the latest target and wait for the previous backend acknowledgement | `set_setting` → pending Boolean handling ([services guide §5](guide/06-services.md)) | Existing Kani/Verus ACK proofs plus `public_backend_ordering`: actual `ShellHandle`, setting gates and a recording delayed Wi-Fi backend; no overlapping writes and exact independent expected dispatch list |
@@ -47,26 +48,35 @@ original ACK kernel.
 
 ## Bounds and assumptions
 
-- Kani proves thirteen harnesses. Verus verifies nine production functions and
+- Kani proves fourteen harnesses. Verus verifies ten production functions and
   an additional quiet-pass progress obligation.
   Pool sequence proof is bounded to four operations on a two-slot u8 pool; the generation
   decision covers all u64 values. Kani treats pool-identity atomics sequentially;
   it does not prove concurrent identity creation. The access rules cover all u16 levels, all u32 counter values and every
   optional attempt limit. They are exhaustive decision proofs, not a proof of
   the complete egui application.
+- The command/reply oracle checks 8,748 fixed matrix traces and 128 generated traces
+  of at most 96 operations (CI overrides the generated count to 512), plus twelve
+  queued-work/session-deadline scenarios.
+  It compares observable effects after every operation and requires a successful retry
+  without restarting away the current state. One fixed trace also runs under Miri;
+  ASan fuzzing reuses the oracle. See [the exact matrix](ui-reachability.md#commandreply-transition-oracle).
 - Native tests contain fourteen properties with 512 cases each and four shell
-  properties with 64 cases each, using seed 20261101. Operation sequences cap
+  properties with a default of 64 cases each, using seed 20261101. CI sets
+  `PROPTEST_CASES=512`, overriding every generated property's default. Operation sequences cap
   at 32 shell/backend operations or 64 non-UI operations. Fixed cases ensure
   the important deadline/credential boundaries execute regardless of the seed.
-- UI reachability adds 48 fixed viewport/history/modal/motion combinations and 32 generated
-  histories (up to 16 operations), with six required physical-input edges. The actual
+- UI reachability adds 192 fixed viewport/history/modal/motion/input/density combinations,
+  96 generated histories by default (512 in CI, up to 16 operations), twelve required pointer-input edges and
+  24 refusal/lockout/recovery configurations. The actual
   shell must resume ordinary UI on a quiet pass and satisfy each edge after intentional
   blockers stand aside. Kani/Verus prove the shared input decision, not the rendered
   correspondence; native witnesses check that separately. See [UI reachability](ui-reachability.md).
-- Miri interprets twenty-four assurance tests and the production supported-payload cleanup test
+- Miri interprets twenty-five assurance tests and the production supported-payload cleanup test
   with normal isolation, validity and race
   checks. It covers the actual Access, PinTable, notification, calendar, unit,
-  service, fixed-pool and bounded/unbounded Inbox APIs. It does not interpret the complete shell rendering
+  service, fixed-pool and bounded/unbounded Inbox APIs, plus a fixed logic-only
+  command/reply/replacement trace. It does not interpret the complete shell rendering
   path; generated cases run natively.
 - Loom exhausts its four bounded scenarios without a preemption/permutation/time
   cap. The larger scenario has four threads including the caller. The branch
@@ -101,21 +111,22 @@ graph consistency, not runtime behavior.
 
 ## Controls and coverage
 
-`verification/proofs.py` requires both verifiers to reject six mutations:
-reversed ACK condition, reversed level order, accepting an unknown grant,
-wrapping failure count, excluding equality from the lockout boundary, and wrapping
-a pool generation into an old handle.
+`verification/proofs.py` requires both verifiers to reject ten mutations:
+reversed ACK condition, stale-response acceptance, reversed level order, accepting
+an unknown grant, wrapping failure count, excluding lockout equality, wrapping a
+pool generation, broken display clipping, excessive input deferral and modal capture.
 The controls require a semantic verification error; compilation errors fail
 the control instead of counting as a successful rejection.
 
 `verification/controls.py` copies the sources into a disposable directory,
 checks a passing baseline, then breaks production gate delegation,
-notification cap enforcement, bounded factory admission and Inbox delivery separately. The matching
+notification cap enforcement, bounded factory admission, Inbox delivery, input progress,
+modal priority, response correlation, the per-update command budget and deadline ordering separately. The matching
 public API/Loom test must fail with its expected assertion. Working sources
 and published dependencies remain intact.
 
 `verification/coverage.py` reports product code executed by the contract suite.
-It fails if any of eleven claimed production modules has no executed source
+It fails if any of thirteen claimed production modules has no executed source
 lines. cargo-llvm-cov's dependency selection must explicitly instrument both
 product crates; its default dependency-path filter excludes non-registry
 dependencies. The command therefore disables that default report filter and

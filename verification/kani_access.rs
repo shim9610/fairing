@@ -46,3 +46,18 @@ fn lockout_is_inclusive_and_cannot_be_disabled_by_more_failures() {
         assert!(rules::lockout_reached(rules::next_failure(count), limit));
     }
 }
+
+#[kani::proof]
+fn replies_cannot_complete_absent_or_superseded_operations() {
+    let active: Option<usize> = kani::any();
+    let response: usize = kani::any();
+    assert_eq!(
+        rules::response_is_current(active, response),
+        active == Some(response)
+    );
+    assert!(!rules::response_is_current(None, response));
+    let replacement: usize = kani::any();
+    if replacement != response {
+        assert!(!rules::response_is_current(Some(replacement), response));
+    }
+}

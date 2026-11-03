@@ -1,5 +1,10 @@
 #![no_main]
 libfuzzer_sys::fuzz_target!(|data: &[u8]| {
+    fairing_assurance::transitions::contract(
+        data,
+        usize::from(data.first().copied().unwrap_or(0) % 3 + 1),
+        usize::from(data.get(1).copied().unwrap_or(0) % 3 + 1),
+    );
     fairing_assurance::api::shell_contract(data);
     fairing_assurance::api::backend_contract(data);
     if data.len() >= 5 {

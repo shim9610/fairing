@@ -23,3 +23,8 @@ pub(crate) fn lockout_reached(failures: u32, limit: Option<u32>) -> bool {
         None => false,
     }
 }
+
+/// A response may complete only the still-active operation.
+pub(crate) fn response_is_current(active: Option<usize>, response: usize) -> bool {
+    active == Some(response)
+}
