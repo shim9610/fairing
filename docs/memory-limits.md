@@ -232,6 +232,18 @@ allocate infallibly in std, so this is a runtime admission bound rather than a
 universal recoverable startup-allocation contract. `Inbox::pair()` remains an
 unbounded compatibility API; select bounded channels at service boundaries.
 
+Message-based mocks now default to 1,024 slots and 256 messages per poll. Their
+`with_inbox` constructors (`fixed_with_inbox` / `running_with_inbox` for clocks)
+select bounded or explicitly unbounded storage per connection. Even unbounded
+storage uses a finite polling budget; full batches schedule continuation through
+`next_wake`, without requiring another producer message. `set_inbox_batch_limit(0)`
+pauses consumption without spinning; a positive budget resumes the same queue.
+Timed simulation continues independently. `MockControl::try_send` preserves the
+rejected payload and distinguishes `Full` from `Disconnected`; compatibility
+`send` returns false for either and drops that payload. No accepted message is
+evicted. Producers still wake the shell after accepted sends. See the
+[service guide](guide/06-services.md#bounded-service-channels) for worker backpressure.
+
 ```rust
 use fairing::memory::FixedPool;
 let mut pool = FixedPool::<u32, 8>::new()?;

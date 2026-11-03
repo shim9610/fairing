@@ -482,6 +482,12 @@ pub(super) fn pair<T>(
             requested: capacity,
         });
     }
+    Ok(pair_validated(capacity))
+}
+
+/// Construct a transport after capacity/layout validation, or for a fixed crate-owned
+/// message type and capacity whose layout is covered by the default-channel tests.
+pub(super) fn pair_validated<T>(capacity: usize) -> (BoundedSender<T>, BoundedInbox<T>) {
     #[cfg(not(fairing_loom))]
     let (tx, rx) = std::sync::mpsc::sync_channel(capacity); // sync-check: allow: preallocated transport exposes only try_send
     #[cfg(fairing_loom)]
@@ -493,7 +499,7 @@ pub(super) fn pair<T>(
         rejected: AtomicUsize::new(0),
         open: AtomicBool::new(true),
     });
-    Ok((
+    (
         BoundedSender {
             tx,
             budget: Arc::clone(&budget),
@@ -502,5 +508,5 @@ pub(super) fn pair<T>(
             rx: Inbox { rx },
             budget,
         },
-    ))
+    )
 }

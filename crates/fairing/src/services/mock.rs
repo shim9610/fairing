@@ -1,10 +1,13 @@
 //! The `Mock*` simulator backends (feature `mock`). For the demos and the headless tests.
 //!
-//! **Channel-based, no locks.** Each backend hands out a [`MockControl`] (an `mpsc::Sender`
-//! wrapper) and a scenario thread or a test sends messages to it. The backend's `poll()` drains
+//! **Nonblocking channel controls.** Each message-based backend hands out a [`MockControl`] (a nonblocking
+//! sender) and a scenario thread or a test sends messages to it. Each connection defaults
+//! to 1,024 slots and 256 messages per poll; custom inbox settings can select explicit
+//! unbounded storage. The backend's `poll_at()` processes a finite batch of
 //! them on the UI thread with `try_recv` and refreshes `latest`. The sending side wakes the UI
-//! with [`Waker::wake`]. Time-based simulation (the scan delay, the connect delay, the battery
-//! draining) compares `Instant`s inside `poll()` rather than sleeping, and announces the next
+//! with [`Waker::wake`] after an accepted send; controls do not capture a waker.
+//! Time-based simulation (scan/connect delays and battery draining) compares `Instant`s
+//! inside `poll_at()` rather than sleeping, and announces the next
 //! moment with `next_wake()`. The only time it ever reads is **the monotonic time the shell hands
 //! to `poll_at(now)`** (`Instant::now()` is banned) — which makes headless virtual time the
 //! logical time as it stands.
@@ -16,15 +19,22 @@ use super::{
     PowerRequest, ServiceError, ServiceResult, Waker, WallTime, WifiBackend, WifiSnapshot,
     WifiState,
 };
-use crate::inbox::Inbox;
+use crate::inbox::{
+    ConfiguredInbox, ConfiguredSender, Inbox, InboxConfig, QueueCapacityError, TrySendError,
+};
+use std::fmt;
 use std::net::{IpAddr, Ipv4Addr};
-use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
 /// The handle that sends messages to a mock backend. `Clone + Send`.
-#[derive(Debug)]
 pub struct MockControl<M> {
-    tx: Sender<M>,
+    tx: ConfiguredSender<M>,
+}
+
+impl<M> fmt::Debug for MockControl<M> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MockControl").finish_non_exhaustive()
+    }
 }
 
 impl<M> Clone for MockControl<M> {
@@ -36,15 +46,78 @@ impl<M> Clone for MockControl<M> {
 }
 
 impl<M> MockControl<M> {
-    /// Send. `false` if the backend has already been dropped.
+    /// Send without waiting. `false` when full or disconnected; use `try_send` to
+    /// distinguish the reason and recover the message for a caller-selected policy.
     pub fn send(&self, message: M) -> bool {
-        self.tx.send(message).is_ok()
+        self.try_send(message).is_ok()
+    }
+
+    /// Send without waiting, preserving rejected message ownership.
+    ///
+    /// # Errors
+    /// Full bounded storage or a disconnected backend.
+    pub fn try_send(&self, message: M) -> Result<(), TrySendError<M>> {
+        self.tx.try_send(message)
     }
 }
 
-fn channel<M>() -> (MockControl<M>, Inbox<M>) {
-    let (tx, rx) = Inbox::pair();
-    (MockControl { tx }, rx)
+struct MockInbox<M> {
+    rx: ConfiguredInbox<M>,
+    limit: usize,
+    remaining: usize,
+    now: Option<Instant>,
+    pending: Option<Instant>,
+}
+impl<M> MockInbox<M> {
+    fn new(rx: ConfiguredInbox<M>, limit: usize) -> Self {
+        Self {
+            rx,
+            limit,
+            remaining: 0,
+            now: None,
+            pending: None,
+        }
+    }
+    fn start_poll(&mut self, now: Instant) -> usize {
+        self.now = Some(now);
+        self.pending = None;
+        self.remaining = self.limit;
+        self.limit
+    }
+    fn try_recv(&mut self) -> Result<M, std::sync::mpsc::TryRecvError> {
+        if self.remaining == 0 {
+            return Err(std::sync::mpsc::TryRecvError::Empty);
+        }
+        let message = self.rx.try_recv()?;
+        self.remaining -= 1;
+        if self.remaining == 0 {
+            self.pending = self.now;
+        }
+        Ok(message)
+    }
+    fn set_limit(&mut self, limit: usize) {
+        self.limit = limit;
+        self.rx.set_batch_limit(limit);
+        self.pending = if limit == 0 { None } else { self.now };
+    }
+    fn next_wake(&self, timed: Option<Instant>) -> Option<Instant> {
+        match (self.pending, timed) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (pending, timed) => pending.or(timed),
+        }
+    }
+}
+
+fn default_channel<M>() -> (MockControl<M>, MockInbox<M>) {
+    let (tx, rx) = Inbox::mock_default();
+    (
+        MockControl { tx },
+        MockInbox::new(rx, InboxConfig::default().batch_limit),
+    )
+}
+fn channel<M>(config: InboxConfig) -> Result<(MockControl<M>, MockInbox<M>), QueueCapacityError> {
+    let (tx, rx) = Inbox::configured(config)?;
+    Ok((MockControl { tx }, MockInbox::new(rx, config.batch_limit)))
 }
 
 /// The deadline of a mock operation that takes time. **It is fixed on the first `poll_at`** — so
@@ -86,7 +159,7 @@ pub struct MockClock {
     /// The time of the last `poll_at`.
     now: Option<Instant>,
     fixed: bool,
-    rx: Inbox<ClockMsg>,
+    rx: MockInbox<ClockMsg>,
     control: MockControl<ClockMsg>,
 }
 
@@ -103,8 +176,35 @@ impl MockClock {
         Self::new(from, false)
     }
 
+    /// A fixed clock with connection-specific storage and per-poll limits.
+    ///
+    /// # Errors
+    /// Invalid bounded capacity or an unrepresentable queue layout.
+    pub fn fixed_with_inbox(at: WallTime, config: InboxConfig) -> Result<Self, QueueCapacityError> {
+        Ok(Self::from_channel(at, true, channel(config)?))
+    }
+
+    /// A running clock with connection-specific storage and per-poll limits.
+    ///
+    /// # Errors
+    /// Invalid bounded capacity or an unrepresentable queue layout.
+    pub fn running_with_inbox(
+        from: WallTime,
+        config: InboxConfig,
+    ) -> Result<Self, QueueCapacityError> {
+        Ok(Self::from_channel(from, false, channel(config)?))
+    }
+
     fn new(base: WallTime, fixed: bool) -> Self {
-        let (control, rx) = channel();
+        Self::from_channel(base, fixed, default_channel())
+    }
+
+    fn from_channel(
+        base: WallTime,
+        fixed: bool,
+        pair: (MockControl<ClockMsg>, MockInbox<ClockMsg>),
+    ) -> Self {
+        let (control, rx) = pair;
         Self {
             base,
             started: None,
@@ -113,6 +213,12 @@ impl MockClock {
             rx,
             control,
         }
+    }
+
+    /// Set the maximum messages processed by each poll. Zero pauses queue consumption;
+    /// a positive limit resumes it without replacing controls or accepted messages.
+    pub fn set_inbox_batch_limit(&mut self, limit: usize) {
+        self.rx.set_limit(limit);
     }
 
     /// The control handle.
@@ -126,7 +232,10 @@ impl Backend for MockClock {
     fn poll_at(&mut self, now: Instant) {
         self.now = Some(now);
         self.started.get_or_insert(now);
-        while let Ok(msg) = self.rx.try_recv() {
+        for _ in 0..self.rx.start_poll(now) {
+            let Ok(msg) = self.rx.try_recv() else {
+                break;
+            };
             match msg {
                 ClockMsg::Set(at) => {
                     self.base = at;
@@ -134,6 +243,10 @@ impl Backend for MockClock {
                 }
             }
         }
+    }
+
+    fn next_wake(&self) -> Option<Instant> {
+        self.rx.next_wake(None)
     }
 
     fn capabilities(&self) -> Capabilities {
@@ -177,7 +290,7 @@ pub struct MockPower {
     pub drain_per_min: u8,
     last_drain: Option<Instant>,
     requests: Vec<PowerRequest>,
-    rx: Inbox<PowerMsg>,
+    rx: MockInbox<PowerMsg>,
     control: MockControl<PowerMsg>,
     waker: Option<Waker>,
 }
@@ -186,7 +299,27 @@ impl MockPower {
     /// The initial level and charging state.
     #[must_use]
     pub fn new(percent: u8, charging: bool) -> Self {
-        let (control, rx) = channel();
+        Self::from_channel(percent, charging, default_channel())
+    }
+
+    /// Construct with connection-specific storage and per-poll limits.
+    ///
+    /// # Errors
+    /// Invalid bounded capacity or an unrepresentable queue layout.
+    pub fn with_inbox(
+        percent: u8,
+        charging: bool,
+        config: InboxConfig,
+    ) -> Result<Self, QueueCapacityError> {
+        Ok(Self::from_channel(percent, charging, channel(config)?))
+    }
+
+    fn from_channel(
+        percent: u8,
+        charging: bool,
+        pair: (MockControl<PowerMsg>, MockInbox<PowerMsg>),
+    ) -> Self {
+        let (control, rx) = pair;
         Self {
             latest: BatterySnapshot {
                 percent,
@@ -200,6 +333,12 @@ impl MockPower {
             control,
             waker: None,
         }
+    }
+
+    /// Set the maximum messages processed by each poll. Zero pauses queue consumption;
+    /// a positive limit resumes it without replacing controls or accepted messages.
+    pub fn set_inbox_batch_limit(&mut self, limit: usize) {
+        self.rx.set_limit(limit);
     }
 
     /// The control handle.
@@ -221,7 +360,10 @@ impl Backend for MockPower {
     }
 
     fn poll_at(&mut self, now: Instant) {
-        while let Ok(PowerMsg::Battery(b)) = self.rx.try_recv() {
+        for _ in 0..self.rx.start_poll(now) {
+            let Ok(PowerMsg::Battery(b)) = self.rx.try_recv() else {
+                break;
+            };
             self.latest = b;
         }
         let last = *self.last_drain.get_or_insert(now);
@@ -236,12 +378,12 @@ impl Backend for MockPower {
     }
 
     fn next_wake(&self) -> Option<Instant> {
-        match self.last_drain {
+        self.rx.next_wake(match self.last_drain {
             Some(last) if self.drain_per_min > 0 && self.latest.percent > 0 => {
                 Some(last + Duration::from_mins(1))
             }
             _ => None,
-        }
+        })
     }
 
     fn capabilities(&self) -> Capabilities {
@@ -281,7 +423,7 @@ pub struct MockWifi {
     pending: Option<(Deadline, Pending)>,
     /// The time of the last `poll_at` — what `scan` and `connect` reckon their deadlines from.
     now: Option<Instant>,
-    rx: Inbox<WifiMsg>,
+    rx: MockInbox<WifiMsg>,
     control: MockControl<WifiMsg>,
     waker: Option<Waker>,
 }
@@ -310,7 +452,19 @@ impl MockWifi {
     /// Three fake APs by default.
     #[must_use]
     pub fn new() -> Self {
-        let (control, rx) = channel();
+        Self::from_channel(default_channel())
+    }
+
+    /// Construct with connection-specific storage and per-poll limits.
+    ///
+    /// # Errors
+    /// Invalid bounded capacity or an unrepresentable queue layout.
+    pub fn with_inbox(config: InboxConfig) -> Result<Self, QueueCapacityError> {
+        Ok(Self::from_channel(channel(config)?))
+    }
+
+    fn from_channel(pair: (MockControl<WifiMsg>, MockInbox<WifiMsg>)) -> Self {
+        let (control, rx) = pair;
         let networks = vec![
             Network {
                 ssid: "fairing-lab".to_owned(),
@@ -345,6 +499,12 @@ impl MockWifi {
         }
     }
 
+    /// Set the maximum messages processed by each poll. Zero pauses queue consumption;
+    /// a positive limit resumes it without replacing controls or accepted messages.
+    pub fn set_inbox_batch_limit(&mut self, limit: usize) {
+        self.rx.set_limit(limit);
+    }
+
     /// The control handle.
     #[must_use]
     pub fn control(&self) -> MockControl<WifiMsg> {
@@ -365,7 +525,10 @@ impl Backend for MockWifi {
 
     fn poll_at(&mut self, now: Instant) {
         self.now = Some(now);
-        while let Ok(msg) = self.rx.try_recv() {
+        for _ in 0..self.rx.start_poll(now) {
+            let Ok(msg) = self.rx.try_recv() else {
+                break;
+            };
             match msg {
                 WifiMsg::Networks(list) => self.latest.networks = list,
                 WifiMsg::State(state) => self.latest.state = state,
@@ -412,7 +575,8 @@ impl Backend for MockWifi {
     }
 
     fn next_wake(&self) -> Option<Instant> {
-        self.pending.as_ref().and_then(|(due, _)| due.due)
+        self.rx
+            .next_wake(self.pending.as_ref().and_then(|(due, _)| due.due))
     }
 
     fn capabilities(&self) -> Capabilities {
@@ -514,7 +678,7 @@ pub struct MockBluetooth {
     discover_due: Option<Deadline>,
     /// The time of the last `poll_at` — what `pair` and `set_discovering` reckon their deadlines from.
     now: Option<Instant>,
-    rx: Inbox<BtMsg>,
+    rx: MockInbox<BtMsg>,
     control: MockControl<BtMsg>,
     waker: Option<Waker>,
 }
@@ -523,7 +687,19 @@ impl MockBluetooth {
     /// One paired device (`Scanner`) plus one that only turns up through discovery (`Headset`).
     #[must_use]
     pub fn new() -> Self {
-        let (control, rx) = channel();
+        Self::from_channel(default_channel())
+    }
+
+    /// Construct with connection-specific storage and per-poll limits.
+    ///
+    /// # Errors
+    /// Invalid bounded capacity or an unrepresentable queue layout.
+    pub fn with_inbox(config: InboxConfig) -> Result<Self, QueueCapacityError> {
+        Ok(Self::from_channel(channel(config)?))
+    }
+
+    fn from_channel(pair: (MockControl<BtMsg>, MockInbox<BtMsg>)) -> Self {
+        let (control, rx) = pair;
         Self {
             latest: BtSnapshot {
                 enabled: true,
@@ -551,6 +727,12 @@ impl MockBluetooth {
             control,
             waker: None,
         }
+    }
+
+    /// Set the maximum messages processed by each poll. Zero pauses queue consumption;
+    /// a positive limit resumes it without replacing controls or accepted messages.
+    pub fn set_inbox_batch_limit(&mut self, limit: usize) {
+        self.rx.set_limit(limit);
     }
 
     /// The control handle.
@@ -583,7 +765,10 @@ impl Backend for MockBluetooth {
 
     fn poll_at(&mut self, now: Instant) {
         self.now = Some(now);
-        while let Ok(msg) = self.rx.try_recv() {
+        for _ in 0..self.rx.start_poll(now) {
+            let Ok(msg) = self.rx.try_recv() else {
+                break;
+            };
             match msg {
                 BtMsg::Devices(list) => self.latest.devices = list,
                 BtMsg::Enabled(on) => self.switch(on),
@@ -605,7 +790,7 @@ impl Backend for MockBluetooth {
     }
 
     fn next_wake(&self) -> Option<Instant> {
-        self.discover_due.and_then(|due| due.due)
+        self.rx.next_wake(self.discover_due.and_then(|due| due.due))
     }
 
     fn capabilities(&self) -> Capabilities {
@@ -783,7 +968,7 @@ pub enum AudioMsg {
 pub struct MockAudio {
     latest: AudioSnapshot,
     cues: Vec<Cue>,
-    rx: Inbox<AudioMsg>,
+    rx: MockInbox<AudioMsg>,
     control: MockControl<AudioMsg>,
 }
 
@@ -791,7 +976,19 @@ impl MockAudio {
     /// The initial level (0..=100), unmuted.
     #[must_use]
     pub fn new(level: u8) -> Self {
-        let (control, rx) = channel();
+        Self::from_channel(level, default_channel())
+    }
+
+    /// Construct with connection-specific storage and per-poll limits.
+    ///
+    /// # Errors
+    /// Invalid bounded capacity or an unrepresentable queue layout.
+    pub fn with_inbox(level: u8, config: InboxConfig) -> Result<Self, QueueCapacityError> {
+        Ok(Self::from_channel(level, channel(config)?))
+    }
+
+    fn from_channel(level: u8, pair: (MockControl<AudioMsg>, MockInbox<AudioMsg>)) -> Self {
+        let (control, rx) = pair;
         Self {
             latest: AudioSnapshot {
                 level: level.min(100),
@@ -801,6 +998,12 @@ impl MockAudio {
             rx,
             control,
         }
+    }
+
+    /// Set the maximum messages processed by each poll. Zero pauses queue consumption;
+    /// a positive limit resumes it without replacing controls or accepted messages.
+    pub fn set_inbox_batch_limit(&mut self, limit: usize) {
+        self.rx.set_limit(limit);
     }
 
     /// The control handle.
@@ -823,10 +1026,17 @@ impl Default for MockAudio {
 }
 
 impl Backend for MockAudio {
-    fn poll_at(&mut self, _now: Instant) {
-        while let Ok(AudioMsg::Volume(snapshot)) = self.rx.try_recv() {
+    fn poll_at(&mut self, now: Instant) {
+        for _ in 0..self.rx.start_poll(now) {
+            let Ok(AudioMsg::Volume(snapshot)) = self.rx.try_recv() else {
+                break;
+            };
             self.latest = snapshot;
         }
+    }
+
+    fn next_wake(&self) -> Option<Instant> {
+        self.rx.next_wake(None)
     }
 
     fn capabilities(&self) -> Capabilities {
@@ -872,7 +1082,7 @@ pub enum NetworkMsg {
 pub struct MockNetwork {
     ifaces: Vec<IfaceSnapshot>,
     hostname: String,
-    rx: Inbox<NetworkMsg>,
+    rx: MockInbox<NetworkMsg>,
     control: MockControl<NetworkMsg>,
 }
 
@@ -889,7 +1099,19 @@ impl MockNetwork {
     /// `eth0` up on DHCP (`192.168.0.42/24`), `wlan0` with no address, hostname `fairing-demo`.
     #[must_use]
     pub fn new() -> Self {
-        let (control, rx) = channel();
+        Self::from_channel(default_channel())
+    }
+
+    /// Construct with connection-specific storage and per-poll limits.
+    ///
+    /// # Errors
+    /// Invalid bounded capacity or an unrepresentable queue layout.
+    pub fn with_inbox(config: InboxConfig) -> Result<Self, QueueCapacityError> {
+        Ok(Self::from_channel(channel(config)?))
+    }
+
+    fn from_channel(pair: (MockControl<NetworkMsg>, MockInbox<NetworkMsg>)) -> Self {
+        let (control, rx) = pair;
         Self {
             ifaces: vec![
                 IfaceSnapshot {
@@ -917,6 +1139,12 @@ impl MockNetwork {
         }
     }
 
+    /// Set the maximum messages processed by each poll. Zero pauses queue consumption;
+    /// a positive limit resumes it without replacing controls or accepted messages.
+    pub fn set_inbox_batch_limit(&mut self, limit: usize) {
+        self.rx.set_limit(limit);
+    }
+
     /// The control handle.
     #[must_use]
     pub fn control(&self) -> MockControl<NetworkMsg> {
@@ -931,12 +1159,19 @@ impl Default for MockNetwork {
 }
 
 impl Backend for MockNetwork {
-    fn poll_at(&mut self, _now: Instant) {
-        while let Ok(NetworkMsg::Link { iface, up }) = self.rx.try_recv() {
+    fn poll_at(&mut self, now: Instant) {
+        for _ in 0..self.rx.start_poll(now) {
+            let Ok(NetworkMsg::Link { iface, up }) = self.rx.try_recv() else {
+                break;
+            };
             if let Some(found) = self.ifaces.iter_mut().find(|i| i.name == iface) {
                 found.up = up;
             }
         }
+    }
+
+    fn next_wake(&self) -> Option<Instant> {
+        self.rx.next_wake(None)
     }
 
     fn capabilities(&self) -> Capabilities {
@@ -1340,5 +1575,273 @@ mod tests {
         info.poll_at(t0 + Duration::from_secs(90));
         assert_eq!(info.device().uptime_secs, Some(90));
         assert!(info.device().model.is_some());
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "mock channel contract assertions")]
+mod inbox_tests {
+    use super::*;
+    use crate::inbox::{InboxCapacity, QueueErrorKind};
+
+    fn default_capacity_is_shared<M>(control: &MockControl<M>, make: impl Fn() -> M) {
+        // Validate the fixed-default layout for every concrete crate-owned message type.
+        assert!(Inbox::<M>::configured(InboxConfig::default()).is_ok());
+        for _ in 0..1024 {
+            assert!(control.try_send(make()).is_ok());
+        }
+        let rejected = control.clone().try_send(make()).unwrap_err();
+        assert_eq!(rejected.kind(), QueueErrorKind::Full);
+        assert!(!control.send(make()));
+    }
+
+    #[test]
+    fn all_default_mock_channels_have_a_finite_shared_capacity() {
+        default_capacity_is_shared(&MockClock::fixed(WallTime::default()).control(), || {
+            ClockMsg::Set(WallTime::default())
+        });
+        default_capacity_is_shared(&MockPower::new(50, false).control(), || {
+            PowerMsg::Battery(BatterySnapshot {
+                percent: 1,
+                charging: false,
+                time_to_empty_secs: None,
+            })
+        });
+        default_capacity_is_shared(&MockWifi::new().control(), || WifiMsg::Enabled(true));
+        default_capacity_is_shared(&MockBluetooth::new().control(), || BtMsg::Enabled(true));
+        default_capacity_is_shared(&MockAudio::new(50).control(), || {
+            AudioMsg::Volume(AudioSnapshot {
+                level: 1,
+                muted: false,
+            })
+        });
+        default_capacity_is_shared(&MockNetwork::new().control(), || NetworkMsg::Link {
+            iface: "eth0".into(),
+            up: true,
+        });
+    }
+
+    #[test]
+    fn default_poll_budget_limits_a_large_accepted_backlog() {
+        let mut clock = MockClock::fixed(WallTime::default());
+        let control = clock.control();
+        for utc_secs in 1..=300 {
+            control
+                .try_send(ClockMsg::Set(WallTime {
+                    utc_secs,
+                    offset_min: 0,
+                }))
+                .unwrap();
+        }
+        let now = Instant::now();
+        clock.poll_at(now);
+        assert_eq!(clock.now().utc_secs, 256);
+        assert_eq!(clock.next_wake(), Some(now));
+        clock.poll_at(now);
+        assert_eq!(clock.now().utc_secs, 300);
+        assert_eq!(clock.next_wake(), None);
+    }
+
+    #[test]
+    fn batches_preserve_fifo_and_schedule_their_own_continuation() {
+        let mut clock = MockClock::fixed_with_inbox(
+            WallTime::default(),
+            InboxConfig {
+                capacity: InboxCapacity::Bounded(3),
+                batch_limit: 1,
+            },
+        )
+        .unwrap();
+        let control = clock.control();
+        for utc_secs in [10, 20, 30] {
+            control
+                .try_send(ClockMsg::Set(WallTime {
+                    utc_secs,
+                    offset_min: 0,
+                }))
+                .unwrap();
+        }
+        let start = Instant::now();
+        for (i, utc_secs) in [10, 20, 30].into_iter().enumerate() {
+            let now = start + Duration::from_secs(u64::try_from(i).unwrap());
+            clock.poll_at(now);
+            assert_eq!(clock.now().utc_secs, utc_secs);
+            assert_eq!(clock.next_wake(), Some(now));
+        }
+        // A full batch may request one conservative extra poll, even when now empty.
+        clock.poll_at(start + Duration::from_secs(3));
+        assert_eq!(clock.next_wake(), None);
+        assert!(control.try_send(ClockMsg::Set(WallTime::default())).is_ok());
+    }
+
+    #[test]
+    fn unlimited_storage_does_not_make_polling_unlimited() {
+        let mut wifi = MockWifi::with_inbox(InboxConfig {
+            capacity: InboxCapacity::Unbounded,
+            batch_limit: 1,
+        })
+        .unwrap();
+        let control = wifi.control();
+        control.try_send(WifiMsg::Enabled(false)).unwrap();
+        for _ in 0..1100 {
+            control.try_send(WifiMsg::Enabled(true)).unwrap();
+        }
+        let now = Instant::now();
+        wifi.poll_at(now);
+        assert!(!wifi.enabled());
+        assert_eq!(wifi.next_wake(), Some(now));
+        wifi.poll_at(now);
+        assert!(wifi.enabled());
+    }
+
+    #[test]
+    fn zero_budget_pauses_without_spinning_and_can_resume_with_the_same_control() {
+        let mut audio = MockAudio::with_inbox(
+            25,
+            InboxConfig {
+                capacity: InboxCapacity::Bounded(1),
+                batch_limit: 0,
+            },
+        )
+        .unwrap();
+        let control = audio.control();
+        control
+            .try_send(AudioMsg::Volume(AudioSnapshot {
+                level: 80,
+                muted: true,
+            }))
+            .unwrap();
+        let now = Instant::now();
+        audio.poll_at(now);
+        assert_eq!(audio.volume().unwrap().level, 25);
+        assert_eq!(audio.next_wake(), None);
+        audio.set_inbox_batch_limit(1);
+        assert_eq!(audio.next_wake(), Some(now));
+        audio.poll_at(now);
+        assert_eq!(audio.volume().unwrap().level, 80);
+        assert!(control
+            .try_send(AudioMsg::Volume(AudioSnapshot {
+                level: 20,
+                muted: false
+            }))
+            .is_ok());
+    }
+
+    #[test]
+    fn queue_rejection_preserves_owned_payload_and_disconnects_explicitly() {
+        let wifi = MockWifi::with_inbox(InboxConfig {
+            capacity: InboxCapacity::Bounded(1),
+            batch_limit: 1,
+        })
+        .unwrap();
+        let control = wifi.control();
+        control.try_send(WifiMsg::Enabled(true)).unwrap();
+        let networks = vec![Network {
+            ssid: "owned test network".into(),
+            strength: 1,
+            secured: false,
+        }];
+        let storage = networks.as_ptr();
+        let error = control.try_send(WifiMsg::Networks(networks)).unwrap_err();
+        assert_eq!(error.kind(), QueueErrorKind::Full);
+        let rejected = error.into_inner();
+        assert!(matches!(&rejected, WifiMsg::Networks(_)));
+        if let WifiMsg::Networks(returned) = rejected {
+            assert_eq!(returned.as_ptr(), storage);
+        }
+        drop(wifi);
+        assert_eq!(
+            control
+                .try_send(WifiMsg::Enabled(false))
+                .unwrap_err()
+                .kind(),
+            QueueErrorKind::Disconnected
+        );
+    }
+
+    #[test]
+    fn batch_backlog_does_not_starve_simulated_deadlines() {
+        let mut wifi = MockWifi::with_inbox(InboxConfig {
+            capacity: InboxCapacity::Bounded(4),
+            batch_limit: 1,
+        })
+        .unwrap();
+        assert!(wifi.scan().is_ok());
+        for _ in 0..4 {
+            wifi.control()
+                .try_send(WifiMsg::Networks(Vec::new()))
+                .unwrap();
+        }
+        let now = Instant::now();
+        wifi.poll_at(now);
+        assert_eq!(wifi.next_wake(), Some(now));
+        wifi.poll_at(now + wifi.scan_delay);
+        assert_eq!(wifi.snapshot().state, WifiState::Idle);
+        assert_eq!(wifi.next_wake(), Some(now + wifi.scan_delay));
+    }
+
+    #[test]
+    fn power_bluetooth_and_network_apply_only_one_message_per_poll() {
+        let config = InboxConfig {
+            capacity: InboxCapacity::Bounded(2),
+            batch_limit: 1,
+        };
+        let mut power = MockPower::with_inbox(50, false, config).unwrap();
+        let mut bluetooth = MockBluetooth::with_inbox(config).unwrap();
+        let mut network = MockNetwork::with_inbox(config).unwrap();
+        for (percent, enabled) in [(10, false), (90, true)] {
+            power
+                .control()
+                .try_send(PowerMsg::Battery(BatterySnapshot {
+                    percent,
+                    charging: false,
+                    time_to_empty_secs: None,
+                }))
+                .unwrap();
+            bluetooth
+                .control()
+                .try_send(BtMsg::Enabled(enabled))
+                .unwrap();
+            network
+                .control()
+                .try_send(NetworkMsg::Link {
+                    iface: "eth0".into(),
+                    up: enabled,
+                })
+                .unwrap();
+        }
+        let now = Instant::now();
+        for (percent, enabled) in [(10, false), (90, true)] {
+            power.poll_at(now);
+            bluetooth.poll_at(now);
+            network.poll_at(now);
+            assert_eq!(power.battery().unwrap().percent, percent);
+            assert_eq!(bluetooth.snapshot().enabled, enabled);
+            assert_eq!(network.ethernet_up(), Some(enabled));
+            assert_eq!(power.next_wake(), Some(now));
+            assert_eq!(bluetooth.next_wake(), Some(now));
+            assert_eq!(network.next_wake(), Some(now));
+        }
+        power.poll_at(now);
+        bluetooth.poll_at(now);
+        network.poll_at(now);
+        assert_eq!(power.next_wake(), None);
+        assert_eq!(bluetooth.next_wake(), None);
+        assert_eq!(network.next_wake(), None);
+    }
+
+    #[test]
+    fn all_configurable_constructors_reject_invalid_capacity() {
+        let invalid = InboxConfig {
+            capacity: InboxCapacity::Bounded(0),
+            batch_limit: 1,
+        };
+        assert!(MockClock::fixed_with_inbox(WallTime::default(), invalid).is_err());
+        assert!(MockClock::running_with_inbox(WallTime::default(), invalid).is_err());
+        assert!(MockPower::with_inbox(50, false, invalid).is_err());
+        assert!(MockWifi::with_inbox(invalid).is_err());
+        assert!(MockBluetooth::with_inbox(invalid).is_err());
+        assert!(MockAudio::with_inbox(50, invalid).is_err());
+        assert!(MockNetwork::with_inbox(invalid).is_err());
     }
 }

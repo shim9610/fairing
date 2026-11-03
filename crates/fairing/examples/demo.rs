@@ -586,10 +586,13 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
                     strength,
                 }
             };
-            if !wifi_control.send(WifiMsg::State(state)) {
-                break;
+            match wifi_control.try_send(WifiMsg::State(state)) {
+                Ok(()) => waker.wake(),
+                Err(error) if error.kind() == fairing::inbox::QueueErrorKind::Full => {
+                    // Skip this transient sample; the next tick reports newer strength.
+                }
+                Err(_) => break,
             }
-            waker.wake();
         }
     });
 

@@ -2,6 +2,9 @@
 use super::{BoundedInbox, BoundedSender, Inbox, QueueCapacityError, TrySendError};
 use std::sync::mpsc::TryRecvError;
 
+const DEFAULT_CAPACITY: usize = 1024;
+const DEFAULT_BATCH_LIMIT: usize = 256;
+
 /// Storage policy for an individual connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InboxCapacity {
@@ -23,8 +26,8 @@ pub struct InboxConfig {
 impl Default for InboxConfig {
     fn default() -> Self {
         Self {
-            capacity: InboxCapacity::Bounded(1024),
-            batch_limit: 256,
+            capacity: InboxCapacity::Bounded(DEFAULT_CAPACITY),
+            batch_limit: DEFAULT_BATCH_LIMIT,
         }
     }
 }
@@ -94,6 +97,23 @@ impl<T> ConfiguredInbox<T> {
     }
 }
 impl<T> Inbox<T> {
+    /// Fixed default for the crate's six concrete mock message enums. Public generic
+    /// construction still validates the selected capacity and message layout.
+    #[allow(
+        dead_code,
+        reason = "used by optional mock backends; Inbox is also included by standalone verification"
+    )]
+    pub(crate) fn mock_default() -> (ConfiguredSender<T>, ConfiguredInbox<T>) {
+        let (tx, rx) = super::bounded::pair_validated(DEFAULT_CAPACITY);
+        (
+            ConfiguredSender::Bounded(tx),
+            ConfiguredInbox {
+                transport: Transport::Bounded(rx),
+                batch_limit: DEFAULT_BATCH_LIMIT,
+            },
+        )
+    }
+
     /// Build a connection with explicit storage and processing policies.
     ///
     /// # Errors
