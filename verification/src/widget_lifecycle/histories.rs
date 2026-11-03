@@ -13,7 +13,8 @@ use std::time::Duration;
 type Outcome = (usize, String, u64, usize, usize);
 
 const WHEEL: [&str; 5] = ["zero", "one", "two", "three", "four"];
-const OUTSIDE: Pos2 = Pos2::new(940.0, 840.0);
+// The bottom-right lies inside a full-width Sheet. Use this fixture's blank top-right.
+const OUTSIDE: Pos2 = Pos2::new(940.0, 100.0);
 const SETTLE: usize = 24;
 
 fn key(key: egui::Key, modifiers: Modifiers) -> Vec<Event> {
@@ -418,5 +419,14 @@ fn outside_dismissal_consumes_one_click_and_releases_the_next() {
             before + 1,
             "dismissed popup blocked the next peer click"
         );
+    }
+}
+
+#[test]
+fn every_profile_can_dismiss_after_its_first_open_at_each_frame_interval() {
+    for profile in 0..28 {
+        for operation in [0, 16, 32, 48] {
+            exercise(profile, &[operation]);
+        }
     }
 }

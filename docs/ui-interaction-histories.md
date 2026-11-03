@@ -72,6 +72,13 @@ popup, field disable/withdrawal, overlay, resize and sleep histories, both with
 and without animation. It checks digits/Latin layout switching and verifies that
 typing affects only the intended field before and after popup selection.
 
+The outside-click target is reserved blank space at the fixture's top-right.
+The bottom-right is inside a full-width Sheet and is not a valid outside target.
+A fixed regression opens each of the 28 profiles at all four frame intervals
+before dismissal (112 cases), including the reduced Sheet/Tile history [0].
+The dedicated workflow uses the same 512 cases and seed as the full assurance
+and coverage runs.
+
 ## Authentication timing boundaries
 
 A separate production-shell test checks 24 combinations of just-before/exactly-at/
@@ -88,7 +95,7 @@ Run:
 
 ```sh
 mkdir -p target/assurance/ui-histories
-PROPTEST_CASES=128 PROPTEST_RNG_SEED=20261103 \
+PROPTEST_CASES=512 PROPTEST_RNG_SEED=20261101 \
   cargo test --locked --manifest-path verification/Cargo.toml \
   --lib widget_lifecycle:: -- --nocapture
 ```
