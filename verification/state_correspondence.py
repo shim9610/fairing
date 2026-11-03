@@ -479,7 +479,7 @@ def main():
             name = 'correspondence-' + profile + '-' + str(start)
             source = OUT / profile / (name + '.rs')
             write_model(source, chunk)
-            run(name, [verus, source], verified=3 * len(chunk) + frame_count)
+            run(name, [verus, '--crate-type', 'lib', source], verified=3 * len(chunk) + frame_count)
             for record in chunk:
                 proven[schema_key(record)] = record
         if any(schema_key(record) not in proven for record in records):
@@ -494,7 +494,7 @@ def main():
         chunk = terms[start:start + 40]
         source = OUT / ('configurations-' + str(start) + '.rs')
         source.write_text(state_configuration.theorem_source(chunk))
-        run('configurations-' + str(start), [verus, source], verified=len(chunk))
+        run('configurations-' + str(start), [verus, '--crate-type', 'lib', source], verified=len(chunk))
     if args.skip_build:
         print('Development reuse passed; no fresh native proof receipt was emitted')
         return
@@ -508,7 +508,7 @@ def main():
             raise SystemExit('Native negative-control target is not unique: ' + symbol)
         source = OUT / (profile + '.rs')
         write_model(source, selected)
-        run(profile, [verus, source], rejection=True)
+        run(profile, [verus, '--crate-type', 'lib', source], rejection=True)
     extrema = []
     for profile in ['all', 'minimal']:
         extrema += json.loads((OUT / profile / 'compiled-projections.json').read_text())
@@ -518,7 +518,7 @@ def main():
         raise SystemExit('Missing mixed-configuration negative-control target')
     source = OUT / 'control-missing-mixed-configurations.rs'
     source.write_text(state_configuration.theorem_source(builder_terms))
-    run('control-missing-mixed-configurations', [verus, source], rejection=True)
+    run('control-missing-mixed-configurations', [verus, '--crate-type', 'lib', source], rejection=True)
     tampered = OUT / 'tampered-expanded.rs'
     shutil.copyfile(OUT / 'all/fairing_widgets-expanded.rs', tampered)
     run('tamper-expanded', [TARGET / 'debug/instrument', tampered, '--tamper-expanded'])
