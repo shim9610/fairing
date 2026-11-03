@@ -64,7 +64,7 @@ impl<'tcx> Import<'tcx> {
                         for (variant_index,v) in def.variants().iter_enumerated() {
                             let mut fields=Vec::new();
                             for (field_index,f) in v.fields.iter_enumerated() {
-                                let ft=f.ty(self.tcx,identity);
+                                let ft=f.ty(self.tcx,identity).skip_normalization();
                                 fields.push(format!("{{\"index\":{},\"name\":{},\"type\":{},\"visibility\":{}}}",
                                     field_index.as_usize(),string(f.name.as_str()),self.ty(ft),
                                     string(&format!("{:?}",self.tcx.visibility(f.did)))));
@@ -81,8 +81,16 @@ impl<'tcx> Import<'tcx> {
                 ty::Array(element,length)=>{
                     extra=format!(",\"element\":{},\"length\":{}",self.ty(*element),string(&format!("{length:?}")));
                 }
-                ty::Pat(element,_)|ty::Slice(element)|ty::RawPtr(element,_)|ty::Ref(_,element,_)=>{
+                ty::Pat(element,_)|ty::Slice(element)=>{
                     extra=format!(",\"element\":{}",self.ty(*element));
+                }
+                ty::RawPtr(element,mutability)=>{
+                    extra=format!(",\"element\":{},\"mutability\":{}",self.ty(*element),
+                        string(&format!("{mutability:?}")));
+                }
+                ty::Ref(region,element,mutability)=>{
+                    extra=format!(",\"element\":{},\"region\":{},\"mutability\":{}",self.ty(*element),
+                        string(&format!("{region:?}")),string(&format!("{mutability:?}")));
                 }
                 ty::Tuple(types)=>{
                     extra=format!(",\"elements\":{}",self.children(types.iter()));
@@ -134,8 +142,8 @@ impl Callbacks for StateTypes {
         let mut imported=Import {tcx,ids:HashMap::new(),pending:Vec::new(),records:Vec::new(),definitions:HashSet::new()};
         let mut roots=Vec::new();
         for local in tcx.iter_local_def_id() {
-            if matches!(tcx.def_kind(local),DefKind::Struct|DefKind::Enum|DefKind::Union|DefKind::TyAlias) {
-                let ty=tcx.type_of(local).instantiate_identity();
+            if matches!(tcx.def_kind(local),DefKind::Struct|DefKind::Enum|DefKind::Union|DefKind::TyAlias|DefKind::Static{..}) {
+                let ty=tcx.type_of(local).instantiate_identity().skip_normalization();
                 roots.push(format!("{{\"record\":\"declaration\",\"definition\":{},\"type\":{}}}",
                     string(&tcx.def_path_str(local)),imported.ty(ty)));
             }
@@ -152,8 +160,8 @@ impl Callbacks for StateTypes {
             }
             let blocks:Vec<_>=body.basic_blocks.iter().enumerate()
                 .map(|(i,b)|format!("{{\"block\":{},\"statement_locations\":{}}}",i,b.statements.len()+1)).collect();
-            roots.push(format!("{{\"record\":\"body\",\"definition\":{},\"locals\":[{}],\"locations\":[{}]}}",
-                string(&tcx.def_path_str(def)),locals.join(","),blocks.join(",")));
+            roots.push(format!("{{\"record\":\"body\",\"definition\":{},\"visibility\":{},\"arguments\":{},\"locals\":[{}],\"locations\":[{}]}}",
+                string(&tcx.def_path_str(def)),string(&format!("{:?}",tcx.visibility(def))),body.arg_count,locals.join(","),blocks.join(",")));
         }
         imported.drain();
         let destination=PathBuf::from(env::var_os("FAIRING_STATE_TYPES_OUT").expect("state import output"));
