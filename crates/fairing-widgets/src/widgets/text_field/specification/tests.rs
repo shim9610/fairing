@@ -224,7 +224,10 @@ struct Witness {
 
 fn witness(target: usize) -> Witness {
     let mut scene = Scene::new();
-    scene.focus(target);
+    scene.focus(0);
+    scene
+        .ctx
+        .memory_mut(|memory| memory.request_focus(scene.ids[target]));
     assert!(
         scene
             .ctx
@@ -291,6 +294,25 @@ fn encoded(w: &Witness) -> String {
 
 #[test]
 fn reachable_focus_states_emit_current_specification_witnesses() -> std::io::Result<()> {
+    // First establish the collision within ONE context and the SAME pass. Even
+    // retaining context/reference identity cannot distinguish these states.
+    let mut scene = Scene::new();
+    scene.focus(0);
+    let before = scene.current_view();
+    let focus_before = scene.ctx.memory(egui::Memory::focused);
+    scene
+        .ctx
+        .memory_mut(|memory| memory.request_focus(scene.ids[1]));
+    let after = scene.current_view();
+    let focus_after = scene.ctx.memory(egui::Memory::focused);
+    assert_eq!(
+        before, after,
+        "focus switch unexpectedly changed a modeled input"
+    );
+    assert_ne!(
+        focus_before, focus_after,
+        "programmatic focus did not change concrete state"
+    );
     let left = witness(0);
     let right = witness(1);
     assert_eq!(
@@ -310,7 +332,7 @@ fn reachable_focus_states_emit_current_specification_witnesses() -> std::io::Res
         std::fs::write(
             path,
             format!(
-                "{{\"schema\":1,\"scene\":\"two-editors\",\"states\":[{},{}]}}\n",
+                "{{\"schema\":1,\"same_context_collision\":true,\"scene\":\"two-editors\",\"states\":[{},{}]}}\n",
                 encoded(&left),
                 encoded(&right)
             ),

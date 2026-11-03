@@ -29,10 +29,17 @@ check would not establish totality or adequacy over every other product state.
 ## Executed counterexample
 
 A test-only fixture draws two real `TextField`s with explicit stable ids and the
-same keyboard layout. Each case uses an ordinary press/release to focus a field,
-moves the pointer to the same neutral location, and observes the same frame/pass
-number. The context is retained from the prefix through the next text event.
-Independent contexts let the two histories be compared at the same pass.
+same keyboard layout. It first focuses the left editor with an ordinary
+press/release, settles and moves the pointer to a neutral location. The public
+`Memory::request_focus` API then switches to the right editor **without advancing
+the pass or replacing the context**. The typed existing view is unchanged while
+concrete focus changes. Context/reference identity therefore cannot explain the
+missing state distinction.
+
+Two replays use the identical left-focus prefix, select the intended focus through
+the same public API, then deliver the same text event. Each retains its context
+from prefix to effect. These replays validate the corresponding text recipients
+at equal pass/frame counts; the same-context collision is checked separately.
 
 The existing view contains the actual `Pass`, both `Pointer` records, both ids,
 the complete timestamped `Session<Keys>` values and their production lease groups.

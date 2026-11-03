@@ -151,7 +151,7 @@ def main():
     commands = [execute('native-witness', ['cargo', 'test', '--locked', '-p', 'fairing-widgets',
                     '--lib', TEST, '--', '--exact'], env)]
     data = json.loads(witness.read_text())
-    if data.get('schema') != 1 or data.get('scene') != 'two-editors' or len(data.get('states', [])) != 2:
+    if data.get('schema') != 1 or data.get('scene') != 'two-editors' or data.get('same_context_collision') is not True or len(data.get('states', [])) != 2:
         raise RuntimeError('Unsupported or missing concrete witness')
     states = data['states']
     for state in states:
@@ -198,7 +198,7 @@ def main():
         raise RuntimeError('Product/specification inputs changed while checking completeness')
     report = {'specification_complete': False, 'verdict': 'refuted',
               'obligation': 'Equal specified states must preserve required UI observations',
-              'counterexample': {'scene': data['scene'], 'same_current_view': True,
+              'counterexample': {'scene': data['scene'], 'same_current_view': True, 'same_context_collision': data['same_context_collision'],
                  'focused_editor': [s['focused'] for s in states],
                  'text_receiver': [s['receiver'] for s in states],
                  'missing_state_dimension': 'focused editor identity'},
