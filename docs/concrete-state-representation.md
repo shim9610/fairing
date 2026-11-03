@@ -9,7 +9,7 @@ an input produces a transition. Those are separate obligations.
 The canonical state is a nominally typed, labelled product/sum of the actual
 product fields and enum variants, together with the complete referenced store
 at the same instant. A native type's exact identity includes its generic and
-const parameters. Every struct field is retained. Every enum variant has a
+const parameters. Every product source struct field is retained. Every source enum variant has a
 distinct constructor and retains all of its fields. Type aliases are transparent.
 
 The field domains contain the complete native values, not summaries such as
@@ -23,6 +23,10 @@ snapshot or a new runtime API.
 The existing operational model in ui_state.rs is a separate candidate abstraction.
 Its finite flags are not substituted for this canonical specification, and this
 proof does not establish that they are a sufficient operational abstraction.
+
+State groups are parameterized by the exact nominal type and product/sum
+constructor, retaining the complete field payloads. This layer does not merge
+states into the operational model's finite policy flags.
 
 ## Obligation and implementation binding
 
@@ -56,8 +60,8 @@ verification/state_correspondence.py checks the source-to-logic binding:
    which those checks succeeded. The minimal, all, osk-only and overlay-only
    compilations cover the four independently conditional ShellBuilder layouts.
    Feature closure and module/field/variant guards are checked universally over
-   requested feature masks; an unsupported active cfg or state-generating macro
-   fails closed.
+   requested feature masks. Unreviewed active cfg expressions, reachable unions,
+   include! and macro_rules! bodies containing state declarations fail closed.
 7. Compose the per-type inverse laws through nominal identities, arbitrary root
    sequences, heterogeneous sums, stores and unchanged referenced state.
 
@@ -85,6 +89,16 @@ Run:
 
 The public-repository-only Concrete state correspondence workflow runs this
 command and retains receipts, generated theorems and logs.
+
+## Verified run
+
+The dedicated [CI run](https://github.com/shim9610/fairing/actions/runs/41629462350)
+passed for commit d168ffd56e332c8639f0a6f7ba936970b4ebaaa5. It verified 723
+source-bound projection schemas and 716 declaration/configuration obligations,
+and rejected all four required negative controls. The run retains the proof
+receipt, generated theorem sources and logs in its concrete-state-correspondence
+artifact. These counts describe declarations and projection shapes, not a bound
+on state values.
 
 ## Trust and boundaries
 

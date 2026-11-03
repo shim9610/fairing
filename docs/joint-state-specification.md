@@ -1,5 +1,9 @@
 # Joint UI state specification
 
+The [canonical concrete-state specification](concrete-state-representation.md)
+defines the full lossless state space. Its source-bound representation check is
+separate from the operational abstraction and progress obligations below.
+
 [`verification/verus/ui_state.rs`](../verification/verus/ui_state.rs) defines a
 joint model for shell policy, widgets, focus, popups, capture, animation and input
 surfaces. Run `python3 verification/ui_specification.py` to verify its twelve
