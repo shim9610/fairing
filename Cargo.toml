@@ -43,7 +43,7 @@ fairing = { path = "crates/fairing", version = "0.1.0", default-features = false
 
 # The workspace lints, applied to every member.
 [workspace.lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fairing_loom)"] }
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fairing_loom)", "cfg(fairing_repo_docs)"] }
 unsafe_code = "forbid"
 missing_docs = "warn"
 unused_must_use = "deny"

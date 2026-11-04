@@ -272,7 +272,7 @@ missing `cargo-audit` or `cargo-deny` only prints an install hint and skips.
 | 0 | Integrity | `xtask integrity` | Tables other than `[alias]` in `.cargo/config.toml`, a `vendor/` directory, `[patch]` / `[replace]`, a missing `[lints] workspace = true`, an odd `Cargo.lock` origin |
 | 1 | Format | `cargo fmt --all --check` | Formatting |
 | 2 | Lint | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | Clippy, including the lints banning `unwrap`, `panic` and `unsafe` |
-| 3 | Tests | `cargo test --workspace --all-features` | Everything |
+| 3 | Tests | `RUSTDOCFLAGS="--cfg fairing_repo_docs" cargo test --locked --workspace --all-features` | Product tests, public API doctests and repository-guide examples |
 | 4 | Docs | `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features` | rustdoc warnings |
 | 5 | Duplicate versions | `cargo tree -e normal -d --all-features` | Duplicates outside `deny.toml [bans].skip` |
 | 6 | Allow-list | `xtask deps-check` | Every crate in the tree is in `deps.allow` |

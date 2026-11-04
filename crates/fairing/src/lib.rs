@@ -161,9 +161,11 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 // The guide doctest gate: every Rust block in docs/guide is compiled — and run, unless it is
 // marked `no_run` — as a doctest of this module. The guide is written against the whole feature
 // set (it shows the runner, chrono, the shade and the keyboard), so the gate needs every feature
-// on: the audit's stage 3 and CI run it, and a plain `cargo test` skips it.
+// on. The audit sets `--cfg fairing_repo_docs` in RUSTDOCFLAGS; the published package
+// excludes this repository-only module, so normal/all-feature package doctests omit it.
 #[cfg(all(
     doctest,
+    fairing_repo_docs,
     feature = "mock",
     feature = "overlay",
     feature = "osk",

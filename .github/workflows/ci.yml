@@ -92,6 +92,17 @@ jobs:
       - name: Audit
         run: cargo run -p xtask --locked -- audit --strict
 
+      - name: Test release archives and an external consumer
+        run: python3 tools/package_check.py
+
+      - name: Keep release-package check logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: package-check
+          path: target/package-check/
+          retention-days: 14
+
       # **Always**, so a failed run says whether the disk was the limit. A build that dies in the
       # linker gives no clue on its own, and the answer is one line.
       - name: Show the disk after the build

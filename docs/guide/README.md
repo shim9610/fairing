@@ -16,6 +16,11 @@ hand) and code that needs something outside this repository (a crate such as `im
 `ShellConfig::from_toml` + `validate` by hand, once. Where the code cannot do something yet, that
 is written down as "it cannot".
 
+The audit explicitly enables `fairing_repo_docs` in `RUSTDOCFLAGS` for this gate.
+An extracted release archive omits these repository-only pages and instead runs
+its public API doctests without that flag; [release checks](../release-checks.md)
+exercise both package tests and an external consumer.
+
 > **What this guide describes is the code in the repository today.** Where something is planned
 > but not in the code, the guide says so on the spot. Nothing has
 > been published yet. Applications using an earlier checkout should read

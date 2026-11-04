@@ -63,6 +63,8 @@ The compatibility checks use `--locked` and a separate
 - Workspace checks with every feature and all Cargo targets, including examples,
   on the x86_64 Linux host.
 - Workspace tests and documentation tests with every feature.
+- The test command explicitly enables `fairing_repo_docs` so the repository guides
+  stay in the compatibility trial; normal archive doctests omit those pages.
 - The minimal `fairing` feature set (`--no-default-features --features mock`).
 - A code-generating library build with `ferrocene::unvalidated` enabled.
 - A consumer entry point calling the real configuration and unit-conversion APIs.

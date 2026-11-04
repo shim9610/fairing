@@ -162,7 +162,7 @@ fn builds(root: &Path, cargo: &str) -> Vec<Step> {
             root,
             cargo,
             &["test", "--locked", "--workspace", "--all-features"],
-            &[],
+            &[("RUSTDOCFLAGS", "--cfg fairing_repo_docs")],
         ),
         external(
             4,

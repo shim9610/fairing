@@ -131,3 +131,16 @@ but not in the code yet is written in the guide as "not there", and the
 
 The documents, the README and the comments and doc comments in the source are written in
 English.
+
+The audit enables repository-only guides with `RUSTDOCFLAGS="--cfg fairing_repo_docs"`.
+For a focused guide run, use that environment value with
+`cargo test --locked -p fairing --all-features --doc`. Without it, doctests cover
+the packaged API surface and do not load the excluded repository guides.
+
+## Checking release packages
+
+CI runs `python3 tools/package_check.py` after the audit. It tests the extracted
+release archives and runs an external consumer with minimal, default and all features.
+Python 3.12+ is required. For an uncommitted local change, use `--allow-dirty`;
+CI requires a clean tree. See [release checks](docs/release-checks.md) for the temporary
+sibling dependency override, retained logs and scope.

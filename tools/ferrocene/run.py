@@ -245,7 +245,10 @@ def check(source):
         log = result_dir / f"{name}.log"
         print(f"Running {name}; log: {log}", flush=True)
         with log.open("w") as output:
-            completed = subprocess.run(command, cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT)
+            check_env = env.copy()
+            if name == "tests":
+                check_env["RUSTDOCFLAGS"] = "--cfg fairing_repo_docs"
+            completed = subprocess.run(command, cwd=ROOT, env=check_env, stdout=output, stderr=subprocess.STDOUT)
         report["checks"].append({"name": name, "command": command, "exit_code": completed.returncode})
         if name == "validation-boundary":
             findings = validation_findings(log, cargo=True)

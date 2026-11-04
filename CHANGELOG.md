@@ -11,6 +11,8 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Added
 
+- Release-archive checks in CI: build both crates, test their extracted contents,
+  and run a standalone consumer with minimal/default/all features using only those archives.
 - Optional `bridge::CommandSink<Command>` and `UpdateSource<Update>` transport contracts.
   Adapters choose message/error types without `Clone`, `Send`, `Sync` or `'static` bounds.
   Fairing supplies no transport, worker thread or retry policy through these traits.
@@ -81,6 +83,9 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Fixed
 
+- Keep repository-only guide doctests behind an explicit audit cfg so all-feature
+  archive doctests do not reference excluded files. Font-warning tests use valid
+  egui-bundled data instead of a repository-external font asset.
 - Preserve newer asynchronous Boolean intent and Set/Toggle order while allowing
   one outstanding command per key. Old failures no longer discard later targets;
   synchronous confirmation releases the target before later external changes.
