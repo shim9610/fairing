@@ -5,7 +5,8 @@ own device binary, declare your screens, and reshape the shell into your product
 How the crate is put together is in [architecture](../architecture.md), and what comes next, with
 the limits it has today, is in the [roadmap](../roadmap.md).
 
-Every Rust block on these pages is compiled — and run, unless it is marked `no_run` — by stage 3
+Rust blocks on these pages, except those marked `ignore`, are compiled — and run
+unless marked `no_run` — by stage 3
 of `cargo xtask audit`, which CI runs on every push and pull request: `crates/fairing/src/guide_probe.rs`
 turns each page into doctests, with every feature on. So when the source moves, a block that no
 longer matches it fails the audit instead of quietly becoming false. The blocks marked `ignore`
@@ -17,8 +18,8 @@ is written down as "it cannot".
 
 > **What this guide describes is the code in the repository today.** Where something is planned
 > but not in the code, the guide says so on the spot. Nothing has
-> been published yet, so there is no migration to describe — see
-> [§Coming from before 0.1](#coming-from-before-01).
+> been published yet. Applications using an earlier checkout should read
+> [10 Migration](10-migration.md) for the API and default changes.
 
 ## Reading order
 
@@ -92,6 +93,9 @@ at a time as you need it.
 | It is slow | [08 §8 Checking performance](08-troubleshooting.md#8-checking-performance) |
 | Pass the audit (`xtask audit`) | [08 §9](08-troubleshooting.md#9-passing-the-audit) |
 | Cross-compile for aarch64, ship a snap | [08 §10](08-troubleshooting.md#10-deployment) |
+| Separate UI commands and business updates through your own transport | [06 Application-owned UI/business boundary](06-services.md#application-owned-uibusiness-boundary) |
+| Handle a callback panic or replace a quarantined shell | [08 Runtime faults and replacement](08-troubleshooting.md#runtime-faults-and-replacement) |
+| Update an app written against an earlier checkout | [10 Migration](10-migration.md) |
 
 ## The pages
 
@@ -106,6 +110,7 @@ at a time as you need it.
 | [07 Config reference](07-config-reference.md) | Every section and key of `fairing.toml`, with defaults, validation rules and a complete example |
 | [08 Troubleshooting](08-troubleshooting.md) | Error messages · silent failures · confirming 0 fps at idle · fonts · performance · the 14 audit stages · deployment · FAQ |
 | [09 Product branding](09-branding.md) | Image loaders · background, type, icon and mark requirements · the override table · the pre-ship review |
+| [10 Migration](10-migration.md) | Authentication tokens · command/display admission · icon-cache borrowing · optional transport and recovery APIs |
 
 ## What exists and what does not
 
@@ -115,8 +120,9 @@ what is not there as "it cannot" and shows the workaround that exists today.
 
 ## Coming from before 0.1
 
-Nothing has been published yet, so this guide has no migration notes: it describes the code as
-it stands. Two things a reader of older notes may trip on:
+Nothing has been published yet. The [migration guide](10-migration.md) compares the current
+code with the pre-hardening `main` checkout (`f4ca28c`). Two earlier design notes also differ
+from the implementation:
 
 - **Lengths are in du** — density-independent units, egui's points. Touch targets and bar sizes
   are written in millimetres and resolve to du once the panel's size is known

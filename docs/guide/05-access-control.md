@@ -420,9 +420,11 @@ let shell = fairing::Shell::builder(fairing::ShellConfig::default())
 that takes time answers `Pending`, and the shell calls `poll(now)` every frame
 while the prompt is up. It sets no limit on how long that takes: a server that
 ought to answer within ten seconds is yours to time, by answering `Denied` from
-`poll` when the time runs out. Everything here — `submit`, `poll`, `cancel` — is
-called on the UI thread, so there is nothing to race: once `cancel` returns, the
-check it stopped is over. `Shell::set_authenticator` swaps one in while the shell
+`poll` when the time runs out. The authenticator methods run on the UI thread,
+but background work may finish after `cancel` returns. Keep its original request
+token: Fairing rejects responses from canceled, replaced or completed requests.
+Cancellation should still stop unnecessary worker activity and release resources.
+`Shell::set_authenticator` swaps one in while the shell
 runs; a prompt up at the time — the lock screen included — opens again for the new
 one, with its methods and without the old one's lockout or a wait it owed, and the
 old one is told to `cancel` first.

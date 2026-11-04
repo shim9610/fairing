@@ -300,11 +300,10 @@ pub trait Authenticator {
 
     /// The check under way is off: the prompt closed without an answer, the lock screen is coming
     /// up over it, or a new attempt is going in. Stop waiting for a card, drop a half-entered
-    /// state — whatever [`Authenticator::poll`] reports after this answers what comes next, never
-    /// the check that was stopped.
+    /// state. A result from work which finishes later must retain its original request token;
+    /// Fairing rejects it after cancellation rather than assigning it to a new check.
     ///
-    /// Background work may finish after cancellation. Its response must keep its original
-    /// request token; Fairing will reject it after cancellation.
+    /// Cancellation should still stop unnecessary background work and release resources.
     fn cancel(&mut self) {}
 
     /// The shell refused a grant this authenticator gave: on the unlock prompt a level no higher

@@ -57,7 +57,8 @@ has a path-specific integrity exception: it uses
 `deny(unsafe_code)` with one scoped expectation for the static arena ownership
 transfer to Talc. No local allocator algorithm or unsafe trait implementation is
 introduced. The gate checks that boundary and has negative controls; CODEOWNERS
-protects the whole crate. Changes require the same owner review as dependencies.
+assigns the whole crate to its owner. Project policy requires the same owner review
+as dependencies; enforcing review at merge time requires a repository branch rule.
 See [memory limits](docs/memory-limits.md) for OOM, scope and spinlock limitations.
 
 `python3 verification/memory.py` checks normal/16 MiB/64 MiB modes, real fallible
@@ -70,7 +71,8 @@ so it is checked there rather than in the graphical example tours.
    licence and rationale go in `deps.allow`.
 2. A PR touching `Cargo.toml` (root or member), `Cargo.lock`, `deps.allow`, `deny.toml`,
    `rust-toolchain.toml`, `xtask/**`, `tools/ferrocene/**`, `verification/**`, `.cargo/**`, `vendor/**`, `.github/**`, `**/build.rs`,
-   `assets/**/LICENSE-*` or `THIRD_PARTY.md` requires an owner review, via `CODEOWNERS`.
+   `assets/**/LICENSE-*` or `THIRD_PARTY.md` requires an owner review under project
+   policy. `CODEOWNERS` assigns the reviewer; repository rules determine enforcement.
 3. Fill in the dependency checklist in the PR template: purpose, alternatives, licence,
    maintenance status, how much the tree grows, `build.rs` and `unsafe`, feature isolation,
    MSRV, and whether it pulls integrator territory into the core.

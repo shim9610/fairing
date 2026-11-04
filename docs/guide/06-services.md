@@ -847,3 +847,50 @@ compatibility API; use `drain_up_to(limit)` to bound its work. Transport interna
 may synchronize, but UI methods never wait for queue capacity. Slot counts do not
 bound payload bytes or guarantee recoverable startup allocation; see
 [memory limits](../memory-limits.md).
+
+## Application-owned UI/business boundary
+
+Use `fairing::bridge::{CommandSink, UpdateSource}` when a screen should submit
+application commands and receive updates through a transport you choose. The two
+traits are independent: a display-only screen can use just `UpdateSource`.
+
+```rust
+use fairing::bridge::{CommandSink, UpdateSource};
+
+fn submit<P: CommandSink<Vec<u8>>>(
+    port: &mut P,
+    bytes: Vec<u8>,
+) -> Result<(), (Vec<u8>, P::Error)> {
+    port.try_send(bytes)
+}
+
+fn receive<P: UpdateSource<Vec<u8>>>(
+    port: &mut P,
+) -> Result<Option<Vec<u8>>, P::Error> {
+    port.try_recv()
+}
+```
+
+`CommandSink::try_send` transfers ownership on acceptance and returns the original
+message together with the adapter's error on refusal. Acceptance does not mean
+business execution or remote acknowledgement. `UpdateSource::try_recv` returns one
+update or `Ok(None)` when none is available now; adapters express disconnection in
+their own error type. These traits support trait objects with specified message
+and error types.
+
+There are no `Clone`, `Send`, `Sync` or `'static` bounds. Owned buffers, shared
+handles and caller-scoped borrows can be used where the adapter supports them.
+Moving a buffer does not require copying its contents at this interface; a
+particular adapter may still allocate, copy or serialize it.
+
+Fairing supplies no default adapter here. Choose ownership-moving channels,
+lock-free queues, shared buffers or a TCP adapter to suit the application. UI-side
+methods must return promptly; the traits do not enforce lock freedom or a time
+bound. For network work, an application-managed outbox/receive buffer can keep the
+UI call independent of network progress. Bound the number of updates consumed in
+one pass and arrange wakeups in the host.
+
+A screen can capture its adapter or use `Cx::app_mut` to reach it. This does not
+replace `ShellHandle`'s internal command queue or restrict callbacks from reaching
+other captured resources. Thread creation, delivery ambiguity, retries, reconnects,
+UI replacement and continued business-worker execution belong to the application.

@@ -15,7 +15,7 @@ fairing = { version = "0.1", features = ["runner-x11"] }
 ```
 
 ```rust,no_run
-use fairing::{icon, screen, Cx};
+use fairing::{egui, icon, screen, Cx};
 
 fn main() -> fairing::Result<()> {
     let config = fairing::ShellConfig::load("/etc/myapp/fairing.toml")?; // defaults if absent
@@ -23,11 +23,12 @@ fn main() -> fairing::Result<()> {
         let mut shell = fairing::Shell::builder(config)
             .services(fairing::Services::builder().build())
             .build(ctx)?;
+        fairing::settings::add_all(&mut shell, &fairing::settings::SettingsConfig::default());
         shell.add(
             screen("dashboard", |ui: &mut egui::Ui, cx: &mut Cx| {
                 ui.heading("Dashboard");
-                if ui.button("Wi-Fi").clicked() {
-                    cx.open("settings.wifi");
+                if ui.button("Settings").clicked() {
+                    cx.open("settings.home");
                 }
             })
             .title("Dashboard")
@@ -39,9 +40,10 @@ fn main() -> fairing::Result<()> {
 }
 ```
 
-That needs the `runner` feature (`runner-x11` on a Linux desktop), and `egui = "0.37"`
-beside fairing for the `egui::Ui` in it (or `use fairing::egui;`). Without the runner,
-drive `Shell::frame` from an eframe app you already have.
+That needs the `runner` feature (`runner-x11` on a Linux desktop) and the default
+`settings` feature. It uses the `fairing::egui` re-export, so no direct egui
+dependency is needed. Without the runner, connect `Shell::logic*` and `Shell::frame*`
+from an eframe app you already have.
 
 ## What sets it apart
 
@@ -49,7 +51,9 @@ drive `Shell::frame` from an eframe app you already have.
   code lands correctly on a 4-inch panel and a 27-inch one.
 - **One gesture engine.** Edge swipes, flings, long presses and the shade arbitrate in
   one place, so nested scrolling and hand-off behave.
-- **No locks on the UI thread.** Threads talk over channels; a build gate enforces it.
+- **Non-waiting queue APIs.** UI code does not wait for messages or queue capacity.
+  The audit rejects application-level locks and blocking calls in product UI sources;
+  standard channel internals may synchronize.
 - **Nothing is hard-wired.** Every chrome surface is configuration, a declaration or a
   painter you supply, without forking the crate.
 - **Your hardware, your backends.** The shell reaches clock, power, Wi-Fi, Bluetooth,
@@ -79,11 +83,14 @@ The touch widgets, the theme tokens and the unit system live in
 
 The target is embedded Linux (Ubuntu Core with `ubuntu-frame`, `cage` or `weston`)
 with OpenGL ES 2 through eframe's `glow` backend, on x86_64 and aarch64. The crate
-also builds for macOS and Windows, which is enough to develop on, but it is only run
-and tested on Linux.
+uses eframe's platform support for desktop development. The full audit and graphical
+tours run on Linux. Selected CPU display and runtime-fault tests also run on Windows;
+the complete Windows runner and macOS are not validated by those checks.
 
 ## Documentation
 
+- The [migration guide](https://github.com/shim9610/fairing/blob/HEAD/docs/guide/10-migration.md)
+  covers source/API and default changes for applications using an earlier checkout.
 - The integrator guide is in the repository's
   [`docs/guide/`](https://github.com/shim9610/fairing/tree/HEAD/docs/guide):
   getting started, screens, chrome, customisation, access control, services, the
@@ -131,6 +138,8 @@ MIT, see [`LICENSE`](LICENSE).
 `max_commands_per_update` (default 256) bound command admission and work count.
 `ShellHandle::try_send` distinguishes full/closed and preserves rejected ownership;
 `try_send_with` constructs payloads only after reserving space.
+`send` returns `false` for either full or closed queues; void helpers discard rejected
+commands without logging. Use `try_send` when refusal or ownership matters.
 `Inbox::bounded` supports worker channels, and `memory::FixedPool<T, N>` stores
 objects inline with stale/foreign handle rejection.
 
@@ -151,3 +160,16 @@ CPU raster functions under `fairing::memory`. Shell pending toasts default to
 KeepLatest; `toast_overflow_policy(RejectNew)` restores refusal. Omission status
 shows a compiled warning until acknowledged. These owned-path guarantees do not
 establish whole stock-egui frame/GPU recovery from complete heap exhaustion.
+
+## Application-owned transport and recovery
+
+`bridge::CommandSink` and `UpdateSource` let an application select its command/update
+transport without `Clone`, `Send`, `Sync` or `'static` bounds on messages. Fairing does
+not choose a queue, start a worker, or install retries through these traits. They do
+not replace `ShellHandle`'s internal transport or sandbox callback access.
+
+With unwinding enabled, runtime callback faults quarantine ordinary shell dispatch.
+`Shell::restart_with` accepts a host-built replacement, and `RecoveryUi` plus runner
+recovery callbacks expose optional guidance and host policy. Old handles remain
+disconnected. Shell replacement does not reset the egui context/GPU or undo business
+side effects. See the [recovery guide](https://github.com/shim9610/fairing/blob/HEAD/docs/memory-limits.md#runtime-panics-and-sensitive-ui-state).

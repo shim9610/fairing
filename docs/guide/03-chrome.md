@@ -1084,12 +1084,19 @@ updates in place, keeping its position.
 | `duration` | `Duration` | `Duration::ZERO` = `[notify] toast_ms`; `Duration::MAX` = until tapped | `.duration(d)` |
 | `icon` | `Option<IconRef>` | `None` | `.icon(icon)` |
 
-`&str` and `String` are `Into<Toast>`, so `handle.toast("Saved")` works directly.
+`Shell::toast` and `ShellHandle::toast` accept `ToastInput`. Borrowed `&str` and
+`&String` use fallible text construction; `String` and `Toast` transfer ownership.
+`handle.toast("Saved")` still works. A custom type that only implements `Into<Toast>`
+must be converted to `Toast` explicitly. Use `try_toast` to observe refusal.
 
 ### 5.3 Sending from another thread
 
-`ShellHandle` is `Clone + Send`. Inside it is one channel and a wake handle — no locks. Sending
-wakes the UI, and it is processed in stage 2 of the next frame.
+`ShellHandle` is `Clone + Send`. It uses a bounded channel and a wake handle.
+Accepted sends wake the UI; commands execute in FIFO order within the budget of a
+subsequent UI or logic update. The API does not wait for capacity, but standard
+channel internals may synchronize: this is not a lock-free guarantee. Void helpers
+discard rejected commands without logging. Use `try_send` to distinguish a full
+queue from a disconnected shell and recover the original command.
 
 ```rust
 use fairing::notify::Level;
@@ -1149,10 +1156,15 @@ the timing and the taps stay the shell's
 
 | Situation | Result |
 |---|---|
-| A new id | Added to the list, unread +1, heads-up |
+| A new id with available retention | Added to the list, unread +1, heads-up candidate |
 | The same id and the same `source` | Content replaced in place. No unread increment, **no heads-up** |
 | The same id, a different `source` | Taken out of the list and moved to the new source group. Also treated as an update |
-| Over the retention limit | Above `[notify] max_items` (100 by default), the oldest non-persistent ones are dropped |
+| At the retention limit | The oldest non-persistent item may be replaced. If every retained item is persistent, a new id is refused without eviction; the cap includes persistent items |
+
+`Shell::try_notify` and `NotificationCenter::try_push` preserve rejected notification
+ownership and distinguish `Full`, `TooLarge` and `AllocationFailed`. The convenience
+`NotificationCenter::push` reports `CenterChange::Rejected`; `Shell::notify` has no
+return value. Queue admission through a handle does not acknowledge display admission.
 
 The unread count goes to zero the moment the shade opens. That is the number in
 `status.notifications`'s badge, drawn as `99+` above 99.
@@ -1166,7 +1178,7 @@ its badge contribution, while removing an already-read item leaves the unread co
 |---|---|---|
 | `heads_up` | `true` | Banners for new notifications |
 | `max_visible` | `2` | Toasts visible at once. Zero is a config error at startup |
-| `max_items` | `100` | Notification centre retention limit |
+| `max_items` | `100` | Hard notification retention cap including persistent items; zero selects 100 |
 | `toast_ms` | `3000` | How long a toast with no `duration` shows |
 
 ---

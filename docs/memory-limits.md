@@ -75,7 +75,7 @@ larger preallocated transport buffers: size the slot count for the device.
 
 `ShellHandle::try_send` returns Full/Disconnected and the original command.
 `try_send_with` reserves before constructing its payload; full/closed queues skip
-the factory. `Inbox` senders additionally expose `try_send_fallible_with`: a
+the factory. `ShellHandle` and bounded `Inbox` senders expose `try_send_fallible_with`: a
 factory returning Err releases the reservation without enqueuing anything.
 A concurrent receiver close can occur after construction starts. Avoid unrelated
 side effects in factories. Send errors redact payloads in Debug/Display.
@@ -86,6 +86,9 @@ already received command. Accepted order is retained and no accepted command is
 evicted. Admission is not authorization, execution or backend completion.
 Critical work needs an explicit refusal/retry and completion policy. Do not spin
 retrying on the UI thread or move rejected work into an unbounded retry list.
+The `send` compatibility method returns `false` for either full or disconnected
+admission. Void `ShellHandle` helpers discard rejected commands without logging;
+critical producers must use an error-returning method.
 
 ## Fallible display admission
 

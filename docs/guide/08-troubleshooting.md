@@ -14,7 +14,7 @@ straight to stderr or the log — it names the key.
 | `initial` names no level | `[access] initial = "x" is not in levels` | Same rule | Fix the typo |
 | `pin_table` names no level | `[access.pin_table] "x" is not a level in levels` | Every key in `[access.pin_table]` except the fixed `attempt_limit`, `lock_secs`, `shuffle` and `max_len` has to be a level name (the same in `[access.pattern_table]`, whose fixed keys are `grid`, `min_points`, `show_path`, `attempt_limit` and `lock_secs`) | Fix the typo, or add the level to `levels` |
 | A PIN over `max_len` | `[access.pin_table] "x" must be 1 to 6 digits - the keypad has nothing else` | `max_len` caps the table as well as the keypad | Shorten the PIN, or raise `max_len` (16 at most) |
-| A pattern that cannot be drawn | `[access.pattern_table] "x" = "1-3-6-9": a finger cannot draw it as written - a stroke across a dot takes that dot, so it records "1-2-3-6-9"` | A stroke from one dot to another across a third takes the third, as every pattern lock does — the pattern as written could never be entered | Write the path the message gives (or route round the dot) |
+| A pattern that cannot be drawn | `[access.pattern_table] "x": invalid pattern; check dot range, minimum length, repeated dots and dots crossed by each stroke` | A stroke across a dot takes that dot. The error identifies the level and validation rules without printing the secret | Check the configured path against the grid, including intervening dots |
 | Empty `levels` | `[access] levels is empty` | `[access.levels]` needs at least one entry (one means no authentication) | Put something in, even `levels = ["default"]` |
 | Grid columns or rows too large | `[desktop] columns must be 0 (auto) or at most 12` (rows cap at 8) | `MAX_COLUMNS = 12`, `MAX_ROWS = 8`. A larger value allocates a `Vec` of empty cells per page and the renderer walks it every frame | Stay inside the cap, or use `0` for auto |
 | Bar height rejected | `[status_bar] height must be greater than 0` / `[nav_bar] height must be greater than 0` | An enabled bar needs a positive height | Fix the value, or set `enabled = false` |
@@ -201,12 +201,31 @@ llvmpipe) were of these kinds, and all of them are fixed:
 | Missing glyphs | OSK special keys as tofu — replaced with icons |
 | Render mapping | A half-pulled shade showing nothing — changed to a curtain |
 
-Public-API and documentation mismatches found by reading the source against this
-guide are closed too; the
-workarounds this guide used to suggest are no longer needed (`fairing::egui` is
+Earlier API workarounds are no longer needed: `fairing::egui` is
 re-exported, `runner::run_shell_with` exists, so does
 `services::clock::ChronoClock`, `Shell::remove` reaches built-in tiles, and
-`Lifecycle::Resized` is emitted).
+`Lifecycle::Resized` is emitted. Changes affecting older checkouts are listed in
+[10 Migration](10-migration.md).
+
+### Runtime faults and replacement
+
+With `panic = "unwind"`, a callback panic caught at a shell/runner boundary
+quarantines the shell. Check `Shell::is_faulted()`: ordinary dispatch, backend
+polling and event delivery stop, command admission closes, and the failed pass's
+viewport graphics/platform output is discarded. Loan helpers restore borrowed
+ownership before propagating to that boundary; they do not return `None` and
+continue the interrupted callback.
+
+The host can opt into `RecoveryUi` and use `take_restart_request()` to consume its
+button request. `Shell::restart_with` installs a host-built replacement; producers
+must obtain its new handle because old queues are not transferred. The supplied
+`run_shell_with_recovery` and `run_app_with_recovery` runners expose host recovery
+callbacks. No automatic restart or replay policy is installed.
+
+Replacement does not reset the egui context/GPU or roll back application effects.
+Aborts, double panics and complete renderer heap exhaustion are outside this
+boundary. See [runtime panics and replacement](../memory-limits.md#runtime-panics-and-sensitive-ui-state)
+for payload cleanup, output scope and the recovery example.
 
 ## 8. Checking performance
 

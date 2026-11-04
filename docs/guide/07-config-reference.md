@@ -489,7 +489,7 @@ the prompt has a tab for each kind
 | `show_path` | `bool` | `true` | Draw the path as the finger draws it | |
 | `attempt_limit` | `Option<u32>` | `None` | As `[access.pin_table]`'s, and the same count; where both set one, the stricter holds | 0 is an **error** |
 | `lock_secs` | `Option<u64>` | `None` | As `[access.pin_table]`'s; where both set one, the longer holds | 0 is an **error** |
-| Every other key | `String` (flattened) | — | Level name → clear-text pattern: the dots in the order drawn, row by row from 1, between `-`, `,` or spaces (`"1-2-3-6-9"`); on the 3 × 3 grid the digits alone do (`"12369"`) | A key not in `levels`, a dot off the grid or taken twice, fewer than `min_points` dots, a pattern a finger cannot draw as written (a stroke across a dot takes it — the error gives the path a finger would record), or two levels sharing a pattern is an **error** |
+| Every other key | `String` (flattened) | — | Level name → clear-text pattern: the dots in the order drawn, row by row from 1, between `-`, `,` or spaces (`"1-2-3-6-9"`); on the 3 × 3 grid the digits alone do (`"12369"`) | A key not in `levels`, a dot off the grid or taken twice, fewer than `min_points` dots, a pattern a finger cannot draw as written (a stroke across a dot takes it), or two levels sharing a pattern is an **error**. Diagnostics omit both configured and reconstructed secret paths |
 
 ```toml
 [access.pattern_table]

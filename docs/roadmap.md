@@ -45,7 +45,15 @@ These are candidates, not promises. Each one waits for a real need.
 
 ## 4. Known limits
 
-These are how the crate behaves today. Each is small, and each has a reason.
+These are the current implementation and verification boundaries.
+
+- **Recovery is scoped to caught unwinds and selected fallible storage paths.**
+  `restart_with` replaces a shell, leaving egui/GPU and external application state
+  under host control. Complete renderer heap exhaustion, aborts and business-side
+  rollback are unsupported; see [memory limits](memory-limits.md).
+- **Component verification is scoped.** Proofs and generated/native UI histories do
+  not establish complete concrete UI-state coverage or universal interaction progress.
+  See [formal operability](formal-operability.md) and [API contracts](api-contracts.md).
 
 - **Background logic cannot present a frame.** The shell/state runners use eframe 0.37's
   `App::logic` fallback for state processing, but drawing and animations still wait for a

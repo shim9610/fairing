@@ -83,6 +83,10 @@ slightly wrong. fairing is that shell, once, with the hard parts already decided
 - **Bounded command admission.** Choose queue capacity and work per update; full
   queues return an error. UI code uses non-waiting receive/send APIs. The build
   gate rejects blocking calls and shared-state locks in the UI sources.
+- **Application-owned UI/business boundary.** Optional `CommandSink` and `UpdateSource`
+  traits work with your transport and message types. Thread placement, delivery and
+  retry policy stay in the application; [guide 06](docs/guide/06-services.md#application-owned-uibusiness-boundary)
+  describes the contracts.
 - **Recoverable display admission.** Bound queued toasts and retained notifications;
   fallible text/buffer allocation refuses or defers optional display work. The global
   fixed-heap option was withdrawn because egui cannot universally recover from OOM.
@@ -357,9 +361,11 @@ scan. CI runs all fourteen stages on every push and pull request.
 
 The target is embedded Linux — Ubuntu Core with `ubuntu-frame`, `cage` or `weston` —
 on x86_64 and aarch64, drawing with OpenGL ES 2 through eframe's `glow` backend. The
-audit type-checks the aarch64 build on every run; nothing runs it on aarch64 hardware. Only Linux is built, run and tested in CI — macOS and Windows should build, as
-eframe does, but nothing checks it. The declared minimum Rust version is 1.95; CI builds
-with 1.99.
+audit type-checks the aarch64 build on every run; nothing runs it on aarch64 hardware.
+The full audit and graphical tours run on Linux. Selected CPU display and runtime-fault
+tests also run on Windows; these do not validate the complete Windows runner. macOS
+is not checked in CI. The declared minimum Rust version is 1.95; CI checks that version
+and runs the main audit with 1.99.
 
 ## Not yet
 

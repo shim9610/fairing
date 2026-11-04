@@ -36,12 +36,14 @@ implementation and, with the `mock` feature, a `Mock` simulator for development
 
 ## 2. The workspace
 
-| Crate | Published | What it holds |
+| Crate | Release role | What it holds |
 |---|---|---|
-| `fairing` | yes | The shell. It re-exports `fairing-widgets` and `egui`, so one dependency is enough |
-| `fairing-widgets` | yes | Units, the theme, motion, icons, fonts and the touch widgets. A control can be worked on here without the shell |
-| `fairing-fixed-heap` | no | Isolated allocation-failure diagnostic; no product dependency; one scoped unsafe arena claim |
-| `xtask` | no | The audit gate, the icon compiler, the license report and the other maintenance commands |
+| `fairing` | Planned public crate | The shell. It re-exports `fairing-widgets` and `egui`, so one dependency is enough |
+| `fairing-widgets` | Planned public crate | Units, the theme, motion, icons, fonts and the touch widgets. A control can be worked on here without the shell |
+| `fairing-fixed-heap` | Unpublished diagnostic | Isolated allocation-failure diagnostic; no product dependency; one scoped unsafe arena claim |
+| `xtask` | Unpublished tool | The audit gate, the icon compiler, the license report and the other maintenance commands |
+
+The first crates.io release has not been published yet.
 
 `fairing` depends on `egui`, `serde`, `toml` and `log`, plus `eframe` behind `runner` and `chrono`
 behind `chrono`. Every other dependency, a new asset included, goes through an approval list
@@ -83,7 +85,10 @@ A large part comes out whole behind its feature. Turned off, it is not compiled 
 | `overlay` | The shade, its detents, tiles and notification list |
 | `osk` | The on-screen keyboard: numeric, QWERTY and two-set Hangul |
 | `notify` | Notifications, toasts and heads-up banners |
-| `inbox` | The notification store the shade reads |
+| `inbox` | Non-waiting channel receive APIs, bounded admission and connection-specific storage/work limits |
+| `bridge` | Optional application-implemented command/update transport traits; no transport or thread policy |
+| `recovery` | Fault guidance, shell-replacement errors and panic-payload cleanup diagnostics |
+| `memory` | Re-exported fixed pools, fallible strings, display windows and CPU raster helpers |
 | `gesture` | One gesture engine for edges, flings, long presses, handles and your own regions |
 | `access` | Levels, gates, the session, the unlock prompt, the lock screen, `Authenticator` |
 | `settings` | Setting keys and values, and the built-in settings screens |
@@ -106,7 +111,7 @@ Eviction and lifecycle requests can also finish during logic-only calls.
 | # | Step | What happens |
 |---|---|---|
 | 1 | Time, declarations and expiry | Advance time, rebuild declarations, observe integrator subject replacements, enforce overdue access deadlines and revalidate open gates before commands or input |
-| 2 | Commands | The `ShellHandle` queue is drained with `try_recv` |
+| 2 | Commands | Receive and execute at most `max_commands_per_update` queued commands (default 256); request continuation for remaining work |
 | 3 | Services | Pin snapshots, confirm outstanding Bool commands and send queued targets, gather backend wake-ups |
 | 4 | Access | Revalidate policy after backend updates, record input and poll the authenticator |
 | 5 | Input | The gesture engine, the guard, the shade, the back gesture, the keyboard, every animation |
@@ -118,7 +123,9 @@ Eviction and lifecycle requests can also finish during logic-only calls.
 | 16 | Events | You take them with `poll_events` |
 
 The order is a contract. A screen sees a layout that is final for the frame, and what a screen
-asks for while it draws, such as opening another screen, is handled later in the same frame.
+asks for through `Cx` while it draws, such as opening another screen, is handled later
+in the same frame. `Cx::shell` sends through `ShellHandle` and waits for a subsequent
+state update and its command budget.
 
 ## 5. Threads
 
@@ -133,7 +140,10 @@ asks for while it draws, such as opening another screen, is handled later in the
   [Memory limits](memory-limits.md) explains factories, metrics, fixed storage,
   newest-sample display windows and allocation-free CPU preview/warning primitives.
   There is no renderer process/IPC layer. The ordinary egui path is still allocating.
-- **The UI thread never blocks.** It uses `try_recv`, never `recv`, `join`, `sleep` or file IO.
+- **UI queue operations do not wait for work or capacity.** They use `try_recv` and
+  immediate admission rather than blocking receive/join/sleep calls. Runtime callbacks
+  and transports supplied by the application must return promptly; the audit does not
+  enforce that on external code. Startup configuration/font loading can read files.
   A worker thread may wait on its own queue.
 - **`ShellHandle` is `Clone + Send`.** Any thread can launch a screen, go back or home, post a
   notification or a toast, change a setting or ask for an unlock. Sending wakes the UI.
@@ -148,6 +158,12 @@ asks for while it draws, such as opening another screen, is handled later in the
 - **Screenshot callbacks only deliver data.** A per-request `Inbox` carries the image back to
   the UI thread and the callback asks for a repaint. Closing a card, changing its theme or
   viewport, or timing out drops that inbox so a late image cannot complete a later request.
+
+Applications can implement `bridge::CommandSink` and `UpdateSource` for ownership-moving
+channels, shared buffers, lock-free queues or network adapters. The traits impose no
+`Clone`, `Send`, `Sync` or `'static` bound and do not replace `ShellHandle`'s internal
+queue. Adapters own their admission/delivery semantics; the host owns thread placement,
+wakeups, retries and UI replacement. See [the boundary guide](guide/06-services.md#application-owned-uibusiness-boundary).
 
 ## 6. State
 
@@ -170,19 +186,26 @@ screen with `keep_awake` holds the display's idle timer off. How to confirm 0 fp
 ## 8. Errors
 
 - **UI product code rejects explicit panic paths.** `unwrap`, `expect`, `panic!`
-  and unchecked indexing are denied by its lints. Dependencies, integrator
+  and explicit termination paths are denied by its Clippy configuration; indexing is
+  checked by the warning-denying audit. Dependencies, integrator
   callbacks and infallible allocation can still terminate a process; whole-renderer exhaustion is not universally recoverable. The diagnostic allocator
   is not selected by either product library.
 - A backend error comes back as a value, and the shell shows it as a toast or a notification.
 - A configuration that cannot be right fails at start with `Error::Config`. Access control is
   never silently opened.
 - Logging goes through the `log` facade. The logger is yours.
+- **Runtime unwind faults quarantine the shell.** Borrowed ownership is restored before
+  forwarding an unwind to the shell boundary. Dispatch, event delivery and admission
+  stop there; the host may replace the shell with `restart_with` and opt into recovery
+  guidance. Replacement does not reset egui/GPU state or roll back business effects.
+  [Memory limits](memory-limits.md#runtime-panics-and-sensitive-ui-state) defines the
+  exact unwind, output and payload-cleanup scope.
 
 ## 9. Testing and the audit
 
 `testing::Harness` runs whole frames on `egui::Context` with virtual time, so a test taps and
 drags where the shell actually drew, with no window, no GPU and no sleeping. The library's tests,
-the examples and every Rust block in the guide run under `cargo xtask audit`, which also checks
+the examples and the guide's non-ignored Rust blocks run under `cargo xtask audit`, which also checks
 formatting, lints, docs, dependencies, licenses, locks and blocking calls. CI runs it with
 `--strict` on every push ([guide 08 §9](guide/08-troubleshooting.md#9-passing-the-audit)).
 

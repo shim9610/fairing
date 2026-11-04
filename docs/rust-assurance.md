@@ -34,7 +34,8 @@ primary lockfile's existing package versions and adds 23 tool-only packages.
 The dated entries in `deps.allow`, `verification/check-inputs.py`, cargo-audit
 and the scoped `verification/deny.toml` guard those inputs. NCSA is permitted
 there for libFuzzer; the product workspace's licence policy is unchanged.
-CODEOWNERS protects the entire verification directory. None of the test tools
+CODEOWNERS assigns the entire verification directory to its owner; required-review
+enforcement is a separate repository setting. None of the test tools
 becomes a dependency of a published fairing crate.
 
 ## Shared production code and properties
@@ -209,7 +210,7 @@ zero-skip mutation semantically. The public property, Miri and ASan API suites
 execute display retention/raster bounds; coverage requires this production module.
 The standard shell's compiled-stencil notice and preservation of accepted device
 commands have integration regressions. Stock egui/font/tessellation/native
-allocation recovery remains a blocking, unfulfilled whole-renderer requirement.
+allocation recovery is outside the supported whole-renderer guarantees.
 
 ## Input progress and rendered transition witnesses
 
@@ -226,7 +227,8 @@ oracle adds 8,748 fixed traces, 128 generated traces, twelve deadline scenarios 
 an interpreted Miri trace. The shell ASan target calls the same oracle with inputs
 up to 96 bytes; native controls must reject omitted correlation, budget overflow and
 expiration after command dispatch. `controls.py --only expiry-order` replays one
-control during development; CI runs all eleven baselines and all eleven mutations.
+control during development; CI runs the complete baseline/mutation list in
+`verification/controls.py`, including retained-owner and UI-history controls.
 
 ## Formal operability status
 

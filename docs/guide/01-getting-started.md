@@ -15,7 +15,7 @@ screen with egui. How it is put together is in
 | Rust | 1.95 or newer | The crates' MSRV (`rust-version`). To work on fairing itself, `rust-toolchain.toml` at the repository root pins 1.99 and rustup fetches it |
 | Edition | 2021 | |
 | egui | `0.37` | `fairing` asks for egui 0.37 (any 0.37.x) and re-exports it as `fairing::egui`, so depending on egui directly is **optional** — if you do, ask for the same minor, `egui = "0.37"` |
-| OS | Linux | The main target is Ubuntu Core with `ubuntu-frame` (a Wayland kiosk); `cage` and `weston` are meant to work too. None of the three has been tried on a real device yet — development and CI run under X11 |
+| OS | Linux | The main target is Ubuntu Core with `ubuntu-frame` (a Wayland kiosk); `cage` and `weston` are meant to work too. None of the three has been tried on a real device yet — graphical tours run under X11. Selected CPU display and runtime-fault tests also run on Windows |
 | Graphics | OpenGL ES 2 or newer (Mesa/EGL) | The runner uses eframe's `glow` backend. wgpu is not used |
 
 If you use the runner, a feature picks the windowing backend.

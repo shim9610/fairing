@@ -4,9 +4,10 @@
 
 | Version | Security fixes |
 |---|---|
-| 0.1.x | Yes |
+| Development toward 0.1.0 (unreleased) | Fixes land on the current development branch |
 
 Before 1.0, fixes land on the latest minor release only.
+The first crates.io release has not been published yet.
 
 ## Reporting a vulnerability
 
@@ -26,5 +27,11 @@ You will get an answer within a week, and a fix or a plan before anything is mad
   location without echoing its source or invalid values.
 - **The crate writes no files and makes no network connections.** Backends, storage and
   networking are the integrator's code, so their security is too.
+- **Authentication request tokens correlate trusted results.** Custom authenticators
+  must retain the original `AuthRequestId` with asynchronous work. Tokens reject stale
+  replies inside the shell; they do not authenticate network peers.
+- **Recovery does not undo completed side effects.** Caught runtime unwinds quarantine
+  the shell; the host controls replacement and reconciliation. Abort/OOM and panic-hook
+  behavior have separate limits documented in [memory limits](docs/memory-limits.md#runtime-panics-and-sensitive-ui-state).
 
 A report about any of these behaving differently from what is written here is welcome.

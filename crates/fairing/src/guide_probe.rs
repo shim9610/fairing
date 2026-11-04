@@ -40,6 +40,10 @@ pub struct Guide08Troubleshooting;
 pub struct Guide09Branding;
 
 #[cfg(doctest)]
+#[doc = include_str!("../../../docs/guide/10-migration.md")]
+pub struct Guide10Migration;
+
+#[cfg(doctest)]
 #[doc = include_str!("../../../docs/guide/README.md")]
 pub struct GuideReadme;
 

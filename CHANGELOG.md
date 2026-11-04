@@ -6,140 +6,100 @@ All notable changes to the fairing crates are recorded here. The format follows
 
 ## Unreleased
 
-### Changed
-
-- Make icon flattening and cache admission fallible, bound caches to 128 entries by
-  default, reclaim oldest paths before retrying and omit icons when storage cannot
-  grow. `IconCache::get` now returns `Option<&Flattened>` instead of `Rc<Flattened>`;
-  `try_get` exposes the error. The cache owns paths without reference-count allocation.
-- Reserve notification dismissal events before deleting retained/unread state;
-  expose `try_dismiss_notification` so callers can retry after allocation failure.
-- Add `ShellHandle::try_send_fallible_with`. Rejection conveniences and unknown icon
-  lookup no longer invoke user loggers that could allocate while memory is exhausted.
-- Extend real 16/64 MiB exhaustion checks for these paths. An ordinary stock-egui
-  frame still fails the separate exhaustive-heap negative control; full renderer
-  OOM survival remains unsupported.
+For applications using an earlier checkout, see the [migration guide](docs/guide/10-migration.md)
+for source changes, queue/display defaults and recovery behavior.
 
 ### Added
 
-- Developer-controlled `Shell::restart_with` and runner recovery callbacks. Fresh
-  shells use new command queues; old handles remain disconnected and old work is
-  never replayed. Failed construction/disposal leaves dispatch quarantined.
-- Opt-in `RecoveryUi` guidance and an optional button that only records a request.
-  Automatic/manual restart, timing and business-state recovery belong to the host.
-
-### Security
-
-- Contain runtime callback unwinds at shell/runner boundaries. Quarantine failed
-  shells, deny gates, close command admission and suppress pending shell events;
-  discard failed viewport graphics/platform commands. Do not automatically retry
-  partially applied callbacks. Restore loans before propagating to the boundary.
-- Recommend panic=unwind for device binaries instead of panic=abort. Recovery does
-  not roll back business side effects or cover allocator/native aborts, panicking
-  hooks or double panics in destructors. Unknown panic payloads are retained to
-  avoid a second user-destructor panic during fault handling.
-
-- Remove the optional renderer process/IPC implementation. Its Linux-only boundary
-  does not implement same-process display reclamation or bounded rendering.
-- Add inline newest-sample retention, allocation-free borrowed-image preview and
-  bitmap warning rasterization. Oversized/invalid surfaces are refused before writes.
-  No registry package/version or global allocator is added.
-- Make shell pending toasts keep newest display text by default, reclaim older
-  optional display items on fallible allocation failure and expose omission status.
-  Accepted device-command ordering and protected notification records are retained.
-- Bound and fallibly allocate card-frost processing; large views become coarser
-  and failed optional work leaves an opaque card.
-- Avoid heads-up deadline overflow for Duration::MAX; unrepresentable deadlines
-  retain the banner until dismissed rather than panicking.
-
-- Withdraw the production fixed-heap feature: imposing a global hard limit cannot
-  make infallible egui/Rust OOM recoverable. Keep the unpublished allocator only as
-  an isolated failure-injection diagnostic, outside product dependency graphs.
-- Bound the waiting toast queue (default 64) and all retained notification counts,
-  including persistent items. Refuse new protected overflow without eviction.
-  Limit retained strings including spare capacity, glyphs and action/gate payloads.
-- Add fallible display construction/admission, inline command payloads and fallible
-  factories that return reservations on failure. Omit optional display copies on
-  failure, reclaim toast icon caches and retry visible storage after 100 ms.
-- Require actual exhausted-arena refusal, continued preallocated queue work and
-  display recovery after memory release; the lab abort control is not a production
-  recovery acceptance test. Whole-renderer no-abort behavior is still unsupported.
-
-### Added
-
-- Public `Inbox::bounded`, `BoundedSender`/`BoundedInbox`, ownership-preserving
-  `Full`/`Disconnected` errors, lazy factories, bounded drains and queue statistics.
-- `ShellBuilder::command_queue_capacity` and `max_commands_per_update`;
-  `ShellHandle::try_send`, `try_send_with` and `queue_stats`.
-- Inline `memory::FixedPool<T, N>` with pool-specific generational keys, no heap
-  fallback, stale/foreign handle rejection and nonwrapping slot retirement.
-- Unpublished `fairing-fixed-heap` diagnostic with a reusable static Rust arena
-  selected by `FAIRING_HEAP_BYTES`; one scoped unsafe arena claim, isolated from
-  product libraries. Talc/spinning_top/allocator-api2 are diagnostic inputs.
-- Real normal/16 MiB/64 MiB allocation trials and expected OOM controls in CI;
-  pool/queue API properties, Miri/ASan and Loom admission checks, Kani pool
-  sequences and Kani/Verus generation contracts with wrap-defect controls.
+- Optional `bridge::CommandSink<Command>` and `UpdateSource<Update>` transport contracts.
+  Adapters choose message/error types without `Clone`, `Send`, `Sync` or `'static` bounds.
+  Fairing supplies no transport, worker thread or retry policy through these traits.
+- Bounded and connection-configurable Inbox channels, ownership-preserving
+  `Full`/`Disconnected` errors, lazy/fallible factories, finite drains and queue statistics.
+  Builder options configure shell command capacity and work per update.
+- Fallible display construction/admission and dismissal, omission reporting and
+  bounded icon-cache storage with reclamation. `try_send_fallible_with` releases
+  a command reservation if payload construction fails.
+- Inline `memory::FixedPool<T, N>` with pool-specific generational keys,
+  `DisplayWindow` newest-sample retention, and allocation-free CPU borrowed-image
+  preview and bitmap warning helpers.
+- Developer-controlled `Shell::restart_with`, runner recovery callbacks and opt-in
+  `RecoveryUi` guidance. The host chooses replacement, scheduling and state restoration.
+- Separate assurance checks for API properties, Kani/Verus component contracts,
+  Miri, Loom, mutation controls, sanitizer fuzzing, coverage and dependency inventories.
+  Retained-context UI histories include first-open dismissal regressions across 28
+  profiles and four frame intervals. The unpublished allocator diagnostic exercises
+  selected refusal/reclamation paths under real 16/64 MiB exhaustion.
 
 ### Changed
 
-- Shell::toast and ShellHandle::toast accept ToastInput so borrowed text uses
-  fallible construction. String and Toast still transfer ownership; custom
-  Into<Toast> types need explicit conversion. Void handle toast rejection omits
-  display work without logging after allocation failure.
-- Command::Notify/Toast/SetMotion now carry values inline; remove Box::new at
-  explicit command construction sites. Rejected command ownership stays inline
-  too, avoiding an allocation while reporting an allocation failure.
-- CenterChange gains Rejected. notify.max_items = 0 selects the bounded default
-  of 100; it no longer enables unlimited persistent retention.
-
-- Shell commands now have a default 1,024-slot limit and a 256-command update
-  budget. `send` returns false on full as well as closed; void convenience methods
-  generally log refusal (toast helpers omit it). Accepted work is not evicted.
-  Use fallible APIs for critical work.
-
-- Upgrade egui, eframe and their paint crates from 0.36.2 to 0.37.0. The runner retains
-  bundled fonts, GL and OS clipboard support. eframe's overdue-Wayland-redraw fallback
-  calls `App::logic`. The shell/state runners now process commands, backends, access
-  deadlines and lifecycle requests there, even without a UI pass; a visible pass reuses
-  that update. Hidden ticks use wall time and do not replay old input or drive animations.
-  The minimum Rust version remains 1.95.
-- Re-read backend wake deadlines after actions and lifecycle callbacks, so work started
-  after the poll still schedules its next update in UI and logic-only paths.
-- Use callback-based screenshots for card backdrops and example capture/recording. Each
-  card request has its own inbox and wakes the UI on completion; closing, timing out, changing
-  theme or resizing discards its late response.
-- Adopt the 0.37 ID, font-data, scroll-state and wheel-input APIs. Font startup supports
-  both immediate installation before text layout and deferred installation after layout.
-- Draw the keyboard's previous/next focus controls with bundled vector icons, keeping
-  them visible without the glyphs removed from egui's default fonts.
+- Upgrade egui/eframe and their paint crates from 0.36.2 to 0.37.0; retain bundled
+  fallback fonts, GL and OS clipboard support. The minimum Rust version stays 1.95.
+- Shell command admission defaults to 1,024 slots and 256 commands per UI/logic
+  update. `send` returns false for full or closed queues; void handle helpers discard
+  rejected commands without invoking a user logger. Accepted work is not evicted.
+- Message-based mocks default to 1,024 slots and 256 messages per poll. Existing
+  constructors remain; connection-specific configuration can explicitly select
+  unbounded storage while retaining a finite poll budget.
+- Pending shell toasts default to 64 items with `KeepLatest`. Notification caps
+  include persistent entries; protected overflow is refused. `notify.max_items = 0`
+  selects 100. `CenterChange` gains `Rejected`.
+- `Shell::toast` and `ShellHandle::toast` accept `ToastInput`; custom `Into<Toast>`
+  types need explicit conversion. `Command::Notify/Toast/SetMotion` store inline
+  values instead of boxes. `IconCache::get` returns `Option<&Flattened>` instead of
+  `Rc<Flattened>`; `try_get` exposes refusal and the default cache limit is 128 entries.
+- Shell/state runners process commands, backends, access deadlines and lifecycle
+  requests through `App::logic`, even without a UI pass. A visible pass reuses that
+  update. Hidden ticks use wall time without replaying input or driving animations.
+- Screenshot backdrops use per-request callbacks/inboxes. Closed, timed-out,
+  theme-changed or resized cards discard late replies. Optional frost work is bounded
+  and fallible; failure leaves an opaque card.
 
 ### Security
 
-- Gate retargeting, logout, repeated locks and same-level subject replacements/timeouts
-  cancel stale authentication before it can grant access to a later request or session.
-  Lockout countdowns survive challenge restarts.
-- Session timeouts take precedence over simultaneously expired temporary grants. Dynamic
-  policy revocations close existing screens, and literal level names precede gate aliases.
-- Product builds reject explicit panic/assertion/termination paths in Clippy. The two
-  borrowed app/resident callback helpers restore their loans and return `None` on a caught
-  unwinding panic instead of resuming it; test assertions remain enabled.
-- Built-in Wi-Fi, Bluetooth and brightness controls now wait for setting-key authorization
-  before changing a backend.
-- Expired sessions and temporary grants, and overdue idle locks, are enforced before queued
-  commands or current input. A wake-up event cannot renew an already-expired session.
-- Configuration diagnostics redact PINs and patterns, including malformed TOML source values.
-- CI actions are pinned to verified commit SHAs.
+- `Authenticator::begin/submit` receive `AuthRequestId`; `poll` returns
+  `Option<AuthResponse>`. Replies retain their original request token. Canceled,
+  replaced and consumed requests cannot grant a later challenge or replay a continuation.
+- Gate retargeting, logout, repeated locks and same-level subject changes cancel
+  obsolete authentication. Dynamic policy revocation closes affected screens;
+  literal level names take precedence over gate aliases.
+- Built-in Wi-Fi, Bluetooth and brightness controls authorize setting writes before
+  changing backends. Overdue session/elevation/idle deadlines precede queued commands
+  and fresh input; session timeout wins over simultaneous temporary-grant expiry.
+- Configuration diagnostics redact PINs/patterns, including malformed TOML values
+  and configured/reconstructed pattern paths. Failure accounting saturates.
+- Catch runtime callback unwinds at shell/runner boundaries. Restore borrowed
+  ownership before propagation, quarantine dispatch, close admission, suppress partial
+  events and discard failed viewport graphics/platform output. Never replay old work
+  or reconnect old handles during shell replacement.
+- Recommend `panic = "unwind"` for containment. Business side effects are not rolled
+  back; aborts, double panics and complete renderer OOM survival remain unsupported.
+  Unknown panic payloads are retained without running arbitrary destructors; resource
+  retention is not globally bounded. No production fixed-heap or renderer IPC feature
+  is provided; the allocator diagnostic is outside product dependency graphs.
+- Pin external CI actions to verified commit SHAs.
 
 ### Fixed
 
-- Asynchronous Bool writes serialize one outstanding command per key and coalesce queued
-  targets, preventing an unchanged cache from acknowledging later commands prematurely.
-  A pre-existing Wi-Fi failure no longer discards a later radio target.
-  Synchronous confirmations release the target before later external changes can arrive.
-- Pending Bool targets preserve asynchronous Set/Toggle order until confirmation, and coupled
-  airplane/radio settings emit consistent values for persistence and restoration.
-- New desktop declarations are rebuilt before queued badge updates. Notification unread
-  counts follow individual ids through dismissal and retention eviction.
+- Preserve newer asynchronous Boolean intent and Set/Toggle order while allowing
+  one outstanding command per key. Old failures no longer discard later targets;
+  synchronous confirmation releases the target before later external changes.
+  Airplane/radio settings emit consistent persistence/restoration values.
+- Retire obsolete dropdown/query sessions, pattern capture, long presses, numeric
+  drafts, wheel animation, keyboard requests and password reveal. Numeric drafts
+  check exact caller values, including changes below displayed precision; fresh
+  presses cannot reuse stale capture.
+- Use current gesture-region geometry and prevent region-owned presses from also
+  activating ordinary widgets or hidden corner knocks. Emergency handling stays global.
+- Re-read backend wake deadlines after actions/lifecycle callbacks, so newly started
+  work schedules an update in UI and logic-only paths.
+- Rebuild desktop declarations before queued badge updates. Track unread notification
+  ids through dismissal and retention eviction; failed dismissal-event allocation
+  preserves notification/unread state for retry.
+- Keep keyboard previous/next controls visible with vector icons and support font
+  installation both before and after initial text layout.
+- Avoid heads-up deadline overflow for `Duration::MAX`; unrepresentable deadlines
+  retain the banner until dismissal.
 
 Nothing has been published to crates.io yet. This will be the first release, 0.1.0.
 
