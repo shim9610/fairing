@@ -87,6 +87,7 @@
 pub mod access;
 #[cfg(feature = "brand")]
 pub mod brand;
+pub mod bridge;
 pub mod chrome;
 pub mod config;
 pub mod desktop;
