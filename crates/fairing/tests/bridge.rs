@@ -113,7 +113,10 @@ fn receive_errors_distinguish_empty_and_closed_without_losing_buffered_updates()
     };
     assert_eq!(UpdateSource::try_recv(&mut port), Ok(Some(7)));
     assert_eq!(UpdateSource::try_recv(&mut port), Err(Refusal::Closed));
-    assert_eq!(CommandSink::try_send(&mut port, 9), Err((9, Refusal::Closed)));
+    assert_eq!(
+        CommandSink::try_send(&mut port, 9),
+        Err((9, Refusal::Closed))
+    );
     port.closed = false;
     assert_eq!(UpdateSource::try_recv(&mut port), Ok(None));
 }
