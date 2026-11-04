@@ -41,7 +41,7 @@ unapproved crate's `build.rs` cannot run before the approval gate does. If stage
 Stage 13 (`cargo xtask sync-check`) blocks lock-based shared state (`Mutex`, `RwLock`,
 `Condvar`, `Barrier`, `OnceLock`, `LazyLock`, `parking_lot`) and blocking calls on the UI thread
 (`crates/fairing/src` and `crates/fairing-widgets/src`: `.recv(`, `.recv_timeout(`, `.join(`,
-`thread::sleep`), since threads talk over channels and the UI thread never blocks
+`thread::sleep`), so product UI sources use non-waiting queue operations
 ([architecture §5](docs/architecture.md#5-threads)). A legitimate exception carries
 `// sync-check: allow: <reason>` on the same line (the reason is required).
 
@@ -91,7 +91,7 @@ step of any script could not do what it asked. A script presses what it names
 (`Act::Tap(Spot::Text("Alerts"))` finds the label on the glass; there is no coordinate form) and says what it expects before each
 picture (`Act::Expect(Expect::Text("Lamp hours"))`), so a change that moves a row, renames a
 label or breaks a flow fails here rather than leaving a wrong picture under the right file name.
-the public repository's CI runs it on every push. When you change what a screen shows, run it; when you add a step to a
+The public repository's CI runs it on every push. When you change what a screen shows, run it; when you add a step to a
 script, name the thing you press and check what you expect to see — a coordinate written down
 is right for one row height only.
 
@@ -121,7 +121,7 @@ Fixing the document later is not allowed.
 
 The user guide (`docs/guide/*`, indexed by [`docs/guide/README.md`](docs/guide/README.md))
 describes **what the code does today**, so a PR that changes a public API, a config key, a
-default or an error message fixes the relevant section too. The guide's rust blocks are compiled
+default or an error message fixes the relevant section too. The guide's non-ignored Rust blocks are compiled
 as doctests by the audit's test stage (`crates/fairing/src/guide_probe.rs`), so an example that
 stops compiling fails CI. Its toml blocks are checked by nothing: keep them values that
 `ShellConfig` parses and validates, by hand, when you edit an example. Something planned

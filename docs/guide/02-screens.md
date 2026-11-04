@@ -912,13 +912,12 @@ has a pair that lends the state for its length:
 in hand. `LaunchAction::Open` needs none of this: it puts a screen up and the screen's `ui` runs in
 the next frame, which has the state anyway.
 
-> **This section used to say `Rc<RefCell<_>>`**, because there was nowhere else to put shared state.
-> That was a cell with a `borrow_mut()` that panics. `Rc<T>` on its own is still fine for something
-> immutable you want to share cheaply, like a loaded image set.
+`Rc<T>` can share immutable data cheaply, such as a loaded image set. Use the
+state-lending APIs above when screens need mutable access to application state.
 
 ### 9.2 Getting results back from background work
 
-The UI thread never blocks. A worker thread sends its result down a channel and wakes the UI with
+Use non-waiting receives on the UI thread. A worker sends its result down a channel and wakes the UI with
 `Waker::wake()`; the screen picks it up with `try_recv` each frame.
 
 ```rust

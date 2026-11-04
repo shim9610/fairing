@@ -168,13 +168,10 @@ column buffer. The incoming screenshot/egui texture allocation remains upstream.
 Existing `new`/Into constructors and user callbacks may still allocate
 infallibly. Use the explicit try APIs before copying untrusted borrowed input;
 passing an already-created String cannot recover an earlier caller allocation.
-Whole stock-egui renderer recovery from complete heap exhaustion is not established.
-The process-supervision implementation has been removed. The guarantees above
-cover the named owned storage and CPU raster paths; they do not turn arbitrary
-egui callbacks, fonts/tessellation, startup or GPU/native allocation into fallible
-operations. Completing a whole-shell guarantee requires those rendering paths to
-propagate refusal or run through an allocation-free presentation backend. A green
-bounded-display test is not evidence that this remaining requirement is complete.
+The contracts above cover the named owned storage and CPU raster paths. Arbitrary
+egui callbacks, fonts/tessellation, startup and GPU/native allocation remain outside
+that scope; bounded-display test results do not establish whole-renderer survival
+under complete heap exhaustion.
 
 ## Icon storage, deferred dismissal and producer rejection
 

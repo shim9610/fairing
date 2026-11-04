@@ -70,8 +70,9 @@ levels = ["viewer", "maintainer"]
 }
 ```
 
-With one level, `Access::allows` returns early and **every gate passes**,
-regardless of `mode`. A device that needs no authentication says so in one line:
+In an operational shell with one level, `Access::allows` returns early and every
+gate passes, regardless of `mode`. Fault quarantine denies gates even in this
+configuration. A device that needs no authentication says so in one line:
 
 ```toml
 [access]
@@ -274,14 +275,14 @@ A few rules hold whatever the authenticator does:
   goes without an answer, when the lock screen comes up over it, or when a new
   attempt goes in. The keys are never held for it, so an answer that never comes
   holds nothing: the next attempt is the way past it, on the lock screen too.
-  The shell sets no time limit of its own (see §5.2). Whatever `poll` reports is
-  applied as it comes — the shell follows the authenticator's results — so the
-  answer to a check `cancel` called off is the authenticator's to drop.
+  The shell sets no time limit of its own (see §5.2). `poll` responses must carry
+  the original request token; canceled, superseded and already-consumed responses
+  are rejected. The authenticator should also stop canceled work where possible.
 - **A request behind the lock screen waits for it.** Once the lock screen goes
   (an unlock, Continue, or your own `set_subject`), the request is asked again: it
   runs where the session now passes its gate, and the prompt opens where it does
   not. A new lock starts with nothing waiting.
-- **`begin(gate, now)` comes first.** The shell calls it each time the prompt
+- **`begin(request, gate, now)` comes first.** The shell calls it each time the prompt
   opens — the lock screen's gate is `session.lock` — so an authenticator can start
   listening, and drop whatever a reader picked up while no prompt was up.
   Retargeting an open prompt to a different gate calls `cancel` and then `begin`

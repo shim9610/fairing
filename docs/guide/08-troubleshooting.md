@@ -56,7 +56,8 @@ With `[shell] repaint = "reactive"` (the default), the shell never calls
    in `top` or `htop`. CPU should fall to roughly zero. If it keeps a core busy,
    something is asking for a repaint every frame.
 2. **Compare.** Switch to `[shell] repaint = "continuous"` for a forced 60 fps and
-   compare CPU. No difference means reactive is not actually taking effect.
+   compare CPU and repaint requests. Similar CPU use alone does not distinguish
+   continuous repaint from other background work.
 3. **Read the log.** If a backend keeps returning a `next_wake()` in the past —
    the usual bug is not refreshing its own snapshot — the shell can never go idle,
    and every `STALE_WAKE_FRAMES` (an internal constant) you get:
@@ -188,9 +189,9 @@ with the font on and no layout, you can read Korean but not type it.
 
 ## 7. Known defects
 
-The limits the crate has today are listed in the [roadmap](../roadmap.md#4-known-limits). The
-defects found while checking real renders through the screenshot tour (`--tour` over Xvfb +
-llvmpipe) were of these kinds, and all of them are fixed:
+Current limits are listed in the [roadmap](../roadmap.md#4-known-limits). The
+following examples record earlier corrections found through screenshot tours
+(`--tour` over Xvfb and llvmpipe):
 
 | Kind | Example |
 |---|---|
@@ -277,7 +278,7 @@ missing `cargo-audit` or `cargo-deny` only prints an install hint and skips.
 | 6 | Allow-list | `xtask deps-check` | Every crate in the tree is in `deps.allow` |
 | 7 | Advisories | `cargo audit --deny warnings` | RustSec advisories (needs the plugin) |
 | 8 | Licences and sources | `cargo deny check` | Licences, sources, the ban list (needs the plugin) |
-| 9 | Update visibility | `cargo update --dry-run` | Reports only; never fails |
+| 9 | Update visibility | `cargo update --dry-run` | Reports only; its exit status does not fail the audit |
 | 10 | Notices | `xtask licenses --check` | Whether `THIRD_PARTY.md` is current |
 | 11 | Generated files | `xtask icons --check` | Whether `icons/generated.rs` matches `assets/icons/*.svg` |
 | 12 | Target build | `cargo check -p fairing --features runner --target aarch64-unknown-linux-gnu` | aarch64 portability — **a compile check, not a binary** |

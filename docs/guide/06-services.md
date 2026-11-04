@@ -11,9 +11,9 @@ it. Four rules hold that up.
 2. **Snapshot plus command.** Reads go through `snapshot()` — a cheap clone of a
    cache. Writes are commands that return immediately; the result arrives in the
    next snapshot, and the `Waker` tells the UI to look.
-3. **Channels, never locks.** No `Mutex` or `RwLock` inside a backend. If there is
-   a worker thread, it gets one pair of `mpsc` channels (commands out, results in)
-   and the UI-side `poll()` only ever calls `try_recv`.
+3. **Keep transport waits off the UI thread.** A worker can exchange commands and
+   updates through channels or another application-chosen transport. UI-side polling
+   uses non-waiting operations; it must not wait for a worker, message or capacity.
 4. **Never block the UI thread.** `poll()`, `poll_at()` and every command method
    (`set_enabled`, `scan`, `connect`, …) must return immediately. Anything slow
    belongs to a worker thread or to a state machine inside the backend.
@@ -122,7 +122,7 @@ ask with, where the profile is stored and whether a saved network should
 reconnect on a single tap are decisions about your device, not about a shell.
 Nothing stops you from connecting on every tap if that suits the machine.
 
-It also keeps the secret away from the crate entirely. `connect` takes
+The application owns the password buffer. `connect` takes
 `psk: Option<&str>` and [`TextField`](04-customization.md) borrows a
 `&mut String`, so the buffer is yours from end to end — hold it in a zeroizing
 type if you want one, and reserve its capacity up front so growing it does not
@@ -133,11 +133,11 @@ let mut psk = zeroize::Zeroizing::new(String::with_capacity(64)); // WPA2 tops o
 TextField::new(&mut psk).password(true).hint("Password").show(ui, &mut cx.widgets());
 ```
 
-`fairing` does not depend on `zeroize` and does not need to — it never owns the
-string. What it does owe you is that the widget forgets: `TextField::password(true)`
-clears the `TextEdit` undo history every frame, because egui otherwise keeps up
-to a hundred plaintext snapshots in its own memory under the widget's id, where
-no wrapper of yours can reach them. The field also has an eye that shows the
+`fairing` does not depend on `zeroize`. `TextField::password(true)` clears the
+`TextEdit` undo history each pass to avoid retaining plaintext undo snapshots
+under the widget's id. This is separate from clearing the application buffer;
+it does not establish that every renderer or allocator copy is erased.
+The field also has an eye that shows the
 text; `.reveal(false)` takes it away, and a shown field comes back masked once
 it leaves the screen.
 

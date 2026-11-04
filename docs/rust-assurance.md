@@ -3,7 +3,9 @@
 The `Rust assurance` workflow runs the checks below on pull requests, main
 pushes, a weekly schedule and manual requests. Its input gate checks the separate
 verification lockfile and licences before the tool workspace is compiled. The
-existing strict audit, MSRV and example-tour workflow continues independently.
+existing strict audit, minimum supported Rust version (MSRV) check and example-tour
+workflow continue independently. Dependency inventories are software bills of
+materials (SBOMs); the sections below describe their package and platform scope.
 The [API contract map](api-contracts.md) links each public guarantee to its
 production path, proof/property, bounds and negative control.
 The [Ferrocene source trial](ferrocene-source-trial.md) also supplies the existing

@@ -114,8 +114,8 @@ an inventory of validation evidence needed at those call boundaries. No
 Coverage figures describe the instrumented test build, including inline unit
 tests. The export contains 124 product source files and one standard-library
 file. Documentation tests, branch coverage and MC/DC are outside
-these figures. These results are local; the new hosted Ferrocene workflow has
-not been executed.
+these figures. This section records the local trial on the date above; hosted
+results are reported separately by the Ferrocene workflow.
 
 ## CI
 

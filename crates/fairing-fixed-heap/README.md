@@ -28,5 +28,6 @@ not a passing production recovery test. Run both controls through
 
 Only this diagnostic crate has a scoped unsafe static-arena ownership transfer;
 allocator mechanics and spinlock synchronization are upstream. Both UI crates
-retain forbid(unsafe_code). CODEOWNERS and the integrity exception protect this
-boundary. The product APIs and limitations are in docs/memory-limits.md.
+retain `forbid(unsafe_code)`. The integrity gate checks the scoped exception;
+CODEOWNERS assigns its reviewer, with enforcement controlled by repository rules.
+The product APIs and limitations are in [memory limits](../../docs/memory-limits.md).

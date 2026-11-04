@@ -863,7 +863,8 @@ impl Access {
         self.policy = policy;
     }
 
-    /// The decision skeleton: with one level, or `mode = off`, **everything passes**. Otherwise it delegates to the policy.
+    /// Quarantine denies access. Otherwise one level or `mode = off` permits every gate;
+    /// remaining decisions delegate to the policy.
     #[must_use]
     pub fn allows(&self, gate: &Gate) -> bool {
         if self.quarantined {

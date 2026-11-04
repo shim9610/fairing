@@ -1,7 +1,7 @@
 # Public API contracts and verification
 
-The process/IPC implementation is removed. Whole stock-egui heap-exhaustion recovery
-is not established; see [the exact owned-path scope](memory-limits.md).
+The [memory guide](memory-limits.md) defines the owned storage and CPU raster paths
+covered by the resource-failure contracts below.
 
 The assurance suite checks the contracts below against the production sources
 and public APIs. The table distinguishes exhaustive decision proofs from
@@ -136,7 +136,7 @@ the control instead of counting as a successful rejection.
 `verification/controls.py` copies the sources into a disposable directory,
 checks a passing baseline, then breaks production gate delegation,
 notification cap enforcement, bounded factory admission, Inbox delivery, input progress,
-modal priority, response correlation, the per-update command budget, deadline ordering, Back snapshot binding, Back handler execution, retained-owner expiration, numeric caller-value validation active hold admission, wheel capture admission, restoration delegation, fresh-pointer projection, capture-result application and completion latching separately. The matching
+modal priority, response correlation, the per-update command budget, deadline ordering, Back snapshot binding, Back handler execution, retained-owner expiration, numeric caller-value validation, active hold admission, wheel capture admission, restoration delegation, fresh-pointer projection, capture-result application and completion latching separately. The matching
 public API/Loom test must fail with its expected assertion. Working sources
 and published dependencies remain intact.
 

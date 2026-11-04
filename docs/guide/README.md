@@ -50,7 +50,7 @@ at a time as you need it.
 | Get the built-in settings screens, fonts, the panel's size | [01 §4.1–§4.3](01-getting-started.md#41-the-built-in-settings-screens) |
 | React to what the shell did (`ShellEvent`) | [01 §4.5](01-getting-started.md#45-every-shellevent) |
 | Add a hidden entry point for a service menu | [05 Hidden entry points](05-access-control.md#hidden-entry-points--the-service-menu) |
-| Use our company colour | [09 §0 The decision table](09-branding.md#0-the-30-second-decision-table) |
+| Use our company colour | [09 §0 Branding options](09-branding.md#0-branding-options) |
 | Use a background image (requirements) | [09 §2 Background images](09-branding.md#2-background-images--requirements) |
 | Change the logo mark | [09 §5 Logo marks](09-branding.md#5-logo-marks--requirements) |
 | Remove every trace of the brand | [09 §8.5](09-branding.md#85-checking-that-nothing-of-ours-is-left) |

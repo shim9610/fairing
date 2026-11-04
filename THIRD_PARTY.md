@@ -202,7 +202,7 @@ What ships is the generated code; the SVGs stay in the repository. The `fairing-
 package carries the same licence file as `LICENSE-lucide`, next to the generated geometry.
 
 `assets/brand/` (the manta mark and the abyss backgrounds) and `assets/kiosk/` (the kiosk
-example's pictures) are not third-party, so they are not in the table: both were made for this
-project with a generative image model and are distributed under the MIT licence, like the
-code. Their provenance notes are in `assets/brand/README.md` and `assets/kiosk/SPEC.md`.
+example's pictures) are recorded as project-generated images and distributed under the
+MIT licence, like the code. They are not entries in the imported-asset table above.
+Generation and provenance notes are in `assets/brand/README.md` and `assets/kiosk/SPEC.md`.
 <!-- assets:end -->

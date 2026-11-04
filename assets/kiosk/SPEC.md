@@ -1,10 +1,12 @@
 # Kiosk showcase asset spec
 
-The spec and the generation prompts for the **33 images** that lift `examples/kiosk.rs` into a
-**product-grade showcase**. It is written so that everything can be made from this one document.
+The authoring requirements and generation prompts for the 33 image assets used by
+`examples/kiosk.rs`. Dimensions and composition below are authoring targets; exported
+file metadata records the delivered sizes. The final section preserves the original
+layout proposals rather than describing pending library work.
 
 **Provenance and licence.** The images in this folder were made for this project from these
-prompts with a generative image model and contain no third-party material. They are distributed
+prompts with a generative image model. They are distributed
 under the MIT licence, the same as the repository's code (`LICENSE`).
 
 | Group | Count | Nature |
@@ -15,10 +17,8 @@ under the MIT licence, the same as the repository's code (`LICENSE`).
 | Payment and receipt icons | 7 | Single-colour white, transparent |
 | State graphics | 4 | 1 photo · 2 icons · 1 background |
 
-> **Why they are needed.** Without them the example sits line-drawn shapes where the product
-> photos go. It is a coffee kiosk with no coffee in it. A library showcase exists to show how far
-> the crate goes, so a screen that could not be built for lack of assets makes the crate look
-> worse than it is.
+The example uses product photos and state graphics where available, with drawn
+shapes as fallbacks.
 
 ---
 
@@ -50,8 +50,8 @@ centered, full subject visible with margin
 
 ## 1. Backgrounds and brand (4)
 
-The attract screen becomes **a full-bleed photo with a gradient scrim at the bottom**. Today it
-is flat black, so half the screen does nothing.
+The attract background is designed as a full-bleed photo with a gradient scrim at
+the bottom. The example retains a drawn fallback when an asset is unavailable.
 
 | # | File | Size | Background | Format | Where it is used |
 |---|---|---|---|---|---|
@@ -163,8 +163,8 @@ no text, no logo, no watermark, no hands, centered with margin, square 1:1
 
 ## 3. Dine-in / takeout (2)
 
-The two large tiles on the first fork in the flow. They have to be **photographs**, not icons,
-for a customer to choose in half a second.
+The two large tiles at the first fork in the flow use photographs rather than icons
+to distinguish dine-in from takeout.
 
 | # | File | Size | Background | Format |
 |---|---|---|---|---|
@@ -269,14 +269,14 @@ fallback for the rest.
 
 ---
 
-## 7. What changes on screen once the assets land
+## 7. Original layout proposals
 
-It is not only a swap of assets — **the layout gets rebuilt too.** The screens do not look empty
-purely for want of photographs.
+The original brief paired the assets with these layout changes. Consult
+`examples/kiosk.rs` for the current implementation.
 
-| Screen | Today | With the assets |
+| Screen | Original fallback | Design target with assets |
 |---|---|---|
-| Attract | Black background, a shape of a cup, half the screen empty | **A full-bleed photo with a gradient scrim at the bottom**, the wordmark, three real recommendation photos, and the CTA over the scrim |
+| Attract | Black background and a drawn cup | A full-bleed photo with a gradient scrim at the bottom, the wordmark, three recommendation photos, and the call-to-action button over the scrim |
 | Menu tiles | A shape of a cup, a name, a price | **The photo across the top 62 %** of the tile, name and price in the bottom 38 %. Sold out desaturates the photo and lays `state-sold-out` over it |
 | Dine-in / takeout | A shape of a cup versus a shape of a bag | Two real photographs |
 | Payment methods | A card, a QR and a banknote drawn in code | A refined icon set |
@@ -284,6 +284,5 @@ purely for want of photographs.
 | Receipt | A big number on black | A big number over `bg-ticket`, with the completion check |
 | Customer display | Three lines of text | `logo-mark` plus the large amount |
 
-**The typography gets work too.** What is there now is "centred labels", not a hierarchy — there
-is no weight contrast between the item name, the price and the supporting line. Adding a bold
-face means registering two faces in the `FontSet` and having `layout` use them.
+The typography proposal uses separate weights for item names, prices and supporting
+text. Register regular and bold faces in `FontSet` and select them through the layout.
