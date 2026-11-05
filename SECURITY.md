@@ -15,6 +15,13 @@ Please report it privately, not in a public issue: open the repository's **Secur
 choose **Report a vulnerability**. Say what you found, which version, and how to reproduce it.
 You will get an answer within a week, and a fix or a plan before anything is made public.
 
+## Repository security checks
+
+CodeQL scans Rust, Python and GitHub Actions workflows through GitHub's Default
+setup. Code scanning is a separate merge requirement from the audit and Rust
+assurance jobs. See [repository checks and merge rules](CONTRIBUTING.md#repository-checks-and-merge-rules)
+for configuration and analysis triggers.
+
 ## What the crate does and does not protect
 
 - **Access gates are a UI boundary, not an OS one.** Levels, gates and the unlock prompt decide

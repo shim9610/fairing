@@ -7,7 +7,8 @@ the limits it has today, is in the [roadmap](../roadmap.md).
 
 Rust blocks on these pages, except those marked `ignore`, are compiled — and run
 unless marked `no_run` — by stage 3
-of `cargo xtask audit`, which CI runs on every push and pull request: `crates/fairing/src/guide_probe.rs`
+of `cargo xtask audit`, which CI runs on pull requests and pushes to `main`, and on a
+weekly schedule: `crates/fairing/src/guide_probe.rs`
 turns each page into doctests, with every feature on. So when the source moves, a block that no
 longer matches it fails the audit instead of quietly becoming false. The blocks marked `ignore`
 are of two kinds: **API outlines** (signatures without bodies, kept in step with the source by

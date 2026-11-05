@@ -207,7 +207,8 @@ screen with `keep_awake` holds the display's idle timer off. How to confirm 0 fp
 drags where the shell actually drew, with no window, no GPU and no sleeping. The library's tests,
 the examples and the guide's non-ignored Rust blocks run under `cargo xtask audit`, which also checks
 formatting, lints, docs, dependencies, licenses, locks and blocking calls. CI runs it with
-`--strict` on every push ([guide 08 §9](guide/08-troubleshooting.md#9-passing-the-audit)).
+`--strict` on pull requests and pushes to `main`, and on a weekly schedule
+([guide 08 §9](guide/08-troubleshooting.md#9-passing-the-audit)).
 
 ## 10. Principles
 

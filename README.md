@@ -355,7 +355,9 @@ runs the full gate — formatting, clippy with `-D warnings`, tests (the guide's
 included), docs, duplicate
 versions, a dependency allow-list, `cargo-audit`, `cargo-deny`, licence notices,
 generated-file checks, an aarch64 cross-check (`cargo check --target`) and the no-locks
-scan. CI runs all fourteen stages on every push and pull request.
+scan. CI runs all fourteen stages on pull requests and pushes to `main`, and on a
+weekly schedule. [Contributing](CONTRIBUTING.md#repository-checks-and-merge-rules)
+describes the separate CodeQL scan and repository merge rules.
 
 ## Platforms
 

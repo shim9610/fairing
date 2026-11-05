@@ -49,6 +49,35 @@ CI runs `cargo run -p xtask --locked -- audit --strict`, not the alias. The `car
 is defined by `.cargo/config.toml` inside the repository, so routing CI through it would let one
 line disable the audit itself.
 
+## Repository checks and merge rules
+
+The public repository's `ci` workflow runs on pull requests, pushes to `main` and
+a weekly schedule. It includes the strict audit, release-archive checks, the MSRV
+check and example tours. Rust assurance and UI interaction histories have separate
+workflows; [Rust assurance checks](docs/rust-assurance.md) describes their scope.
+
+CodeQL uses GitHub's **Default setup**, configured under **Settings → Advanced
+Security → CodeQL analysis**. It analyzes Rust, Python and GitHub Actions workflows.
+GitHub manages these jobs; there is no CodeQL workflow file in this checkout.
+See [GitHub's default-setup guide](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/configure-code-scanning/configure-code-scanning).
+
+The `main` ruleset requires these GitHub Actions status checks: `audit`, `msrv`,
+`tours`, `histories`, `proofs` and `miri`, with the branch up to date. Its separate
+**Require code scanning results** rule requires CodeQL results and blocks security
+alerts rated High or higher and other alerts rated Error. Do not manually add a
+status named `CodeQL`: the analysis jobs are named `Analyze (rust)`,
+`Analyze (python)` and `Analyze (actions)`.
+
+When enabling CodeQL on an existing repository, let the initial default-branch
+analysis complete, then confirm that the open PR also has analysis results.
+A PR created before enablement may need a new commit pushed to trigger analysis.
+Do not rely on closing and reopening a PR to start these managed scans. A successful
+scan of `main` alone does not supply the PR's results.
+
+These settings are stored on GitHub and are not installed by cloning the repository.
+Required status checks and code scanning do not enforce owner review. The owner-review
+policy below needs **Require review from Code Owners** to be enabled separately.
+
 ## Fixed-heap allocator boundary
 
 Both UI crates and other normal workspace members retain `forbid(unsafe_code)`.
@@ -91,7 +120,7 @@ step of any script could not do what it asked. A script presses what it names
 (`Act::Tap(Spot::Text("Alerts"))` finds the label on the glass; there is no coordinate form) and says what it expects before each
 picture (`Act::Expect(Expect::Text("Lamp hours"))`), so a change that moves a row, renames a
 label or breaks a flow fails here rather than leaving a wrong picture under the right file name.
-The public repository's CI runs it on every push. When you change what a screen shows, run it; when you add a step to a
+The public repository's CI runs it on pull requests and pushes to `main`. When you change what a screen shows, run it; when you add a step to a
 script, name the thing you press and check what you expect to see — a coordinate written down
 is right for one row height only.
 
