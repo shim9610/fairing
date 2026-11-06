@@ -694,6 +694,10 @@ impl Cx<'_> {
         self.access.allows(&gate.into())
     }
 
+    pub(crate) fn token_mode(&self) -> bool {
+        self.access.uses_session_tokens()
+    }
+
     /// The level table (`[access] levels`).
     ///
     /// The [`Level`](crate::access::Level) from [`Cx::session`] is **a number**. Writing
@@ -804,6 +808,10 @@ pub(crate) mod fixture {
     }
 
     impl Fixture {
+        pub(crate) fn set_access(&mut self, access: Access) {
+            self.access = access;
+        }
+
         /// Build one with the default config (one level table).
         pub(crate) fn new() -> crate::Result<Self> {
             let ctx = egui::Context::default();

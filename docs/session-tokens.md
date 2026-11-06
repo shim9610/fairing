@@ -136,6 +136,9 @@ network authentication tokens or cryptographic nonces.
 
 ## Security evidence and assumptions
 
+Typed application declarations and nested scopes have an additional callback-entry
+contract described below. This does not change the issuer/storage assumptions.
+
 Kani and Verus verify the exact six production functions in
 `access/session_rules.rs`, not reimplemented decision functions. They cover all
 u64 identity/revision/deadline values, the total observation partition, issued-grant
@@ -166,3 +169,102 @@ Rust type privacy restricts safe client APIs; it does not isolate malicious code
 the same process. Standard atomics, monotonic clock inputs, waking/scheduling and
 arbitrary host callbacks are explicit assumptions. This evidence does not establish
 complete application security, OS isolation or cryptographic authentication.
+
+## Typed permission requirements
+
+Use `Shell::builder(config).build_protected(ctx)` when application declarations
+must carry a permission type. It requires `config.access.session_tokens = true`
+and returns `ProtectedShell`, whose `add` accepts only `Protected<P, D>`.
+The ordinary `Shell` remains the legacy registration API; the protected facade
+exposes no mutable shell or conversion back to it. Configure host services and
+trusted chrome/painter infrastructure on the builder before construction.
+
+```rust
+use fairing::{action, screen, Cx, LaunchAction, ProtectedShell, Shell, ShellConfig};
+use fairing::access::{Permission, Protected, SessionGrant};
+
+struct ResultsView;
+impl Permission for ResultsView {
+    const GATE: &'static str = "results.view";
+}
+struct ResultsExport;
+impl Permission for ResultsExport {
+    const GATE: &'static str = "results.export";
+}
+
+fn build(ctx: &fairing::egui::Context) -> fairing::Result<ProtectedShell> {
+    let mut config = ShellConfig::default();
+    config.access.session_tokens = true;
+    let mut shell = Shell::builder(config).build_protected(ctx)?;
+
+    shell.add(Protected::<ResultsExport, _>::new(action("export", |cx| {
+        // Only admitted callbacks receive the original app and backend context.
+        let _ = cx.app::<usize>();
+    })));
+    let mut export_button = Protected::<ResultsExport, _>::new(
+        |ui: &mut fairing::egui::Ui, cx: &mut Cx<'_>| {
+            if ui.button("Export").clicked() {
+                cx.launch(LaunchAction::run("export"));
+            }
+        },
+    );
+    shell.add(Protected::<ResultsView, _>::new(screen("results", move |ui, cx| {
+        ui.heading("Results");
+        export_button.render(ui, cx);
+    })));
+
+    // After credential verification, the issuer passes these to SessionController::issue.
+    let _grants = vec![
+        SessionGrant::base_for::<ResultsView>(),
+        SessionGrant::base_for::<ResultsExport>(),
+    ];
+    Ok(shell)
+}
+```
+
+`Permission::GATE` identifies the issuer grant. Types sharing the same string name
+the same permission; choosing the correct requirement and role expansion remains
+policy configuration. There is no implicit administrator or public bypass.
+`SessionGrant::temporary_for::<P>(until)` and `inactive_for::<P>()` use the same
+requirement type. A snapshot can query `allows_permission::<P>()`.
+
+Every `Protected<P, T>` privately owns a `PermissionBinding<P>` and its body.
+The sealed `PermissionBound` trait exposes the requirement, not a cached permit.
+The binding consults the *calling context's current session* on every `run` or
+`render`; it does not retain a previous user's token or a successful Boolean.
+Default legacy/one-level contexts cannot admit typed callbacks.
+
+Protected registration supports screens, actions, status items, nav items and
+overlay tiles. It replaces any earlier `.gate(...)` on the declaration with the
+type's requirement. Screen/action icons use `Visibility::Hidden`. Each callback
+also has its own guard after type erasure: screen UI/back/lifecycle/result hooks,
+actions, status/nav UI and tile-panel bodies. A protected factory defers user
+construction until its first authorized screen hook and rechecks after construction;
+a constructor that revokes the session cannot admit the following hook.
+Denied lifecycle hooks, including `Destroyed`, are skipped; use host events and
+trusted destructors for cleanup that must occur after revocation.
+
+The exact `protected_dispatch::admitted` body is checked by Kani and Verus.
+Kani also compiles the actual generic `invoke` branch with arbitrary u64 effect
+and payload clients: denial does not call the body, change the modeled client
+effect or return its payload; admission calls once and forwards its result.
+Compiler clients reject missing permission traits, untyped registration, mutable
+shell escape and attempts to forge a stored permit. Product witnesses and source
+tripwires bind these decisions to the UI adapters; those adapters do not have a
+complete Rust/egui refinement proof.
+
+Admitted callbacks retain raw egui UI, app state and backend access. They can
+perform arbitrary Rust effects. Protect each nested scope or registered operation
+that needs a different requirement; the facade cannot infer data sensitivity from
+an arbitrary `ui.label` or backend call. It does not erase previously drawn pixels,
+stored values, queued toasts or completed effects. Host infrastructure callbacks,
+legacy `Shell`, arbitrary destructors and external business authorization remain
+trusted boundaries. This is callback admission, not whole-program information-flow
+confinement or cancellation of already-admitted work.
+
+Bindings contain only a type marker. Admission still performs live token/policy
+checks; it is not a zero-cost authority check. Gate construction borrows a static
+name without allocation. Registration adds callback wrappers, and factory instances
+have lazy construction storage. There is no new dependency or lock in callback
+admission; catalog lookup and atomic observation retain the session read bounds
+above. No universal latency or throughput guarantee is claimed.

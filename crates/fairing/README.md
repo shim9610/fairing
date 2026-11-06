@@ -177,3 +177,9 @@ side effects. See the [recovery guide](https://github.com/shim9610/fairing/blob/
 Issuer-controlled device sessions use explicit operation grants and split controller/token
 capabilities. See [session tokens](https://github.com/shim9610/fairing/blob/main/docs/session-tokens.md)
 for multiple roles, revocation and verification scope.
+
+`ShellBuilder::build_protected` requires token mode and returns a `ProtectedShell`
+whose declarations carry `Protected<P, D>` requirements. It checks live authority
+before user callbacks while preserving their original UI/app/backend context.
+Nested scopes can use `Protected::run/render`; see the same session guide for
+typed grants, factory/lifecycle behavior and the callback-effect boundary.

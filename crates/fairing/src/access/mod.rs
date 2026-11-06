@@ -12,6 +12,11 @@
 //! unlock runs the launch again, through the same gate.
 
 mod auth;
+pub mod protected;
+pub(crate) mod protected_dispatch;
+pub use protected::{
+    Permission, PermissionBinding, PermissionBound, Protected, ProtectedDeclaration,
+};
 mod session;
 pub(crate) mod session_rules;
 mod session_shared;

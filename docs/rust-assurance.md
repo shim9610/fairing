@@ -17,9 +17,9 @@ therefore makes these checks fail rather than silently skipping them. Configure
 `inputs` itself as a required check as well when maintaining repository rules.
 
 Native test ownership is split between jobs: UI histories run their 17 widget
-tests and one deadline test; the general assurance job runs the other 56 tests.
+tests and one deadline test; the general assurance job runs the other 58 tests.
 The UI job owns three mutation controls, and the general control job runs the
-other 26, including the structured-configuration validation control. Coverage,
+other 29, including typed callback dispatch and structured-configuration controls. Coverage,
 Miri, Loom and cross-OS runs intentionally re-execute relevant tests under their
 own verification conditions.
 
@@ -30,9 +30,9 @@ conditional induction and sequentially consistent (SC) trace lemmas, concrete at
 
 | Tool | Pin | Scope |
 | --- | --- | --- |
-| Kani | 0.68.0; nightly 2026-08-21 | Thirty-nine harnesses: ACK/access and response correlation, pool/display, production input admission, Back dispatch, session authority and retained-owner partition/operation/lifetime contracts |
-| Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Contracts on thirty-five production functions plus quiet-pass progress, four concrete-carrier obligations and two session-history/SC-trace lemmas |
-| Miri | nightly 2026-10-30 | Twenty-nine assurance tests, six production interaction-adapter tests, four issuer-admin tests and the production payload-cleanup test; rendering witnesses run natively |
+| Kani | 0.68.0; nightly 2026-08-21 | Forty-three harnesses: ACK/access and response correlation, pool/display, production input admission, Back dispatch, session authority, typed callback entry and retained-owner partition/operation/lifetime contracts |
+| Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Contracts on thirty-six production functions plus quiet-pass progress, four concrete-carrier obligations and two session-history/SC-trace lemmas |
+| Miri | nightly 2026-10-30 | Twenty-nine assurance tests, six production interaction-adapter tests, four issuer-admin tests, one typed-scope test and the production payload-cleanup test; rendering witnesses run natively |
 | Loom | 0.7.2 | Six scenarios: four Inbox scenarios and two actual session-publication/revocation scenarios |
 | proptest | 1.12.0 | CI: 512 cases per property, including shell ordering, transition traces and UI reachability; seed 20261101 |
 | cargo-fuzz | 0.13.2; libfuzzer-sys 0.4.13 | ASan: 20,000 ACK, 10,000 parser, 10,000 API and 2,000 shell inputs |

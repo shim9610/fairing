@@ -225,6 +225,20 @@ impl std::fmt::Debug for ShellBuilder {
 }
 
 impl ShellBuilder {
+    /// Build a token-mode shell with mandatory typed application declarations.
+    /// Original UI/app/backend references remain available inside admitted callbacks.
+    ///
+    /// # Errors
+    /// Requires `access.session_tokens = true`, in addition to ordinary build validation.
+    pub fn build_protected(self, ctx: &egui::Context) -> crate::Result<super::ProtectedShell> {
+        if !self.config.access.session_tokens {
+            return Err(crate::Error::Config(
+                "build_protected requires access.session_tokens = true".to_owned(),
+            ));
+        }
+        self.build(ctx).map(super::ProtectedShell::new)
+    }
+
     /// Opt in to fault guidance and an optional request button. No restart policy is installed.
     #[must_use]
     pub fn recovery_ui(mut self, view: crate::recovery::RecoveryUi) -> Self {

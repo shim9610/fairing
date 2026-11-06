@@ -42,6 +42,25 @@ configurations. They do not replace this refinement proof. Likewise, modeling a
 callback as immediately returning assumes termination; the library accepts ordinary
 Rust callbacks and has not proved their termination or effects.
 
+## Discharged component: typed callback admission
+
+Typed application declarations require `Protected<P, D>`, whose private binding
+names `P::GATE`. `build_protected` requires token mode and exposes no mutable
+legacy registration. Let `A` be the current token/policy permission observation.
+The production admission predicate satisfies `entry = token_mode && A`.
+The actual generic dispatch branch returns `None` without invoking its body when
+entry is false. Kani checks that branch with arbitrary u64 effect/payload clients,
+and Verus checks the exact admission predicate. Compiler clients establish the
+registration/type boundary; source tripwires and product witnesses cover erased
+screen/action/chrome/tile adapters and the post-factory recheck.
+
+The resulting component contract is absence of a new callback invocation through
+denied protected dispatch. It does not classify arbitrary app data, erase prior
+outputs, cancel work already admitted or prove every raw UI/backend call mediated.
+Admitted callbacks retain their original UI/app/backend context. The protected
+adapters and the complete renderer do not have a full Rust/egui refinement proof.
+See [typed requirements](session-tokens.md#typed-permission-requirements).
+
 ## Discharged component: Back dispatch partition
 
 `Shell::back_in` reads an explicit `BackState` and calls the exact production
@@ -181,7 +200,7 @@ compiler IDs or source positions are kept. Added/removed fields or variants fail
 CI until their state correspondence is reviewed; stripped or unresolved metadata
 fails extraction rather than silently omitting an entry.
 
-The current profiles contain 789 and 661 declarations respectively; 20 declarations
+The current profiles contain 793 and 665 declarations respectively; 20 declarations
 are direct inputs to the lifecycle/concrete-carrier/session decision proofs. These counts describe
 type declarations, not reachable states or verified application behavior. Other
 declarations remain explicitly unmapped. The inventory includes configuration,

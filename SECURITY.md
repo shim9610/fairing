@@ -42,6 +42,11 @@ for configuration and analysis triggers.
   Revocation and expiration deny new protected work; UI changes require a scheduled
   update. The [session contract](docs/session-tokens.md) states ownership, role,
   clock and verification assumptions. Rust privacy is not process isolation.
+- **Typed requirements guard callback entry.** `ProtectedShell` accepts only typed
+  protected declarations and checks the current token before user callbacks.
+  Admitted callbacks still receive raw UI, app state and backend access. Requirement
+  selection, arbitrary callback effects, host hooks, destructors and previously
+  disclosed data remain trusted; this is not whole-program information-flow confinement.
 - **Recovery does not undo completed side effects.** Caught runtime unwinds quarantine
   the shell; the host controls replacement and reconciliation. Abort/OOM and panic-hook
   behavior have separate limits documented in [memory limits](docs/memory-limits.md#runtime-panics-and-sensitive-ui-state).

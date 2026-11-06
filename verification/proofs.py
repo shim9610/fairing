@@ -93,6 +93,35 @@ if "test result: ok. 4 passed;" not in (OUT / "session-capability-types.log").re
     raise SystemExit("Expected one positive and three compile-fail session capability clients")
 receipt("session", session_inputs(), session_before)
 
+# Typed declarations and the exact callback branch are independently checked.
+from protected_bindings import audit as audit_protected, inputs as protected_inputs
+
+audit_protected()
+protected_before = hashes(protected_inputs())
+results.append(execute("verus-protected", [sys.executable, ROOT / "verification/verus/protected.py"], environment))
+results.append(execute("kani-protected", [kani, ROOT / "verification/kani_protected.rs"], kani_env))
+results.append(execute("protected-capability-types", ["cargo", "test", "--locked", "-p", "fairing", "--no-default-features", "--doc", "access::protected"], environment))
+if "test result: ok. 5 passed;" not in (OUT / "protected-capability-types.log").read_text():
+    raise SystemExit("Expected one positive and four compile-fail protected clients")
+receipt("protected", protected_inputs(), protected_before)
+protected_source = (ROOT / "crates/fairing/src/access/protected_dispatch.rs").read_text()
+protected_harness = (ROOT / "verification/kani_protected.rs").read_text()
+protected_declaration = '#[path = "../crates/fairing/src/access/protected_dispatch.rs"]\nmod protected_dispatch;'
+if protected_harness.count(protected_declaration) != 1: raise SystemExit("Review protected callback binding")
+for name, old, new in [
+    ("protected-token-mode", "token_mode && allowed", "allowed"),
+    ("protected-permission", "token_mode && allowed", "token_mode"),
+    ("protected-invocation", "if allowed {", "if true || allowed {"),
+]:
+    if protected_source.count(old) != 1: raise SystemExit("Review protected mutation: " + name)
+    mutant = protected_source.replace(old, new, 1)
+    source_path = OUT / (name + "-source.rs"); source_path.write_text(mutant)
+    harness_path = OUT / (name + "-kani.rs")
+    harness_path.write_text(protected_harness.replace(protected_declaration, "mod protected_dispatch {\n" + mutant + "\n}"))
+    results.append(execute("kani-" + name, [kani, harness_path], kani_env, expected_failure=True, marker="VERIFICATION:- FAILED"))
+    if name != "protected-invocation":
+        results.append(execute("verus-" + name, [sys.executable, ROOT / "verification/verus/protected.py", "--source", source_path, "--output", OUT / (name + "-verus.rs")], environment, expected_failure=True, marker="postcondition not satisfied"))
+
 session_source = (ROOT / "crates/fairing/src/access/session_rules.rs").read_text()
 session_harness = (ROOT / "verification/kani_session.rs").read_text()
 session_declaration = '#[path = "../crates/fairing/src/access/session_rules.rs"]\nmod session_rules;'

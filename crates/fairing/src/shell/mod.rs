@@ -41,6 +41,8 @@
 //! ```
 mod authentication;
 mod navigation;
+mod protected;
+pub use protected::ProtectedShell;
 mod render;
 mod settings_dispatch;
 mod update;

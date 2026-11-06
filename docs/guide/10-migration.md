@@ -38,6 +38,15 @@ shell. See [05 Authentication](05-access-control.md#53-what-each-method-draws).
 
 ### Issuer-controlled sessions
 
+`ShellBuilder::build_protected` adds an opt-in typed registration facade. Enable
+`access.session_tokens`, wrap each configured screen/action/status/nav/tile in
+`Protected::<P, _>::new(declaration)`, and implement `Permission::GATE` for `P`.
+Use `SessionGrant::base_for::<P>()` on the issuer side. The facade does not expose
+mutable legacy registration. Protected screen/action icons are hidden on refusal;
+screen lifecycle callbacks are also denied after revocation. Factory construction
+is deferred to the first authorized hook. See [typed requirements](../session-tokens.md#typed-permission-requirements)
+for nested scopes, cleanup and the callback-effect boundary.
+
 Set `[access] session_tokens = true` and return `AuthOutcome::Session(token)` to
 adopt split capabilities. The authenticator retains the non-cloneable controller.
 Existing authenticators keep their legacy behavior when this flag is false.

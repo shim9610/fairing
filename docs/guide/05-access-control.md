@@ -4,6 +4,11 @@ For issuer-owned, continuously checked sessions with independent operation permi
 see [session tokens](../session-tokens.md). Enable `access.session_tokens` explicitly;
 the level/PIN behavior below describes the default legacy mode.
 
+For mandatory typed application declarations, use `build_protected` and
+`Protected<P, D>`; see [typed requirements](../session-tokens.md#typed-permission-requirements).
+The facade retains ordinary UI/app/backend references inside admitted callbacks
+and checks the current token before invoking them.
+
 ## 0. The principle, and what exists today
 
 fairing keeps no role names like "guest" and "admin", and no hash function, inside

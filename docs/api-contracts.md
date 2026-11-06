@@ -16,6 +16,7 @@ universal interaction progress; see [formal operability obligations](formal-oper
 
 | Documented contract | Production path | Executable evidence |
 | --- | --- | --- |
+| Typed application elements require a permission binding; denied protected dispatch does not invoke the body or return its payload | `ProtectedShell::add`, `Protected<P, T>`, `PermissionBinding`, `protected_dispatch::admitted/invoke` ([typed requirements](session-tokens.md#typed-permission-requirements)) | Exact admission predicate in Kani/Verus; four Kani clients compile the actual callback branch. One positive and four compile-fail clients; seven product witnesses, independent fixed/generated typed dispatch histories, one Miri scope and three production mutation controls. Raw effects inside admitted callbacks remain trusted. |
 | Optional application transport traits support ownership transfer/refusal, caller-scoped borrows and trait objects without imposed Clone/Send/Sync/static bounds | `bridge::CommandSink`, `UpdateSource` ([service guide](guide/06-services.md#application-owned-uibusiness-boundary)) | `tests/bridge.rs`: three public-API tests use caller adapters to check non-Clone/non-Send payload ownership and buffer identity, borrowed mutable messages, and empty/closed receive distinctions. These establish interface usability, not arbitrary adapter delivery, lock freedom or timing guarantees. |
 | Issuer-owned sessions expose read-only tokens, independent explicit permissions, terminal revocation and exact grant deadlines | `access::SessionController` / `SessionToken`, token-mode `Access::allows`, shell auth/update/dispatch | Six exact production functions checked with Kani/Verus; two Verus history/sequentially consistent (SC) trace lemmas; two actual-atomic Loom scenarios; compile-fail capabilities, generated histories, Miri/fuzzer and product mutation witnesses. [Scope and assumptions](session-tokens.md#security-evidence-and-assumptions). |
 | Runtime unwind faults latch dispatch off, deny gates and discard partial viewport/platform output; no automatic callback replay | Shell runtime boundaries, runner adapters, Access quarantine, BoundedInbox::close_admission | runtime_faults integration tests inject UI/borrowed-state/direct/queued/backend faults; runner tests inject event/raw-UI faults; approved-payload cleanup and subprocess controls for aborting/double-panicking unknown destructors. Requires unwind; no business rollback or universal OOM claim. |
@@ -88,7 +89,7 @@ the entire shell, layout, egui map and application callbacks; see
   shell must resume ordinary UI on a quiet pass and satisfy each edge after intentional
   blockers stand aside. Kani/Verus prove the shared input decision, not the rendered
   correspondence; native witnesses check that separately. See [UI reachability](ui-reachability.md).
-- Miri interprets twenty-nine assurance tests, six production storage-adapter tests, four issuer-admin tests and the production supported-payload cleanup test
+- Miri interprets twenty-nine assurance tests, six production storage-adapter tests, four issuer-admin tests, one typed-scope test and the production supported-payload cleanup test
   with normal isolation, validity and race
   checks. It covers the actual Access, PinTable, notification, calendar, unit,
   service, fixed-pool and bounded/unbounded Inbox APIs, plus a fixed logic-only
@@ -129,6 +130,12 @@ The session extension adds ten semantic mutations rejected by both verifiers,
 three actual-storage mutations rejected by Kani, and
 six product-connected controls for revocation, issued authority, policy narrowing,
 temporary expiry, local detachment and post-policy revalidation. See [session tokens](session-tokens.md).
+
+The typed extension adds two admission mutations rejected by both verifiers and
+one actual callback-branch mutation rejected by Kani. Three product controls also
+remove dispatch guarding, lose the guard during action erasure, or omit the
+post-factory recheck. Admission proofs do not constrain arbitrary effects inside
+an admitted callback or establish complete information-flow confinement.
 
 ## Controls and coverage
 

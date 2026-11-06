@@ -11,6 +11,7 @@ import tempfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 CONTROL_NAMES = [
+    "protected-dispatch", "protected-erasure", "protected-factory",
     "session-policy-recheck", "session-revoke", "session-authority", "session-policy", "session-temporary", "session-detach", "configuration-validation", "back-handler", "back-projection", "auth-correlation", "command-budget", "expiry-order", "ui-progress", "modal-input",
     "bounded-admission", "launch-gates", "notification-cap", "inbox-delivery", "retained-lifetime", "numeric-owner", "hold-admission", "wheel-admission", "restore-delegation", "pointer-projection", "capture-application", "hold-completion-latch", "focus-isolation", "popup-retirement", "deadline-reply",
 ]
@@ -52,6 +53,10 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
             command = ["cargo", "test", "--locked", "--manifest-path", str(checkout / "Cargo.toml"),
                        "-p", "fairing", "--no-default-features", "--features", "mock,overlay,settings,osk",
                        "--test", integration, test_name, "--", "--exact"]
+        elif test.startswith("unit/"):
+            command = ["cargo", "test", "--locked", "--manifest-path", str(checkout / "Cargo.toml"),
+                       "-p", "fairing", "--no-default-features", "--features", "mock,overlay,settings,osk",
+                       "--lib", test.removeprefix("unit/"), "--", "--exact"]
         else:
             command += ["--lib", test, "--", "--exact"]
         path = OUT / (name + ".log")
@@ -69,6 +74,18 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
         print(name + (": rejected broken production code" if failure else ": passed"), flush=True)
 
     scenarios = [
+        ("protected-dispatch", "unit/access::protected::tests::protected_scope_uses_current_context_and_never_caches_admission",
+         "crates/fairing/src/access/protected_dispatch.rs",
+         [("if allowed {", "if true || allowed {")],
+         False, "left: Some(42)"),
+        ("protected-erasure", "unit/access::protected::tests::erased_action_and_chrome_callbacks_keep_their_typed_binding",
+         "crates/fairing/src/access/protected.rs",
+         [("binding.run(cx, &mut body);", "body(cx);")],
+         False, "erased callback lost its typed guard"),
+        ("protected-factory", "unit/access::protected::tests::factory_is_guarded_and_revocation_during_construction_blocks_all_hooks",
+         "crates/fairing/src/access/protected.rs",
+         [("binding.run(cx, |cx| callback(&mut **body, cx))", "Some(callback(&mut **body, cx))")],
+         False, "factory revocation admitted a screen callback"),
         ("session-policy-recheck", "product/session_tokens/policy_callback_revocation_is_rechecked_before_a_protected_effect",
          "crates/fairing/src/access/mod.rs",
          [("let issued = token_permission(self.token.as_ref(), self.token_now, gate.as_str());", "let issued = first;")],

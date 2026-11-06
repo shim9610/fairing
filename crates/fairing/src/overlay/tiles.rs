@@ -286,6 +286,20 @@ pub fn tile_panel(
 }
 
 impl TileDecl {
+    pub(crate) fn protect_panel<P: crate::access::Permission>(
+        mut self,
+        binding: crate::access::PermissionBinding<P>,
+    ) -> Self {
+        self.tile.gate = binding.gate();
+        if let Some(body) = self.body.take() {
+            let mut body = body.into_inner();
+            self.body = Some(RefCell::new(Box::new(move |ui, cx| {
+                binding.render(ui, cx, &mut body);
+            })));
+        }
+        self
+    }
+
     /// Draw the expanded row's body. Does nothing if there is no body (the declaration is not a
     /// [`TileKind::Panel`]) or it is already borrowed.
     pub(crate) fn draw_panel(&self, ui: &mut egui::Ui, cx: &mut Cx<'_>) {

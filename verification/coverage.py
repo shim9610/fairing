@@ -28,7 +28,7 @@ result.check_returncode()
 export = json.loads((OUT / "raw.json").read_text())["data"][0]
 product = {str(Path(item["filename"]).resolve().relative_to(ROOT)): item["summary"] for item in export["files"]
            if str(Path(item["filename"]).resolve()).startswith(str(ROOT / "crates") + os.sep)}
-required = ["fairing/src/access/session.rs", "fairing/src/access/session_rules.rs", "fairing/src/access/session_shared.rs", "fairing/src/access/auth.rs", "fairing/src/access/mod.rs", "fairing/src/access/rules.rs",
+required = ["fairing/src/access/protected.rs", "fairing/src/access/protected_dispatch.rs", "fairing/src/shell/protected.rs", "fairing/src/access/session.rs", "fairing/src/access/session_rules.rs", "fairing/src/access/session_shared.rs", "fairing/src/access/auth.rs", "fairing/src/access/mod.rs", "fairing/src/access/rules.rs",
             "fairing/src/shell/mod.rs", "fairing/src/shell/authentication.rs", "fairing/src/shell/navigation.rs",
             "fairing/src/shell/render.rs", "fairing/src/shell/settings_dispatch.rs", "fairing/src/shell/update.rs",
             "fairing/src/shell/input_route.rs", "fairing/src/shell/back_route.rs", "fairing/src/services/mod.rs", "fairing/src/notify/center.rs",

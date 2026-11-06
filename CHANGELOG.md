@@ -11,6 +11,13 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Added
 
+- Typed permission bindings and `Protected<P, T>` for live callback admission.
+  `build_protected` returns a token-mode facade requiring typed application
+  declarations; protected screen/action icons hide on refusal. Guards cover
+  screen hooks and factories, actions, status/nav UI and tile panels while
+  preserving original UI/app/backend access inside admitted callbacks.
+  Exact dispatch has Kani/Verus evidence, compile-fail API clients and mutation controls.
+
 - Opt-in issuer-controlled multi-permission sessions with split `SessionController` /
   `SessionToken` capabilities, terminal revocation, expiring additional grants,
   request-bound host login and per-operation credential-management gates.

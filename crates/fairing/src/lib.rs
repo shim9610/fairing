@@ -150,7 +150,7 @@ pub use screen::{
 };
 pub use services::{PowerRequest, Services};
 pub use settings::{SettingKey, SettingValue};
-pub use shell::{Layout, Shell, ShellBuilder, ShellEvent, ShellHandle};
+pub use shell::{Layout, ProtectedShell, Shell, ShellBuilder, ShellEvent, ShellHandle};
 pub use theme::{ColorRole, Theme};
 pub use unit::{Dim, Scale, ScalePolicy, Span};
 pub use workspace::InstanceId;

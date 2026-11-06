@@ -14,6 +14,9 @@ pub mod api;
 #[cfg(all(feature = "integration", not(fairing_loom)))]
 pub mod sessions;
 
+#[cfg(all(feature = "integration", not(fairing_loom), not(miri)))]
+pub mod typed_callbacks;
+
 #[cfg(all(feature = "integration", not(fairing_loom)))]
 pub mod transitions;
 
