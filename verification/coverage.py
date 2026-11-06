@@ -29,7 +29,9 @@ export = json.loads((OUT / "raw.json").read_text())["data"][0]
 product = {str(Path(item["filename"]).resolve().relative_to(ROOT)): item["summary"] for item in export["files"]
            if str(Path(item["filename"]).resolve()).startswith(str(ROOT / "crates") + os.sep)}
 required = ["fairing/src/access/auth.rs", "fairing/src/access/mod.rs", "fairing/src/access/rules.rs",
-            "fairing/src/shell/mod.rs", "fairing/src/shell/input_route.rs", "fairing/src/shell/back_route.rs", "fairing/src/services/mod.rs", "fairing/src/notify/center.rs",
+            "fairing/src/shell/mod.rs", "fairing/src/shell/authentication.rs", "fairing/src/shell/navigation.rs",
+            "fairing/src/shell/render.rs", "fairing/src/shell/settings_dispatch.rs", "fairing/src/shell/update.rs",
+            "fairing/src/shell/input_route.rs", "fairing/src/shell/back_route.rs", "fairing/src/services/mod.rs", "fairing/src/notify/center.rs",
             "fairing/src/time.rs", "fairing/src/inbox.rs", "fairing/src/inbox/bounded.rs",
             "fairing-widgets/src/interaction/mod.rs", "fairing-widgets/src/interaction/rules.rs", "fairing-widgets/src/interaction/concrete.rs",
             "fairing-widgets/src/memory.rs", "fairing-widgets/src/memory/display.rs", "fairing-widgets/src/unit.rs"]

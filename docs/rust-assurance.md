@@ -11,6 +11,18 @@ production path, proof/property, bounds and negative control.
 The [Ferrocene source trial](ferrocene-source-trial.md) also supplies the existing
 source-built compiler and matching LLVM coverage workflow.
 
+The required `proofs` and `miri` jobs always evaluate their input-approval result
+before checking out or building code. A failed, canceled or skipped `inputs` job
+therefore makes these checks fail rather than silently skipping them. Configure
+`inputs` itself as a required check as well when maintaining repository rules.
+
+Native test ownership is split between jobs: UI histories run their 17 widget
+tests and one deadline test; the general assurance job runs the other 54 tests.
+The UI job owns three mutation controls, and the general control job runs the
+other 20, including the structured-configuration validation control. Coverage,
+Miri, Loom and cross-OS runs intentionally re-execute relevant tests under their
+own verification conditions.
+
 ## Tools and the code they check
 
 | Tool | Pin | Scope |

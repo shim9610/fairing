@@ -30,12 +30,19 @@
     "review": "Mounted open/query state; explicit cancellation retires owned areas and search focus.",
     "sites": {
       "lifecycle.forget_focus": 1,
-      "lifecycle.load": 2,
+      "lifecycle.load": 1,
       "lifecycle.retire_area": 2,
       "lifecycle.snapshot": 3,
       "lifecycle.step": 3,
-      "lifecycle.store": 2,
+      "lifecycle.store": 1,
       "lifecycle.take": 1
+    }
+  },
+  "widgets/dropdown/popup.rs": {
+    "review": "Mounted open/query state; explicit cancellation retires owned areas and search focus.",
+    "sites": {
+      "lifecycle.load": 1,
+      "lifecycle.store": 1
     }
   },
   "widgets/list_row.rs": {

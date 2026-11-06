@@ -68,8 +68,10 @@ alerts rated High or higher and other alerts rated Error. Do not manually add a
 status named `CodeQL`: the analysis jobs are named `Analyze (rust)`,
 `Analyze (python)` and `Analyze (actions)`.
 
-Also require the assurance `inputs` check: its failure skips dependent jobs such
-as `proofs` and `miri`, and skipped required jobs do not themselves block merging.
+Also require the assurance `inputs` check when configuring repository rules.
+The required `proofs` and `miri` jobs explicitly fail before checkout if input
+approval fails or is skipped, so they cannot hide rejected inputs behind skipped
+required checks. The input check remains useful as a direct merge requirement.
 PR workflows supersede obsolete revisions; main-branch and scheduled runs finish
 without cancellation by a newer revision. UI histories own their 18 native tests
 and three mutation controls; the general assurance jobs exclude those selections.

@@ -75,6 +75,25 @@ A large part comes out whole behind its feature. Turned off, it is not compiled 
 
 ## 3. Modules
 
+The public module paths below are stable facades. Private implementation files
+separate coordination from subsystem work:
+
+- `shell`: authentication/session handling, setting dispatch, navigation, state
+  updates and rendering; `mod.rs` retains the shell's state and public facade.
+- `workspace`: lifecycle, split/overview coordination, gestures and rendering;
+  the inline test suite lives in `workspace/tests.rs`.
+- `settings/screens`: device pages, network forms and credential administration,
+  with shared retained-form ownership in the parent module.
+- `overlay`: transitions and rendering, with panel tiles, notifications and footer
+  rendering in separate files.
+- `desktop`: page state, grid/dock/icon rendering and the rail.
+- `layout`: containers, rows and fitting functions re-exported from `layout`.
+- `widgets/dropdown`: trigger painting, popup behavior and shared painting helpers.
+
+These file boundaries do not change the state owner or the frame/deadline order.
+Method implementation modules use parent-scoped visibility for cross-file helpers;
+they do not expose new application APIs.
+
 | Module | What it does |
 |---|---|
 | `shell` | `Shell`, `ShellBuilder`, `ShellHandle` and `ShellEvent`. Runs the frame below |

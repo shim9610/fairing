@@ -14,7 +14,7 @@ p.add_argument('--require-whole-app', action='store_true')
 p.add_argument('--require-components', action='store_true', help='Require all implemented component proofs and source inventory')
 a = p.parse_args()
 source = ROOT / 'crates/fairing/src/shell/back_route.rs'
-caller = (ROOT / 'crates/fairing/src/shell/mod.rs').read_text()
+caller = (ROOT / 'crates/fairing/src/shell/navigation.rs').read_text()
 text = source.read_text()
 fields = re.findall(r'pub (\w+): bool,', text)
 expected = {
