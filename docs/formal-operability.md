@@ -19,9 +19,12 @@ lemma. Its concrete atomic implementation has bounded Loom evidence and source t
 this does not discharge the whole-application boundaries below.
 
 The [compiler-derived callback mediation verifier](callback-mediation.md) now
-checks for paths outside the local dispatcher. It confirms a real unauthenticated
-custom-painter execution and private-text output. The complete mediation property
-is therefore violated in the current library; component proofs do not cover it.
+checks for paths outside the local dispatcher. Its confirmed unauthenticated
+custom-painter route is now blocked by protected-builder validation. Untyped hook
+families are rejected, and protected callbacks cannot persist icon/widget painters
+in shared shell stores. Regression and mutation controls cover those repairs.
+The complete mediation property remains **not proved**: conservative candidate
+paths and unresolved dispatch/model boundaries still make the strict gate fail.
 
 ## Statement and required proof order
 

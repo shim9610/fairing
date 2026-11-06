@@ -7,9 +7,11 @@ use crate::screen::LaunchAction;
 /// A shell whose application declarations must carry a typed permission binding.
 ///
 /// Construct with [`super::ShellBuilder::build_protected`]. There is no conversion
-/// to a mutable legacy shell. Host integration, painters, destructors and arbitrary
-/// effects inside admitted callbacks remain trusted. Requirements cover registered
-/// declarations and explicitly protected nested scopes, not every raw egui call.
+/// to a mutable legacy shell. Untyped builder hooks are rejected at construction;
+/// use typed declarations for application UI. Icon/widget painter stores lent to
+/// admitted callbacks are local to that invocation and cannot install later hooks.
+/// Authentication, backends, destructors and arbitrary effects inside an admitted
+/// callback remain trusted. This facade does not mediate arbitrary raw egui calls.
 pub struct ProtectedShell {
     inner: Shell,
 }

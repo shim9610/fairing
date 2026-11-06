@@ -72,6 +72,11 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Security
 
+- Reject untyped builder hooks in `build_protected`, including inactive/nested
+  procedural wallpaper branches. This blocks the confirmed token-less status-painter
+  path. Keep icon/widget painter stores local to protected callbacks so an admitted
+  callback cannot install a later unguarded shell painter, including during unwind.
+  Full compiler-derived callback mediation remains unproved; its strict gate stays closed.
 - `Authenticator::begin/submit` receive `AuthRequestId`; `poll` returns
   `Option<AuthResponse>`. Replies retain their original request token. Canceled,
   replaced and consumed requests cannot grant a later challenge or replay a continuation.

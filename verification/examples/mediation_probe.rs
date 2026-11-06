@@ -1,4 +1,4 @@
-//! Concrete witness for an unmediated user painter, without changing product code.
+//! Concrete regression for the previously unmediated user painter.
 use fairing::{egui, Gate, Shell, ShellConfig};
 use std::{cell::Cell, rc::Rc};
 
@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let calls = Rc::new(Cell::new(0usize));
     let denied = Rc::new(Cell::new(true));
     let (observed, permission) = (Rc::clone(&calls), Rc::clone(&denied));
-    let mut shell = Shell::builder(config)
+    let candidate = Shell::builder(config)
         .status_bar_painter(move |ui, bar| {
             observed.set(observed.get() + 1);
             permission.set(permission.get() && !bar.cx.allows("probe.private-result"));
@@ -34,7 +34,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.label(&state.secret);
             }
         })
-        .build_protected(&ctx)?;
+        .build_protected(&ctx);
+    let mut shell = match candidate {
+        Ok(shell) => shell,
+        Err(fairing::Error::Config(message))
+            if message.contains("rejects untyped hook `status_bar_painter`") =>
+        {
+            assert_eq!(calls.get(), 0, "hook ran before construction was rejected");
+            println!("{{\"status\":\"blocked-at-construction\",\"callback_calls\":0,\"app_state_writes\":0,\"secret_in_output_shapes\":false}}");
+            if expected {
+                return Err("Expected counterexample is now blocked".into());
+            }
+            return Ok(());
+        }
+        Err(error) => return Err(error.into()),
+    };
     let mut state = State {
         secret: SECRET.into(),
         writes: 0,

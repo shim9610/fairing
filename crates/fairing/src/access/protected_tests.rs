@@ -1,3 +1,7 @@
+#![allow(
+    clippy::panic,
+    reason = "Security regressions inject callback unwinds and forbid denied invocation"
+)]
 use super::*;
 use crate::access::{Access, SessionController, SessionGrant, Subject};
 use crate::config::AccessConfig;
@@ -324,5 +328,85 @@ fn tile_panel_keeps_its_guard_after_declaration_erasure() -> crate::Result<()> {
     })
     .drop_without_applying_deltas();
     assert_eq!(calls.get(), before, "revoked panel invoked user code");
+    Ok(())
+}
+
+#[test]
+fn admitted_callbacks_cannot_install_persistent_icon_or_widget_callbacks() -> crate::Result<()> {
+    let (mut fixture, mut owner) = fixture()?;
+    let calls = Rc::new(Cell::new(0usize));
+    let widget_calls = Rc::clone(&calls);
+    let icon_calls = Rc::clone(&calls);
+    let ctx = egui::Context::default();
+    let mut parts = fixture.parts();
+    let mut cx = parts.cx(pane(InstanceId::NONE), None);
+    let binding = PermissionBinding::<View>::new();
+    let id = binding
+        .run(&mut cx, |cx| {
+            if let Some(painters) = cx.widgets().painters {
+                *painters = crate::widgets::WidgetPainters::new().button(move |_, _| {
+                    widget_calls.set(widget_calls.get() + 100);
+                });
+            }
+            cx.icons.register_painter(Box::new(move |_, _, _, _| {
+                icon_calls.set(icon_calls.get() + 1);
+            }))
+        })
+        .ok_or_else(|| crate::Error::Config("not admitted".into()))?;
+    owner.revoke();
+    assert!(binding
+        .run(&mut cx, |_| panic!("revoked callback"))
+        .is_none());
+    ctx.run_ui(egui::RawInput::default(), |ui| {
+        assert!(
+            !cx.icons.paint(
+                ui.painter(),
+                ui.max_rect(),
+                &crate::icons::IconRef::Custom(id),
+                &crate::icons::IconStyle::sized(20.0),
+                cx.theme
+            ),
+            "callback escaped its admission scope"
+        );
+        crate::widgets::BigButton::new("probe").show(ui, &mut cx.widgets());
+    })
+    .drop_without_applying_deltas();
+    assert_eq!(calls.get(), 0);
+    Ok(())
+}
+
+#[test]
+fn panicking_admitted_callback_cannot_leave_painters_in_the_shell() -> crate::Result<()> {
+    let binding = PermissionBinding::<View>::new();
+    let (mut fixture, owner) = fixture()?;
+    let mut parts = fixture.parts();
+    let mut cx = parts.cx(pane(InstanceId::NONE), None);
+    let id = Rc::new(Cell::new(None));
+    let written = Rc::clone(&id);
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        binding.run(&mut cx, |cx| {
+            written.set(Some(
+                cx.icons
+                    .register_painter(Box::new(|_, _, _, _| panic!("escaped"))),
+            ));
+            panic!("user callback failed");
+        });
+    }));
+    assert!(panic.is_err());
+    let ctx = egui::Context::default();
+    let id = id
+        .get()
+        .ok_or_else(|| crate::Error::Config("callback not admitted".into()))?;
+    ctx.run_ui(egui::RawInput::default(), |ui| {
+        assert!(!cx.icons.paint(
+            ui.painter(),
+            ui.max_rect(),
+            &crate::icons::IconRef::Custom(id),
+            &crate::icons::IconStyle::sized(20.0),
+            cx.theme
+        ));
+    })
+    .drop_without_applying_deltas();
+    drop(owner);
     Ok(())
 }

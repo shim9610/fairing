@@ -11,7 +11,7 @@ import tempfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 CONTROL_NAMES = [
-    "protected-dispatch", "protected-erasure", "protected-factory",
+    "protected-builder", "protected-resources", "protected-wallpaper", "protected-dispatch", "protected-erasure", "protected-factory",
     "session-policy-recheck", "session-revoke", "session-authority", "session-policy", "session-temporary", "session-detach", "configuration-validation", "back-handler", "back-projection", "auth-correlation", "command-budget", "expiry-order", "ui-progress", "modal-input",
     "bounded-admission", "launch-gates", "notification-cap", "inbox-delivery", "retained-lifetime", "numeric-owner", "hold-admission", "wheel-admission", "restore-delegation", "pointer-projection", "capture-application", "hold-completion-latch", "focus-isolation", "popup-retirement", "deadline-reply",
 ]
@@ -74,6 +74,19 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
         print(name + (": rejected broken production code" if failure else ": passed"), flush=True)
 
     scenarios = [
+        ("protected-builder", "product/protected_boundary/all_untyped_extension_families_are_rejected_before_execution",
+         "crates/fairing/src/shell/builder.rs",
+         [("self.validate_protected_hooks()?;", "// validation deliberately removed")],
+         False, "accepted"),
+        ("protected-resources", "unit/access::protected::tests::admitted_callbacks_cannot_install_persistent_icon_or_widget_callbacks",
+         "crates/fairing/src/access/protected.rs",
+         [("cx.with_protected_resources(callback)", "callback(cx)")],
+         False, "callback escaped its admission scope"),
+        ("protected-wallpaper", "product/protected_boundary/inactive_and_nested_wallpaper_branches_cannot_smuggle_a_painter",
+         "crates/fairing/src/shell/builder.rs",
+         [("wallpaper_has_callback(dark) || wallpaper_has_callback(light)", "wallpaper_has_callback(dark)")],
+         False, "is_err()"),
+
         ("protected-dispatch", "unit/access::protected::tests::protected_scope_uses_current_context_and_never_caches_admission",
          "crates/fairing/src/access/protected_dispatch.rs",
          [("if allowed {", "if true || allowed {")],

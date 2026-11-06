@@ -176,8 +176,21 @@ Use `Shell::builder(config).build_protected(ctx)` when application declarations
 must carry a permission type. It requires `config.access.session_tokens = true`
 and returns `ProtectedShell`, whose `add` accepts only `Protected<P, D>`.
 The ordinary `Shell` remains the legacy registration API; the protected facade
-exposes no mutable shell or conversion back to it. Configure host services and
-trusted chrome/painter infrastructure on the builder before construction.
+exposes no mutable shell or conversion back to it. Configure the authenticator and
+host backends before construction; these are trusted authority/infrastructure APIs.
+
+`build_protected` rejects untyped painter/layout hooks, widget-painter bundles,
+image loaders and procedural wallpapers before attaching backends or executing user
+hooks. Both branches of nested themed wallpapers are checked. Data-only wallpapers
+remain available. Use typed screen/action/status/nav/tile declarations for application
+UI. The legacy `build` API continues to support unmediated host customization.
+
+Protected callbacks receive their original app/backend references, with callback-local
+icon and widget-painter stores. Customizations installed through `cx.icons` or
+`cx.widgets().painters` last only for that invocation, including on panic; they cannot
+install a shell hook that runs after revocation. Keep an application-owned `IconSet`
+or `WidgetPainters` and use it inside an admitted callback when persistence is needed.
+Custom icon IDs from a callback-local store must not be retained across calls.
 
 ```rust
 use fairing::{action, screen, Cx, LaunchAction, ProtectedShell, Shell, ShellConfig};

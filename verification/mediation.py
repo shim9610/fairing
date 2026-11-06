@@ -150,7 +150,10 @@ def main():
     mode.add_argument('--expect-counterexample',action='store_true',help='Detector regression: require the known compiler path AND its concrete denied-session reproduction')
     parser.add_argument('--skip-probe',action='store_true',help='Analysis only; cannot confirm or certify the concrete program')
     args=parser.parse_args();before=source_hashes();reports={}
+    OUT.mkdir(parents=True,exist_ok=True)
+    (OUT/'summary.json').unlink(missing_ok=True)
     for profile in ['all','minimal'] if args.profile=='both' else [args.profile]:
+        (OUT/profile/'confirmed-status-painter-path.json').unlink(missing_ok=True)
         if not args.skip_build:build(profile)
         bodies,nodes,edges,kinds,sites,callbacks,boundaries,unsupported,inventory=graph(profile)
         roots=[(name,0) for name,body in bodies.items() if body['public'] and not body['closure'] and not name.startswith(GUARD)]
@@ -163,7 +166,7 @@ def main():
         reports[profile]['potential_unmediated_sites']=report['protected_shell_roots']['potential_unmediated_sites'];reports[profile]['unresolved_boundaries']=len(boundaries);reports[profile]['unsupported_terminators']=len(unsupported)
     probe=None
     if not args.skip_probe:
-        command=['cargo','run','--locked','--manifest-path',str(ROOT/'verification/Cargo.toml'),'--example','mediation_probe','--','--expect-counterexample']
+        command=['cargo','run','--locked','--manifest-path',str(ROOT/'verification/Cargo.toml'),'--example','mediation_probe']
         env=dict(os.environ,CARGO_INCREMENTAL='0')
         result=subprocess.run(command,cwd=ROOT,env=env,capture_output=True,text=True)
         (OUT/'concrete-probe.log').write_text(result.stdout+result.stderr)
@@ -171,13 +174,17 @@ def main():
         assert records,'Concrete probe failed without a structured observation; inspect concrete-probe.log'
         probe=records[-1]|{'command':command,'exit_code':result.returncode}
         if probe['status']=='counterexample-confirmed':
-            assert result.returncode==0 and probe['unauthenticated'] and probe['required_permission_denied'] and probe['app_state_writes']>0 and probe['secret_in_output_shapes']
+            assert result.returncode==2 and probe['unauthenticated'] and probe['required_permission_denied'] and probe['app_state_writes']>0 and probe['secret_in_output_shapes']
             for profile in reports:
                 report=json.loads((OUT/profile/'report.json').read_text())
                 assert report['protected_shell_roots']['solver']=='sat','Solver did not confirm the candidate reachability query'
                 witnesses=[w for w in report['protected_shell_roots']['witnesses'] if w['sink']['body']=='fairing::chrome::status_bar::StatusBar::ui_with']
                 assert witnesses,'Native counterexample has no matching compiler path; model correspondence changed'
                 (OUT/profile/'confirmed-status-painter-path.json').write_text(json.dumps(witnesses[0],indent=2)+'\n')
+        elif probe['status']=='blocked-at-construction':
+            assert result.returncode==0 and probe['callback_calls']==0 and probe['app_state_writes']==0 and not probe['secret_in_output_shapes']
+        else:
+            raise SystemExit('Concrete regression inconclusive; inspect concrete-probe.log')
     assert source_hashes()==before,'Inputs changed during mediation analysis'
     confirmed=probe is not None and probe['status']=='counterexample-confirmed'
     summary={'property':'Every application callback entry is mediated by a current permission check.','status':'violated-confirmed' if confirmed else 'not-proved','profiles':reports,'inputs':before,'concrete_probe':probe,

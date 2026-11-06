@@ -240,6 +240,59 @@ pub struct Cx<'a> {
 }
 
 impl Cx<'_> {
+    /// Lend callback-local extension stores. A permitted callback may customize its
+    /// own controls, but cannot leave an unguarded painter in the shell for later
+    /// execution after revocation. The original stores are never mutated, including
+    /// during unwinding. Reborrowing keeps UI/app/backend access unchanged.
+    pub(crate) fn with_protected_resources<R>(
+        &mut self,
+        callback: impl FnOnce(&mut Cx<'_>) -> R,
+    ) -> R {
+        let Self {
+            shell,
+            session,
+            services,
+            settings,
+            app,
+            strings,
+            theme,
+            icons: _,
+            pane,
+            now,
+            event,
+            access,
+            registry,
+            animations,
+            widget_painters: _,
+            requests,
+            hidden,
+            frame,
+        } = self;
+        let mut icons = IconSet::new();
+        let mut painters = fairing_widgets::widgets::WidgetPainters::new();
+        let mut scoped = Cx {
+            shell,
+            session,
+            services,
+            settings,
+            app: app.as_deref_mut(),
+            strings,
+            theme,
+            icons: &mut icons,
+            pane: *pane,
+            now: *now,
+            event: *event,
+            access,
+            registry: registry.as_deref_mut(),
+            animations,
+            widget_painters: &mut painters,
+            requests,
+            hidden,
+            frame: *frame,
+        };
+        callback(&mut scoped)
+    }
+
     /// **The app's own state** — whatever it handed to
     /// [`Shell::frame_with`](crate::Shell::frame_with) this frame.
     ///

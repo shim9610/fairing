@@ -19,7 +19,8 @@ therefore makes these checks fail rather than silently skipping them. Configure
 Native test ownership is split between jobs: UI histories run their 17 widget
 tests and one deadline test; the general assurance job runs the other 58 tests.
 The UI job owns three mutation controls, and the general control job runs the
-other 29, including typed callback dispatch and structured-configuration controls. Coverage,
+other 32, including protected construction, callback-store isolation, nested wallpapers,
+typed callback dispatch and structured-configuration controls. Coverage,
 Miri, Loom and cross-OS runs intentionally re-execute relevant tests under their
 own verification conditions.
 

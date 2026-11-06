@@ -91,7 +91,7 @@ pub struct ShellBuilder {
     lock_screen_painter: Option<crate::access::LockScreenPainter>,
     unlock_prompt_painter: Option<crate::access::UnlockPromptPainter>,
     recents: crate::workspace::RecentsPainters,
-    widget_painters: crate::widgets::WidgetPainters,
+    widget_painters: Option<crate::widgets::WidgetPainters>,
     gesture_handle_painter: Option<crate::gesture::HandlePainter>,
 }
 
@@ -169,6 +169,23 @@ impl ShadeHooks {
     }
 }
 
+// Themed wallpapers may nest; check both branches, including the inactive theme.
+fn wallpaper_has_callback(wallpaper: &crate::desktop::Wallpaper) -> bool {
+    use crate::desktop::Wallpaper;
+    match wallpaper {
+        Wallpaper::Painter(_) | Wallpaper::ThemedPainter(_) => true,
+        Wallpaper::Themed { dark, light } => {
+            wallpaper_has_callback(dark) || wallpaper_has_callback(light)
+        }
+        Wallpaper::Solid(_)
+        | Wallpaper::Fixed(_)
+        | Wallpaper::Gradient { .. }
+        | Wallpaper::Texture { .. }
+        | Wallpaper::TextureFit { .. }
+        | Wallpaper::Owned { .. } => false,
+    }
+}
+
 impl std::fmt::Debug for ShellBuilder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut f = f.debug_struct("ShellBuilder");
@@ -229,13 +246,17 @@ impl ShellBuilder {
     /// Original UI/app/backend references remain available inside admitted callbacks.
     ///
     /// # Errors
-    /// Requires `access.session_tokens = true`, in addition to ordinary build validation.
+    /// Requires `access.session_tokens = true`. Untyped custom painters, layouts,
+    /// image loaders and wallpapers are rejected before any backend/authenticator
+    /// attachment or user hook execution. Use typed declarations for application UI;
+    /// use `build` when unmediated host customization is intentional.
     pub fn build_protected(self, ctx: &egui::Context) -> crate::Result<super::ProtectedShell> {
         if !self.config.access.session_tokens {
             return Err(crate::Error::Config(
                 "build_protected requires access.session_tokens = true".to_owned(),
             ));
         }
+        self.validate_protected_hooks()?;
         self.build(ctx).map(super::ProtectedShell::new)
     }
 
@@ -244,6 +265,108 @@ impl ShellBuilder {
     pub fn recovery_ui(mut self, view: crate::recovery::RecoveryUi) -> Self {
         self.recovery_ui = Some(view);
         self
+    }
+
+    // Exhaustive matching makes every future builder field a security review point.
+    fn validate_protected_hooks(&self) -> crate::Result<()> {
+        let Self {
+            config: _,
+            recovery_ui: _,
+            command_capacity: _,
+            commands_per_update: _,
+            toast_capacity: _,
+            toast_overflow: _,
+            services: _,
+            theme: _,
+            palettes: _,
+            fonts: _,
+            translations: _,
+            scale_policy: _,
+            metrics_spec: _,
+            component_spec: _,
+            control_spec: _,
+            elevation_spec: _,
+            physical_mm: _,
+            status_bar_painter,
+            status_bar_layout,
+            nav_bar_painter,
+            nav_bar_layout,
+            notify_hooks,
+            #[cfg(feature = "osk")]
+            osk_hooks,
+            #[cfg(feature = "overlay")]
+            shade_hooks,
+            slot_painter,
+            image_loader,
+            wallpaper,
+            authenticator: _,
+            lock_screen_painter,
+            unlock_prompt_painter,
+            recents,
+            widget_painters,
+            gesture_handle_painter,
+        } = self;
+        let NotifyHooks {
+            toast_painter,
+            toast_layout,
+            heads_up_painter,
+            heads_up_layout,
+        } = notify_hooks;
+        let crate::workspace::RecentsPainters { card, ground } = recents;
+        let mut hooks = vec![
+            ("status_bar_painter", status_bar_painter.is_some()),
+            ("status_bar_layout", status_bar_layout.is_some()),
+            ("nav_bar_painter", nav_bar_painter.is_some()),
+            ("nav_bar_layout", nav_bar_layout.is_some()),
+            ("slot_painter", slot_painter.is_some()),
+            ("image_loader", image_loader.is_some()),
+            (
+                "wallpaper",
+                wallpaper.as_ref().is_some_and(wallpaper_has_callback),
+            ),
+            ("lock_screen_painter", lock_screen_painter.is_some()),
+            ("unlock_prompt_painter", unlock_prompt_painter.is_some()),
+            ("widget_painters", widget_painters.is_some()),
+            ("gesture_handle_painter", gesture_handle_painter.is_some()),
+            ("toast_painter", toast_painter.is_some()),
+            ("toast_layout", toast_layout.is_some()),
+            ("heads_up_painter", heads_up_painter.is_some()),
+            ("heads_up_layout", heads_up_layout.is_some()),
+            ("recents_card_painter", card.is_some()),
+            ("recents_ground_painter", ground.is_some()),
+        ];
+        #[cfg(feature = "osk")]
+        {
+            let OskHooks {
+                key_layout,
+                key_painter,
+            } = osk_hooks;
+            hooks.extend([
+                ("osk_key_layout", key_layout.is_some()),
+                ("osk_key_painter", key_painter.is_some()),
+            ]);
+        }
+        #[cfg(feature = "overlay")]
+        {
+            let ShadeHooks {
+                tile_layout,
+                tile_painter,
+                panel_painter,
+            } = shade_hooks;
+            hooks.extend([
+                ("shade_tile_layout", tile_layout.is_some()),
+                ("shade_tile_painter", tile_painter.is_some()),
+                ("shade_panel_painter", panel_painter.is_some()),
+            ]);
+        }
+        // Keep the same code valid in the minimal profile without unused_mut.
+        hooks.sort_unstable_by_key(|(name, _)| *name);
+        if let Some((name, _)) = hooks.into_iter().find(|(_, installed)| *installed) {
+            return Err(crate::Error::Config(format!(
+                "build_protected rejects untyped hook `{name}`; register UI with Protected<Permission, _> or use build for trusted host customization"
+            )));
+        }
+        Ok(())
     }
 
     pub(crate) fn new(config: ShellConfig) -> Self {
@@ -281,7 +404,7 @@ impl ShellBuilder {
             lock_screen_painter: None,
             unlock_prompt_painter: None,
             recents: crate::workspace::RecentsPainters::default(),
-            widget_painters: crate::widgets::WidgetPainters::new(),
+            widget_painters: None,
             gesture_handle_painter: None,
         }
     }
@@ -412,7 +535,7 @@ impl ShellBuilder {
     /// its press, its value and its motion; the painter is told its look and draws it.
     #[must_use]
     pub fn widget_painters(mut self, painters: crate::widgets::WidgetPainters) -> Self {
-        self.widget_painters = painters;
+        self.widget_painters = Some(painters);
         self
     }
 
@@ -1194,7 +1317,7 @@ impl ShellBuilder {
             nav_bar_painter,
             nav_bar_layout,
             recents_painters: recents,
-            widget_painters,
+            widget_painters: widget_painters.unwrap_or_default(),
             handle_painter: gesture_handle_painter,
             image_loader,
             nav_item_checks: Vec::new(),

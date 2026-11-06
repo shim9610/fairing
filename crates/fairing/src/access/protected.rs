@@ -78,11 +78,13 @@ impl<P: Permission> PermissionBinding<P> {
     }
 
     /// Invoke only after a fresh token-mode check. The callback keeps the ordinary
-    /// app/backend context; arbitrary effects inside an admitted callback remain trusted.
+    /// app/backend context. Icon/widget extension stores are callback-local; keep an
+    /// application-owned store if it must persist across calls. Arbitrary effects
+    /// inside an admitted callback remain trusted.
     pub fn run<R>(&self, cx: &mut Cx<'_>, callback: impl FnOnce(&mut Cx<'_>) -> R) -> Option<R> {
         let permission = cx.token_mode() && cx.allows(self.gate());
         let allowed = protected_dispatch::admitted(cx.token_mode(), permission);
-        protected_dispatch::invoke(allowed, || callback(cx))
+        protected_dispatch::invoke(allowed, || cx.with_protected_resources(callback))
     }
 
     /// Draw only after a fresh check; denied callbacks receive neither UI nor context.

@@ -57,6 +57,17 @@ authorize token-mode work; host-owned login flows use the request-bound
 `SessionRequested` / `accept_auth_response` path. See [session tokens](../session-tokens.md)
 for role expansion, catalog scope, grant expiry and proof boundaries.
 
+`build_protected` now rejects untyped painters/layouts, widget-painter bundles,
+image loaders and procedural wallpapers before running setup hooks. Data-only
+wallpapers, authenticators and backends remain supported. Put application UI in
+`Protected<P, D>` declarations, or retain legacy `build` when trusted host hooks
+are intentional.
+
+Icon and widget-painter stores in a protected callback are local to that call.
+Do not retain their custom icon IDs for a later frame. For persistent custom
+rendering, own the stores in your screen and use them only inside its admitted
+callback. App/backend references retain their original meaning.
+
 ### Commands and toast inputs
 
 Pass values directly when constructing command variants:
