@@ -38,8 +38,17 @@ def main():
         (project / 'Cargo.toml').write_text('[package]\nname="metadata-client"\nversion="0.0.0"\nedition="2021"\n[workspace]\n[dependencies]\nfairing={path=' + json.dumps(str(ROOT / 'crates/fairing')) + ',default-features=false}\n')
         shutil.copyfile(ROOT / 'Cargo.lock', project / 'Cargo.lock')
         (project / 'src/lib.rs').write_text(HEADER + PURE)
+        channel = json.loads((ROOT / 'verification/tools.json').read_text())['kani_toolchain']
+        version = subprocess.check_output(['rustup', 'run', channel, 'rustc', '-vV'], text=True)
+        host = next(line.removeprefix('host: ') for line in version.splitlines() if line.startswith('host: '))
         with (OUT / 'resolve.log').open('w') as log:
-            subprocess.run(['cargo', 'metadata', '--offline', '--format-version', '1', '--manifest-path', str(project / 'Cargo.toml')], stdout=log, stderr=subprocess.STDOUT, check=True)
+            # Resolve the seeded lock without fetching unused Redox/Windows/etc.
+            # sources absent from a clean Linux runner's registry cache.
+            resolved = subprocess.run(['cargo', '+' + channel, 'metadata', '--offline', '--filter-platform', host,
+                                       '--format-version', '1', '--manifest-path', str(project / 'Cargo.toml')],
+                                      stdout=log, stderr=subprocess.STDOUT)
+        if resolved.returncode:
+            raise SystemExit((OUT / 'resolve.log').read_text()[-12000:])
         cases = [
             ('pure-enum-and-field', HEADER + PURE, True),
             ('metadata-io', HEADER + PURE.replace('self.0 }', 'let _ = std::fs::write("metadata-must-not-run", b"x"); self.0 }'), False),
