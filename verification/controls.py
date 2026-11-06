@@ -10,15 +10,22 @@ import subprocess
 import tempfile
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--only", action="append", choices=[
-    "back-handler", "back-projection", "auth-correlation", "command-budget", "expiry-order", "ui-progress", "modal-input",
+CONTROL_NAMES = [
+    "configuration-validation", "back-handler", "back-projection", "auth-correlation", "command-budget", "expiry-order", "ui-progress", "modal-input",
     "bounded-admission", "launch-gates", "notification-cap", "inbox-delivery", "retained-lifetime", "numeric-owner", "hold-admission", "wheel-admission", "restore-delegation", "pointer-projection", "capture-application", "hold-completion-latch", "focus-isolation", "popup-retirement", "deadline-reply",
-], help="Run selected controls; omitting this option runs the complete CI suite")
+]
+selection = parser.add_mutually_exclusive_group()
+selection.add_argument("--only", action="append", choices=CONTROL_NAMES,
+                       help="Run selected controls; the default runs the complete suite")
+selection.add_argument("--exclude", action="append", choices=CONTROL_NAMES,
+                       help="Omit controls owned by another CI job")
 args = parser.parse_args()
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "target/assurance/controls"
 if args.only:
     OUT = OUT / ("selected-" + "-".join(sorted(set(args.only))))
+elif args.exclude:
+    OUT = OUT / ("excluded-" + "-".join(sorted(set(args.exclude))))
 OUT.mkdir(parents=True, exist_ok=True)
 results = []
 
@@ -62,6 +69,10 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
         print(name + (": rejected broken production code" if failure else ": passed"), flush=True)
 
     scenarios = [
+        ("configuration-validation", "properties::parsed_configuration_satisfies_public_validation",
+         "crates/fairing/src/config.rs",
+         [("config.validate()?;", "// validation deliberately removed by the negative control")],
+         False, "columns above 12 were accepted"),
         ("deadline-reply", "transitions::deadlines::expiry_cancels_old_replies_before_replacement_and_fresh_input",
          "crates/fairing/src/shell/background.rs",
          [("self.expire_access(now);", "if false { self.expire_access(now); }")],
@@ -161,6 +172,8 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
     ]
     for name, test, relative, changes, loom, marker in scenarios:
         if args.only and name not in args.only:
+            continue
+        if args.exclude and name in args.exclude:
             continue
         path = checkout / relative
         original = path.read_text()

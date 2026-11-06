@@ -13,7 +13,7 @@ deny.toml              @shim9610
 rust-toolchain.toml    @shim9610
 xtask/tools.lock       @shim9610
 xtask/**               @shim9610
-tools/ferrocene/**     @shim9610
+tools/**               @shim9610
 verification/**        @shim9610
 crates/fairing-fixed-heap/** @shim9610
 .cargo/**              @shim9610

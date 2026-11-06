@@ -36,7 +36,7 @@ updates visible, the notices file, generated files, the target build, and the bl
 They do not run in the order the table numbers them. The gates that do not compile anything
 (0, 13, 5, 6, 10, 11, 7, 8) run first and the compiling stages come after — so that an
 unapproved crate's `build.rs` cannot run before the approval gate does. If stage 0
-(`cargo xtask integrity`) fails, the compiling stages do not run at all.
+(`cargo xtask integrity`) or any other prebuild gate fails, the compiling stages do not run.
 
 Stage 13 (`cargo xtask sync-check`) blocks lock-based shared state (`Mutex`, `RwLock`,
 `Condvar`, `Barrier`, `OnceLock`, `LazyLock`, `parking_lot`) and blocking calls on the UI thread
@@ -67,6 +67,13 @@ The `main` ruleset requires these GitHub Actions status checks: `audit`, `msrv`,
 alerts rated High or higher and other alerts rated Error. Do not manually add a
 status named `CodeQL`: the analysis jobs are named `Analyze (rust)`,
 `Analyze (python)` and `Analyze (actions)`.
+
+Also require the assurance `inputs` check: its failure skips dependent jobs such
+as `proofs` and `miri`, and skipped required jobs do not themselves block merging.
+PR workflows supersede obsolete revisions; main-branch and scheduled runs finish
+without cancellation by a newer revision. UI histories own their 18 native tests
+and three mutation controls; the general assurance jobs exclude those selections.
+Coverage, Miri, Loom, package and cross-OS runs retain their distinct purposes.
 
 When enabling CodeQL on an existing repository, let the initial default-branch
 analysis complete, then confirm that the open PR also has analysis results.

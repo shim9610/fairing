@@ -98,9 +98,32 @@ mod properties {
 
         #[cfg(feature = "integration")]
         #[test]
-        fn parsed_configuration_satisfies_public_validation(text in if cfg!(miri) { ".{0,64}" } else { ".{0,1024}" }) {
-            if let Ok(config) = fairing::ShellConfig::from_toml(&text) {
-                prop_assert!(config.validate().is_ok());
+        fn parsed_configuration_satisfies_public_validation(
+            columns in 0u8..=12,
+            rows in 0u8..=8,
+            height in 1u16..=1000,
+            invalid_columns in 13u8..=255,
+            invalid_rows in 9u8..=255,
+        ) {
+            // Independent documented bounds, including automatic and maximum layouts.
+            // Every generated case must enter successful parsing and semantic rejection.
+            for (columns, rows) in [(0, 0), (12, 8), (columns, rows)] {
+                let text = format!("[desktop]\ncolumns = {columns}\nrows = {rows}\n[status_bar]\nheight = {height}\n");
+                let parsed = fairing::ShellConfig::from_toml(&text);
+                prop_assert!(parsed.is_ok(), "valid structured configuration was rejected");
+                let config = parsed.unwrap();
+                prop_assert_eq!(config.desktop.columns, columns);
+                prop_assert_eq!(config.desktop.rows, rows);
+                prop_assert_eq!(config.status_bar.height, Some(f32::from(height)));
+            }
+            let text = format!("[desktop]\ncolumns = {invalid_columns}\n");
+            prop_assert!(fairing::ShellConfig::from_toml(&text).is_err(), "columns above 12 were accepted");
+            let text = format!("[desktop]\nrows = {invalid_rows}\n");
+            prop_assert!(fairing::ShellConfig::from_toml(&text).is_err(), "rows above 8 were accepted");
+            for text in ["[status_bar]\nheight = 0", "[status_bar]\nheight = -1",
+                         "[status_bar]\nheight = nan", "[status_bar]\nheight = inf",
+                         "[desktop]\ncolumns = 'twelve'", "[desktop"] {
+                prop_assert!(fairing::ShellConfig::from_toml(text).is_err(), "invalid configuration was accepted: {}", text);
             }
         }
 

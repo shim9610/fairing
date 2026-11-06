@@ -62,6 +62,14 @@ Logs, archive SHA-256 hashes, toolchain identity and command exit codes are reta
 under `target/package-check/`, including a `summary.json`. The CI job uploads this
 directory as the `package-check` artifact even on failure.
 
+CI artifacts are temporary (14 days for package/assurance results and 7 days for
+tours). For a release or customer verification delivery, export the selected run's
+logs and artifacts to the project's retained evidence storage before they expire.
+Include the source commit, lockfile and toolchain identities, feature/platform
+configuration, test results, and applicable proof receipts and unresolved anomalies.
+Preserve that bundle with the delivered version; ordinary development CI retention
+is not the release evidence archive.
+
 These checks cover the current host toolchain, packaged test suite and headless
 consumer. They do not open a window, validate GPU presentation, publish either
 crate, or test downloading the unpublished sibling from crates.io. For the first
