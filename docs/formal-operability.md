@@ -18,6 +18,11 @@ also has exact decision proofs, terminal-history induction and a conditional seq
 lemma. Its concrete atomic implementation has bounded Loom evidence and source tripwires;
 this does not discharge the whole-application boundaries below.
 
+The [compiler-derived callback mediation verifier](callback-mediation.md) now
+checks for paths outside the local dispatcher. It confirms a real unauthenticated
+custom-painter execution and private-text output. The complete mediation property
+is therefore violated in the current library; component proofs do not cover it.
+
 ## Statement and required proof order
 
 Let `S` include the shell, widgets, egui memory/areas/focus/capture and application
