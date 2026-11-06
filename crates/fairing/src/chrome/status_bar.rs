@@ -217,7 +217,7 @@ impl LabelPos {
 }
 
 /// The closure that draws a top-bar item.
-pub(super) type StatusItemUi = Box<dyn FnMut(&mut egui::Ui, &mut Cx<'_>)>;
+pub(super) type StatusItemUi = crate::access::mediation::UiCallback;
 
 /// An integrator top-bar item declaration (`status_item(id, Slot, |ui, cx| ..)`).
 pub struct StatusItemDecl {
@@ -249,7 +249,7 @@ pub fn status_item(
         gate: Some(Gate::from(&id)),
         id,
         slot,
-        ui: Box::new(ui),
+        ui: crate::access::mediation::UiCallback::legacy(Box::new(ui)),
         priority: 0,
         enabled: true,
     }
@@ -1104,7 +1104,7 @@ impl StatusBar {
                             .layout(egui::Layout::left_to_right(egui::Align::Center)),
                     );
                     let mut cx = parts.cx(pane, None);
-                    (decl.ui)(&mut child, &mut cx);
+                    decl.ui.paint(&mut child, &mut cx);
                     // The real content width is recorded so the next frame's estimate converges.
                     let content = child.min_rect();
                     if content.is_positive() {
@@ -1178,7 +1178,7 @@ fn measure_collapsed(
                 .invisible(),
         );
         let mut cx = parts.cx(pane, None);
-        (decl.ui)(&mut child, &mut cx);
+        decl.ui.paint(&mut child, &mut cx);
         // Something that draws nothing is recorded too, so it is not run again.
         let content = child.min_rect();
         let width = if content.is_positive() {

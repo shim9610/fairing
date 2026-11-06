@@ -1,108 +1,83 @@
-# Element entry mediation evidence
+# Shared callback mediation evidence
 
-The property has three distinct parts: a callback must pass the library's guard,
-the guard must check that receiver's permission, and the authority observation
-must still be valid when the callback begins. A proof of `invoke` alone establishes
-none of the caller coverage. These checks connect the new element path to those
-obligations without promoting it to the whole-library theorem.
+The proof unit is the common admission kernel and its opaque payload carriers.
+Screens, factories, actions, status items, navigation items, tile panels and tree
+leaves use that boundary. Adding a screen or a leaf does not require a new proof
+for that instance. Adding an interface operation requires a checked adapter;
+introducing a raw storage, invocation or extraction route must fail the compiler
+check.
 
-## Compiler coverage and unbounded path induction
+## Runtime structure
 
-`verification/element_coverage.py` consumes the compiler inventories and source
-receipts produced by the [mediation detector](callback-mediation.md). In both Linux
-feature profiles it discovers every compiled direct library call to `Element::measure`
-and `Element::paint`. Each must occur in an acyclic closure containing exactly one
-such entry. That closure must have one construction, no copy or storage escape,
-and one consuming call to `PermissionBinding::run`. Observed method-item references
-and indirect calls whose argument types expose an Element trait object are rejected. Generic/external forwarding not represented
-as an Element call remains an open compiler-model boundary.
+`access::mediation` owns executable payloads and their normalized requirements.
+Declarations, instances and resident loans hold opaque handles. `ScreenHandle`
+provides no `Screen`, dereference or extraction implementation. Its factory is
+invoked inside admission; the resulting screen stays private and receives a
+second live check before any hook. Generated screen/action/UI adapters call the
+same invocation primitive.
 
-Each callback closure's control-flow blocks form a region. The checker builds
-these regions and guard call sites in the actual inventory graph. No public
-non-closure root may be inside a region, and every edge entering a region from
-outside must originate at the checked guard. It checks this cut
-against all emitted graph edges, including recursive and closure-forwarding edges.
+A prepared tree leaf borrows its actual `ElementHandle`. Rust prevents replacement
+or independent mutation of that receiver while the plan is live. The child index
+only contributes to widget identity; dispatch never uses it to look up another
+object. The common invoker extends a borrowed `AuthorityPath` in the callback context;
+children inherit it automatically. Every leaf entry checks its own requirement and
+every ancestor requirement. Plans retain session identity/revision and metadata,
+not an authorization result. Denied children are omitted before size accumulation.
 
-`verification/verus/element_coverage.rs` proves by induction that a path avoiding
-those guards cannot enter the callback regions. The two lemmas quantify over any
-finite path length; there is no recursion-depth cutoff in this graph theorem.
-The checked graph instance supplies their root and cut premises. Removing the cut,
-root or guard-avoidance premise must fail Verus as a semantic negative control.
+In a protected shell, legacy carriers deny entry. Initial library declarations
+receive explicit library requirements. Untyped global hooks remain rejected by
+`build_protected`; admitted callbacks receive invocation-local extension stores.
 
-Nine actual compiled Rust fixtures exercise the coverage checker: one guarded
-client is accepted; direct entry, entry after a guard, foreign forwarding, closure
-storage, an indirect function parameter, a function-item route, two entries under
-one guard and a repeating entry loop are rejected. These fixtures test caller coverage, not whether a same-named test guard authorizes
-correctly.
+## Common proof and automatic checks
 
-This establishes entry containment in the extracted graph. The guard's permission
-semantics, omitted dynamic/external edges and full compiler-to-program refinement
-are separate obligations. It does not prove every callback family in Fairing is
-mediated.
+| Check | Evidence | Boundary |
+| --- | --- | --- |
+| Admission is necessary; denied work has no callback effect/result | Kani executes unchanged production `Admission::allows`, common `invoke` and `protected_dispatch` bodies | Context observation and resource-scope contracts are modeled |
+| Every ancestor is checked | Verus verifies the unchanged production ancestor-walk body with ghost invariants | Arbitrary finite depth; one stable observation interval and normalized grant-identity contract |
+| Opaque protocol ownership and entry cut | Compiler-owned fields, visibility, method-item references, return types and callable substitutions in both feature profiles | Registered-payload confinement; not complete arbitrary heap/erasure analysis |
+| Bypass checker rejects new routes | Compiled production mutations in an isolated checkout | Direct calls, raw storage, raw/generic extraction, field exposure, an unguarded adapter and discarded/overwritten context ancestry |
 
-## Production traversal under explicit contracts
+The ancestor proof has no depth, child-count or permission-catalog enumeration.
+Dropping the parent during construction, or removing an ancestor step, grant check,
+ancestor revision check or token-mode condition must fail a proof obligation.
+Compiler facts also check the concrete `Cx` scope constructor, its inherited-path
+field and forwarding of that scoped context to the callback. Kernel mutations must fail the named
+security assertion; compiler errors and unrelated assertion failures do not count.
 
-`verification/element_proofs.py` prepares Kani clients from the production
-`ElementTree`, recursive dispatch, complete `PermissionBinding` definitions and
-session transition rules. Production function bodies are preserved. The adapters
-provide explicit contracts for the surrounding authority, collection and UI APIs:
+The compiler check discovers definitions and operations rather than maintaining a
+list of individual protected screens. It follows callable type substitutions and
+actual invocation sites. Merely constructing or storing a closure does not imply
+that its body executed. Unknown callable entry on a reachable kernel path rejects
+the admission cut.
 
-- Authority is sequential and exposes independent issuer and policy masks, a live
-  mode/state and a session identity/revision. Callback effects may revoke, publish
-  replacement grants or replace the session. Production session transition and
-  identity decisions are reused. Atomic concurrency, clock/scheduler behavior and
-  the concrete `Cx` implementation require their own refinement evidence.
-- A width-two arena sequence provides the used ordered `Vec` operations. Capacity
-  overflow is an assertion failure, not silently truncated work. Allocation failure
-  and destructor execution are outside this contract. This does not verify the
-  standard allocator or the concrete `Vec` representation.
-- The UI adapter records root allocation and supplied rectangles. It does not
-  implement egui hashing, clipping, rasterization or input realization.
+## Remaining whole-library obligations
 
-Each dynamic test element checks its **own** required permission at callback entry,
-independently of the production binding. Paint additionally requires a recorded
-measurement from the current session identity/revision. The source binding's
-`allows/run` bodies and the actual tree control flow decide whether those oracles
-are reached; the harness never assumes a callback was authorized.
+Complete mediation remains **not proved**. The strict global gate remains nonzero.
+The outstanding connection includes protected construction and noninstallation of
+legacy hooks, complete payload provenance through type erasure and indirect
+function pointers, factory/binding data refinement, and the concrete authority
+observation contract. The production ancestor proof establishes the walk under its
+context contract; it does not prove arbitrary concurrent or stateful narrowing-policy behavior
+or the Rust atomic memory model. Compact floating-point geometry is covered by
+product regressions, not an unbounded layout theorem.
 
-Six harnesses cover the sequence adapter; a complete leaf traversal with arbitrary
-modeled authority/metadata changes; retaining a tree across frames after revocation;
-a denied nested tree; publication during measurement; and requirement drift when
-both values are granted. The single-leaf proof checks both authorization safety and
-whether admitted, stable content is actually measured, painted and allocated.
+Authenticators/backends and arbitrary effects inside an admitted application body
+remain trusted. The guarantee concerns admission to library-managed callbacks;
+it does not retract already-disclosed information or cancel admitted work.
 
-Fixed nested cases use at most two leaves and two row containers. The permission
-domain has three distinct values. Kani's unwinding assertions remain enabled;
-container loop bounds are discovered separately from recursive call depth. General
-recursive receiver/authority refinement, sibling changes during paint and compact geometry still require
-proofs beyond the existing product/mutation regressions. The unbounded graph cut
-above covers entry routing, not those state properties.
-
-## Run and evidence
+## Run
 
 ```sh
 python3 verification/install.py proofs
-# Build current compiler inventories. Its strict global verdict remains nonzero.
+python3 verification/central_proofs.py
+python3 verification/central_mediation.py
+python3 verification/central_mediation_controls.py
+# The whole-library claim still rejects, retaining its diagnostic inventory.
 python3 verification/mediation.py --require-proved
-python3 verification/element_coverage.py
-python3 verification/element_coverage_controls.py
-python3 verification/element_proofs.py
-python3 verification/element_proof_controls.py
 ```
 
-`target/assurance/elements/coverage.json` records source hashes, the actual graph
-cut and compiler inventories, the Verus command and negative controls. Compiler
-fixtures retain their logs and summary under `coverage-controls/`. Successful
-bounded traversal checking writes `receipt.json` with its inputs, bounds and
-contract assumptions; `kani.log` retains individual proof results.
-`element_proof_controls.py` mutates the real permission binding and pre-allocation
-validation. A negative control counts only when the named security assertion has
-`FAILURE` status; an unrelated unwind failure or an undetermined assertion does
-not count as a counterexample. Old receipts are removed before checking so a failed rerun cannot leave an apparent fresh pass.
-
-The `element-traversal` CI job runs the bounded clients and production mutations.
-The `callback-mediation` CI job runs the coverage evidence after its strict check,
-even when that global check fails. This preserves the existing
-`UNPROVED_COMPLETE_MEDIATION` result. The next refinement work must connect
-receiver/binding identity and live authority for arbitrary trees and extend
-coverage to the remaining screen/action/chrome/tile and host boundaries.
+Evidence is written under `target/assurance/central-mediation/`, with source hashes,
+compiler inventories, proof logs and mutation results. Old bounded traversal clients
+were retired with the borrowed-plan refactor; their receipts do not certify this
+implementation. See [the completion specification](central-mediation-spec.md) for
+the full target and [the global detector](callback-mediation.md) for its verdict.

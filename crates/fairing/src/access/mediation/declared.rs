@@ -7,7 +7,7 @@ pub(crate) fn declared<S: Screen + PermissionBound + 'static>(
     body: S,
     required: S::Required,
 ) -> ScreenDecl {
-    super::screen_of(
+    crate::screen::screen_of(
         id,
         Declared {
             binding: PermissionBinding::new(required),

@@ -19,7 +19,9 @@ pub struct ProtectedShell {
 }
 
 impl ProtectedShell {
-    pub(super) fn new(inner: Shell) -> Self {
+    pub(super) fn new(mut inner: Shell) -> Self {
+        inner.access.require_mediation();
+        inner.registry.bind_initial_library_requirements();
         Self { inner }
     }
 
@@ -39,7 +41,7 @@ impl ProtectedShell {
         let required = screen.required_permission();
         self.add(Protected::new(
             required,
-            crate::screen::protected::declared(id, screen, required),
+            crate::access::mediation::declared::declared(id, screen, required),
         ));
     }
 

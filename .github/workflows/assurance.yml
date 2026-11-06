@@ -66,8 +66,6 @@ jobs:
           rustfmt --check verification/kani_session.rs
           rustfmt --check verification/kani_protected.rs
           rustfmt --check verification/mediation_driver.rs verification/fixtures/mediation.rs
-          rustfmt --check --config skip_children=true verification/kani_elements.rs
-          rustfmt --check verification/verus/element_coverage.rs
 
   callback-mediation:
     needs: inputs
@@ -82,11 +80,12 @@ jobs:
       - name: Require SAT and UNSAT compiler-fixture controls
         if: always()
         run: python3 verification/mediation_controls.py
-      - name: Verify scoped Element entry cut and compiler containment
+      - name: Check shared carrier confinement in both feature profiles
         if: always()
-        run: |
-          python3 verification/element_coverage.py
-          python3 verification/element_coverage_controls.py
+        run: python3 verification/central_mediation.py --skip-build
+      - name: Reject compiled production bypass mutations
+        if: always()
+        run: python3 verification/central_mediation_controls.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -97,34 +96,25 @@ jobs:
             target/mediation/all/
             target/mediation/minimal/
             target/mediation/fixture/
-            target/assurance/elements/coverage.json
-            target/assurance/elements/verus-cut.log
-            target/assurance/elements/missing-*.log
-            target/assurance/elements/coverage-controls/
+            target/assurance/central-mediation/confinement.json
+            target/assurance/central-mediation/controls/
           retention-days: 14
 
-  element-traversal:
+  central-mediation:
     needs: inputs
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Install pinned Kani
+      - name: Install pinned Kani and Verus
         run: python3 verification/install.py proofs
-      - name: Verify production traversal under bounded authority and collection contracts
-        run: python3 verification/element_proofs.py
-      - name: Require semantic rejection of production permission and plan mutations
-        run: python3 verification/element_proof_controls.py
+      - name: Prove common admission and arbitrary ancestor paths
+        run: python3 verification/central_proofs.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
-          name: element-traversal-proofs
-          path: |
-            target/assurance/elements/receipt.json
-            target/assurance/elements/kani.log
-            target/assurance/elements/codegen.log
-            target/assurance/elements/proof-controls/summary.json
-            target/assurance/elements/proof-controls/*/kani.log
+          name: central-mediation-proofs
+          path: target/assurance/central-mediation/
           retention-days: 14
 
   permission-metadata:
@@ -245,7 +235,7 @@ jobs:
           cargo "+$nightly" miri test --locked -p fairing-widgets --no-default-features --lib interaction::tests 2>&1 | tee target/assurance/logs/miri-interaction.log
           cargo "+$nightly" miri test --locked -p fairing --lib runtime::tests::supported_payloads_are_released_and_numeric_codes_are_observable -- --exact 2>&1 | tee target/assurance/logs/miri-payloads.log
           cargo "+$nightly" miri test --locked -p fairing --lib access::session::tests 2>&1 | tee target/assurance/logs/miri-session-admin.log
-          cargo "+$nightly" miri test --locked -p fairing --lib access::protected::tests::protected_scope_uses_current_context_and_never_caches_admission -- --exact 2>&1 | tee target/assurance/logs/miri-protected-scope.log
+          cargo "+$nightly" miri test --locked -p fairing --lib access::mediation::protected::tests::protected_scope_uses_current_context_and_never_caches_admission -- --exact 2>&1 | tee target/assurance/logs/miri-protected-scope.log
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

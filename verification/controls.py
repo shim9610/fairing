@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Require public API/model tests to reject broken production wiring in disposable copies."""
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -25,9 +26,15 @@ args = parser.parse_args()
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "target/assurance/controls"
 if args.only:
-    OUT = OUT / ("selected-" + "-".join(sorted(set(args.only))))
+    label = "selected-" + "-".join(sorted(set(args.only)))
+    if len(label.encode()) > 180:
+        label = "selected-" + hashlib.sha256(label.encode()).hexdigest()[:16]
+    OUT = OUT / label
 elif args.exclude:
-    OUT = OUT / ("excluded-" + "-".join(sorted(set(args.exclude))))
+    label = "excluded-" + "-".join(sorted(set(args.exclude)))
+    if len(label.encode()) > 180:
+        label = "excluded-" + hashlib.sha256(label.encode()).hexdigest()[:16]
+    OUT = OUT / label
 OUT.mkdir(parents=True, exist_ok=True)
 results = []
 
@@ -75,14 +82,13 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
         print(name + (": rejected broken production code" if failure else ": passed"), flush=True)
 
     scenarios = [
-        ("permission-value", "unit/access::protected::tests::protected_scope_uses_current_context_and_never_caches_admission",
+        ("permission-value", "unit/access::mediation::protected::tests::protected_scope_uses_current_context_and_never_caches_admission",
          "crates/fairing/src/access/protected.rs",
          [("gate: required.gate(),", "gate: Gate::borrowed(\"results.view\"),")],
          False, "left: Some(42)"),
         ("element-measure", "unit/elements::tests::an_authorized_parent_does_not_authorize_child_measurement",
-         "crates/fairing/src/elements/dispatch.rs",
-         [("if !binding.allows(cx) || cx.authority_stamp() != Some(stamp)", "if cx.authority_stamp() != Some(stamp)"),
-          ("Node::Leaf(element) => binding.run(cx, |cx| element.measure(available, cx))?", "Node::Leaf(element) => element.measure(available, cx)")],
+         "crates/fairing/src/access/mediation/element.rs",
+         [("let size = invoke_requirement(binding.gate(), stamp, cx, |cx|", "let size = invoke_requirement(&crate::Gate::borrowed(\"view\"), stamp, cx, |cx|")],
          False, "denied child measurement executed through an authorized parent"),
         ("element-layout", "unit/elements::tests::nested_layout_excludes_denied_sizes_and_gaps_and_reflows_after_grant_changes",
          "crates/fairing/src/elements/dispatch.rs",
@@ -93,15 +99,15 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
          [("self.access.authority_stamp()", "self.access.authority_stamp().map(|(id, _)| (id, 0))")],
          False, "publication reused geometry from an old authority revision"),
         ("element-identity", "unit/elements::tests::nested_layout_excludes_denied_sizes_and_gaps_and_reflows_after_grant_changes",
-         "crates/fairing/src/elements/dispatch.rs",
-         [(".id_salt(path.with(plan.binding.gate().as_str()).value())", "// stable identity deliberately removed")],
+         "crates/fairing/src/access/mediation/element.rs",
+         [(".id_salt(identity.with(binding.gate().as_str()).value())", "// stable identity deliberately removed")],
          False, "element widget identities collided"),
         ("screen-requirement", "product/permission_values/external_screens_need_no_manual_guard_and_requirement_drift_fails_closed",
-         "crates/fairing/src/screen/protected.rs",
+         "crates/fairing/src/access/mediation/declared.rs",
          [("body.required_permission().gate() == *binding.gate()", "true")],
          False, "changed screen declaration retained an earlier permission"),
-        ("screen-metadata-recheck", "unit/screen::protected::tests::metadata_cannot_revoke_authority_and_then_admit_a_screen_callback",
-         "crates/fairing/src/screen/protected.rs",
+        ("screen-metadata-recheck", "unit/access::mediation::declared::tests::metadata_cannot_revoke_authority_and_then_admit_a_screen_callback",
+         "crates/fairing/src/access/mediation/declared.rs",
          [(".then(|| binding.run(cx, |cx| callback(body, cx)))", ".then(|| Some(callback(body, cx)))")],
          False, "metadata revocation admitted a screen callback"),
         ("nav-permission-layout", "product/permission_values/denied_custom_nav_values_do_not_reserve_cells_before_layout",
@@ -113,26 +119,26 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
          "crates/fairing/src/shell/builder.rs",
          [("self.validate_protected_hooks()?;", "// validation deliberately removed")],
          False, "accepted"),
-        ("protected-resources", "unit/access::protected::tests::admitted_callbacks_cannot_install_persistent_icon_or_widget_callbacks",
-         "crates/fairing/src/access/protected.rs",
-         [("cx.with_protected_resources(callback)", "callback(cx)")],
+        ("protected-resources", "unit/access::mediation::protected::tests::admitted_callbacks_cannot_install_persistent_icon_or_widget_callbacks",
+         "crates/fairing/src/access/mediation.rs",
+         [("cx.with_protected_resources(path, operation)", "operation(cx)")],
          False, "callback escaped its admission scope"),
         ("protected-wallpaper", "product/protected_boundary/inactive_and_nested_wallpaper_branches_cannot_smuggle_a_painter",
          "crates/fairing/src/shell/builder.rs",
          [("wallpaper_has_callback(dark) || wallpaper_has_callback(light)", "wallpaper_has_callback(dark)")],
          False, "is_err()"),
 
-        ("protected-dispatch", "unit/access::protected::tests::protected_scope_uses_current_context_and_never_caches_admission",
+        ("protected-dispatch", "unit/access::mediation::protected::tests::protected_scope_uses_current_context_and_never_caches_admission",
          "crates/fairing/src/access/protected_dispatch.rs",
          [("if allowed {", "if true || allowed {")],
          False, "left: Some(42)"),
-        ("protected-erasure", "unit/access::protected::tests::erased_action_and_chrome_callbacks_keep_their_typed_binding",
-         "crates/fairing/src/access/protected.rs",
-         [("binding.run(cx, &mut body);", "body(cx);")],
+        ("protected-erasure", "unit/access::mediation::protected::tests::erased_action_and_chrome_callbacks_keep_their_typed_binding",
+         "crates/fairing/src/access/mediation.rs",
+         [("callback_operation!(ActionCallback, run(), |body, cx| body(cx));", "impl ActionCallback { pub(crate) fn run(&mut self, cx: &mut Cx<'_>) { (self.body)(cx); } }")],
          False, "erased callback lost its typed guard"),
-        ("protected-factory", "unit/access::protected::tests::factory_is_guarded_and_revocation_during_construction_blocks_all_hooks",
-         "crates/fairing/src/access/protected.rs",
-         [("binding.run(cx, |cx| callback(&mut **body, cx))", "Some(callback(&mut **body, cx))")],
+        ("protected-factory", "unit/access::mediation::protected::tests::factory_is_guarded_and_revocation_during_construction_blocks_all_hooks",
+         "crates/fairing/src/access/mediation.rs",
+         [("invoke(requirement.admission(), cx, |cx| operation(&mut **body, cx))", "Some(operation(&mut **body, cx))")],
          False, "factory revocation admitted a screen callback"),
         ("session-policy-recheck", "product/session_tokens/policy_callback_revocation_is_rechecked_before_a_protected_effect",
          "crates/fairing/src/access/mod.rs",

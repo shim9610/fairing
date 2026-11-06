@@ -12,7 +12,8 @@
 //! unlock runs the launch again, through the same gate.
 
 mod auth;
-pub mod protected;
+pub use mediation::protected;
+pub(crate) mod mediation;
 pub(crate) mod protected_dispatch;
 pub use protected::{
     Permission, PermissionBinding, PermissionBound, Protected, ProtectedDeclaration,
@@ -660,6 +661,7 @@ mod admin_says {
 pub struct Access {
     quarantined: bool,
     token_sessions: bool,
+    mediation_required: bool,
     token_policy: bool,
     token: Option<SessionToken>,
     token_revision: Option<u64>,
@@ -884,7 +886,6 @@ impl Access {
         };
         let authenticator = reference_authenticator(cfg, &table)?;
         warn_unassigned(&table, &gates);
-        let policy = LevelPolicy::new(table.clone(), gates, default_gate);
         let initial = Subject {
             id: None,
             level: initial,
@@ -893,12 +894,13 @@ impl Access {
         Ok(Self {
             quarantined: false,
             token_sessions: cfg.session_tokens,
+            mediation_required: false,
             token_policy: false,
             token: None,
             token_revision: None,
             token_now: Instant::now(),
+            policy: Box::new(LevelPolicy::new(table.clone(), gates, default_gate)),
             table,
-            policy: Box::new(policy),
             mode,
             session: Session::new(initial.clone()),
             subject_change: None,
@@ -948,6 +950,13 @@ impl Access {
     }
 
     /// A live identity/version for invalidating prepared protected UI geometry.
+    pub(crate) fn require_mediation(&mut self) {
+        self.mediation_required = true;
+    }
+    pub(crate) fn requires_mediation(&self) -> bool {
+        self.mediation_required
+    }
+
     pub(crate) fn authority_stamp(&self) -> Option<(SessionId, u64)> {
         if self.quarantined || !self.token_sessions {
             return None;

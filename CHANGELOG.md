@@ -11,6 +11,10 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Added
 
+- Shared admission kernel with opaque screen/factory/action/chrome/tile/element
+  carriers, automatically inherited ancestor requirements, compiler confinement
+  controls and an unbounded production ancestor-walk proof. Complete whole-library
+  mediation remains unproved; see [the evidence and boundaries](docs/element-mediation-proof.md).
 - Compiled-MIR checker for workspace permission metadata contracts and downstream
   rejection controls. See [application checking](docs/permission-metadata-check.md)
   for the accepted subset and configuration/dependency scope.
@@ -56,6 +60,10 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Changed
 
+- `InstanceScreen::Owned` holds an opaque `ScreenHandle`; use
+  `InstanceScreen::owned(screen)` instead of supplying a boxed screen. Factory
+  instantiation is deferred to the first dispatched hook in both legacy and
+  protected shells. See the migration guide for launch-time setup changes.
 - Replace `Permission::GATE` with `Permission::gate(self)`. `Protected::new` and typed
   session grant/snapshot helpers now take an application permission value. Token-mode
   nav layout removes denied custom cells before sizing. See the migration guide.

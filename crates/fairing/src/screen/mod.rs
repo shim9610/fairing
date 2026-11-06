@@ -7,7 +7,6 @@
 
 pub(crate) mod cx;
 mod policy;
-pub(crate) mod protected;
 mod registry;
 
 pub use cx::{Cx, PaneInfo};
@@ -17,6 +16,7 @@ pub use policy::{BarMode, ChromePolicy, OskMode};
 pub use registry::Registry;
 pub use registry::{Decl, DeclKind};
 
+pub use crate::access::mediation::ScreenHandle;
 use crate::access::{Gate, Visibility};
 use crate::i18n::LabelKey;
 use crate::icons::IconRef;
@@ -206,9 +206,9 @@ pub(crate) enum ScreenSource {
     /// It is an `Option` because the borrow is a **loan**: [`Registry::take_resident`] moves the
     /// screen out for the length of one call and [`Registry::put_resident`] puts it back, so while
     /// it is being drawn the slot is empty and nothing can reach it a second time.
-    Resident(Option<Box<dyn Screen>>),
+    Resident(Option<ScreenHandle>),
     /// Factory: a call per open.
-    Factory(Box<dyn FnMut() -> Box<dyn Screen>>),
+    Factory(crate::access::mediation::FactoryCallback),
 }
 
 /// A screen declaration, with its icon, gate and chrome (the builder table).
@@ -251,7 +251,10 @@ pub fn screen(
     ui: impl FnMut(&mut egui::Ui, &mut Cx<'_>) + 'static,
 ) -> ScreenDecl {
     let id = id.into();
-    ScreenDecl::new(id, ScreenSource::Resident(Some(Box::new(ui))))
+    ScreenDecl::new(
+        id,
+        ScreenSource::Resident(Some(ScreenHandle::legacy(Box::new(ui)))),
+    )
 }
 
 /// **A resident screen declaration from a value of your own** — a `struct` implementing
@@ -299,7 +302,10 @@ pub fn screen(
 /// declaration — it is [`LaunchMode::Single`] only.
 pub fn screen_of(id: impl Into<String>, screen: impl Screen + 'static) -> ScreenDecl {
     let id = id.into();
-    ScreenDecl::new(id, ScreenSource::Resident(Some(Box::new(screen))))
+    ScreenDecl::new(
+        id,
+        ScreenSource::Resident(Some(ScreenHandle::legacy(Box::new(screen)))),
+    )
 }
 
 /// A factory screen declaration. `factory` makes a new instance on every open.
@@ -310,7 +316,9 @@ pub fn screen_with<S: Screen + 'static>(
     let id = id.into();
     ScreenDecl::new(
         id,
-        ScreenSource::Factory(Box::new(move || Box::new(factory()))),
+        ScreenSource::Factory(crate::access::mediation::FactoryCallback::legacy(Box::new(
+            move || Box::new(factory()),
+        ))),
     )
 }
 
@@ -432,7 +440,7 @@ impl ScreenDecl {
 
     /// A resident screen, out of a declaration that is going away (`None` for a factory, or for
     /// one out on loan).
-    pub(crate) fn into_resident(self) -> Option<Box<dyn Screen>> {
+    pub(crate) fn into_resident(self) -> Option<ScreenHandle> {
         match self.source {
             ScreenSource::Resident(screen) => screen,
             ScreenSource::Factory(_) => None,
@@ -581,7 +589,7 @@ impl ScreenDecl {
             // Nothing is handed over — the declaration keeps the screen and the instance finds it
             // again by id. One owner, so no shared cell and no borrow that can fail.
             ScreenSource::Resident(_) => InstanceScreen::Resident,
-            ScreenSource::Factory(factory) => InstanceScreen::Owned(factory()),
+            ScreenSource::Factory(factory) => InstanceScreen::Owned(factory.instance()),
         }
     }
 }
@@ -596,7 +604,7 @@ pub struct ActionDecl {
     pub(crate) dock: bool,
     pub(crate) gate: Option<Gate>,
     pub(crate) visibility: Visibility,
-    pub(crate) run: Box<dyn FnMut(&mut Cx<'_>)>,
+    pub(crate) run: crate::access::mediation::ActionCallback,
 }
 
 impl std::fmt::Debug for ActionDecl {
@@ -620,7 +628,7 @@ pub fn action(id: impl Into<String>, run: impl FnMut(&mut Cx<'_>) + 'static) -> 
         dock: false,
         gate: None,
         visibility: Visibility::Locked,
-        run: Box::new(run),
+        run: crate::access::mediation::ActionCallback::legacy(Box::new(run)),
     }
 }
 
@@ -698,7 +706,7 @@ impl ActionDecl {
 
     /// Run it.
     pub fn run(&mut self, cx: &mut Cx<'_>) {
-        (self.run)(cx);
+        self.run.run(cx);
     }
 }
 

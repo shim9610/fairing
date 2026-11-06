@@ -57,9 +57,11 @@ ownership/state model; the strict complete-mediation property remains unproved.
 See [the recorded specification](permission-value-refactor.md) and
 [value-based integration](session-tokens.md#typed-permission-requirements).
 
-The [element mediation evidence](element-mediation-proof.md) now checks the actual
-compiler closure regions and their guard cut, with an unbounded Verus path
-induction. Receiver/authority refinement and whole-library coverage remain separate.
+The [shared mediation evidence](element-mediation-proof.md) describes opaque
+payload ownership, generated adapters, a compiler-derived admission cut and the
+unbounded production ancestor-walk proof. Borrowed plans retain the actual leaf
+receiver. The [completion specification](central-mediation-spec.md) records the
+remaining connection to the whole-library guarantee.
 
 ## Run
 
