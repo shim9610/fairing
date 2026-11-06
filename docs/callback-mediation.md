@@ -57,6 +57,10 @@ ownership/state model; the strict complete-mediation property remains unproved.
 See [the recorded specification](permission-value-refactor.md) and
 [value-based integration](session-tokens.md#typed-permission-requirements).
 
+The [element mediation evidence](element-mediation-proof.md) now checks the actual
+compiler closure regions and their guard cut, with an unbounded Verus path
+induction. Receiver/authority refinement and whole-library coverage remain separate.
+
 ## Run
 
 ```sh
