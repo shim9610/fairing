@@ -11,6 +11,7 @@ import tempfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 CONTROL_NAMES = [
+    "permission-value", "element-measure", "element-layout", "element-revision", "element-identity", "screen-requirement", "screen-metadata-recheck", "nav-permission-layout",
     "protected-builder", "protected-resources", "protected-wallpaper", "protected-dispatch", "protected-erasure", "protected-factory",
     "session-policy-recheck", "session-revoke", "session-authority", "session-policy", "session-temporary", "session-detach", "configuration-validation", "back-handler", "back-projection", "auth-correlation", "command-budget", "expiry-order", "ui-progress", "modal-input",
     "bounded-admission", "launch-gates", "notification-cap", "inbox-delivery", "retained-lifetime", "numeric-owner", "hold-admission", "wheel-admission", "restore-delegation", "pointer-projection", "capture-application", "hold-completion-latch", "focus-isolation", "popup-retirement", "deadline-reply",
@@ -74,6 +75,40 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
         print(name + (": rejected broken production code" if failure else ": passed"), flush=True)
 
     scenarios = [
+        ("permission-value", "unit/access::protected::tests::protected_scope_uses_current_context_and_never_caches_admission",
+         "crates/fairing/src/access/protected.rs",
+         [("gate: required.gate(),", "gate: Gate::borrowed(\"results.view\"),")],
+         False, "left: Some(42)"),
+        ("element-measure", "unit/elements::tests::an_authorized_parent_does_not_authorize_child_measurement",
+         "crates/fairing/src/elements/dispatch.rs",
+         [("if !binding.allows(cx) || cx.authority_stamp() != Some(stamp)", "if cx.authority_stamp() != Some(stamp)"),
+          ("Node::Leaf(element) => binding.run(cx, |cx| element.measure(available, cx))?", "Node::Leaf(element) => element.measure(available, cx)")],
+         False, "denied child measurement executed through an authorized parent"),
+        ("element-layout", "unit/elements::tests::nested_layout_excludes_denied_sizes_and_gaps_and_reflows_after_grant_changes",
+         "crates/fairing/src/elements/dispatch.rs",
+         [("if plans.is_empty() { 0.0 } else { *gap }", "if index == 0 { 0.0 } else { *gap }")],
+         False, "denied children reserved layout space or gaps"),
+        ("element-revision", "unit/elements::tests::publication_during_measurement_invalidates_layout_even_if_the_gate_stays_allowed",
+         "crates/fairing/src/screen/cx.rs",
+         [("self.access.authority_stamp()", "self.access.authority_stamp().map(|(id, _)| (id, 0))")],
+         False, "publication reused geometry from an old authority revision"),
+        ("element-identity", "unit/elements::tests::nested_layout_excludes_denied_sizes_and_gaps_and_reflows_after_grant_changes",
+         "crates/fairing/src/elements/dispatch.rs",
+         [(".id_salt(path.with(plan.binding.gate().as_str()).value())", "// stable identity deliberately removed")],
+         False, "element widget identities collided"),
+        ("screen-requirement", "product/permission_values/external_screens_need_no_manual_guard_and_requirement_drift_fails_closed",
+         "crates/fairing/src/screen/protected.rs",
+         [("body.required_permission().gate() == *binding.gate()", "true")],
+         False, "changed screen declaration retained an earlier permission"),
+        ("screen-metadata-recheck", "unit/screen::protected::tests::metadata_cannot_revoke_authority_and_then_admit_a_screen_callback",
+         "crates/fairing/src/screen/protected.rs",
+         [(".then(|| binding.run(cx, |cx| callback(body, cx)))", ".then(|| Some(callback(body, cx)))")],
+         False, "metadata revocation admitted a screen callback"),
+        ("nav-permission-layout", "product/permission_values/denied_custom_nav_values_do_not_reserve_cells_before_layout",
+         "crates/fairing/src/chrome/nav_bar.rs",
+         [("if parts.access.uses_session_tokens()", "if false && parts.access.uses_session_tokens()")],
+         False, "denied custom navigation reserved a cell"),
+
         ("protected-builder", "product/protected_boundary/all_untyped_extension_families_are_rejected_before_execution",
          "crates/fairing/src/shell/builder.rs",
          [("self.validate_protected_hooks()?;", "// validation deliberately removed")],

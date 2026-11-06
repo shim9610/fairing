@@ -75,13 +75,16 @@ fn closures(tcx: TyCtxt<'_>, ty: ty::Ty<'_>, out: &mut Vec<String>) {
         _ => {}
     }
 }
+#[path = "metadata_driver.rs"]
+mod metadata;
+
 struct Inventory {
     output: Option<PathBuf>,
 }
 impl Callbacks for Inventory {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
         // Preserve the dispatch boundary in the MIR used for caller analysis.
-        if self.output.is_some() {
+        if self.output.is_some() || env::var("FAIRING_CHECK_METADATA").as_deref() == Ok("1") {
             config.opts.unstable_opts.inline_mir = Some(false);
         }
     }
@@ -91,6 +94,9 @@ impl Callbacks for Inventory {
         _: &rustc_interface::interface::Compiler,
         tcx: TyCtxt<'tcx>,
     ) -> Compilation {
+        if env::var("FAIRING_CHECK_METADATA").as_deref() == Ok("1") {
+            metadata::check(tcx);
+        }
         let Some(output) = &self.output else {
             return Compilation::Continue;
         };

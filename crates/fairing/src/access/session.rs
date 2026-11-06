@@ -27,20 +27,20 @@ pub struct SessionGrant {
 }
 
 impl SessionGrant {
-    /// A base grant for the same type used by a protected element.
+    /// A base grant for the same application value used by a protected element.
     #[must_use]
-    pub fn base_for<P: super::Permission>() -> Self {
-        Self::base(Gate::borrowed(P::GATE))
+    pub fn base_for<P: super::Permission>(permission: P) -> Self {
+        Self::base(permission.gate())
     }
-    /// A temporary grant for a typed requirement.
+    /// A temporary grant for an application permission value.
     #[must_use]
-    pub fn temporary_for<P: super::Permission>(until: Instant) -> Self {
-        Self::temporary(Gate::borrowed(P::GATE), until)
+    pub fn temporary_for<P: super::Permission>(permission: P, until: Instant) -> Self {
+        Self::temporary(permission.gate(), until)
     }
-    /// Reserve a typed requirement for later issuance.
+    /// Reserve an application permission value for later issuance.
     #[must_use]
-    pub fn inactive_for<P: super::Permission>() -> Self {
-        Self::inactive(Gate::borrowed(P::GATE))
+    pub fn inactive_for<P: super::Permission>(permission: P) -> Self {
+        Self::inactive(permission.gate())
     }
     /// A base permission.
     #[must_use]
@@ -185,10 +185,10 @@ pub struct SessionSnapshot<'a> {
     now: u64,
 }
 impl SessionSnapshot<'_> {
-    /// Check the permission type used by a protected element.
+    /// Check the application permission value used by a protected element.
     #[must_use]
-    pub fn allows_permission<P: super::Permission>(&self) -> bool {
-        self.allows_name(P::GATE)
+    pub fn allows_permission<P: super::Permission>(&self, permission: P) -> bool {
+        self.allows(&permission.gate())
     }
     /// Immutable identity metadata; level is a display/legacy-policy attribute, not a grant.
     #[must_use]

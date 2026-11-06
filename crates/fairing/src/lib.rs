@@ -91,6 +91,7 @@ pub mod bridge;
 pub mod chrome;
 pub mod config;
 pub mod desktop;
+pub mod elements;
 pub mod gesture;
 pub mod i18n;
 pub mod inbox;

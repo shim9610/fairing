@@ -7,6 +7,7 @@
 
 pub(crate) mod cx;
 mod policy;
+pub(crate) mod protected;
 mod registry;
 
 pub use cx::{Cx, PaneInfo};

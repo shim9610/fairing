@@ -747,6 +747,14 @@ impl Cx<'_> {
         self.access.allows(&gate.into())
     }
 
+    pub(crate) fn allows_gate(&self, gate: &Gate) -> bool {
+        self.access.allows(gate)
+    }
+
+    pub(crate) fn authority_stamp(&self) -> Option<(crate::access::SessionId, u64)> {
+        self.access.authority_stamp()
+    }
+
     pub(crate) fn token_mode(&self) -> bool {
         self.access.uses_session_tokens()
     }

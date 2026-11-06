@@ -4,13 +4,19 @@ use fairing::access::{
 };
 use fairing::{action, LaunchAction, Shell, ShellConfig, ShellEvent};
 
-struct Read;
-impl Permission for Read {
-    const GATE: &'static str = "read";
+#[derive(Clone, Copy)]
+enum AppPermission {
+    Read,
+    Write,
 }
-struct Write;
-impl Permission for Write {
-    const GATE: &'static str = "write";
+use AppPermission::{Read, Write};
+impl Permission for AppPermission {
+    fn gate(self) -> fairing::Gate {
+        fairing::Gate::borrowed(match self {
+            Self::Read => "read",
+            Self::Write => "write",
+        })
+    }
 }
 
 pub fn exercise(events: &[u8]) {
@@ -18,15 +24,19 @@ pub fn exercise(events: &[u8]) {
     let mut config = ShellConfig::default();
     config.access.session_tokens = true;
     let mut shell = Shell::builder(config).build_protected(&ctx).unwrap();
-    shell.add(Protected::<Read, _>::new(
+    shell.add(Protected::new(
+        Read,
         action("read-action", |cx| {
             cx.app_mut::<[usize; 2]>().unwrap()[0] += 1;
         })
         .gate("incorrect-untyped-gate"),
     ));
-    shell.add(Protected::<Write, _>::new(action("write-action", |cx| {
-        cx.app_mut::<[usize; 2]>().unwrap()[1] += 1;
-    })));
+    shell.add(Protected::new(
+        Write,
+        action("write-action", |cx| {
+            cx.app_mut::<[usize; 2]>().unwrap()[1] += 1;
+        }),
+    ));
     let mut actual = [0usize; 2];
     let mut expected = [1usize, 0];
     shell.launch_with(LaunchAction::run("read-action"), &mut actual);
@@ -43,8 +53,8 @@ pub fn exercise(events: &[u8]) {
     let (mut owner, token) = SessionController::issue(
         Subject::default(),
         vec![
-            SessionGrant::base_for::<Read>(),
-            SessionGrant::inactive_for::<Write>(),
+            SessionGrant::base_for(Read),
+            SessionGrant::inactive_for(Write),
         ],
         None,
         now,
@@ -62,14 +72,14 @@ pub fn exercise(events: &[u8]) {
                 let next = (event >> 3) & 3;
                 let grants = vec![
                     if next & 1 != 0 {
-                        SessionGrant::base_for::<Read>()
+                        SessionGrant::base_for(Read)
                     } else {
-                        SessionGrant::inactive_for::<Read>()
+                        SessionGrant::inactive_for(Read)
                     },
                     if next & 2 != 0 {
-                        SessionGrant::base_for::<Write>()
+                        SessionGrant::base_for(Write)
                     } else {
-                        SessionGrant::inactive_for::<Write>()
+                        SessionGrant::inactive_for(Write)
                     },
                 ];
                 let published = owner.replace_grants(grants, None, now);

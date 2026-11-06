@@ -42,11 +42,16 @@ for configuration and analysis triggers.
   Revocation and expiration deny new protected work; UI changes require a scheduled
   update. The [session contract](docs/session-tokens.md) states ownership, role,
   clock and verification assumptions. Rust privacy is not process isolation.
-- **Typed requirements guard callback entry.** `ProtectedShell` accepts only typed
-  protected declarations and checks the current token before user callbacks.
-  Admitted callbacks still receive raw UI, app state and backend access. Requirement
-  selection, arbitrary callback effects, host hooks, destructors and previously
-  disclosed data remain trusted; this is not whole-program information-flow confinement.
+- **Application permission values declare callback requirements.** The application
+  owns its enum and mapping to issuer grants; Fairing checks the current token.
+  `ProtectedShell` binds declarations and automatically dispatches external screens
+  and element trees. Trees filter before layout and discard changed authority plans.
+  Trait conformance alone does not establish declaration/mapping purity. The
+  [extension checker](docs/permission-metadata-check.md) checks a restricted subset
+  of workspace metadata implementations; imported implementations need separate checks.
+  Admitted callbacks retain raw UI/app/backend access. Requirement selection, arbitrary
+  effects, host hooks, destructors and prior disclosures remain trusted. Complete
+  mediation and whole-program information-flow confinement are not proved.
 - **Recovery does not undo completed side effects.** Caught runtime unwinds quarantine
   the shell; the host controls replacement and reconciliation. Abort/OOM and panic-hook
   behavior have separate limits documented in [memory limits](docs/memory-limits.md#runtime-panics-and-sensitive-ui-state).

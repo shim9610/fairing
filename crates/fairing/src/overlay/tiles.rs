@@ -290,7 +290,7 @@ impl TileDecl {
         mut self,
         binding: crate::access::PermissionBinding<P>,
     ) -> Self {
-        self.tile.gate = binding.gate();
+        self.tile.gate = binding.gate().clone();
         if let Some(body) = self.body.take() {
             let mut body = body.into_inner();
             self.body = Some(RefCell::new(Box::new(move |ui, cx| {

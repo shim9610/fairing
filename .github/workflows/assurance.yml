@@ -92,6 +92,29 @@ jobs:
             target/mediation/fixture/
           retention-days: 14
 
+  permission-metadata:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install pinned compiler development components
+        run: python3 verification/install.py proofs
+      - name: Check production permission metadata contracts
+        run: python3 verification/check_extension.py --manifest-path Cargo.toml --all-features
+      - name: Reject effectful and incomplete downstream implementations
+        run: python3 verification/metadata_controls.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: permission-metadata-contracts
+          path: |
+            target/metadata-check/report.json
+            target/metadata-check/compiler.log
+            target/metadata-controls/*.json
+            target/metadata-controls/*.log
+          retention-days: 14
+
   state-schema:
     needs: inputs
     runs-on: ubuntu-24.04

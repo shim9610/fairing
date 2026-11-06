@@ -11,13 +11,19 @@ use crate::workspace::InstanceId;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-struct View;
-impl Permission for View {
-    const GATE: &'static str = "results.view";
+#[derive(Clone, Copy)]
+enum AppPermission {
+    View,
+    Edit,
 }
-struct Edit;
-impl Permission for Edit {
-    const GATE: &'static str = "device.configure";
+use AppPermission::{Edit, View};
+impl Permission for AppPermission {
+    fn gate(self) -> Gate {
+        Gate::borrowed(match self {
+            Self::View => "results.view",
+            Self::Edit => "device.configure",
+        })
+    }
 }
 
 fn fixture() -> crate::Result<(Fixture, SessionController)> {
@@ -29,8 +35,8 @@ fn fixture() -> crate::Result<(Fixture, SessionController)> {
     let (controller, token) = SessionController::issue(
         Subject::default(),
         vec![
-            SessionGrant::base_for::<View>(),
-            SessionGrant::inactive_for::<Edit>(),
+            SessionGrant::base_for(View),
+            SessionGrant::inactive_for(Edit),
         ],
         None,
         fixture.now,
@@ -46,11 +52,11 @@ fn fixture() -> crate::Result<(Fixture, SessionController)> {
 fn protected_scope_uses_current_context_and_never_caches_admission() -> crate::Result<()> {
     let (mut fixture, mut owner) = fixture()?;
     let calls = Cell::new(0);
-    let mut view = Protected::<View, _>::new(|_: &mut Cx<'_>| {
+    let mut view = Protected::new(View, |_: &mut Cx<'_>| {
         calls.set(calls.get() + 1);
         41
     });
-    let mut edit = Protected::<Edit, _>::new(|_: &mut Cx<'_>| {
+    let mut edit = Protected::new(Edit, |_: &mut Cx<'_>| {
         calls.set(calls.get() + 100);
         42
     });
@@ -60,7 +66,7 @@ fn protected_scope_uses_current_context_and_never_caches_admission() -> crate::R
         assert_eq!(view.run(&mut cx), Some(41));
         assert_eq!(edit.run(&mut cx), None);
         owner
-            .replace_grants(vec![SessionGrant::base_for::<Edit>()], None, cx.now)
+            .replace_grants(vec![SessionGrant::base_for(Edit)], None, cx.now)
             .map_err(|error| crate::Error::Config(error.to_string()))?;
         assert_eq!(
             view.run(&mut cx),
@@ -105,7 +111,8 @@ impl Screen for Recorder {
 fn every_screen_hook_is_guarded_even_when_called_without_shell_navigation() -> crate::Result<()> {
     let (mut fixture, mut owner) = fixture()?;
     let calls = Rc::new(Cell::new(0));
-    let element = Protected::<View, _>::new(
+    let element = Protected::new(
+        View,
         crate::screen::screen_of("report", Recorder(Rc::clone(&calls)))
             .gate("wrong")
             .visibility(Visibility::Locked),
@@ -113,7 +120,7 @@ fn every_screen_hook_is_guarded_even_when_called_without_shell_navigation() -> c
     let Decl::Screen(decl) = element.into_decl() else {
         return Err(crate::Error::Config("not a screen".into()));
     };
-    assert_eq!(decl.gate_name().as_str(), View::GATE);
+    assert_eq!(decl.gate_name().as_str(), View.gate().as_str());
     assert_eq!(decl.visibility, Visibility::Hidden);
     let mut screen = decl
         .into_resident()
@@ -144,7 +151,7 @@ fn denied_render_scope_emits_no_user_shapes_or_backend_effects() -> crate::Resul
     let ctx = egui::Context::default();
     let calls = Cell::new(0);
     let marker = egui::Color32::from_rgb(21, 43, 65);
-    let mut element = Protected::<View, _>::new(|ui: &mut egui::Ui, _: &mut Cx<'_>| {
+    let mut element = Protected::new(View, |ui: &mut egui::Ui, _: &mut Cx<'_>| {
         calls.set(calls.get() + 1);
         ui.painter().rect_filled(ui.max_rect(), 0.0, marker);
     });
@@ -188,7 +195,7 @@ fn factory_is_guarded_and_revocation_during_construction_blocks_all_hooks() -> c
         issuer.borrow_mut().revoke();
         Recorder(Rc::clone(&hooks))
     });
-    let Decl::Screen(mut decl) = Protected::<View, _>::new(decl).into_decl() else {
+    let Decl::Screen(mut decl) = Protected::new(View, decl).into_decl() else {
         return Err(crate::Error::Config("not screen".into()));
     };
     let crate::workspace::InstanceScreen::Owned(mut screen) = decl.spawn() else {
@@ -216,24 +223,26 @@ fn erased_action_and_chrome_callbacks_keep_their_typed_binding() -> crate::Resul
     let calls = Rc::new(Cell::new(0));
     let c = Rc::clone(&calls);
     let Decl::Action(mut action) =
-        Protected::<View, _>::new(crate::action("op", move |_| c.set(c.get() + 1))).into_decl()
+        Protected::new(View, crate::action("op", move |_| c.set(c.get() + 1))).into_decl()
     else {
         return Err(crate::Error::Config("not action".into()));
     };
     let c = Rc::clone(&calls);
-    let Decl::StatusItem(mut status) = Protected::<View, _>::new(crate::status_item(
-        "status",
-        crate::chrome::Slot::Right,
-        move |_, _| c.set(c.get() + 10),
-    ))
+    let Decl::StatusItem(mut status) = Protected::new(
+        View,
+        crate::status_item("status", crate::chrome::Slot::Right, move |_, _| {
+            c.set(c.get() + 10);
+        }),
+    )
     .into_decl() else {
         return Err(crate::Error::Config("not status".into()));
     };
     let c = Rc::clone(&calls);
-    let Decl::NavItem(mut nav) =
-        Protected::<View, _>::new(crate::nav_item("nav", move |_, _| c.set(c.get() + 100)))
-            .into_decl()
-    else {
+    let Decl::NavItem(mut nav) = Protected::new(
+        View,
+        crate::nav_item("nav", move |_, _| c.set(c.get() + 100)),
+    )
+    .into_decl() else {
         return Err(crate::Error::Config("not nav".into()));
     };
     let mut parts = fixture.parts();
@@ -269,7 +278,8 @@ fn protected_shell_requires_token_mode_and_dispatches_only_current_grants() -> c
     let mut shell = crate::Shell::builder(config).build_protected(&ctx)?;
     let calls = Rc::new(Cell::new(0));
     let c = Rc::clone(&calls);
-    shell.add(Protected::<View, _>::new(
+    shell.add(Protected::new(
+        View,
         crate::action("run", move |_| c.set(c.get() + 1)).gate("wrong"),
     ));
     shell.launch(crate::LaunchAction::run("run"));
@@ -288,7 +298,7 @@ fn protected_shell_requires_token_mode_and_dispatches_only_current_grants() -> c
     let now = shell.shell().now();
     let (mut owner, token) = SessionController::issue(
         Subject::default(),
-        vec![SessionGrant::base_for::<View>()],
+        vec![SessionGrant::base_for(View)],
         None,
         now,
         Waker::new(&ctx),
@@ -309,10 +319,10 @@ fn tile_panel_keeps_its_guard_after_declaration_erasure() -> crate::Result<()> {
     let calls = Rc::new(Cell::new(0));
     let c = Rc::clone(&calls);
     let panel = crate::tile_panel("panel", 100.0, move |_, _| c.set(c.get() + 1)).gate("wrong");
-    let Decl::Tile(panel) = Protected::<View, _>::new(panel).into_decl() else {
+    let Decl::Tile(panel) = Protected::new(View, panel).into_decl() else {
         return Err(crate::Error::Config("not a tile".into()));
     };
-    assert_eq!(panel.gate_name().as_str(), View::GATE);
+    assert_eq!(panel.gate_name().as_str(), View.gate().as_str());
     let ctx = egui::Context::default();
     let mut parts = fixture.parts();
     let mut cx = parts.cx(pane(InstanceId::NONE), None);
@@ -340,7 +350,7 @@ fn admitted_callbacks_cannot_install_persistent_icon_or_widget_callbacks() -> cr
     let ctx = egui::Context::default();
     let mut parts = fixture.parts();
     let mut cx = parts.cx(pane(InstanceId::NONE), None);
-    let binding = PermissionBinding::<View>::new();
+    let binding = PermissionBinding::new(View);
     let id = binding
         .run(&mut cx, |cx| {
             if let Some(painters) = cx.widgets().painters {
@@ -377,7 +387,7 @@ fn admitted_callbacks_cannot_install_persistent_icon_or_widget_callbacks() -> cr
 
 #[test]
 fn panicking_admitted_callback_cannot_leave_painters_in_the_shell() -> crate::Result<()> {
-    let binding = PermissionBinding::<View>::new();
+    let binding = PermissionBinding::new(View);
     let (mut fixture, owner) = fixture()?;
     let mut parts = fixture.parts();
     let mut cx = parts.cx(pane(InstanceId::NONE), None);

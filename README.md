@@ -118,7 +118,7 @@ slightly wrong. fairing is that shell, once, with the hard parts already decided
 | Notifications | Center, toasts, heads-up — postable from any thread |
 | On-screen keyboard | Numpad, QWERTY and Hangul (two-set) with composition |
 | Settings | Eleven built-in screens, added with one call and narrowed, replaced or dropped from there |
-| Access control | Gates on every screen, action, tile and setting key; an unlock prompt with a PIN pad, a pattern, a password card or a badge-reader wait, a lock screen, temporary unlocks and session timeouts. You own the credential check through `Authenticator`; opt-in [session tokens](docs/session-tokens.md) support issuer-owned revocation and independent operation permissions. `build_protected` requires typed application declarations and live callback-entry checks |
+| Access control | Gates on every screen, action, tile and setting key; an unlock prompt with a PIN pad, a pattern, a password card or a badge-reader wait, a lock screen, temporary unlocks and session timeouts. You own the credential check through `Authenticator`; opt-in [session tokens](docs/session-tokens.md) support issuer-owned revocation and independent operation permissions. `build_protected` requires application-owned permission values; `add_elements` filters and lays out a typed UI tree before live paint/callback checks |
 | Screen layout | Pages with a pinned action bar, section cards, grids, a rail with a list/detail split, tab bars and expandable rows, all drawn from theme tokens |
 | Widgets | 23 touch widgets, from buttons, switches and sliders to a dropdown, a wheel picker, a progress ring, a PIN pad and a pattern pad. They live in [`fairing-widgets`](crates/fairing-widgets) and work without the shell |
 

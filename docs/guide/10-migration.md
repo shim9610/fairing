@@ -38,10 +38,24 @@ shell. See [05 Authentication](05-access-control.md#53-what-each-method-draws).
 
 ### Issuer-controlled sessions
 
+The earlier type-wide `Permission::GATE` API is replaced by value-based mapping.
+Pass values to `PermissionBinding::new`, `Protected::new`, all typed grant helpers
+and `SessionSnapshot::allows_permission`. `PermissionBound` is now an external
+metadata contract with a mandatory `required_permission` method. Fairing retains
+ownership of authorization; implementations return values rather than decisions.
+
+`ProtectedShell::add_screen` guards an external `Screen + PermissionBound`.
+`add_elements` owns an `ElementTree` and filters/measures/lays out/paints its children.
+Use these APIs instead of manually invoking a guard for every nested child. A
+registered screen's requirement stays fixed; replace it to change that declaration.
+See [the element integration example](../session-tokens.md#typed-permission-requirements)
+for custom measurement/paint implementations and compilation contracts.
+
 `ShellBuilder::build_protected` adds an opt-in typed registration facade. Enable
 `access.session_tokens`, wrap each configured screen/action/status/nav/tile in
-`Protected::<P, _>::new(declaration)`, and implement `Permission::GATE` for `P`.
-Use `SessionGrant::base_for::<P>()` on the issuer side. The facade does not expose
+`Protected::new(value, declaration)`, and implement `Permission::gate(self)` for
+your own enum or small `Copy` value struct. Different variants may name distinct
+grants. Use `SessionGrant::base_for(value)` on the issuer side. The facade does not expose
 mutable legacy registration. Protected screen/action icons are hidden on refusal;
 screen lifecycle callbacks are also denied after revocation. Factory construction
 is deferred to the first authorized hook. See [typed requirements](../session-tokens.md#typed-permission-requirements)

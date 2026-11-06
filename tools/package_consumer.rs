@@ -27,7 +27,56 @@ impl UpdateSource<Vec<u8>> for Slot {
     }
 }
 
+// A downstream crate owns its permission vocabulary and element implementation.
+#[derive(Clone, Copy)]
+enum ConsumerPermission {
+    View,
+    Edit,
+}
+impl fairing::access::Permission for ConsumerPermission {
+    fn gate(self) -> fairing::Gate {
+        fairing::Gate::borrowed(match self {
+            Self::View => "consumer.view",
+            Self::Edit => "consumer.edit",
+        })
+    }
+}
+struct ConsumerElement(ConsumerPermission);
+impl fairing::access::PermissionBound for ConsumerElement {
+    type Required = ConsumerPermission;
+    fn required_permission(&self) -> ConsumerPermission {
+        self.0
+    }
+}
+impl fairing::elements::Element for ConsumerElement {
+    fn measure(&mut self, _: fairing::egui::Vec2, _: &mut Cx<'_>) -> fairing::egui::Vec2 {
+        fairing::egui::vec2(30.0, 20.0)
+    }
+    fn paint(&mut self, ui: &mut fairing::egui::Ui, _: &mut Cx<'_>) {
+        ui.label("Consumer element");
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let ctx = fairing::egui::Context::default();
+    let mut protected_config = fairing::ShellConfig::default();
+    protected_config.access.session_tokens = true;
+    let mut protected = fairing::Shell::builder(protected_config).build_protected(&ctx)?;
+    protected.add_elements(
+        "consumer-tree",
+        fairing::elements::ElementTree::row(
+            ConsumerPermission::View,
+            4.0,
+            vec![
+                fairing::elements::ElementTree::leaf(ConsumerElement(ConsumerPermission::View)),
+                fairing::elements::ElementTree::leaf(ConsumerElement(ConsumerPermission::Edit)),
+            ],
+        )?,
+    );
+    let _grants = [
+        fairing::access::SessionGrant::base_for(ConsumerPermission::View),
+        fairing::access::SessionGrant::inactive_for(ConsumerPermission::Edit),
+    ];
     let mut port = Slot(None);
     let buffer = vec![1, 2, 3];
     let original = buffer.as_ptr();

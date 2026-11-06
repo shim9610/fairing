@@ -172,112 +172,117 @@ complete application security, OS isolation or cryptographic authentication.
 
 ## Typed permission requirements
 
-Use `Shell::builder(config).build_protected(ctx)` when application declarations
-must carry a permission type. It requires `config.access.session_tokens = true`
-and returns `ProtectedShell`, whose `add` accepts only `Protected<P, D>`.
-The ordinary `Shell` remains the legacy registration API; the protected facade
-exposes no mutable shell or conversion back to it. Configure the authenticator and
-host backends before construction; these are trusted authority/infrastructure APIs.
-
-`build_protected` rejects untyped painter/layout hooks, widget-painter bundles,
-image loaders and procedural wallpapers before attaching backends or executing user
-hooks. Both branches of nested themed wallpapers are checked. Data-only wallpapers
-remain available. Use typed screen/action/status/nav/tile declarations for application
-UI. The legacy `build` API continues to support unmediated host customization.
-
-Protected callbacks receive their original app/backend references, with callback-local
-icon and widget-painter stores. Customizations installed through `cx.icons` or
-`cx.widgets().painters` last only for that invocation, including on panic; they cannot
-install a shell hook that runs after revocation. Keep an application-owned `IconSet`
-or `WidgetPainters` and use it inside an admitted callback when persistence is needed.
-Custom icon IDs from a callback-local store must not be retained across calls.
+Enable `config.access.session_tokens` and call `build_protected`. Define your own
+permission enum or small value struct and implement `Permission::gate(self)` to
+map each value to its issuer-controlled token-grant identifier. Different variants
+of one enum can name independent grants. Fairing owns the token comparison and
+callback dispatch; permission metadata does not grant authority.
 
 ```rust
-use fairing::{action, screen, Cx, LaunchAction, ProtectedShell, Shell, ShellConfig};
+use fairing::{action, Gate, LaunchAction, ProtectedShell, Shell, ShellConfig};
 use fairing::access::{Permission, Protected, SessionGrant};
+use fairing::elements::{element, ElementTree};
 
-struct ResultsView;
-impl Permission for ResultsView {
-    const GATE: &'static str = "results.view";
-}
-struct ResultsExport;
-impl Permission for ResultsExport {
-    const GATE: &'static str = "results.export";
+#[derive(Clone, Copy)]
+enum AppPermission { ViewResults, ExportResults }
+impl Permission for AppPermission {
+    fn gate(self) -> Gate {
+        Gate::borrowed(match self {
+            Self::ViewResults => "results.view",
+            Self::ExportResults => "results.export",
+        })
+    }
 }
 
 fn build(ctx: &fairing::egui::Context) -> fairing::Result<ProtectedShell> {
     let mut config = ShellConfig::default();
     config.access.session_tokens = true;
     let mut shell = Shell::builder(config).build_protected(ctx)?;
-
-    shell.add(Protected::<ResultsExport, _>::new(action("export", |cx| {
-        // Only admitted callbacks receive the original app and backend context.
+    shell.add(Protected::new(AppPermission::ExportResults, action("export", |cx| {
         let _ = cx.app::<usize>();
     })));
-    let mut export_button = Protected::<ResultsExport, _>::new(
-        |ui: &mut fairing::egui::Ui, cx: &mut Cx<'_>| {
-            if ui.button("Export").clicked() {
-                cx.launch(LaunchAction::run("export"));
-            }
-        },
-    );
-    shell.add(Protected::<ResultsView, _>::new(screen("results", move |ui, cx| {
-        ui.heading("Results");
-        export_button.render(ui, cx);
-    })));
-
-    // After credential verification, the issuer passes these to SessionController::issue.
-    let _grants = vec![
-        SessionGrant::base_for::<ResultsView>(),
-        SessionGrant::base_for::<ResultsExport>(),
-    ];
+    shell.add_elements("results", ElementTree::column(AppPermission::ViewResults, 8.0, vec![
+        element(AppPermission::ViewResults, fairing::egui::vec2(200.0, 32.0), |ui, _| {
+            ui.heading("Results");
+        }),
+        element(AppPermission::ExportResults, fairing::egui::vec2(200.0, 48.0), |ui, cx| {
+            if ui.button("Export").clicked() { cx.launch(LaunchAction::run("export")); }
+        }),
+    ])?);
+    // The issuer supplies these values after credential verification.
+    let _grants = [SessionGrant::base_for(AppPermission::ViewResults),
+                   SessionGrant::base_for(AppPermission::ExportResults)];
     Ok(shell)
 }
 ```
 
-`Permission::GATE` identifies the issuer grant. Types sharing the same string name
-the same permission; choosing the correct requirement and role expansion remains
-policy configuration. There is no implicit administrator or public bypass.
-`SessionGrant::temporary_for::<P>(until)` and `inactive_for::<P>()` use the same
-requirement type. A snapshot can query `allows_permission::<P>()`.
+`SessionGrant::temporary_for(value, until)` and `inactive_for(value)` use the same
+mapping. A token snapshot can query `allows_permission(value)`. Values mapping to
+the same grant identifier intentionally alias; role expansion and business-policy
+classification belong to the application. There is no implicit administrator or
+public bypass.
 
-Every `Protected<P, T>` privately owns a `PermissionBinding<P>` and its body.
-The sealed `PermissionBound` trait exposes the requirement, not a cached permit.
-The binding consults the *calling context's current session* on every `run` or
-`render`; it does not retain a previous user's token or a successful Boolean.
-Default legacy/one-level contexts cannot admit typed callbacks.
+### External elements and framework-owned layout
 
-Protected registration supports screens, actions, status items, nav items and
-overlay tiles. It replaces any earlier `.gate(...)` on the declaration with the
-type's requirement. Screen/action icons use `Visibility::Hidden`. Each callback
-also has its own guard after type erasure: screen UI/back/lifecycle/result hooks,
-actions, status/nav UI and tile-panel bodies. A protected factory defers user
-construction until its first authorized screen hook and rechecks after construction;
-a constructor that revokes the session cannot admit the following hook.
-Denied lifecycle hooks, including `Destroyed`, are skipped; use host events and
-trusted destructors for cleanup that must occur after revocation.
+Implement `PermissionBound` with a mandatory `required_permission` method returning
+your enum value. Custom widgets/painters additionally implement `elements::Element`
+(`measure` and `paint`). Construct `ElementTree::leaf`, `row` or `column`, then call
+`ProtectedShell::add_elements`. For ordinary `Screen` implementations with the same
+metadata contract, call `add_screen`. Neither API requires application code to call
+a guard around each dispatched hook or child.
 
-The exact `protected_dispatch::admitted` body is checked by Kani and Verus.
-Kani also compiles the actual generic `invoke` branch with arbitrary u64 effect
-and payload clients: denial does not call the body, change the modeled client
-effect or return its payload; admission calls once and forwards its result.
-Compiler clients reject missing permission traits, untyped registration, mutable
-shell escape and attempts to forge a stored permit. Product witnesses and source
-tripwires bind these decisions to the UI adapters; those adapters do not have a
-complete Rust/egui refinement proof.
+Fairing excludes denied children before measuring and allocating row/column space,
+gaps or input regions. It builds geometry in library code, validates the plan, then
+checks live authority before each paint callback. Measurement callbacks may change
+issuer state: a changed session identity or publication revision discards the
+prepared plan. Already-admitted output is not retroactively undone. Invalid sizes
+are omitted. Stable structural node paths and grant identifiers namespace widget
+IDs so hiding a sibling does not move another widget into its retained state.
 
-Admitted callbacks retain raw egui UI, app state and backend access. They can
-perform arbitrary Rust effects. Protect each nested scope or registered operation
-that needs a different requirement; the facade cannot infer data sensitivity from
-an arbitrary `ui.label` or backend call. It does not erase previously drawn pixels,
-stored values, queued toasts or completed effects. Host infrastructure callbacks,
-legacy `Shell`, arbitrary destructors and external business authorization remain
-trusted boundaries. This is callback admission, not whole-program information-flow
-confinement or cancellation of already-admitted work.
+A registered root screen keeps its original requirement until replacement; a
+screen that reports a different identifier is not executed through that binding.
+Child requirements are read per plan and checked again before paint. Declaration
+and value-mapping methods are side-effect-free metadata contracts. Rust compilation
+enforces their presence and type compatibility, not purity of arbitrary user code.
+The [extension checker](permission-metadata-check.md) checks a conservative,
+terminating subset of compiled workspace metadata implementations. Run it in the
+application workspace; dependency implementations outside that workspace remain
+outside its certificate.
 
-Bindings contain only a type marker. Admission still performs live token/policy
-checks; it is not a zero-cost authority check. Gate construction borrows a static
-name without allocation. Registration adds callback wrappers, and factory instances
-have lazy construction storage. There is no new dependency or lock in callback
-admission; catalog lookup and atomic observation retain the session read bounds
-above. No universal latency or throughput guarantee is claimed.
+### Binding and existing declarations
+
+`Protected::new(value, declaration)` supports screen/action/status/nav/tile
+registration. Its private `PermissionBinding<P>` holds the copied user value and
+normalized identifier, without caching authority. The declaration's old `.gate`
+is replaced by that identifier. Denied screen/action icons are hidden. Status/nav
+callbacks and tile panels retain live guards after erasure; token-mode nav cells
+exclude denied custom declarations before sizing. Disabled built-in Back remains
+visible. Factories are bound before construction and checked again afterward.
+Denied lifecycle hooks, including `Destroyed`, are skipped; host events/destructors
+handle cleanup that must run after revocation.
+
+The original app/backend references remain available after admission. Icon/widget
+extension stores lent by a protected callback are local to that invocation, even on
+panic. Keep application-owned stores inside your element when persistence is needed;
+do not retain custom icon IDs from callback-local stores for a later call.
+
+Legacy `Shell` remains available. Protected construction rejects untyped global
+builder hooks, including procedural wallpapers and image loaders, before setup;
+data-only wallpapers remain supported. Use the element tree for typed custom UI.
+
+### Evidence and scope
+
+Kani and Verus check the exact admission decision, and Kani checks the actual
+callback branch over arbitrary effect/payload clients. Public compiler clients
+check missing metadata, missing mappings, incompatible tree permission types and
+private storage. Product and mutation tests cover enum-value separation, external
+registration, pre-layout filtering, authority/metadata invalidation, stable widget
+identity and per-callback rechecks. These establish the implemented component and
+execution-path evidence; [complete mediation](callback-mediation.md) remains unproved.
+
+Raw egui/app/backend effects inside an admitted callback, trusted authentication,
+backends and destructors remain documented boundaries. The library cannot infer
+arbitrary data sensitivity or cancel work already admitted. Permission lookup is
+live, not a zero-cost authority check. Bindings normalize identifiers at creation;
+tree plans allocate ordinary vectors and revalidate metadata/authority. No new lock,
+dependency or universal latency guarantee is introduced.

@@ -32,8 +32,10 @@ ownership, revocation and publication semantics remain in force.
 Permission values must be cheap to copy. Declaration/mapping methods are metadata
 contracts: they do not receive UI, app/backend access or mutable session authority,
 and must be side-effect-free. Arbitrary user implementations of those metadata
-methods are not automatically proved pure by Rust trait conformance. A later
-extension analysis must reject effects or unresolved purity obligations.
+methods are not automatically proved pure by Rust trait conformance. Extension
+analysis must reject effects or unresolved purity obligations. The implemented
+[metadata checker](permission-metadata-check.md) applies this requirement to a
+restricted subset of compiled workspace implementations.
 
 ## Mandatory element contract
 
@@ -84,8 +86,10 @@ is bounded; invalidation must not trigger an unbounded retry loop.
 
 Measurement results must be finite and nonnegative. Invalid measurements are
 omitted without invoking paint. Layout records contain framework-owned indices
-and rectangles, not reusable authorization capabilities. Protected callbacks keep
-the original UI/app/backend access and callback-local extension stores.
+and rectangles, not reusable authorization capabilities. Structural node paths and
+normalized requirements namespace widget IDs independently of visible sibling
+order. Protected callbacks keep the original UI/app/backend access and
+callback-local extension stores.
 
 ## Existing surfaces and compatibility
 
@@ -104,21 +108,21 @@ covers Fairing-owned protected element entry, not all arbitrary Rust execution.
 
 ## Verification and acceptance
 
-- [ ] One user enum supplies distinct read/write permissions, with independent
+- [x] One user enum supplies distinct read/write permissions, with independent
   token grants, replacement, expiry and terminal revocation.
-- [ ] Omitted declaration methods/types fail compilation; external implementation
+- [x] Omitted declaration methods/types fail compilation; external implementation
   clients compile using only the public API. Users do not invoke child guards.
-- [ ] All existing protected declaration adapters preserve the chosen value and
+- [x] All existing protected declaration adapters preserve the chosen value and
   guard every supported hook, including factories and lifecycle callbacks.
-- [ ] Denied element measurement/paint callbacks are never called; denied entries
+- [x] Denied element measurement/paint callbacks are never called; denied entries
   allocate no space, gaps, input regions or output shapes.
-- [ ] Nested row/column layouts compact after denial/revocation; changed metadata,
+- [x] Nested row/column layouts compact after denial/revocation; changed metadata,
   revocation during measurement and invalid sizes reject stale paint plans.
-- [ ] Live paint callbacks use the current token; sibling revocation cannot execute
+- [x] Live paint callbacks use the current token; sibling revocation cannot execute
   a later callback on an earlier admission result.
-- [ ] Real production mutations removing admission, metadata checks or layout
+- [x] Real production mutations removing admission, metadata checks or layout
   filtering are rejected by meaningful regressions.
-- [ ] Update public API/migration/security documentation and compiler type schemas.
+- [x] Update public API/migration/security documentation and compiler type schemas.
   Re-run relevant product, component-proof and assurance checks; bind receipts to
   the final sources.
 

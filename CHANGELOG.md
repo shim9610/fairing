@@ -11,6 +11,14 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Added
 
+- Compiled-MIR checker for workspace permission metadata contracts and downstream
+  rejection controls. See [application checking](docs/permission-metadata-check.md)
+  for the accepted subset and configuration/dependency scope.
+- Application-owned permission enum values with mandatory element metadata and
+  automatic `add_screen` / `add_elements` registration. Framework-owned element
+  trees filter before measurement/layout and recheck authority before paint;
+  changed revisions/requirements invalidate plans, and stable paths preserve widget
+  identity across hidden siblings. Protected construction still rejects raw hooks.
 - Typed permission bindings and `Protected<P, T>` for live callback admission.
   `build_protected` returns a token-mode facade requiring typed application
   declarations; protected screen/action icons hide on refusal. Guards cover
@@ -48,6 +56,9 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Changed
 
+- Replace `Permission::GATE` with `Permission::gate(self)`. `Protected::new` and typed
+  session grant/snapshot helpers now take an application permission value. Token-mode
+  nav layout removes denied custom cells before sizing. See the migration guide.
 - Upgrade egui/eframe and their paint crates from 0.36.2 to 0.37.0; retain bundled
   fallback fonts, GL and OS clipboard support. The minimum Rust version stays 1.95.
 - Shell command admission defaults to 1,024 slots and 256 commands per UI/logic

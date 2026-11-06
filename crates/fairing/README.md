@@ -179,7 +179,10 @@ capabilities. See [session tokens](https://github.com/shim9610/fairing/blob/main
 for multiple roles, revocation and verification scope.
 
 `ShellBuilder::build_protected` requires token mode and returns a `ProtectedShell`
-whose declarations carry `Protected<P, D>` requirements. It checks live authority
-before user callbacks while preserving their original UI/app/backend context.
-Nested scopes can use `Protected::run/render`; see the same session guide for
-typed grants, factory/lifecycle behavior and the callback-effect boundary.
+whose declarations carry `Protected::new(value, declaration)` requirements. Your
+own enum implements `Permission::gate(self)`; Fairing compares that value with the
+current token. Implement `PermissionBound` for external screens/elements and use
+`add_screen` / `add_elements` for library-owned dispatch. Element trees filter before
+measurement/layout and recheck authority before paint, preserving UI/app/backend
+access inside admitted callbacks. See the session guide for typed grants, stable
+metadata, factory/lifecycle behavior and the callback-effect boundary.

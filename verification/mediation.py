@@ -22,7 +22,7 @@ def digest(path):
 
 def source_hashes():
     paths = list((ROOT / 'crates').rglob('*.rs')) + list((ROOT / 'crates').rglob('Cargo.toml'))
-    paths += [ROOT / p for p in ['Cargo.toml', 'Cargo.lock', 'verification/mediation_driver.rs', 'verification/mediation.py', 'verification/mediation_controls.py', 'verification/fixtures/mediation.rs', 'verification/examples/mediation_probe.rs', 'verification/tools.json']]
+    paths += [ROOT / p for p in ['Cargo.toml', 'Cargo.lock', 'verification/mediation_driver.rs', 'verification/metadata_driver.rs', 'verification/check_extension.py', 'verification/metadata_controls.py', 'verification/mediation.py', 'verification/mediation_controls.py', 'verification/fixtures/mediation.rs', 'verification/examples/mediation_probe.rs', 'verification/tools.json']]
     return {str(p.relative_to(ROOT)): digest(p) for p in sorted(paths)}
 
 def build(profile):

@@ -35,9 +35,27 @@ are outside this entry-mediation contract.
 
 Product regressions check every rejected extension family, nested/inactive wallpaper
 branches, legacy customization, and persistent painter injection after normal return
-and panic. Three production mutation controls remove builder validation, remove
-resource isolation or skip the inactive wallpaper branch; each must fail its real
-regression test. These are repair evidence, not a global absence proof.
+and panic. Three baseline production mutation controls remove builder validation, resource
+isolation or the inactive wallpaper branch. Eight additional controls cover value
+identity, child measurement admission, compact layout, authority revisions, widget
+identity, screen metadata and nav placement. Each must fail its real regression test. These are repair evidence, not a global absence proof.
+
+## Value-based dispatch architecture
+
+The protected execution path uses application-owned enum values and their mapping to
+issuer grants. `PermissionBound::required_permission` is mandatory. `add_screen`
+creates the guarded adapter for external screens; `add_elements` owns a typed tree
+and invokes measurement/paint after live checks. Denied children have no plan entry,
+space or gap. Authority revisions and metadata identity invalidate prepared geometry.
+Stable structural paths namespace widget IDs independently of visible sibling order.
+
+This is the architecture needed for subsequent coverage/refinement proofs. The
+[extension checker](permission-metadata-check.md) checks workspace metadata
+getters/mappers against a restricted effect and termination contract. It does not
+discharge the existing MIR graph's unresolved protocol calls or supply its missing
+ownership/state model; the strict complete-mediation property remains unproved.
+See [the recorded specification](permission-value-refactor.md) and
+[value-based integration](session-tokens.md#typed-permission-requirements).
 
 ## Run
 

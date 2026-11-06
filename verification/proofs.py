@@ -103,6 +103,9 @@ results.append(execute("kani-protected", [kani, ROOT / "verification/kani_protec
 results.append(execute("protected-capability-types", ["cargo", "test", "--locked", "-p", "fairing", "--no-default-features", "--doc", "access::protected"], environment))
 if "test result: ok. 5 passed;" not in (OUT / "protected-capability-types.log").read_text():
     raise SystemExit("Expected one positive and four compile-fail protected clients")
+results.append(execute("element-contract-types", ["cargo", "test", "--locked", "-p", "fairing", "--no-default-features", "--doc", "elements"], environment))
+if "test result: ok. 5 passed;" not in (OUT / "element-contract-types.log").read_text():
+    raise SystemExit("Expected one positive and four compile-fail element clients")
 receipt("protected", protected_inputs(), protected_before)
 protected_source = (ROOT / "crates/fairing/src/access/protected_dispatch.rs").read_text()
 protected_harness = (ROOT / "verification/kani_protected.rs").read_text()

@@ -1,7 +1,9 @@
 //! Registration facade with mandatory typed permission requirements.
 
 use super::{Shell, ShellEvent, ShellHandle};
-use crate::access::{AuthResponse, Authenticator, Permission, Protected, ProtectedDeclaration};
+use crate::access::{
+    AuthResponse, Authenticator, Permission, PermissionBound, Protected, ProtectedDeclaration,
+};
 use crate::screen::LaunchAction;
 
 /// A shell whose application declarations must carry a typed permission binding.
@@ -25,6 +27,30 @@ impl ProtectedShell {
     /// legacy gate/visibility settings; unauthorized screen/action icons are hidden.
     pub fn add<P: Permission, D: ProtectedDeclaration>(&mut self, element: Protected<P, D>) {
         self.inner.add(element.into_decl());
+    }
+
+    /// Register an application screen whose required enum value is mandatory.
+    /// Fairing creates its guarded adapter; callers do not invoke the screen guard.
+    pub fn add_screen<S: crate::screen::Screen + PermissionBound + 'static>(
+        &mut self,
+        id: impl Into<String>,
+        screen: S,
+    ) {
+        let required = screen.required_permission();
+        self.add(Protected::new(
+            required,
+            crate::screen::protected::declared(id, screen, required),
+        ));
+    }
+
+    /// Register an owned UI tree. Filtering, measurement, layout and paint dispatch
+    /// are performed by the library using every node's current requirement.
+    pub fn add_elements<P: Permission>(
+        &mut self,
+        id: impl Into<String>,
+        tree: crate::elements::ElementTree<P>,
+    ) {
+        self.add_screen(id, tree);
     }
 
     /// Observe layout, state and diagnostics without mutable registration access.

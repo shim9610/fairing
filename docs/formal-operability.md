@@ -53,14 +53,14 @@ Rust callbacks and has not proved their termination or effects.
 ## Discharged component: typed callback admission
 
 Typed application declarations require `Protected<P, D>`, whose private binding
-names `P::GATE`. `build_protected` requires token mode and exposes no mutable
-legacy registration. Let `A` be the current token/policy permission observation.
+stores the application value and its normalized grant identifier. `build_protected`
+requires token mode and exposes no mutable legacy registration. Let `A` be the current token/policy permission observation.
 The production admission predicate satisfies `entry = token_mode && A`.
 The actual generic dispatch branch returns `None` without invoking its body when
 entry is false. Kani checks that branch with arbitrary u64 effect/payload clients,
 and Verus checks the exact admission predicate. Compiler clients establish the
-registration/type boundary; source tripwires and product witnesses cover erased
-screen/action/chrome/tile adapters and the post-factory recheck.
+registration/type boundary, including mandatory external element metadata; source
+tripwires and product witnesses cover erased screen/action/chrome/tile adapters and the post-factory recheck.
 
 The resulting component contract is absence of a new callback invocation through
 denied protected dispatch. It does not classify arbitrary app data, erase prior

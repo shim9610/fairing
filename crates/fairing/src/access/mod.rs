@@ -947,6 +947,18 @@ impl Access {
         self.policy.allows(&self.session.subject, gate)
     }
 
+    /// A live identity/version for invalidating prepared protected UI geometry.
+    pub(crate) fn authority_stamp(&self) -> Option<(SessionId, u64)> {
+        if self.quarantined || !self.token_sessions {
+            return None;
+        }
+        let token = self.token.as_ref()?;
+        token
+            .snapshot(self.token_now)
+            .ok()
+            .map(|observation| (token.id(), observation.revision()))
+    }
+
     /// The decision by name — for the fallback sites where the gate is `None` and **the id is
     /// the gate**. The result matches [`Access::allows`], and with one level or
     /// `mode = off` it passes before building a [`Gate`], so there is **no heap allocation**
