@@ -280,6 +280,7 @@ pub struct Shell {
     /// The unlock prompt and the lock screen.
     prompt: Prompt,
     auth_request: Option<crate::access::AuthRequestId>,
+    routed_auth: Option<(Gate, Option<LaunchAction>)>,
     /// What asked for an unlock behind the lock screen — asked again once it is gone.
     after_lock: Option<(Gate, Option<LaunchAction>)>,
     /// Last frame's OSK target (the `OskToggled` boundary).
@@ -687,6 +688,7 @@ impl Shell {
         let was_faulted = self.faulted;
         self.faulted = true;
         self.auth_request = None;
+        self.routed_auth = None;
         self.access.quarantine();
         self.rx.close_admission();
         if !was_faulted {

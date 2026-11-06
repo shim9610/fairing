@@ -421,7 +421,11 @@ impl Shell {
             self.show_recovery_ui(ui);
             return;
         }
-        self.contain_fault(|shell| shell.frame_inner(ui, &mut Some(app)));
+        self.contain_fault(|shell| {
+            let mut app = Some(app);
+            shell.sync_session(&mut app);
+            shell.frame_inner(ui, &mut app);
+        });
         if self.faulted {
             crate::runtime::blank_faulted_frame(ui.ctx());
         }

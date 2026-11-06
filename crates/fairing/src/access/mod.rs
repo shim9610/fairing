@@ -12,6 +12,13 @@
 //! unlock runs the launch again, through the same gate.
 
 mod auth;
+mod session;
+pub(crate) mod session_rules;
+mod session_shared;
+pub use session::{
+    SessionController, SessionError, SessionGrant, SessionId, SessionReadError, SessionSnapshot,
+    SessionToken,
+};
 mod knock;
 mod painters;
 pub(crate) mod prompt;
@@ -329,6 +336,8 @@ pub enum ChangeReason {
     Lock,
     /// [`ShellHandle::set_subject`](crate::ShellHandle::set_subject).
     Integrator,
+    /// Issuer permission publication, revocation or session expiry.
+    SessionToken,
 }
 
 /// The session.
@@ -370,6 +379,14 @@ pub(crate) struct SessionChange {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum AccessEvent {
+    /// A token-mode challenge for a host-owned authentication UI. Return its original request
+    /// through [`Shell::accept_auth_response`](crate::Shell::accept_auth_response); late or canceled responses are ignored.
+    SessionRequested {
+        /// Fairing-issued correlation identity.
+        request: AuthRequestId,
+        /// Protected operation gate.
+        gate: Gate,
+    },
     /// Something failed its gate. In `routing` mode — and in `prompt` mode with no authenticator
     /// — this is all that happens, and authentication is the integrator's; in `prompt` mode the
     /// shell's prompt opens as well.
@@ -637,6 +654,11 @@ mod admin_says {
 #[allow(clippy::struct_excessive_bools)]
 pub struct Access {
     quarantined: bool,
+    token_sessions: bool,
+    token_policy: bool,
+    token: Option<SessionToken>,
+    token_revision: Option<u64>,
+    token_now: Instant,
     table: LevelTable,
     policy: Box<dyn AccessPolicy>,
     mode: AccessMode,
@@ -737,9 +759,47 @@ fn reference_authenticator(
     Ok(Some(Box::new(pins)))
 }
 
+fn token_permission(token: Option<&SessionToken>, now: Instant, name: &str) -> bool {
+    token
+        .and_then(|token| token.snapshot(now).ok())
+        .is_some_and(|snapshot| snapshot.allows_name(name))
+}
+
+fn warn_unassigned(table: &LevelTable, gates: &BTreeMap<String, Level>) {
+    // The built-in gates left unassigned are announced once at startup so an integrator can see
+    // what they missed. With one level table everything passes anyway, so it means nothing there.
+    if table.len() > 1 {
+        let missing: Vec<&str> = BUILTIN_GATES
+            .iter()
+            .chain(crate::chrome::BUILTIN_IDS)
+            .copied()
+            .filter(|gate| !gates.contains_key(*gate))
+            .collect();
+        if !missing.is_empty() {
+            // `Vec::join` trips `xtask sync-check`'s `.join(` token check, so it is written in Debug form.
+            log::info!(
+                    "{} built-in gates are unassigned in [access.gates], so default_gate applies: {missing:?}",
+                    missing.len()
+                );
+        }
+    }
+}
+
 impl Access {
     pub(crate) fn quarantine(&mut self) {
         self.quarantined = true;
+        self.token_revision = None;
+        #[cfg(feature = "settings")]
+        if self.token_sessions {
+            self.credentials.clear();
+            self.credentials_dirty = true;
+            self.admin_note = None;
+        }
+        if let Some(token) = self.token.take() {
+            if let Some(auth) = self.authenticator.as_deref_mut() {
+                let _ = crate::runtime::contain(|| auth.session_ended(token.id(), self.token_now));
+            }
+        }
     }
     /// Built from `[access]`. Validation ("an unassigned gate"):
     /// - An empty level table is an error.
@@ -758,6 +818,11 @@ impl Access {
             return Err(Error::Config("[access] levels is empty".to_owned()));
         }
         let table = LevelTable::from_names(&cfg.levels);
+        if cfg.session_tokens && cfg.mode == "off" {
+            return Err(Error::Config(
+                "session_tokens cannot be combined with mode = off".to_owned(),
+            ));
+        }
         let mode = match cfg.mode.as_str() {
             "prompt" => AccessMode::Prompt,
             "routing" => AccessMode::Routing,
@@ -776,7 +841,7 @@ impl Access {
                     "[access] default_gate = \"{name}\" is not in levels"
                 ))
             })?),
-            None if table.len() >= 2 => {
+            None if table.len() >= 2 && !cfg.session_tokens => {
                 return Err(Error::Config(
                     "[access] default_gate is required once levels has more than one entry"
                         .to_owned(),
@@ -807,25 +872,13 @@ impl Access {
             None => table.bottom(),
         };
         check_timers(cfg)?;
-        let unlock_mode = unlock_mode(cfg)?;
+        let unlock_mode = if cfg.session_tokens {
+            UnlockMode::Switch
+        } else {
+            unlock_mode(cfg)?
+        };
         let authenticator = reference_authenticator(cfg, &table)?;
-        // The built-in gates left unassigned are announced once at startup so an integrator can see
-        // what they missed. With one level table everything passes anyway, so it means nothing there.
-        if table.len() > 1 {
-            let missing: Vec<&str> = BUILTIN_GATES
-                .iter()
-                .chain(crate::chrome::BUILTIN_IDS)
-                .copied()
-                .filter(|gate| !gates.contains_key(*gate))
-                .collect();
-            if !missing.is_empty() {
-                // `Vec::join` trips `xtask sync-check`'s `.join(` token check, so it is written in Debug form.
-                log::info!(
-                    "{} built-in gates are unassigned in [access.gates], so default_gate applies: {missing:?}",
-                    missing.len()
-                );
-            }
-        }
+        warn_unassigned(&table, &gates);
         let policy = LevelPolicy::new(table.clone(), gates, default_gate);
         let initial = Subject {
             id: None,
@@ -834,6 +887,11 @@ impl Access {
         };
         Ok(Self {
             quarantined: false,
+            token_sessions: cfg.session_tokens,
+            token_policy: false,
+            token: None,
+            token_revision: None,
+            token_now: Instant::now(),
             table,
             policy: Box::new(policy),
             mode,
@@ -861,14 +919,22 @@ impl Access {
     /// Replace the policy (the integrator's `AccessPolicy`).
     pub fn set_policy(&mut self, policy: Box<dyn AccessPolicy>) {
         self.policy = policy;
+        self.token_policy = true;
     }
 
-    /// Quarantine denies access. Otherwise one level or `mode = off` permits every gate;
-    /// remaining decisions delegate to the policy.
+    /// Quarantine denies access. Token mode requires an explicit current grant and may
+    /// be narrowed by an installed policy. Legacy mode retains its level/off bypasses.
     #[must_use]
     pub fn allows(&self, gate: &Gate) -> bool {
         if self.quarantined {
             return false;
+        }
+        if self.token_sessions {
+            let first = token_permission(self.token.as_ref(), self.token_now, gate.as_str());
+            let policy =
+                first && (!self.token_policy || self.policy.allows(&self.session.subject, gate));
+            let issued = token_permission(self.token.as_ref(), self.token_now, gate.as_str());
+            return session_rules::authorize(self.quarantined, issued, policy);
         }
         if self.levels_open() {
             return true;
@@ -887,6 +953,14 @@ impl Access {
         if self.quarantined {
             return false;
         }
+        if self.token_sessions {
+            let first = token_permission(self.token.as_ref(), self.token_now, name);
+            let policy = first
+                && (!self.token_policy
+                    || self.policy.allows(&self.session.subject, &Gate::from(name)));
+            let issued = token_permission(self.token.as_ref(), self.token_now, name);
+            return session_rules::authorize(self.quarantined, issued, policy);
+        }
         if self.levels_open() {
             return true;
         }
@@ -897,6 +971,79 @@ impl Access {
     #[must_use]
     pub fn hint(&self, gate: &Gate) -> Option<LabelKey> {
         self.policy.hint(gate)
+    }
+
+    /// Whether explicit issuer-controlled tokens are required for protected gates.
+    #[must_use]
+    pub fn uses_session_tokens(&self) -> bool {
+        self.token_sessions
+    }
+
+    /// Current read-only device session. None means no token authority in token mode.
+    #[must_use]
+    pub fn session_token(&self) -> Option<&SessionToken> {
+        self.token.as_ref()
+    }
+
+    pub(crate) fn install_session(&mut self, token: SessionToken, now: Instant) -> bool {
+        if !self.token_sessions
+            || self.quarantined
+            || self
+                .token
+                .as_ref()
+                .is_some_and(|old| old.id() == token.id())
+        {
+            return false;
+        }
+        let Ok(snapshot) = token.snapshot(now) else {
+            return false;
+        };
+        if self.table.get(snapshot.subject().level).is_none() {
+            return false;
+        }
+        let subject = snapshot.subject().clone();
+        let revision = snapshot.revision();
+        self.reset(now);
+        self.session.subject = subject;
+        self.session.elevation = None;
+        self.session.since = now;
+        self.session.last_activity = now;
+        self.idle_locked = false;
+        self.token = Some(token);
+        self.token_revision = Some(revision);
+        self.token_now = now;
+        true
+    }
+
+    pub(crate) fn sync_token(&mut self, now: Instant) -> Option<SessionChange> {
+        self.token_now = now;
+        let token = self.token.as_ref()?;
+        let revision = match token.snapshot(now) {
+            Ok(snapshot) => Some(snapshot.revision()),
+            Err(SessionReadError::Updating) => None,
+            Err(SessionReadError::Revoked | SessionReadError::Expired) => {
+                let from = self.reset(now);
+                return Some(SessionChange {
+                    from,
+                    to: self.initial.level,
+                    reason: ChangeReason::SessionToken,
+                });
+            }
+        };
+        if self.token_revision == revision {
+            return None;
+        }
+        self.token_revision = revision;
+        #[cfg(feature = "settings")]
+        {
+            self.credentials_dirty = true;
+        }
+        let level = self.session.subject.level;
+        Some(SessionChange {
+            from: level,
+            to: level,
+            reason: ChangeReason::SessionToken,
+        })
     }
 
     /// The session.
@@ -952,6 +1099,12 @@ impl Access {
         if self.quarantined {
             return false;
         }
+        if self.token_sessions {
+            return self
+                .token
+                .as_ref()
+                .is_some_and(|token| token.snapshot(self.token_now).is_ok());
+        }
         self.session.elevation.is_some() || self.session.subject.level > self.initial.level
     }
 
@@ -968,15 +1121,17 @@ impl Access {
         self.authenticator.is_some()
     }
 
-    /// **Whether the shell draws its own prompt and lock screen** — `mode = "prompt"`, more than
-    /// one level, and an authenticator to ask. Otherwise a failed gate is an
+    /// Whether the shell draws its own prompt/lock screen: prompt mode with an authenticator,
+    /// and either token mode or multiple legacy levels. Otherwise a failed gate is an
     /// [`AccessEvent::UnlockRequested`] and nothing more, as in `routing` mode.
     #[must_use]
     pub fn can_prompt(&self) -> bool {
         if self.quarantined {
             return false;
         }
-        self.mode == AccessMode::Prompt && self.table.len() > 1 && self.authenticator.is_some()
+        self.mode == AccessMode::Prompt
+            && (self.token_sessions || self.table.len() > 1)
+            && self.authenticator.is_some()
     }
 
     /// Put an authenticator in (the shell attaches its waker first).
@@ -1019,12 +1174,17 @@ impl Access {
     /// Whether the session may give `level`, or change an entry at it: anything at or below its
     /// own. Levels mean nothing with one level or `mode = off`, and then everything may.
     pub(crate) fn may_grant(&self, level: Level) -> bool {
-        !self.quarantined && (self.levels_open() || level <= self.session.subject.level)
+        !self.quarantined
+            && (self.levels_open()
+                || (self.token_sessions
+                    && (self.allows_name("settings.credentials.set_level")
+                        || self.allows_name("settings.credentials.add")))
+                || (!self.token_sessions && level <= self.session.subject.level))
     }
 
     /// One level, or `mode = off`: every gate passes.
     pub(crate) fn levels_open(&self) -> bool {
-        self.table.len() <= 1 || self.mode == AccessMode::Off
+        !self.token_sessions && (self.table.len() <= 1 || self.mode == AccessMode::Off)
     }
 
     #[cfg(feature = "settings")]
@@ -1036,6 +1196,10 @@ impl Access {
     #[cfg(feature = "settings")]
     /// Stage 4: list the entries again where they may have changed.
     pub(crate) fn refresh_credentials(&mut self) {
+        if self.token_sessions && !self.allows_name(CREDENTIALS_SCREEN) {
+            self.credentials.clear();
+            return;
+        }
         if !std::mem::take(&mut self.credentials_dirty) {
             return;
         }
@@ -1068,8 +1232,27 @@ impl Access {
             refused: Vec::new(),
         };
         self.credentials_dirty = true;
-        let ceiling = (!self.levels_open()).then_some(self.session.subject.level);
+        let ceiling =
+            (!(self.token_sessions || self.levels_open())).then_some(self.session.subject.level);
         let fits = |level: Level| ceiling.is_none_or(|top| level <= top);
+        let token = self.token.as_ref();
+        let now = self.token_now;
+        let policy = &self.policy;
+        let actor = &self.session.subject;
+        let token_mode = self.token_sessions;
+        let custom_policy = self.token_policy;
+        let faulted = self.quarantined;
+        let op_allowed = |name: &'static str| {
+            if faulted {
+                return false;
+            }
+            if !token_mode {
+                return true;
+            }
+            let first = token_permission(token, now, name);
+            let policy = first && (!custom_policy || policy.allows(actor, &Gate::borrowed(name)));
+            session_rules::authorize(faulted, token_permission(token, now, name), policy)
+        };
         let admin = self.authenticator.as_deref_mut().and_then(|a| a.admin());
         let Some(admin) = admin.filter(|_| allowed) else {
             let why = if allowed {
@@ -1096,7 +1279,7 @@ impl Access {
                 CredentialOp::SetSecret { id, secret } => (
                     NoteLine::new(tr_key!("New secret saved for {id}"), &id),
                     NoteLine::new(tr_key!("Secret for {id} not saved"), &id),
-                    if mine(&id) {
+                    if op_allowed("settings.credentials.set_secret") && mine(&id) {
                         admin.set_secret(&id, secret.into_credential(&id))
                     } else {
                         Err(admin_says::ENTRY_ABOVE.to_owned())
@@ -1105,7 +1288,7 @@ impl Access {
                 CredentialOp::SetLevel { id, level } => (
                     NoteLine::new(tr_key!("Level changed for {id}"), &id),
                     NoteLine::new(tr_key!("Level for {id} not changed"), &id),
-                    if !mine(&id) {
+                    if !op_allowed("settings.credentials.set_level") || !mine(&id) {
                         Err(admin_says::ENTRY_ABOVE.to_owned())
                     } else if !fits(level) {
                         Err(admin_says::LEVEL_ABOVE.to_owned())
@@ -1116,7 +1299,7 @@ impl Access {
                 CredentialOp::Add { id, level, secret } => (
                     NoteLine::new(tr_key!("Added {id}"), &id),
                     NoteLine::new(tr_key!("{id} not added"), &id),
-                    if fits(level) {
+                    if op_allowed("settings.credentials.add") && fits(level) {
                         admin.add(&id, level, secret.into_credential(&id))
                     } else {
                         Err(admin_says::LEVEL_ABOVE.to_owned())
@@ -1125,7 +1308,7 @@ impl Access {
                 CredentialOp::Remove { id } => (
                     NoteLine::new(tr_key!("Removed {id}"), &id),
                     NoteLine::new(tr_key!("{id} not removed"), &id),
-                    if mine(&id) {
+                    if op_allowed("settings.credentials.remove") && mine(&id) {
                         admin.remove(&id)
                     } else {
                         Err(admin_says::ENTRY_ABOVE.to_owned())
@@ -1151,12 +1334,14 @@ impl Access {
     pub(crate) fn start_clock(&mut self, now: Instant) {
         self.session.since = now;
         self.session.last_activity = now;
+        self.token_now = now;
     }
 
     /// Replace the subject. Returns the previous level. A shell observes direct replacements
     /// before the next frame or launch, cancels the previous user's pending authentication and
     /// propagates the access change. A temporary elevation ends with it. Prefer
     /// [`ShellHandle::set_subject`](crate::ShellHandle::set_subject) to use the shell's clock.
+    /// Token mode detaches authority instead of accepting an injected subject.
     pub fn set_subject(&mut self, subject: Subject) -> Level {
         self.set_subject_at(subject, Instant::now())
     }
@@ -1165,6 +1350,12 @@ impl Access {
     /// someone at the panel: the idle stretch starts again, as it does on a touch — a reader that
     /// grants after the panel sat idle must not be timed out or idle-locked in the same frame.
     pub(crate) fn set_subject_at(&mut self, subject: Subject, now: Instant) -> Level {
+        if self.token_sessions {
+            let from = self.session.subject.level;
+            self.subject_change.get_or_insert(from);
+            self.reset(now);
+            return from;
+        }
         let from = self.session.subject.level;
         self.subject_change.get_or_insert(from);
         self.session.subject = subject;
@@ -1218,17 +1409,31 @@ impl Access {
         self.session.elevation = None;
         self.session.subject = self.initial.clone();
         self.session.since = now;
+        self.token_revision = None;
+        #[cfg(feature = "settings")]
+        if self.token_sessions {
+            self.credentials.clear();
+            self.credentials_dirty = true;
+            self.admin_note = None;
+        }
+        if let Some(token) = self.token.take() {
+            if let Some(auth) = self.authenticator.as_deref_mut() {
+                auth.session_ended(token.id(), now);
+            }
+        }
         from
     }
 
     /// Whether anything can lower the session: more than one level, and the gates not off.
     fn session_matters(&self) -> bool {
-        self.table.len() > 1 && self.mode != AccessMode::Off
+        (self.token_sessions || self.table.len() > 1) && self.mode != AccessMode::Off
     }
 
     /// Whether the subject is anything but the starting one.
     pub(crate) fn away_from_start(&self) -> bool {
-        self.session.elevation.is_some() || self.session.subject != self.initial
+        self.token.is_some()
+            || self.session.elevation.is_some()
+            || self.session.subject != self.initial
     }
 
     /// Record this frame's input after overdue deadlines have been enforced.
@@ -1240,6 +1445,9 @@ impl Access {
     /// End a temporary unlock that ran out and time the session out, before commands or input.
     /// Returns the change it made, for the shell to announce and propagate.
     pub(crate) fn tick(&mut self, now: Instant) -> Option<SessionChange> {
+        if let Some(change) = self.sync_token(now) {
+            return Some(change);
+        }
         if !self.session_matters() {
             return None;
         }
@@ -1288,7 +1496,10 @@ impl Access {
     /// The next moment the session changes by itself — for the idle repaint, so a timer
     /// runs out on time on a panel nobody is touching.
     pub(crate) fn next_deadline(&self) -> Option<Instant> {
-        let mut next: Option<Instant> = None;
+        let mut next: Option<Instant> = self
+            .token
+            .as_ref()
+            .and_then(|token| token.next_deadline(self.token_now));
         let mut take = |at: Instant| next = Some(next.map_or(at, |n| n.min(at)));
         if self.session_matters() {
             if let Some(elevation) = &self.session.elevation {

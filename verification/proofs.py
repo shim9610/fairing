@@ -81,6 +81,60 @@ results.append(execute("kani-concrete", [kani, ROOT / "verification/kani_concret
 receipt("concrete", concrete_inputs, concrete_before)
 
 
+# Split session capabilities: exact executable decisions plus independent contracts.
+from session_bindings import audit as audit_sessions, inputs as session_inputs
+
+audit_sessions()
+session_before = hashes(session_inputs())
+results.append(execute("verus-session", [sys.executable, ROOT / "verification/verus/session.py"], environment))
+results.append(execute("kani-session", [kani, ROOT / "verification/kani_session.rs"], kani_env))
+results.append(execute("session-capability-types", ["cargo", "test", "--locked", "-p", "fairing", "--no-default-features", "--doc", "access::session::"], environment))
+if "test result: ok. 4 passed;" not in (OUT / "session-capability-types.log").read_text():
+    raise SystemExit("Expected one positive and three compile-fail session capability clients")
+receipt("session", session_inputs(), session_before)
+
+session_source = (ROOT / "crates/fairing/src/access/session_rules.rs").read_text()
+session_harness = (ROOT / "verification/kani_session.rs").read_text()
+session_declaration = '#[path = "../crates/fairing/src/access/session_rules.rs"]\nmod session_rules;'
+shared_declaration = '#[path = "../crates/fairing/src/access/session_shared.rs"]\nmod session_shared;'
+if session_harness.count(shared_declaration) != 1: raise SystemExit("Review actual session storage binding")
+session_mutation_harness = session_harness.replace(shared_declaration, '#[path = ' + json.dumps(str(ROOT / 'crates/fairing/src/access/session_shared.rs')) + ']\nmod session_shared;')
+
+if session_harness.count(session_declaration) != 1: raise SystemExit("Review session harness binding")
+for name, old, new in [
+    ("session-revocation", "if revoked {", "if false && revoked {"),
+    ("session-expiry", "} else if now >= until {", "} else if now > until {"),
+    ("session-publication", "before != after || before % 2 != 0", "before % 2 != 0"),
+    ("session-live-authority", "live && (now < base_until", "true && (now < base_until"),
+    ("session-temporary-expiry", "now < temporary_until", "temporary_until != 0"),
+    ("session-policy", "!quarantined && issued && policy", "!quarantined && issued"),
+    ("session-quarantine", "!quarantined && issued && policy", "issued && policy"),
+    ("session-terminal", "if state.revoked || now >= until", "if now >= until"),
+    ("session-revision", "Some(current + 2)", "Some(current)"),
+    ("session-identity", "Some(current + 1)", "Some(current)"),
+]:
+    if session_source.count(old) != 1: raise SystemExit("Review session mutation: " + name)
+    mutant = session_source.replace(old, new, 1)
+    source_path = OUT / (name + "-source.rs"); source_path.write_text(mutant)
+    results.append(execute("verus-" + name, [sys.executable, ROOT / "verification/verus/session.py", "--source", source_path, "--output", OUT / (name + "-verus.rs")], environment, expected_failure=True, marker="postcondition not satisfied"))
+    harness_path = OUT / (name + "-kani.rs"); harness_path.write_text(session_mutation_harness.replace(session_declaration, "mod session_rules {\n" + mutant + "\n}"))
+    results.append(execute("kani-" + name, [kani, harness_path], kani_env, expected_failure=True, marker="VERIFICATION:- FAILED"))
+
+# Kani also compiles the real atomic storage. These defects leave the pure kernel
+# unchanged and therefore require the concrete-storage harnesses to reject them.
+shared_source = (ROOT / "crates/fairing/src/access/session_shared.rs").read_text()
+for name, old, new in [
+    ("session-storage-revocation", "self.revoked.store(next.revoked, Ordering::SeqCst);", "self.revoked.store(false, Ordering::SeqCst);"),
+    ("session-storage-epoch", "self.revision.store(after, Ordering::SeqCst);", "self.revision.store(before, Ordering::SeqCst);"),
+    ("session-storage-permission", "let temporary = cell.temporary.load(Ordering::SeqCst);", "let temporary = cell.base.load(Ordering::SeqCst);"),
+]:
+    if shared_source.count(old) != 1: raise SystemExit("Review concrete storage mutation: " + name)
+    mutant = shared_source.replace(old, new, 1)
+    harness = session_harness.replace(shared_declaration, "mod session_shared {\n" + mutant + "\n}")
+    harness = harness.replace(session_declaration, '#[path = ' + json.dumps(str(ROOT / 'crates/fairing/src/access/session_rules.rs')) + ']\nmod session_rules;')
+    path = OUT / (name + "-kani.rs"); path.write_text(harness)
+    results.append(execute("kani-" + name, [kani, path], kani_env, expected_failure=True, marker="VERIFICATION:- FAILED"))
+
 source = (ROOT / "crates/fairing/src/shell/bool_ack.rs").read_text()
 needle = "if reported == Some(sent)"
 if source.count(needle) != 1:

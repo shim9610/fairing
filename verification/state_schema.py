@@ -93,6 +93,10 @@ def extract(path):
             value['proof_input'] = 'concrete-carriers'
         elif name.startswith('fairing_widgets::interaction::rules::'):
             value['proof_input'] = 'lifecycle-kernel'
+        elif name.startswith('fairing::access::session_rules::'):
+            value['proof_input'] = 'session-authority-kernel'
+        elif name.startswith('fairing::access::session_shared::'):
+            value['proof_input'] = 'session-atomic-storage-two-cell-sequential'
         else:
             value['proof_input'] = None
         result[name] = value

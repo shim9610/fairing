@@ -1,5 +1,9 @@
 # 05. Access control
 
+For issuer-owned, continuously checked sessions with independent operation permissions,
+see [session tokens](../session-tokens.md). Enable `access.session_tokens` explicitly;
+the level/PIN behavior below describes the default legacy mode.
+
 ## 0. The principle, and what exists today
 
 fairing keeps no role names like "guest" and "admin", and no hash function, inside
@@ -110,9 +114,10 @@ matching screen or feature exists at all.
 | `desktop.edit` | ✘ (the feature is M6) | ✔ | Desktop editing. Reserved — there is nothing to tap yet |
 | `session.lock`, `session.logout` | ✘ | ✔ | Reserved names. Locking and logging out are always allowed; the controls that do them carry gates of their own (`tile.lock`, `status.lock`). An unlock from the lock screen reports `session.lock` (§8) |
 
-`settings.home` and `settings.about` have no gate on purpose — a list screen shows
-only the entries you may reach anyway, and the about screen carries legal notices,
-so it always opens.
+`settings.home` and `settings.about` use their screen ids as gates. Assign them
+to the lowest level in legacy mode if they should be generally reachable; token
+mode requires their explicit grants too. Their screen contents do not bypass
+the opening gate.
 
 ### 2.2 `Capabilities` and gates are different questions
 

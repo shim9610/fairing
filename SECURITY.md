@@ -37,6 +37,11 @@ for configuration and analysis triggers.
 - **Authentication request tokens correlate trusted results.** Custom authenticators
   must retain the original `AuthRequestId` with asynchronous work. Tokens reject stale
   replies inside the shell; they do not authenticate network peers.
+- **Session controllers are trusted mutation capabilities.** In opt-in token mode,
+  authenticators retain controllers and Fairing reads tokens for explicit gate grants.
+  Revocation and expiration deny new protected work; UI changes require a scheduled
+  update. The [session contract](docs/session-tokens.md) states ownership, role,
+  clock and verification assumptions. Rust privacy is not process isolation.
 - **Recovery does not undo completed side effects.** Caught runtime unwinds quarantine
   the shell; the host controls replacement and reconciliation. Abort/OOM and panic-hook
   behavior have separate limits documented in [memory limits](docs/memory-limits.md#runtime-panics-and-sensitive-ui-state).

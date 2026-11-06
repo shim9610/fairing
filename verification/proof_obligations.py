@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 
 from retained_state import audit
+from session_bindings import audit as audit_sessions, inputs as session_inputs
 
 ROOT = Path(__file__).resolve().parents[1]
 p = argparse.ArgumentParser(description=__doc__)
@@ -49,7 +50,11 @@ concrete_checked = proved('concrete', [
  ROOT / 'verification/verus/interaction.py', ROOT / 'verification/state-schema.json',
 ])
 inventory = audit()
+session_bindings = audit_sessions()
+session_checked = proved("session", session_inputs())
 obligations = [
+ {"id": "session-authority-decisions", "status": "discharged" if session_checked else "open", "scope": "Exact production identity/revision, observation, grant expiry, policy intersection and terminal transition bodies; arbitrary u64 values, Kani and Verus. Kani also checks the actual sequential atomic storage with two permission cells."},
+ {"id": "session-terminal-induction", "status": "discharged" if session_checked else "open", "scope": "Unbounded revocation-history induction; conditional SC stable-even-interval lemma. Rust private capability APIs have positive/compile-fail client checks. Concrete atomic trace refinement is guarded/tested, not a full Rust concurrency proof."},
  {'id': 'back-dispatch-partition', 'status': 'discharged' if checked else 'open',
   'scope': 'All 256 valuations of eight Back predicates, nine disjoint groups and specified handler selection.'},
  {'id': 'retained-owner-partition', 'status': 'discharged' if interaction_checked else 'open',
@@ -70,6 +75,7 @@ obligations = [
 components_complete = all(item['status'] == 'discharged' for item in obligations)
 # These are actual unverified boundaries, not verifier errors or discharged claims.
 boundaries = [
+ {'id': 'session-external-trust-and-concurrency', 'scope': 'Authenticators are trusted to verify credentials and publish authorized permissions. Standard SC atomics, clock/scheduler and source bindings are assumptions. Loom exhausts bounded actual-publication scenarios; a universal concrete Rust atomic trace refinement and arbitrary application effects are not proved.'},
  {'id': 'complete-concrete-abstraction',
   'scope': 'Shell/workspace/gesture state, widget geometry/animation, arbitrary caller fields, and upstream egui memory do not yet have a proved joint abstraction into the component protocols.'},
  {'id': 'input-realization',
@@ -79,7 +85,7 @@ boundaries = [
 ]
 report = {'target_guarantee': 'Every reachable state is covered, and every specification-permitted interaction is always executable with its promised outcome.',
           'whole_app_status': 'incomplete', 'implemented_components_status': 'proved' if components_complete else 'incomplete',
-          'obligations': obligations, 'backend_inventory': inventory, 'unproved_boundaries': boundaries,
+          'obligations': obligations, 'backend_inventory': inventory, 'session_bindings': session_bindings, 'unproved_boundaries': boundaries,
           'type_inventory_scope': 'Compiler-derived named product declarations in minimal/all feature Linux builds; declarations outside the concrete-carrier/protocol models remain unproved'}
 out = ROOT / 'target/assurance/proofs/state-obligations.json'
 out.parent.mkdir(parents=True, exist_ok=True)

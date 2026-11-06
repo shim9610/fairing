@@ -1216,6 +1216,7 @@ impl ShellBuilder {
             focus_covered: false,
             prompt,
             auth_request: None,
+            routed_auth: None,
             after_lock: None,
             osk_was_shown: false,
             split_was: false,

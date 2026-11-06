@@ -42,6 +42,7 @@ impl Shell {
     /// [`ShellHandle::launch`](crate::ShellHandle::launch) instead and it lands inside the next
     /// frame with the state in hand.
     pub(super) fn launch_in(&mut self, action: LaunchAction, app: &mut AppRef<'_>) {
+        self.sync_session(app);
         if self.faulted {
             return;
         }
@@ -279,6 +280,7 @@ impl Shell {
             let Ok(command) = self.rx.try_recv() else {
                 return false;
             };
+            self.sync_session(app);
             match command {
                 Command::Launch(action) => self.launch_in(action, app),
                 Command::CloseScreen(id) => self.close_instance(id, None, app),
@@ -555,6 +557,7 @@ impl Shell {
     pub(super) fn process_requests(&mut self, app: &mut AppRef<'_>) {
         let requests = std::mem::take(&mut self.requests);
         for request in requests {
+            self.sync_session(app);
             match request {
                 CxRequest::Open {
                     id,

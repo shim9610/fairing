@@ -36,6 +36,18 @@ resources. Tokens correlate results from a trusted authenticator, not network
 identity. `PinTable::check(credential, now)` supports synchronous use outside a
 shell. See [05 Authentication](05-access-control.md#53-what-each-method-draws).
 
+### Issuer-controlled sessions
+
+Set `[access] session_tokens = true` and return `AuthOutcome::Session(token)` to
+adopt split capabilities. The authenticator retains the non-cloneable controller.
+Existing authenticators keep their legacy behavior when this flag is false.
+`AccessConfig` struct literals need the new `session_tokens` field or
+`..Default::default()`. The optional `Authenticator::session_ended` callback revokes
+the matching controller after local detachment. Direct subject injection does not
+authorize token-mode work; host-owned login flows use the request-bound
+`SessionRequested` / `accept_auth_response` path. See [session tokens](../session-tokens.md)
+for role expansion, catalog scope, grant expiry and proof boundaries.
+
 ### Commands and toast inputs
 
 Pass values directly when constructing command variants:

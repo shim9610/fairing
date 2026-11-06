@@ -63,6 +63,7 @@ jobs:
           rustfmt --check verification/kani_back.rs
           rustfmt --check verification/kani_interaction.rs
           rustfmt --check verification/kani_concrete.rs
+          rustfmt --check verification/kani_session.rs
 
   state-schema:
     needs: inputs
@@ -158,6 +159,7 @@ jobs:
           cargo "+$nightly" miri test --locked --manifest-path verification/Cargo.toml --lib 2>&1 | tee target/assurance/logs/miri.log
           cargo "+$nightly" miri test --locked -p fairing-widgets --no-default-features --lib interaction::tests 2>&1 | tee target/assurance/logs/miri-interaction.log
           cargo "+$nightly" miri test --locked -p fairing --lib runtime::tests::supported_payloads_are_released_and_numeric_codes_are_observable -- --exact 2>&1 | tee target/assurance/logs/miri-payloads.log
+          cargo "+$nightly" miri test --locked -p fairing --lib access::session::tests 2>&1 | tee target/assurance/logs/miri-session-admin.log
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

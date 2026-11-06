@@ -5,8 +5,14 @@ pub mod bool_ack;
 #[path = "../../crates/fairing/src/inbox.rs"]
 pub mod inbox;
 
+#[cfg(all(test, fairing_loom))]
+mod session_publication;
+
 #[cfg(all(feature = "integration", not(fairing_loom)))]
 pub mod api;
+
+#[cfg(all(feature = "integration", not(fairing_loom)))]
+pub mod sessions;
 
 #[cfg(all(feature = "integration", not(fairing_loom)))]
 pub mod transitions;
@@ -91,6 +97,12 @@ mod properties {
 
     proptest! {
         #![proptest_config(ProptestConfig { failure_persistence: None, ..ProptestConfig::default() })]
+        #[cfg(feature = "integration")]
+        #[test]
+        fn session_permissions_follow_the_independent_history_oracle(events in prop::collection::vec(any::<u8>(), 0..65)) {
+            super::sessions::exercise(&events);
+        }
+
         #[test]
         fn deferred_intents_never_overtake_acknowledgements(events in prop::collection::vec(any::<u8>(), 0..129)) {
             super::exercise_protocol(&events);

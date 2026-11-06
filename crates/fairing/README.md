@@ -173,3 +173,7 @@ With unwinding enabled, runtime callback faults quarantine ordinary shell dispat
 recovery callbacks expose optional guidance and host policy. Old handles remain
 disconnected. Shell replacement does not reset the egui context/GPU or undo business
 side effects. See the [recovery guide](https://github.com/shim9610/fairing/blob/HEAD/docs/memory-limits.md#runtime-panics-and-sensitive-ui-state).
+
+Issuer-controlled device sessions use explicit operation grants and split controller/token
+capabilities. See [session tokens](https://github.com/shim9610/fairing/blob/main/docs/session-tokens.md)
+for multiple roles, revocation and verification scope.

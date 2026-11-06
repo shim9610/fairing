@@ -14,6 +14,7 @@ impl Shell {
         self.contain_fault(|shell| shell.set_setting_inner(key, value));
     }
     pub(super) fn set_setting_inner(&mut self, key: SettingKey, value: SettingValue) {
+        self.sync_session(&mut None);
         self.observe_subject_change(&mut None);
         if !self.setting_allowed(&key, || LaunchAction::Set(key.clone(), value.clone())) {
             return;

@@ -1015,13 +1015,16 @@ impl WorkspaceConfig {
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct AccessConfig {
+    /// Require issuer-owned session tokens and explicit gate grants. Incompatible with mode off.
+    /// Legacy level/PIN grants and direct subject injection do not authorize token-mode work.
+    pub session_tokens: bool,
     /// `"prompt"` | `"routing"` | `"off"`.
     pub mode: String,
-    /// The level names, low to high. One means no authentication.
+    /// Legacy/display level names, low to high. A single level bypasses legacy gates only.
     pub levels: Vec<String>,
     /// The starting subject's level name. Without it, the lowest.
     pub initial: Option<String>,
-    /// What happens to an unassigned gate: `"top"`, `"bottom"` or `<level>`. Required with two or more levels.
+    /// Legacy unassigned-gate rule: `"top"`, `"bottom"` or `<level>`. Required with multiple legacy levels.
     pub default_gate: Option<String>,
     /// `[access.gates]` — gate name → level name.
     pub gates: BTreeMap<String, String>,
@@ -1064,6 +1067,7 @@ pub struct LockScreenConfig {
 impl Default for AccessConfig {
     fn default() -> Self {
         Self {
+            session_tokens: false,
             mode: "prompt".to_owned(),
             levels: vec!["default".to_owned()],
             initial: None,

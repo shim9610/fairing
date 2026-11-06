@@ -11,7 +11,7 @@ import tempfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 CONTROL_NAMES = [
-    "configuration-validation", "back-handler", "back-projection", "auth-correlation", "command-budget", "expiry-order", "ui-progress", "modal-input",
+    "session-policy-recheck", "session-revoke", "session-authority", "session-policy", "session-temporary", "session-detach", "configuration-validation", "back-handler", "back-projection", "auth-correlation", "command-budget", "expiry-order", "ui-progress", "modal-input",
     "bounded-admission", "launch-gates", "notification-cap", "inbox-delivery", "retained-lifetime", "numeric-owner", "hold-admission", "wheel-admission", "restore-delegation", "pointer-projection", "capture-application", "hold-completion-latch", "focus-isolation", "popup-retirement", "deadline-reply",
 ]
 selection = parser.add_mutually_exclusive_group()
@@ -69,6 +69,30 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
         print(name + (": rejected broken production code" if failure else ": passed"), flush=True)
 
     scenarios = [
+        ("session-policy-recheck", "product/session_tokens/policy_callback_revocation_is_rechecked_before_a_protected_effect",
+         "crates/fairing/src/access/mod.rs",
+         [("let issued = token_permission(self.token.as_ref(), self.token_now, gate.as_str());", "let issued = first;")],
+         False, "policy callback revocation admitted a stale protected effect"),
+        ("session-revoke", "product/session_tokens/controller_revoke_and_disposal_invalidate_all_readers_without_resurrection",
+         "crates/fairing/src/access/session_shared.rs",
+         [("self.revoked.store(next.revoked, Ordering::SeqCst);", "self.revoked.store(false, Ordering::SeqCst);")],
+         False, "SessionReadError::Revoked"),
+        ("session-authority", "product/session_tokens/token_mode_denies_legacy_bypasses_and_supports_one_level_multi_permission_sessions",
+         "crates/fairing/src/access/mod.rs",
+         [(".is_some_and(|snapshot| snapshot.allows_name(name))", ".is_some_and(|snapshot| snapshot.allows_name(name)) || token.is_none()")],
+         False, "single-level bypass opened token mode"),
+        ("session-policy", "product/session_tokens/custom_policy_cannot_add_unissued_rights_and_logout_drops_tokens_without_methods",
+         "crates/fairing/src/access/session_rules.rs",
+         [("!quarantined && issued && policy", "!quarantined && issued")],
+         False, "local policy failed to narrow token rights"),
+        ("session-temporary", "product/session_tokens/independent_permissions_and_temporary_expiry_never_restore_removed_base_rights",
+         "crates/fairing/src/access/session_rules.rs",
+         [("now < temporary_until", "temporary_until != 0")],
+         False, "expired elevation restored old rights"),
+        ("session-detach", "product/session_tokens/issuer_revocation_preempts_a_full_command_queue_and_closes_protected_content",
+         "crates/fairing/src/access/mod.rs",
+         [("Err(SessionReadError::Revoked | SessionReadError::Expired) => {\n                let from = self.reset(now);", "Err(SessionReadError::Revoked | SessionReadError::Expired) => {\n                let from = self.session.subject.level;")],
+         False, "revoked session token was retained"),
         ("configuration-validation", "properties::parsed_configuration_satisfies_public_validation",
          "crates/fairing/src/config.rs",
          [("config.validate()?;", "// validation deliberately removed by the negative control")],
@@ -158,8 +182,8 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
          False, "a rejected factory allocated/ran"),
         ("launch-gates", "api::regressions::direct_and_queued_paths_recheck_the_current_policy",
          "crates/fairing/src/access/mod.rs",
-         [("self.policy.allows(&self.session.subject, gate)", "true"),
-          ("self.policy.allows(&self.session.subject, &Gate::from(name))", "true")],
+         [("self.policy.allows(&self.session.subject, gate)\n    }", "true\n    }"),
+          ("self.policy.allows(&self.session.subject, &Gate::from(name))\n    }", "true\n    }")],
          False, "a revoked screen remained open"),
         ("notification-cap", "api::regressions::persistent_inputs_never_bypass_notification_cap",
          "crates/fairing/src/notify/center.rs",

@@ -212,8 +212,10 @@ impl fmt::Debug for Credential {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum AuthOutcome {
-    /// Who this is. The shell applies it per `[access] unlock_mode`.
+    /// Legacy level-mode grant, applied per `[access] unlock_mode`. Token mode requires `Session`.
     Granted(Subject),
+    /// Issuer-controlled multi-permission session; requires `access.session_tokens = true`.
+    Session(super::SessionToken),
     /// No. The prompt shows `message` **as it is** — whether to say that a user does not exist is
     /// the authenticator's call, so the shell never words a refusal itself.
     Denied {
@@ -330,8 +332,12 @@ pub trait Authenticator {
     /// [`Backend::attach`](crate::services::Backend::attach).
     fn attach(&mut self, _waker: Waker) {}
 
-    /// The management side, where the authenticator offers one. With it the shell registers the
-    /// `settings.credentials` screen behind the gate of the same name.
+    /// The shell detached this device session (logout, lock, expiry, replacement or fault).
+    /// Revoke its controller to invalidate other readers. The shell already blocks this token
+    /// locally before calling; return promptly and do not end unrelated web/device sessions.
+    fn session_ended(&mut self, _session: super::SessionId, _now: Instant) {}
+
+    /// Optional credential management, exposed behind the settings.credentials gate.
     fn admin(&mut self) -> Option<&mut dyn CredentialAdmin> {
         None
     }
@@ -345,10 +351,13 @@ pub type AdminResult = std::result::Result<(), String>;
 /// Each one is the authenticator's to carry out: where the entries live and how a secret is
 /// stored do not reach the shell.
 ///
-/// **The shell keeps a change within the level of whoever makes it.** Nobody gives a level above
+/// In legacy level mode, **the shell keeps a change within the actor's level.** Nobody gives a level above
 /// their own, and an entry above their level is not theirs to change or remove — so a maintainer
 /// cannot add an administrator, or set the administrator's PIN and then use it. Those calls are
 /// refused before they get here. Who is making the rest is [`set_actor`](Self::set_actor).
+/// Token mode instead requires the explicit `settings.credentials.set_secret`, `.set_level`,
+/// `.add` or `.remove` operation grant in addition to the screen gate. The authenticator
+/// enforces per-account/role rules using the actor; a numeric display level is not a role ordering.
 pub trait CredentialAdmin {
     /// Who the calls after this one are made by: the session's subject, given before each change
     /// the screen applies. The default ignores it. An authenticator with rules of its own about who

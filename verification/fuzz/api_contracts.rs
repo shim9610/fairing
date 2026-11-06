@@ -5,6 +5,7 @@ libfuzzer_sys::fuzz_target!(|data: &[u8]| {
     fairing_assurance::api::bounded_display_contract(data);
     fairing_assurance::api::access_contract(data);
     fairing_assurance::api::authentication_contract(data);
+    fairing_assurance::sessions::exercise(data);
     fairing_assurance::api::notification_contract(data);
     if data.len() >= 12 {
         let utc = u64::from_le_bytes(data[..8].try_into().unwrap());

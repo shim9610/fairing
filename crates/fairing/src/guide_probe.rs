@@ -54,3 +54,7 @@ pub struct CrateReadme;
 #[cfg(doctest)]
 #[doc = include_str!("../../../docs/memory-limits.md")]
 pub struct MemoryLimits;
+
+#[cfg(doctest)]
+#[doc = include_str!("../../../docs/session-tokens.md")]
+pub struct SessionTokens;

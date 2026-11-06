@@ -11,6 +11,12 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Added
 
+- Opt-in issuer-controlled multi-permission sessions with split `SessionController` /
+  `SessionToken` capabilities, terminal revocation, expiring additional grants,
+  request-bound host login and per-operation credential-management gates.
+  Exact production session decisions have Kani/Verus contracts, induction/SC-trace
+  lemmas, atomic Loom scenarios and product-connected negative controls.
+
 - Release-archive checks in CI: build both crates, test their extracted contents,
   and run a standalone consumer with minimal/default/all features using only those archives.
 - Optional `bridge::CommandSink<Command>` and `UpdateSource<Update>` transport contracts.

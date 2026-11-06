@@ -681,6 +681,7 @@ primary = "#2fe09b"
 on_primary = "#04110b"
 
 [access]
+session_tokens = false                 # true: explicit issuer-controlled gate grants; see session-tokens.md
 mode = "prompt"
 levels = ["viewer", "operator", "maintainer"]
 initial = "viewer"

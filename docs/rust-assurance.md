@@ -17,20 +17,23 @@ therefore makes these checks fail rather than silently skipping them. Configure
 `inputs` itself as a required check as well when maintaining repository rules.
 
 Native test ownership is split between jobs: UI histories run their 17 widget
-tests and one deadline test; the general assurance job runs the other 54 tests.
+tests and one deadline test; the general assurance job runs the other 56 tests.
 The UI job owns three mutation controls, and the general control job runs the
-other 20, including the structured-configuration validation control. Coverage,
+other 26, including the structured-configuration validation control. Coverage,
 Miri, Loom and cross-OS runs intentionally re-execute relevant tests under their
 own verification conditions.
+
+The [session contract](session-tokens.md) separates exact security decisions,
+conditional induction and sequentially consistent (SC) trace lemmas, concrete atomic models and integration assumptions.
 
 ## Tools and the code they check
 
 | Tool | Pin | Scope |
 | --- | --- | --- |
-| Kani | 0.68.0; nightly 2026-08-21 | Thirty harnesses: ACK/access and response correlation, pool/display, production input admission, Back dispatch and retained-owner partition/operation/lifetime contracts |
-| Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Contracts on twenty-nine production functions plus quiet-pass progress and four concrete-carrier composition/noninterference obligations |
-| Miri | nightly 2026-10-30 | Twenty-eight assurance tests, six production interaction-adapter tests and the production payload-cleanup test; rendering witnesses run natively |
-| Loom | 0.7.2 | Four scenarios: Inbox ordering/consumer and bounded admission/close-after-drain |
+| Kani | 0.68.0; nightly 2026-08-21 | Thirty-nine harnesses: ACK/access and response correlation, pool/display, production input admission, Back dispatch, session authority and retained-owner partition/operation/lifetime contracts |
+| Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Contracts on thirty-five production functions plus quiet-pass progress, four concrete-carrier obligations and two session-history/SC-trace lemmas |
+| Miri | nightly 2026-10-30 | Twenty-nine assurance tests, six production interaction-adapter tests, four issuer-admin tests and the production payload-cleanup test; rendering witnesses run natively |
+| Loom | 0.7.2 | Six scenarios: four Inbox scenarios and two actual session-publication/revocation scenarios |
 | proptest | 1.12.0 | CI: 512 cases per property, including shell ordering, transition traces and UI reachability; seed 20261101 |
 | cargo-fuzz | 0.13.2; libfuzzer-sys 0.4.13 | ASan: 20,000 ACK, 10,000 parser, 10,000 API and 2,000 shell inputs |
 | cargo-llvm-cov | 0.9.1 | Product and API-contract line/function/region coverage; latter requires execution of the declared production modules |
@@ -89,7 +92,7 @@ the model treats a new failure notification as terminal for the pending command.
 
 The Inbox harness includes the production source. Normal tests and Miri use
 `std::sync::mpsc`; `--cfg fairing_loom` selects Loom's channel implementation for
-the model tests. All four bounded scenarios are explored without a permutation
+the model tests. All four Inbox scenarios are explored without a permutation
 or preemption cap. A branch-limit violation fails the test. Loom 0.7.2 does not
 model the exact disconnected-channel `try_recv` result, so its result is limited
 to delivery, per-sender order and nonblocking drains in these scenarios.

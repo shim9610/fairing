@@ -17,6 +17,7 @@ universal interaction progress; see [formal operability obligations](formal-oper
 | Documented contract | Production path | Executable evidence |
 | --- | --- | --- |
 | Optional application transport traits support ownership transfer/refusal, caller-scoped borrows and trait objects without imposed Clone/Send/Sync/static bounds | `bridge::CommandSink`, `UpdateSource` ([service guide](guide/06-services.md#application-owned-uibusiness-boundary)) | `tests/bridge.rs`: three public-API tests use caller adapters to check non-Clone/non-Send payload ownership and buffer identity, borrowed mutable messages, and empty/closed receive distinctions. These establish interface usability, not arbitrary adapter delivery, lock freedom or timing guarantees. |
+| Issuer-owned sessions expose read-only tokens, independent explicit permissions, terminal revocation and exact grant deadlines | `access::SessionController` / `SessionToken`, token-mode `Access::allows`, shell auth/update/dispatch | Six exact production functions checked with Kani/Verus; two Verus history/sequentially consistent (SC) trace lemmas; two actual-atomic Loom scenarios; compile-fail capabilities, generated histories, Miri/fuzzer and product mutation witnesses. [Scope and assumptions](session-tokens.md#security-evidence-and-assumptions). |
 | Runtime unwind faults latch dispatch off, deny gates and discard partial viewport/platform output; no automatic callback replay | Shell runtime boundaries, runner adapters, Access quarantine, BoundedInbox::close_admission | runtime_faults integration tests inject UI/borrowed-state/direct/queued/backend faults; runner tests inject event/raw-UI faults; approved-payload cleanup and subprocess controls for aborting/double-panicking unknown destructors. Requires unwind; no business rollback or universal OOM claim. |
 | Shell replacement closes old admission before construction, never replays old work, and leaves dispatch blocked on failure; recovery UI and restart policy are independent | Shell::restart_with, RecoveryUi, runner recovery callbacks | runtime_faults exercises factory errors/unwinds, rejected replacements, old-shell disposal faults and real button input; runner tests exercise automatic, request-based and failing recovery callbacks. No business/context rollback; unwind-only boundary. |
 | Icon storage failure reclaims older cache entries or omits the path; dismissal event allocation failure preserves notification/unread state; failed command factories release their slot | try_flatten, IconCache::try_get, Shell::try_dismiss_notification, ShellHandle::try_send_fallible_with | Real 16/64 MiB one-byte-exhaustion tests exercise zero-allocation cache hits, cold-icon refusal, reclamation, dismissal retry and no rejection logger calls. Stock-egui frame exhaustion is a separate failing negative control, not an acceptance result. |
@@ -63,8 +64,8 @@ the entire shell, layout, egui map and application callbacks; see
 
 ## Bounds and assumptions
 
-- Kani proves thirty harnesses. Verus verifies twenty-nine production functions,
-  quiet-pass progress and four concrete-carrier proof obligations.
+- Kani proves thirty-nine harnesses. Verus verifies thirty-five production functions,
+  quiet-pass progress, four concrete-carrier obligations and two session-history/SC-trace lemmas.
   Pool sequence proof is bounded to four operations on a two-slot u8 pool; the generation
   decision covers all u64 values. Kani treats pool-identity atomics sequentially;
   it does not prove concurrent identity creation. The access rules cover all u16 levels, all u32 counter values and every
@@ -76,7 +77,7 @@ the entire shell, layout, egui map and application callbacks; see
   It compares observable effects after every operation and requires a successful retry
   without restarting away the current state. One fixed trace also runs under Miri;
   ASan fuzzing reuses the oracle. See [the exact matrix](ui-reachability.md#commandreply-transition-oracle).
-- Native tests contain fifteen properties with 512 cases each and four shell
+- Native tests contain sixteen properties with 512 cases each and four shell
   properties with a default of 64 cases each, using seed 20261101. CI sets
   `PROPTEST_CASES=512`, overriding every generated property's default. Operation sequences cap
   at 32 shell/backend operations or 64 non-UI operations. Fixed cases ensure
@@ -87,13 +88,13 @@ the entire shell, layout, egui map and application callbacks; see
   shell must resume ordinary UI on a quiet pass and satisfy each edge after intentional
   blockers stand aside. Kani/Verus prove the shared input decision, not the rendered
   correspondence; native witnesses check that separately. See [UI reachability](ui-reachability.md).
-- Miri interprets twenty-eight assurance tests, six production storage-adapter tests and the production supported-payload cleanup test
+- Miri interprets twenty-nine assurance tests, six production storage-adapter tests, four issuer-admin tests and the production supported-payload cleanup test
   with normal isolation, validity and race
   checks. It covers the actual Access, PinTable, notification, calendar, unit,
   service, fixed-pool and bounded/unbounded Inbox APIs, plus a fixed logic-only
   command/reply/replacement trace. It does not interpret the complete shell rendering
   path; generated cases run natively.
-- Loom exhausts its four bounded scenarios without a preemption/permutation/time
+- Loom exhausts its six bounded scenarios without a preemption/permutation/time
   cap. The larger scenario has four threads including the caller. The branch
   safety limit is 1,000 and exceeding it fails. Loom 0.7.2 does not model the exact
   empty/disconnected error distinction. The bounded transport substitutes a model
@@ -123,6 +124,11 @@ integrator callbacks, schedulability and hardware behavior are covered only
 to the extent of the existing product tests and audits. They have no new
 universal proof here. SBOM validation establishes inventory structure and
 graph consistency, not runtime behavior.
+
+The session extension adds ten semantic mutations rejected by both verifiers,
+three actual-storage mutations rejected by Kani, and
+six product-connected controls for revocation, issued authority, policy narrowing,
+temporary expiry, local detachment and post-policy revalidation. See [session tokens](session-tokens.md).
 
 ## Controls and coverage
 

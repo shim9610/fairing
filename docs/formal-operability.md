@@ -13,6 +13,11 @@ not discharge the remaining concrete/UI boundaries. Run
 `python3 verification/proof_obligations.py --require-whole-app` to require this
 stronger claim; it currently fails with `OPEN_PROOF_OBLIGATIONS`.
 
+The [issuer-controlled session component](session-tokens.md#security-evidence-and-assumptions)
+also has exact decision proofs, terminal-history induction and a conditional sequentially consistent (SC) trace
+lemma. Its concrete atomic implementation has bounded Loom evidence and source tripwires;
+this does not discharge the whole-application boundaries below.
+
 ## Statement and required proof order
 
 Let `S` include the shell, widgets, egui memory/areas/focus/capture and application
@@ -176,8 +181,8 @@ compiler IDs or source positions are kept. Added/removed fields or variants fail
 CI until their state correspondence is reviewed; stripped or unresolved metadata
 fails extraction rather than silently omitting an entry.
 
-The current profiles contain 776 and 648 declarations respectively; 15 declarations
-are direct inputs to the lifecycle/concrete-carrier proofs. These counts describe
+The current profiles contain 789 and 661 declarations respectively; 20 declarations
+are direct inputs to the lifecycle/concrete-carrier/session decision proofs. These counts describe
 type declarations, not reachable states or verified application behavior. Other
 declarations remain explicitly unmapped. The inventory includes configuration,
 rendering and builder types as well as retained state and does not enumerate

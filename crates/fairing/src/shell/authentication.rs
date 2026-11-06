@@ -15,7 +15,20 @@ impl Shell {
     /// [`cancel`](Authenticator::cancel) first. Where the new one offers nothing, the prompt goes,
     /// as in `routing`.
     pub fn set_authenticator(&mut self, authenticator: impl Authenticator + 'static) {
+        self.contain_fault(|shell| shell.set_authenticator_in(authenticator));
+    }
+
+    fn set_authenticator_in(&mut self, authenticator: impl Authenticator + 'static) {
         self.auth_request = None;
+        self.routed_auth = None;
+        if self.access.uses_session_tokens() {
+            let from = self.access.reset(self.mono);
+            self.session_changed(SessionChange {
+                from,
+                to: self.access.initial_subject().level,
+                reason: ChangeReason::SessionToken,
+            });
+        }
         if self.prompt.is_open() {
             // The one going out stops what it was doing: a wait ends with an answer or with
             // `cancel`, never by being dropped mid-check.
@@ -114,6 +127,19 @@ impl Shell {
             return;
         }
         let Some(methods) = self.prompt_methods() else {
+            if self.access.uses_session_tokens() {
+                self.cancel_prompt();
+                let Some(request) = self.new_auth_request() else {
+                    return;
+                };
+                self.routed_auth = Some((gate.clone(), then));
+                self.events
+                    .push(ShellEvent::Access(AccessEvent::SessionRequested {
+                        request,
+                        gate,
+                    }));
+                return;
+            }
             if self.access.can_prompt() {
                 log::warn!(
                     "the authenticator offers no method - \"{}\" goes out as UnlockRequested only",
@@ -173,6 +199,45 @@ impl Shell {
             self.request_unlock(gate, then);
         }
     }
+    /// Deliver a request-bound result from a host-owned authentication UI in token mode.
+    /// `SessionRequested` supplies the opaque request. This cannot install an unsolicited
+    /// token; cancellation, subject change and replacement invalidate the request.
+    pub fn accept_auth_response(&mut self, response: crate::access::AuthResponse) {
+        self.contain_fault(|shell| shell.accept_auth_response_in(response, &mut None));
+    }
+
+    /// Deliver a host-owned authentication result with state available to its continuation.
+    pub fn accept_auth_response_with(
+        &mut self,
+        response: crate::access::AuthResponse,
+        app: &mut dyn std::any::Any,
+    ) {
+        self.contain_fault(|shell| shell.accept_auth_response_in(response, &mut Some(app)));
+    }
+
+    /// Cancel either a built-in prompt or a host-owned token authentication challenge.
+    pub fn cancel_authentication(&mut self) {
+        self.contain_fault(Self::cancel_prompt);
+    }
+
+    fn accept_auth_response_in(
+        &mut self,
+        response: crate::access::AuthResponse,
+        app: &mut AppRef<'_>,
+    ) {
+        self.sync_session(app);
+        self.observe_subject_change(app);
+        if response.request.is_active(self.auth_request) {
+            self.finish_auth_outcome(response.outcome, app);
+        }
+    }
+
+    /// Observe issuer updates independently of the bounded command queue and prompt state.
+    pub(super) fn sync_session(&mut self, _app: &mut AppRef<'_>) {
+        if let Some(change) = self.access.sync_token(self.mono) {
+            self.session_changed(change);
+        }
+    }
     /// Stage 1: enforce old deadlines before commands and current input can change the session.
     pub(super) fn expire_access(&mut self, now: Instant) {
         if let Some(change) = self.access.tick(now) {
@@ -187,6 +252,7 @@ impl Shell {
     }
     /// Stage 4: current activity and the authenticator's late answers, after backend polling.
     pub(super) fn tick_access(&mut self, now: Instant, input_activity: bool, app: &mut AppRef<'_>) {
+        self.sync_session(app);
         self.revalidate_access();
         #[cfg(feature = "settings")]
         self.access.refresh_credentials();
@@ -199,9 +265,7 @@ impl Shell {
                 .authenticator_mut()
                 .and_then(|auth| auth.poll(now));
             if let Some(response) = outcome {
-                if response.request.is_active(self.auth_request) {
-                    self.finish_auth_outcome(response.outcome, app);
-                }
+                self.accept_auth_response_in(response, app);
             }
         }
     }
@@ -217,13 +281,15 @@ impl Shell {
         if change.to < change.from
             || matches!(
                 change.reason,
-                ChangeReason::Timeout | ChangeReason::ElevationExpired
+                ChangeReason::Timeout | ChangeReason::ElevationExpired | ChangeReason::SessionToken
             )
         {
             if !self.overlay.is_closed() {
                 self.overlay.close(&self.theme.motion);
             }
-            if self.prompt.is_open() && !self.prompt.is_lock_screen() {
+            if (self.prompt.is_open() || self.routed_auth.is_some())
+                && !self.prompt.is_lock_screen()
+            {
                 self.cancel_prompt();
             }
         }
@@ -252,7 +318,7 @@ impl Shell {
         };
         let to = self.access.session().subject.level;
         let lock = self.prompt.is_lock_screen();
-        if self.prompt.is_open() && !lock {
+        if (self.prompt.is_open() || self.routed_auth.is_some()) && !lock {
             self.cancel_prompt();
         }
         self.session_changed(SessionChange {
@@ -281,7 +347,7 @@ impl Shell {
         self.events.push(ShellEvent::LockRequested);
         let methods = self.prompt_methods();
         let can_prompt = methods.is_some();
-        if !can_prompt && !idle {
+        if !can_prompt && !idle && !self.access.uses_session_tokens() {
             return;
         }
         let now = self.mono;
@@ -329,6 +395,18 @@ impl Shell {
     /// session back to the starting subject.
     pub(super) fn end_session(&mut self) {
         self.events.push(ShellEvent::LogoutRequested);
+        if self.access.uses_session_tokens() {
+            self.auth_request = None;
+            self.after_lock = None;
+            let from = self.access.reset(self.mono);
+            self.cancel_prompt();
+            self.session_changed(SessionChange {
+                from,
+                to: self.access.initial_subject().level,
+                reason: ChangeReason::Logout,
+            });
+            return;
+        }
         let Some(methods) = self.prompt_methods() else {
             return;
         };
@@ -393,10 +471,15 @@ impl Shell {
         if !matches!(outcome, AuthOutcome::Pending) {
             self.auth_request = None;
         }
-        let Some(gate) = self.prompt.gate() else {
+        let Some(gate) = self
+            .prompt
+            .gate()
+            .or_else(|| self.routed_auth.as_ref().map(|(gate, _)| gate.clone()))
+        else {
             return;
         };
         match outcome {
+            AuthOutcome::Session(token) => self.apply_session_outcome(token, gate, now, app),
             AuthOutcome::Granted(subject) => {
                 let lock = self.prompt.is_lock_screen();
                 let level = subject.level;
@@ -412,7 +495,9 @@ impl Shell {
                     );
                 }
                 let held = self.access.session().subject.level;
-                if !crate::access::rules::grant_allowed(!unknown, lock, held.0, level.0) {
+                if self.access.uses_session_tokens()
+                    || !crate::access::rules::grant_allowed(!unknown, lock, held.0, level.0)
+                {
                     // Not a way in, so not a right answer either: the authenticator counts it,
                     // and a lockout it reaches is applied as one.
                     let counted = self
@@ -475,6 +560,52 @@ impl Shell {
             AuthOutcome::Pending => self.prompt.wait(),
         }
     }
+    fn apply_session_outcome(
+        &mut self,
+        token: crate::access::SessionToken,
+        gate: Gate,
+        now: Instant,
+        app: &mut AppRef<'_>,
+    ) {
+        let lock = self.prompt.is_lock_screen();
+        let from = self.access.session().subject.level;
+        if !self.access.install_session(token, now) {
+            self.events
+                .push(ShellEvent::Access(AccessEvent::Denied { gate }));
+            self.prompt
+                .denied(crate::access::prompt::labels::NOT_ENOUGH.to_owned(), now);
+            return;
+        }
+        let purpose = self.prompt.close(now).or_else(|| {
+            self.routed_auth
+                .take()
+                .map(|(gate, then)| Purpose::Unlock { gate, then })
+        });
+        let subject = &self.access.session().subject;
+        let level = subject.level;
+        self.events.push(ShellEvent::Access(AccessEvent::Unlocked {
+            gate,
+            subject_id: subject.id.clone(),
+            level,
+            mode: crate::access::UnlockMode::Switch,
+        }));
+        self.session_changed(SessionChange {
+            from,
+            to: level,
+            reason: ChangeReason::Unlock,
+        });
+        if lock {
+            self.events
+                .push(ShellEvent::Access(AccessEvent::LockScreenToggled(false)));
+            self.ask_after_lock(app);
+        }
+        if let Some(Purpose::Unlock {
+            then: Some(action), ..
+        }) = purpose
+        {
+            self.launch_in(action, app);
+        }
+    }
     /// Close the prompt without an answer — Cancel, back, a downgrade, the lock coming up, the
     /// lock screen's Continue, the integrator vouching for someone. The authenticator is always
     /// told: a wait ends with an answer or with `cancel`, and a reader stops listening.
@@ -488,6 +619,7 @@ impl Shell {
     }
     pub(super) fn cancel_prompt(&mut self) {
         self.auth_request = None;
+        self.routed_auth = None;
         if let Some(auth) = self.access.authenticator_mut() {
             auth.cancel();
         }
