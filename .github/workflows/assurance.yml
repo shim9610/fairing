@@ -87,10 +87,15 @@ jobs:
           retention-days: 14
 
   proofs:
+    if: ${{ always() && github.repository == 'shim9610/fairing' }}
     needs: inputs
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
+      - name: Require approved assurance inputs
+        env:
+          ASSURANCE_INPUT_RESULT: ${{ needs.inputs.result }}
+        run: test "$ASSURANCE_INPUT_RESULT" = success
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install pinned Kani and Verus
         run: python3 verification/install.py proofs
@@ -131,10 +136,15 @@ jobs:
           retention-days: 14
 
   miri:
+    if: ${{ always() && github.repository == 'shim9610/fairing' }}
     needs: inputs
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
+      - name: Require approved assurance inputs
+        env:
+          ASSURANCE_INPUT_RESULT: ${{ needs.inputs.result }}
+        run: test "$ASSURANCE_INPUT_RESULT" = success
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install the pinned Miri toolchain
         run: python3 verification/install.py miri
