@@ -498,10 +498,10 @@ struct Held<T> {
 fn held<T: Clone + Send + Sync + 'static>(
     ui: &mut Ui,
     cx: &mut Cx<'_>,
-    salt: &'static str,
+    state_id: &'static str,
     body: impl FnOnce(&mut Ui, &mut Cx<'_>, &mut Option<T>),
 ) {
-    let key = egui::Id::unique((salt, cx.pane.instance.0));
+    let key = egui::Id::unique((state_id, cx.pane.instance.0));
     let frame = cx.frame();
     let kept: Option<Held<T>> = ui.data(|d| d.get_temp(key));
     let mut value = kept
@@ -523,12 +523,12 @@ fn form_field(
     label: &str,
     text: &mut String,
     hint: &str,
-    salt: &'static str,
+    field_id: &'static str,
 ) {
     ui::section(ui, cx, label);
     crate::widgets::TextField::new(text)
         .hint(hint)
-        .id_salt(salt)
+        .id_salt(field_id)
         .show(ui, &mut cx.widgets());
 }
 

@@ -200,18 +200,19 @@ impl<'a> TextField<'a> {
         self
     }
 
-    /// Give each field a different value when a screen has more than one.
+    /// Give each field a stable source for its egui interaction-state identifier.
+    /// Use a different value for each field on the same screen.
     #[must_use]
-    pub const fn id_salt(mut self, salt: &'static str) -> Self {
-        self.id_salt = Some(salt);
+    pub const fn id_salt(mut self, id_source: &'static str) -> Self {
+        self.id_salt = Some(id_source);
         self
     }
 
     /// Draw it masked, single-line or [`multiline`](Self::multiline). A single-line one carries
     /// the [reveal button](TextField#the-reveal-button) unless [`reveal`](Self::reveal) turns it off.
     #[must_use]
-    pub const fn password(mut self, password: bool) -> Self {
-        self.password = password;
+    pub const fn password(mut self, masked: bool) -> Self {
+        self.password = masked;
         self
     }
 
