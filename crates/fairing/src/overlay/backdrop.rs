@@ -7,8 +7,8 @@
 //! kiosk. A card does not need a live one. What is behind it barely changes while it is open, and
 //! blurred to a frost it would not show if it did; so the overlay asks the runner for **one
 //! screenshot** as a card first shows (`ViewportCommand::Screenshot`), frosts it here on the CPU,
-//! uploads it once, and draws it under the plate. The cost is one framebuffer read and about two
-//! milliseconds of arithmetic per open (1280 × 800; four at 1920 × 1080), and none per frame.
+//! uploads it once, and draws it under the plate. Admitted readbacks and processing buffers are
+//! bounded. A failed optional frost leaves a solid plate; no blur is recomputed on idle frames.
 //!
 //! The frost is a block-sum shrink by [`SHRINK`] and then [`PASSES`] separable box blurs of
 //! radius [`RADIUS`] — three box passes are within a few per cent of a Gaussian, here one of
@@ -34,17 +34,17 @@ pub(super) const RADIUS: usize = 3;
 const PASSES: usize = 3;
 
 /// One texel: its channels summed over the screen pixels that went into it, and how many there
-/// were. The largest a sum gets is `255 × SHRINK² × (2 × RADIUS + 1)^(2 × PASSES)` — under 2^31
-/// with these constants, and a test holds it under `u32::MAX` if they change. The arithmetic
+/// were. Adaptive shrinking uses u64 accumulators; the admitted source-pixel bound
+/// times the blur multiplicity fits, including the largest input. The arithmetic
 /// wraps, so it cannot trap: a running sum takes away only what it added, which is exact modulo
-/// 2^32 for as long as the true sum fits.
+/// 2^64 for as long as the true sum fits.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct Sum {
-    r: u32,
-    g: u32,
-    b: u32,
-    a: u32,
-    n: u32,
+    r: u64,
+    g: u64,
+    b: u64,
+    a: u64,
+    n: u64,
 }
 
 impl Sum {
@@ -70,49 +70,90 @@ impl Sum {
 
     /// The mean colour, rounded — the one division.
     fn color(self) -> Color32 {
-        let n = u64::from(self.n.max(1));
-        let c = |v: u32| u8::try_from(((u64::from(v) + n / 2) / n).min(255)).unwrap_or(u8::MAX);
+        let n = self.n.max(1);
+        let c = |v: u64| u8::try_from(((v + n / 2) / n).min(255)).unwrap_or(u8::MAX);
         Color32::from_rgba_premultiplied(c(self.r), c(self.g), c(self.b), c(self.a))
     }
 }
 
-/// **Frost a screenshot**: shrink it by [`SHRINK`] and blur it [`PASSES`] times at [`RADIUS`].
-#[must_use]
-pub(super) fn frost(image: &ColorImage) -> ColorImage {
-    let (mut px, w, h) = shrink(image, SHRINK);
-    let mut spare = vec![Sum::default(); px.len()];
-    for _ in 0..PASSES {
-        box_rows(&px, &mut spare, w, RADIUS);
-        box_columns(&spare, &mut px, w, RADIUS);
-    }
-    ColorImage::new([w, h], px.into_iter().map(Sum::color).collect())
+/// Maximum screenshot pixels admitted before requesting readback (64 MiB RGBA).
+pub(super) const MAX_SOURCE_PIXELS: usize = 16 * 1024 * 1024;
+/// At most 16,384 blurred texels; larger views use a coarser backdrop.
+const MAX_FROST_PIXELS: usize = 16 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FrostError {
+    InvalidImage,
+    TooLarge,
+    AllocationFailed,
 }
 
-/// The sum of every `f × f` block (the last row and column of blocks may be short, and count
-/// fewer pixels).
-fn shrink(image: &ColorImage, f: usize) -> (Vec<Sum>, usize, usize) {
-    let [w, h] = image.size;
-    let f = f.max(1);
-    let (ow, oh) = (w.div_ceil(f).max(1), h.div_ceil(f).max(1));
-    let mut sums = vec![Sum::default(); ow * oh];
-    for (y, row) in image.pixels.chunks(w.max(1)).enumerate() {
-        let start = (y / f) * ow;
-        let Some(out) = sums.get_mut(start..start + ow) else {
-            continue;
-        };
-        for (acc, block) in out.iter_mut().zip(row.chunks(f)) {
-            for c in block {
-                acc.r = acc.r.wrapping_add(u32::from(c.r()));
-                acc.g = acc.g.wrapping_add(u32::from(c.g()));
-                acc.b = acc.b.wrapping_add(u32::from(c.b()));
-                acc.a = acc.a.wrapping_add(u32::from(c.a()));
+fn storage<T: Copy>(len: usize, value: T) -> Result<Vec<T>, FrostError> {
+    let mut result = Vec::new();
+    result
+        .try_reserve_exact(len)
+        .map_err(|_| FrostError::AllocationFailed)?;
+    result.resize(len, value);
+    Ok(result)
+}
+
+/// Validate before allocation. Reduce optional backdrop resolution before growing buffers.
+pub(super) fn frost(image: &ColorImage) -> Result<ColorImage, FrostError> {
+    let [width, height] = image.size;
+    let source = width
+        .checked_mul(height)
+        .filter(|&n| n != 0)
+        .ok_or(FrostError::InvalidImage)?;
+    if image.pixels.len() != source {
+        return Err(FrostError::InvalidImage);
+    }
+    if source > MAX_SOURCE_PIXELS {
+        return Err(FrostError::TooLarge);
+    }
+    let mut factor = SHRINK;
+    let (w, h) = loop {
+        let w = width.div_ceil(factor);
+        let h = height.div_ceil(factor);
+        if w.checked_mul(h).is_some_and(|n| n <= MAX_FROST_PIXELS) && w <= 512 {
+            break (w, h);
+        }
+        factor = factor.checked_mul(2).ok_or(FrostError::TooLarge)?;
+    };
+    let count = w.checked_mul(h).ok_or(FrostError::TooLarge)?;
+    // Every buffer is fallible and bounded, including the column scratch formerly allocated per pass.
+    let mut px = storage(count, Sum::default())?;
+    let mut spare = storage(count, Sum::default())?;
+    let mut columns = storage(w, Sum::default())?;
+    let mut colors = storage(count, Color32::TRANSPARENT)?;
+    for (y, row) in image.pixels.chunks(width).enumerate() {
+        let start = (y / factor) * w;
+        let out = px
+            .get_mut(start..start + w)
+            .ok_or(FrostError::InvalidImage)?;
+        for (acc, block) in out.iter_mut().zip(row.chunks(factor)) {
+            for color in block {
+                acc.r += u64::from(color.r());
+                acc.g += u64::from(color.g());
+                acc.b += u64::from(color.b());
+                acc.a += u64::from(color.a());
             }
-            acc.n = acc
-                .n
-                .wrapping_add(u32::try_from(block.len()).unwrap_or(u32::MAX));
+            acc.n += u64::try_from(block.len()).map_err(|_| FrostError::TooLarge)?;
         }
     }
-    (sums, ow, oh)
+    for _ in 0..PASSES {
+        box_rows(&px, &mut spare, w, RADIUS);
+        box_columns(&spare, &mut px, w, RADIUS, &mut columns);
+    }
+    for (out, sum) in colors.iter_mut().zip(px) {
+        *out = sum.color();
+    }
+    let w16 = u16::try_from(w).map_err(|_| FrostError::TooLarge)?;
+    let h16 = u16::try_from(h).map_err(|_| FrostError::TooLarge)?;
+    Ok(ColorImage {
+        size: [w, h],
+        source_size: egui::vec2(f32::from(w16), f32::from(h16)),
+        pixels: colors,
+    })
 }
 
 /// One box pass along every row of a `w`-wide image: each texel becomes the sum of the up to
@@ -138,10 +179,10 @@ fn box_rows(src: &[Sum], dst: &mut [Sum], w: usize, r: usize) {
 
 /// The same down every column: a running sum per column, a row added below and a row taken away
 /// above at each step, so the image is walked in the order it lies in memory.
-fn box_columns(src: &[Sum], dst: &mut [Sum], w: usize, r: usize) {
+fn box_columns(src: &[Sum], dst: &mut [Sum], w: usize, r: usize, acc: &mut [Sum]) {
     let w = w.max(1);
     let row = |y: usize| src.get(y * w..(y + 1) * w).unwrap_or_default();
-    let mut acc = vec![Sum::default(); w];
+    acc.fill(Sum::default());
     for y in 0..r {
         for (a, p) in acc.iter_mut().zip(row(y)) {
             *a = a.add(*p);
@@ -156,13 +197,20 @@ fn box_columns(src: &[Sum], dst: &mut [Sum], w: usize, r: usize) {
                 *a = a.sub(*p);
             }
         }
-        out.copy_from_slice(&acc);
+        out.copy_from_slice(acc);
     }
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::expect_used,
+    reason = "image-quality fixtures must fit their explicit budget"
+)]
 mod tests {
-    use super::{frost, PASSES, RADIUS, SHRINK};
+    use super::{frost as try_frost, FrostError, MAX_FROST_PIXELS, PASSES, RADIUS, SHRINK};
+    fn frost(image: &egui::ColorImage) -> egui::ColorImage {
+        try_frost(image).expect("bounded fixture")
+    }
     use egui::{Color32, ColorImage};
 
     fn image(w: usize, h: usize, at: impl Fn(usize, usize) -> Color32) -> ColorImage {
@@ -184,11 +232,29 @@ mod tests {
 
     /// No sum can outgrow its `u32`: a block of white, summed through every pass, still fits.
     #[test]
+    fn malformed_images_are_rejected_and_larger_views_use_bounded_outputs() {
+        for size in [[0, 1], [usize::MAX, 2], [2, 2]] {
+            let bad = ColorImage {
+                size,
+                source_size: egui::Vec2::ZERO,
+                pixels: Vec::new(),
+            };
+            assert_eq!(try_frost(&bad), Err(FrostError::InvalidImage));
+        }
+        let big = image(2048, 2048, |_, _| Color32::WHITE);
+        let output = frost(&big);
+        assert!(output.pixels.len() <= MAX_FROST_PIXELS);
+        assert!(output.pixels.iter().all(|&p| p == Color32::WHITE));
+    }
+
+    #[test]
     fn the_sums_fit_their_integers() {
         let window = 2 * RADIUS as u64 + 1;
         let passes = (0..2 * PASSES).fold(1_u64, |grown, _| grown * window);
-        let most = 255 * (SHRINK * SHRINK) as u64 * passes;
-        assert!(u32::try_from(most).is_ok(), "the largest sum is {most}");
+        let most = 255u64
+            .checked_mul(super::MAX_SOURCE_PIXELS as u64)
+            .and_then(|n| n.checked_mul(passes));
+        assert!(most.is_some(), "all admitted source sums fit u64");
     }
 
     /// The frost is an eighth of the size on each axis, rounded up.

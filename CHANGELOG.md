@@ -6,6 +6,147 @@ All notable changes to the fairing crates are recorded here. The format follows
 
 ## Unreleased
 
+For applications using an earlier checkout, see the [migration guide](docs/guide/10-migration.md)
+for source changes, queue/display defaults and recovery behavior.
+
+### Added
+
+- A common protected mediation contract with compiler-discovered payloads and
+  generated operation/binding adapters. Kernel proofs and automatic routing
+  checks use the same declaration; dynamic and generic extension controls require
+  no verifier-side registration. See [the contract](docs/protected-contracts.md).
+
+- Compiled-MIR checker for workspace permission metadata contracts and downstream
+  rejection controls. See [application checking](docs/permission-metadata-check.md)
+  for the accepted subset and configuration/dependency scope.
+- Application-owned permission enum values with mandatory element metadata and
+  automatic `add_screen` / `add_elements` registration. Framework-owned element
+  trees filter before measurement/layout and recheck authority before paint;
+  changed revisions/requirements invalidate plans, and stable paths preserve widget
+  identity across hidden siblings. Protected construction still rejects raw hooks.
+- Typed permission bindings and `Protected<P, T>` for live callback admission.
+  `build_protected` returns a token-mode facade requiring typed application
+  declarations; protected screen/action icons hide on refusal. Guards cover
+  screen hooks and factories, actions, status/nav UI and tile panels while
+  preserving original UI/app/backend access inside admitted callbacks.
+  Exact dispatch has Kani/Verus evidence, compile-fail API clients and mutation controls.
+
+- Opt-in issuer-controlled multi-permission sessions with split `SessionController` /
+  `SessionToken` capabilities, terminal revocation, expiring additional grants,
+  request-bound host login and per-operation credential-management gates.
+  Exact production session decisions have Kani/Verus contracts, induction/SC-trace
+  lemmas, atomic Loom scenarios and product-connected negative controls.
+
+- Release-archive checks in CI: build both crates, test their extracted contents,
+  and run a standalone consumer with minimal/default/all features using only those archives.
+- Optional `bridge::CommandSink<Command>` and `UpdateSource<Update>` transport contracts.
+  Adapters choose message/error types without `Clone`, `Send`, `Sync` or `'static` bounds.
+  Fairing supplies no transport, worker thread or retry policy through these traits.
+- Bounded and connection-configurable Inbox channels, ownership-preserving
+  `Full`/`Disconnected` errors, lazy/fallible factories, finite drains and queue statistics.
+  Builder options configure shell command capacity and work per update.
+- Fallible display construction/admission and dismissal, omission reporting and
+  bounded icon-cache storage with reclamation. `try_send_fallible_with` releases
+  a command reservation if payload construction fails.
+- Inline `memory::FixedPool<T, N>` with pool-specific generational keys,
+  `DisplayWindow` newest-sample retention, and allocation-free CPU borrowed-image
+  preview and bitmap warning helpers.
+- Developer-controlled `Shell::restart_with`, runner recovery callbacks and opt-in
+  `RecoveryUi` guidance. The host chooses replacement, scheduling and state restoration.
+- Separate assurance checks for API properties, Kani/Verus component contracts,
+  Miri, Loom, mutation controls, sanitizer fuzzing, coverage and dependency inventories.
+  Retained-context UI histories include first-open dismissal regressions across 28
+  profiles and four frame intervals. The unpublished allocator diagnostic exercises
+  selected refusal/reclamation paths under real 16/64 MiB exhaustion.
+
+### Changed
+
+- `InstanceScreen::Owned` contains an opaque `ScreenHandle`; use
+  `InstanceScreen::owned(screen)`. Factories are deferred to the first dispatched
+  hook in both legacy and protected shells so their payload cannot escape the
+  monitor. See the migration guide.
+
+- Replace `Permission::GATE` with `Permission::gate(self)`. `Protected::new` and typed
+  session grant/snapshot helpers now take an application permission value. Token-mode
+  nav layout removes denied custom cells before sizing. See the migration guide.
+- Upgrade egui/eframe and their paint crates from 0.36.2 to 0.37.0; retain bundled
+  fallback fonts, GL and OS clipboard support. The minimum Rust version stays 1.95.
+- Shell command admission defaults to 1,024 slots and 256 commands per UI/logic
+  update. `send` returns false for full or closed queues; void handle helpers discard
+  rejected commands without invoking a user logger. Accepted work is not evicted.
+- Message-based mocks default to 1,024 slots and 256 messages per poll. Existing
+  constructors remain; connection-specific configuration can explicitly select
+  unbounded storage while retaining a finite poll budget.
+- Pending shell toasts default to 64 items with `KeepLatest`. Notification caps
+  include persistent entries; protected overflow is refused. `notify.max_items = 0`
+  selects 100. `CenterChange` gains `Rejected`.
+- `Shell::toast` and `ShellHandle::toast` accept `ToastInput`; custom `Into<Toast>`
+  types need explicit conversion. `Command::Notify/Toast/SetMotion` store inline
+  values instead of boxes. `IconCache::get` returns `Option<&Flattened>` instead of
+  `Rc<Flattened>`; `try_get` exposes refusal and the default cache limit is 128 entries.
+- Shell/state runners process commands, backends, access deadlines and lifecycle
+  requests through `App::logic`, even without a UI pass. A visible pass reuses that
+  update. Hidden ticks use wall time without replaying input or driving animations.
+- Screenshot backdrops use per-request callbacks/inboxes. Closed, timed-out,
+  theme-changed or resized cards discard late replies. Optional frost work is bounded
+  and fallible; failure leaves an opaque card.
+
+### Security
+
+- Reject untyped builder hooks in `build_protected`, including inactive/nested
+  procedural wallpaper branches. This blocks the confirmed token-less status-painter
+  path. Keep icon/widget painter stores local to protected callbacks so an admitted
+  callback cannot install a later unguarded shell painter, including during unwind.
+  The strict protected-contract certificate now combines the common kernel proof
+  with automatic compiler-derived routing coverage; broad legacy reachability
+  remains a separate diagnostic.
+- `Authenticator::begin/submit` receive `AuthRequestId`; `poll` returns
+  `Option<AuthResponse>`. Replies retain their original request token. Canceled,
+  replaced and consumed requests cannot grant a later challenge or replay a continuation.
+- Gate retargeting, logout, repeated locks and same-level subject changes cancel
+  obsolete authentication. Dynamic policy revocation closes affected screens;
+  literal level names take precedence over gate aliases.
+- Built-in Wi-Fi, Bluetooth and brightness controls authorize setting writes before
+  changing backends. Overdue session/elevation/idle deadlines precede queued commands
+  and fresh input; session timeout wins over simultaneous temporary-grant expiry.
+- Configuration diagnostics redact PINs/patterns, including malformed TOML values
+  and configured/reconstructed pattern paths. Failure accounting saturates.
+- Catch runtime callback unwinds at shell/runner boundaries. Restore borrowed
+  ownership before propagation, quarantine dispatch, close admission, suppress partial
+  events and discard failed viewport graphics/platform output. Never replay old work
+  or reconnect old handles during shell replacement.
+- Recommend `panic = "unwind"` for containment. Business side effects are not rolled
+  back; aborts, double panics and complete renderer OOM survival remain unsupported.
+  Unknown panic payloads are retained without running arbitrary destructors; resource
+  retention is not globally bounded. No production fixed-heap or renderer IPC feature
+  is provided; the allocator diagnostic is outside product dependency graphs.
+- Pin external CI actions to verified commit SHAs.
+
+### Fixed
+
+- Keep repository-only guide doctests behind an explicit audit cfg so all-feature
+  archive doctests do not reference excluded files. Font-warning tests use valid
+  egui-bundled data instead of a repository-external font asset.
+- Preserve newer asynchronous Boolean intent and Set/Toggle order while allowing
+  one outstanding command per key. Old failures no longer discard later targets;
+  synchronous confirmation releases the target before later external changes.
+  Airplane/radio settings emit consistent persistence/restoration values.
+- Retire obsolete dropdown/query sessions, pattern capture, long presses, numeric
+  drafts, wheel animation, keyboard requests and password reveal. Numeric drafts
+  check exact caller values, including changes below displayed precision; fresh
+  presses cannot reuse stale capture.
+- Use current gesture-region geometry and prevent region-owned presses from also
+  activating ordinary widgets or hidden corner knocks. Emergency handling stays global.
+- Re-read backend wake deadlines after actions/lifecycle callbacks, so newly started
+  work schedules an update in UI and logic-only paths.
+- Rebuild desktop declarations before queued badge updates. Track unread notification
+  ids through dismissal and retention eviction; failed dismissal-event allocation
+  preserves notification/unread state for retry.
+- Keep keyboard previous/next controls visible with vector icons and support font
+  installation both before and after initial text layout.
+- Avoid heads-up deadline overflow for `Duration::MAX`; unrepresentable deadlines
+  retain the banner until dismissal.
+
 Nothing has been published to crates.io yet. This will be the first release, 0.1.0.
 
 The crates are licensed under MIT alone. The `fairing-widgets`

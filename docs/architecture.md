@@ -15,7 +15,7 @@ each part is in the [integrator guide](guide/README.md); what is planned is in t
 │ fairing                 the shell                               │
 │   shell · chrome · overlay · osk · notify · desktop · workspace │
 │   screen · gesture · access · settings · services · i18n        │
-│   layout · config · time · inbox · brand · testing              │
+│   elements · layout · config · time · inbox · brand · testing   │
 ├─────────────────────────────────────────────────────────────────┤
 │ fairing-widgets         the element layer                       │
 │   unit · theme · motion · icons · fonts · widgets · drag        │
@@ -36,15 +36,27 @@ implementation and, with the `mock` feature, a `Mock` simulator for development
 
 ## 2. The workspace
 
-| Crate | Published | What it holds |
+| Crate | Release role | What it holds |
 |---|---|---|
-| `fairing` | yes | The shell. It re-exports `fairing-widgets` and `egui`, so one dependency is enough |
-| `fairing-widgets` | yes | Units, the theme, motion, icons, fonts and the touch widgets. A control can be worked on here without the shell |
-| `xtask` | no | The audit gate, the icon compiler, the license report and the other maintenance commands |
+| `fairing` | Planned public crate | The shell. It re-exports `fairing-widgets` and `egui`, so one dependency is enough |
+| `fairing-widgets` | Planned public crate | Units, the theme, motion, icons, fonts and the touch widgets. A control can be worked on here without the shell |
+| `fairing-fixed-heap` | Unpublished diagnostic | Isolated allocation-failure diagnostic; no product dependency; one scoped unsafe arena claim |
+| `xtask` | Unpublished tool | The audit gate, the icon compiler, the license report and the other maintenance commands |
+
+The first crates.io release has not been published yet.
 
 `fairing` depends on `egui`, `serde`, `toml` and `log`, plus `eframe` behind `runner` and `chrono`
 behind `chrono`. Every other dependency, a new asset included, goes through an approval list
 that the audit checks (`deps.allow`, `deny.toml`).
+
+egui and eframe use the 0.37 API. The optional runner keeps GL, Wayland, bundled fonts and
+OS clipboard support explicit, with X11 added by `runner-x11`. For an overdue redraw,
+eframe can call `App::logic` while a Wayland compositor withholds frame callbacks. It
+does not run `App::ui` or force a frame to be presented. `run_shell*` and `run_app*` call
+`Shell::logic*` there: commands, backend snapshots, access expiry/authentication, stopped
+screen eviction and lifecycle requests continue on the event-loop thread. Their `ui`
+callback draws without repeating the same state update. The closure-only `runner::run`
+has no shell to tick; a custom host must connect `Shell::logic*` itself.
 
 ### Features
 
@@ -63,9 +75,29 @@ A large part comes out whole behind its feature. Turned off, it is not compiled 
 
 ## 3. Modules
 
+The public module paths below are stable facades. Private implementation files
+separate coordination from subsystem work:
+
+- `shell`: authentication/session handling, setting dispatch, navigation, state
+  updates and rendering; `mod.rs` retains the shell's state and public facade.
+- `workspace`: lifecycle, split/overview coordination, gestures and rendering;
+  the inline test suite lives in `workspace/tests.rs`.
+- `settings/screens`: device pages, network forms and credential administration,
+  with shared retained-form ownership in the parent module.
+- `overlay`: transitions and rendering, with panel tiles, notifications and footer
+  rendering in separate files.
+- `desktop`: page state, grid/dock/icon rendering and the rail.
+- `layout`: containers, rows and fitting functions re-exported from `layout`.
+- `widgets/dropdown`: trigger painting, popup behavior and shared painting helpers.
+
+These file boundaries do not change the state owner or the frame/deadline order.
+Method implementation modules use parent-scoped visibility for cross-file helpers;
+they do not expose new application APIs.
+
 | Module | What it does |
 |---|---|
-| `shell` | `Shell`, `ShellBuilder`, `ShellHandle` and `ShellEvent`. Runs the frame below |
+| `shell` | `Shell`, `ProtectedShell`, `ShellBuilder`, `ShellHandle` and `ShellEvent`. Runs the frame below |
+| `elements` | Permission-aware leaf/row/column trees with library-owned filtering, measurement, layout and paint dispatch |
 | `screen` | `Screen`, `ScreenDecl`, `Cx`, `ChromePolicy`, the lifecycle. A screen is a closure or a type you register |
 | `workspace` | The screen stack, transitions, two panes with a divider, the recent screens |
 | `desktop` | The icon grid, pages, the dock and the icon rail, the wallpaper |
@@ -73,9 +105,12 @@ A large part comes out whole behind its feature. Turned off, it is not compiled 
 | `overlay` | The shade, its detents, tiles and notification list |
 | `osk` | The on-screen keyboard: numeric, QWERTY and two-set Hangul |
 | `notify` | Notifications, toasts and heads-up banners |
-| `inbox` | The notification store the shade reads |
+| `inbox` | Non-waiting channel receive APIs, bounded admission and connection-specific storage/work limits |
+| `bridge` | Optional application-implemented command/update transport traits; no transport or thread policy |
+| `recovery` | Fault guidance, shell-replacement errors and panic-payload cleanup diagnostics |
+| `memory` | Re-exported fixed pools, fallible strings, display windows and CPU raster helpers |
 | `gesture` | One gesture engine for edges, flings, long presses, handles and your own regions |
-| `access` | Levels, gates, the session, the unlock prompt, the lock screen, `Authenticator` |
+| `access` | Legacy levels/gates, issuer-controlled controller/token sessions, typed permission bindings, common admission kernel, credential prompts and `Authenticator` |
 | `settings` | Setting keys and values, and the built-in settings screens |
 | `services` | The backend traits, `Null` and `Mock`, `Services`, `Waker` |
 | `i18n` | The string table, with English and Korean built in, switched live |
@@ -86,16 +121,44 @@ A large part comes out whole behind its feature. Turned off, it is not compiled 
 | `testing` | `Harness`: frames with no window and no GPU |
 | `runner` | The optional window bootstrap |
 
+### Protected execution
+
+Ordinary `build` permits untyped host customization. `build_protected` requires
+token mode, rejects untyped builder hooks before setup and returns a facade with
+no mutable legacy-shell conversion. User permission values map to issuer grant
+identifiers; `Protected` declarations and `PermissionBound` screens retain those
+requirements. `ElementTree` owns nested layout and omits denied children before
+measurement; it invalidates stale plans and checks live authority before paint.
+
+The authenticator owns the mutable `SessionController`; the shell reads its
+`SessionToken`. Revocation/publication wakes the host, and access is observed during
+logic-only updates as well as rendering and protected-operation admission. The
+[session guide](session-tokens.md) describes issuer and clock assumptions. Admitted
+application bodies retain raw UI/app/backend access.
+
+The [common contract](protected-contracts.md) generates opaque payload storage and
+operation adapters. Source-bound kernel proofs and compiler-MIR routing checks
+connect library-managed protected entries to one admission boundary. The
+[metadata checker](permission-metadata-check.md) separately checks supported
+workspace permission getters/mappers. These are distinct contracts.
+
+Current `runner::run_shell*`/`run_app*`, `testing::Harness` and `settings::add_all`
+accept ordinary `Shell`. A protected application connects its facade's `logic*`,
+`frame*` and `poll_events` in its own host and uses typed registration.
+
 ## 4. One frame
 
-Everything happens inside `Shell::frame(ui)`, once per frame, in a fixed order:
+For a frame-only host, `Shell::frame(ui)` runs this sequence. Shell/state runners run
+state stages 1–4 in `Shell::logic*` first, including when no UI follows; the UI pass
+records fresh activity and reuses that state update before gestures and drawing.
+Eviction and lifecycle requests can also finish during logic-only calls.
 
 | # | Step | What happens |
 |---|---|---|
-| 1 | Time | `now` from the real time between frames; `dt` is capped at 50 ms |
-| 2 | Commands | The `ShellHandle` queue is drained with `try_recv` |
-| 3 | Services | Backend snapshots are pinned and their next wake-ups gathered |
-| 4 | Access | Temporary unlocks expire, the session times out, the idle lock runs |
+| 1 | Time, declarations and expiry | Advance time, rebuild declarations, observe integrator subject replacements, enforce overdue access deadlines and revalidate open gates before commands or input |
+| 2 | Commands | Receive and execute at most `max_commands_per_update` queued commands (default 256); request continuation for remaining work |
+| 3 | Services | Pin snapshots, confirm outstanding Bool commands and send queued targets, gather backend wake-ups |
+| 4 | Access | Revalidate policy after backend updates, record input and poll the authenticator |
 | 5 | Input | The gesture engine, the guard, the shade, the back gesture, the keyboard, every animation |
 | 6 | Layout | The rects for this frame from the focused screen's chrome policy and the keyboard |
 | 7–9 | Draw | The status bar, the nav bar, then the desktop or the screens |
@@ -105,20 +168,47 @@ Everything happens inside `Shell::frame(ui)`, once per frame, in a fixed order:
 | 16 | Events | You take them with `poll_events` |
 
 The order is a contract. A screen sees a layout that is final for the frame, and what a screen
-asks for while it draws, such as opening another screen, is handled later in the same frame.
+asks for through `Cx` while it draws, such as opening another screen, is handled later
+in the same frame. `Cx::shell` sends through `ShellHandle` and waits for a subsequent
+state update and its command budget.
 
 ## 5. Threads
 
 - **The UI is one thread.** `Shell` does not need to be `Send`.
-- **No locks.** No `Mutex`, `RwLock`, `Condvar`, `OnceLock` or the like, in any crate of the
-  workspace. Threads talk over `std::sync::mpsc` channels and atomics. The audit fails a build
-  that brings a lock in.
-- **The UI thread never blocks.** It uses `try_recv`, never `recv`, `join`, `sleep` or file IO.
+- **UI shared state uses channels and atomics.** The audit bans application-level
+  Mutex/RwLock/Condvar and blocking calls in UI sources. Standard channels may
+  synchronize internally; the isolated diagnostic allocator uses a spinlock. There is
+  no wait-free or hard real-time guarantee.
+- **Command admission is bounded.** All handles share 1,024 slots by default and
+  an update executes at most 256 commands. Builder options adjust both. Full
+  rejection preserves ownership through `try_send`; accepted work is not evicted.
+  [Memory limits](memory-limits.md) explains factories, metrics, fixed storage,
+  newest-sample display windows and allocation-free CPU preview/warning primitives.
+  There is no renderer process/IPC layer. The ordinary egui path is still allocating.
+- **UI queue operations do not wait for work or capacity.** They use `try_recv` and
+  immediate admission rather than blocking receive/join/sleep calls. Runtime callbacks
+  and transports supplied by the application must return promptly; the audit does not
+  enforce that on external code. Startup configuration/font loading can read files.
   A worker thread may wait on its own queue.
 - **`ShellHandle` is `Clone + Send`.** Any thread can launch a screen, go back or home, post a
   notification or a toast, change a setting or ask for an unlock. Sending wakes the UI.
 - **Backends ask to be woken.** A backend holds a `Waker` and calls `wake()` when its state
   changes. Something due later, such as a scan finishing, is `next_wake()`, not a timer thread.
+- **Logic-only work uses wall time.** egui retains the last UI input during `run_logic`.
+  The shell uses a shared monotonic wall timeline once `Shell::logic*` is used, so stale
+  input cannot renew a session and returning to UI cannot count the hidden interval twice.
+  A host using only `Shell::frame*` retains egui's input timeline for headless simulation.
+  Hidden scheduling follows backend/access/eviction deadlines and bounded queued work;
+  animations, held pointers and continuous repaint do not keep it spinning.
+- **Screenshot callbacks only deliver data.** A per-request `Inbox` carries the image back to
+  the UI thread and the callback asks for a repaint. Closing a card, changing its theme or
+  viewport, or timing out drops that inbox so a late image cannot complete a later request.
+
+Applications can implement `bridge::CommandSink` and `UpdateSource` for ownership-moving
+channels, shared buffers, lock-free queues or network adapters. The traits impose no
+`Clone`, `Send`, `Sync` or `'static` bound and do not replace `ShellHandle`'s internal
+queue. Adapters own their admission/delivery semantics; the host owns thread placement,
+wakeups, retries and UI replacement. See [the boundary guide](guide/06-services.md#application-owned-uibusiness-boundary).
 
 ## 6. State
 
@@ -140,20 +230,30 @@ screen with `keep_awake` holds the display's idle timer off. How to confirm 0 fp
 
 ## 8. Errors
 
-- **Library code does not panic.** `unwrap`, `expect`, `panic!` and unchecked indexing are
-  denied by the workspace lints.
+- **UI product code rejects explicit panic paths.** `unwrap`, `expect`, `panic!`
+  and explicit termination paths are denied by its Clippy configuration; indexing is
+  checked by the warning-denying audit. Dependencies, integrator
+  callbacks and infallible allocation can still terminate a process; whole-renderer exhaustion is not universally recoverable. The diagnostic allocator
+  is not selected by either product library.
 - A backend error comes back as a value, and the shell shows it as a toast or a notification.
 - A configuration that cannot be right fails at start with `Error::Config`. Access control is
   never silently opened.
 - Logging goes through the `log` facade. The logger is yours.
+- **Runtime unwind faults quarantine the shell.** Borrowed ownership is restored before
+  forwarding an unwind to the shell boundary. Dispatch, event delivery and admission
+  stop there; the host may replace the shell with `restart_with` and opt into recovery
+  guidance. Replacement does not reset egui/GPU state or roll back business effects.
+  [Memory limits](memory-limits.md#runtime-panics-and-sensitive-ui-state) defines the
+  exact unwind, output and payload-cleanup scope.
 
 ## 9. Testing and the audit
 
 `testing::Harness` runs whole frames on `egui::Context` with virtual time, so a test taps and
 drags where the shell actually drew, with no window, no GPU and no sleeping. The library's tests,
-the examples and every Rust block in the guide run under `cargo xtask audit`, which also checks
+the examples and the guide's non-ignored Rust blocks run under `cargo xtask audit`, which also checks
 formatting, lints, docs, dependencies, licenses, locks and blocking calls. CI runs it with
-`--strict` on every push ([guide 08 §9](guide/08-troubleshooting.md#9-passing-the-audit)).
+`--strict` on pull requests and pushes to `main`, and on a weekly schedule
+([guide 08 §9](guide/08-troubleshooting.md#9-passing-the-audit)).
 
 ## 10. Principles
 
@@ -168,7 +268,7 @@ These are the rules the design keeps coming back to.
 3. **Backends belong to the integrator.** The crate defines the traits and ships no system code.
 4. **Customization happens in code.** Every part can be turned on, turned off or redrawn without
    forking the crate.
-5. **No locks.** Threads talk over channels, and the UI thread never blocks.
+5. **Non-waiting UI APIs.** Threads exchange messages; UI code does not wait for messages or capacity.
 6. **One general mechanism beats a one-off effect.** Implement a trait, and the library does the
    rest.
 7. **The public surface is deliberate.** Nothing is public by accident.

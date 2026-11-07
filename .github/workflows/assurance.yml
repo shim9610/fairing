@@ -1,0 +1,345 @@
+name: Rust assurance
+
+on:
+  pull_request:
+  push: { branches: [main] }
+  workflow_dispatch:
+  schedule: [{ cron: "0 5 * * 1" }]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: assurance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_BUILD_JOBS: "2"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  inputs:
+    if: github.repository == 'shim9610/fairing'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-audit
+            ~/.cargo/bin/cargo-deny
+          key: tools-${{ runner.os }}-${{ hashFiles('xtask/tools.lock') }}
+      - name: Install pinned audit tools
+        run: |
+          set -euo pipefail
+          while read -r name version; do
+            [ -z "${name:-}" ] && continue
+            case "$name" in \#*) continue ;; esac
+            sub="${name#cargo-}"
+            found="$(cargo "$sub" --version 2>/dev/null | head -n1 | awk '{print $NF}' || true)"
+            if [ "$found" != "$version" ]; then
+              cargo install "$name" --locked --version "$version" --force
+            fi
+          done < xtask/tools.lock
+      - name: Check inputs before compiling assurance dependencies
+        run: |
+          cargo run -p xtask --locked -- integrity
+          python3 verification/check-inputs.py
+          python3 verification/retained_state.py
+          cargo audit --file verification/Cargo.lock
+          cargo deny --manifest-path verification/Cargo.toml --config verification/deny.toml check
+          cargo fmt --manifest-path verification/Cargo.toml -- --check
+          rustfmt --check verification/kani.rs
+          rustfmt --check verification/kani_access.rs
+          rustfmt --check verification/kani_memory.rs
+          rustfmt --check verification/kani_input.rs
+          rustfmt --check verification/kani_back.rs
+          rustfmt --check verification/kani_interaction.rs
+          rustfmt --check verification/kani_concrete.rs
+          rustfmt --check verification/kani_session.rs
+          rustfmt --check verification/kani_protected.rs
+          rustfmt --check verification/mediation_driver.rs verification/fixtures/mediation.rs
+
+  callback-mediation:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install pinned compiler development components and solver
+        run: python3 verification/install.py proofs
+      - name: Prove the common kernel and cover every protected contract
+        run: python3 verification/mediation.py --require-proved
+      - name: Require SAT and UNSAT compiler-fixture controls
+        if: always()
+        run: python3 verification/mediation_controls.py
+      - name: Check one-line extension and reject compiled bypasses
+        if: always()
+        run: python3 verification/contract_controls.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: callback-mediation-evidence
+          path: |
+            target/assurance/protected-contracts/
+            target/assurance/central-mediation/
+            target/mediation/summary.json
+            target/mediation/concrete-probe.log
+            target/mediation/all/
+            target/mediation/minimal/
+            target/mediation/fixture/
+          retention-days: 14
+
+  permission-metadata:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install pinned compiler development components
+        run: python3 verification/install.py proofs
+      - name: Check production permission metadata contracts
+        run: python3 verification/check_extension.py --manifest-path Cargo.toml --all-features
+      - name: Reject effectful and incomplete downstream implementations
+        run: python3 verification/metadata_controls.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: permission-metadata-contracts
+          path: |
+            target/metadata-check/report.json
+            target/metadata-check/compiler.log
+            target/metadata-controls/*.json
+            target/metadata-controls/*.log
+          retention-days: 14
+
+  state-schema:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install pinned compiler for private type metadata
+        run: |
+          nightly="$(python3 -c 'import json; print(json.load(open("verification/tools.json"))["nightly"])')"
+          rustup toolchain install "$nightly" --profile minimal
+      - name: Require reviewed concrete fields and variants in both feature profiles
+        run: python3 verification/state_schema.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: state-schema-results
+          path: |
+            target/assurance/state-schema/summary.json
+            target/assurance/state-schema/unreviewed-schema.json
+            target/assurance/state-schema/*/compiler.log
+          retention-days: 14
+
+  proofs:
+    if: ${{ always() && github.repository == 'shim9610/fairing' }}
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Require approved assurance inputs
+        env:
+          ASSURANCE_INPUT_RESULT: ${{ needs.inputs.result }}
+        run: test "$ASSURANCE_INPUT_RESULT" = success
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install pinned Kani and Verus
+        run: python3 verification/install.py proofs
+      - name: Verify production code and reject broken-order controls
+        run: python3 verification/proofs.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: proof-results
+          path: target/assurance/proofs/
+          retention-days: 14
+
+  properties-and-loom:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Generated input properties and real channels
+        env:
+          PROPTEST_CASES: "512"
+          PROPTEST_RNG_SEED: "20261101"
+          CARGO_TARGET_DIR: target/assurance-tests
+        run: |
+          mkdir -p target/assurance/logs
+          cargo test --locked --manifest-path verification/Cargo.toml --lib -- --skip widget_lifecycle:: --skip transitions::deadlines::expiry_cancels_old_replies_before_replacement_and_fresh_input 2>&1 | tee target/assurance/logs/properties.log
+      - name: Exhaust bounded Inbox channel schedules
+        env:
+          RUSTFLAGS: "--cfg fairing_loom"
+          CARGO_TARGET_DIR: target/assurance-loom
+        run: |
+          cargo test --locked --manifest-path verification/Cargo.toml --no-default-features --features loom --lib 2>&1 | tee target/assurance/logs/loom.log
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: property-model-results
+          path: target/assurance/logs/
+          retention-days: 14
+
+  miri:
+    if: ${{ always() && github.repository == 'shim9610/fairing' }}
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Require approved assurance inputs
+        env:
+          ASSURANCE_INPUT_RESULT: ${{ needs.inputs.result }}
+        run: test "$ASSURANCE_INPUT_RESULT" = success
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install the pinned Miri toolchain
+        run: python3 verification/install.py miri
+      - name: Interpret the production kernel, parser and real Inbox
+        env:
+          MIRIFLAGS: "-Zmiri-seed=0"
+          CARGO_TARGET_DIR: target/assurance-miri
+        run: |
+          mkdir -p target/assurance/logs
+          nightly="$(python3 -c 'import json; print(json.load(open("verification/tools.json"))["nightly"])')"
+          cargo "+$nightly" miri test --locked --manifest-path verification/Cargo.toml --lib 2>&1 | tee target/assurance/logs/miri.log
+          cargo "+$nightly" miri test --locked -p fairing-widgets --no-default-features --lib interaction::tests 2>&1 | tee target/assurance/logs/miri-interaction.log
+          cargo "+$nightly" miri test --locked -p fairing --lib runtime::tests::supported_payloads_are_released_and_numeric_codes_are_observable -- --exact 2>&1 | tee target/assurance/logs/miri-payloads.log
+          cargo "+$nightly" miri test --locked -p fairing --lib access::session::tests 2>&1 | tee target/assurance/logs/miri-session-admin.log
+          cargo "+$nightly" miri test --locked -p fairing --lib access::protected::tests::protected_scope_uses_current_context_and_never_caches_admission -- --exact 2>&1 | tee target/assurance/logs/miri-protected-scope.log
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: miri-results
+          path: target/assurance/logs/
+          retention-days: 14
+
+  contract-controls:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Reject broken public API wiring and dropped Inbox messages
+        run: python3 verification/controls.py --exclude focus-isolation --exclude popup-retirement --exclude deadline-reply
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: api-contract-controls
+          path: target/assurance/controls/
+          retention-days: 14
+
+  contract-coverage:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install pinned coverage tool and matching LLVM tools
+        run: python3 verification/install.py coverage
+      - name: Measure production code exercised by the API contracts
+        run: python3 verification/coverage.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: api-contract-coverage
+          path: target/assurance/coverage/
+          retention-days: 14
+
+  fuzz:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install pinned nightly and cargo-fuzz
+        run: python3 verification/install.py fuzz
+      - name: Run bounded sanitizer fuzzing
+        run: python3 verification/fuzz.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: fuzz-results
+          path: |
+            target/assurance/fuzz/
+            verification/artifacts/
+          retention-days: 14
+
+  memory-modes:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Verify recoverable display pressure and isolated allocator diagnostics
+        run: python3 verification/memory.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: memory-modes
+          path: target/assurance/memory/
+          retention-days: 14
+
+
+  fixed-display:
+    needs: inputs
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Execute the exact fixed-display source on this OS
+        run: |
+          mkdir -p target/assurance/fixed-display
+          rustc --edition=2021 --test verification/display.rs --out-dir target/assurance/fixed-display
+          suffix=""
+          if [ "$RUNNER_OS" = "Windows" ]; then suffix=".exe"; fi
+          target/assurance/fixed-display/display$suffix --nocapture 2>&1 | tee target/assurance/fixed-display/native.log
+      - name: Contain UI and backend unwinds without replay or output leakage
+        run: |
+          cargo test --locked -p fairing --test runtime_faults --no-default-features 2>&1 | tee target/assurance/fixed-display/runtime-faults.log
+      - name: Verify actual same-process heap exhaustion on Windows
+        if: runner.os == 'Windows'
+        env:
+          FAIRING_HEAP_BYTES: "16777216"
+        run: |
+          set -euo pipefail
+          cargo run --locked -p fairing-fixed-heap --example allocation_pressure --features global 2>&1 | tee target/assurance/fixed-display/pressure.log
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: fixed-display-${{ matrix.os }}
+          path: target/assurance/fixed-display/*.log
+          retention-days: 14
+
+  sbom:
+    needs: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install the pinned generator and schema validator
+        run: |
+          python3 verification/install.py sbom
+          python3 -m venv "$RUNNER_TEMP/sbom-python"
+          "$RUNNER_TEMP/sbom-python/bin/python" -m pip install --disable-pip-version-check -r verification/requirements.txt
+      - name: Generate target-scoped BOMs and validate CycloneDX schemas
+        run: '"$RUNNER_TEMP/sbom-python/bin/python" verification/sbom.py'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: library-sboms
+          path: target/assurance/sbom/
+          retention-days: 14

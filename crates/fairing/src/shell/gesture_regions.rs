@@ -17,6 +17,19 @@ const REGION_LAYER: &str = "fairing.gesture_regions";
 /// The guard over each region: an `Area` of its own that takes every press inside it.
 const GUARD_AREA: &str = "fairing.gesture_regions.guard";
 
+/// Retire a guard without leaving an interactable area at its previous rectangle.
+fn disable_guard(ctx: &egui::Context, name: &str) {
+    let id = Id::unique(GUARD_AREA).with(name);
+    if let Some(mut state) = egui::AreaState::load(ctx, id) {
+        state.interactable = false;
+        ctx.memory_mut(|memory| {
+            memory
+                .areas_mut()
+                .set_state(LayerId::new(Order::Foreground, id), state);
+        });
+    }
+}
+
 /// A region in the shell's list: its id, and the handle or the integrator's region it is.
 pub(super) struct RegionSlot {
     /// Its id, unique across the handles and the regions.
@@ -221,6 +234,7 @@ impl Shell {
             .retain(|slot| slot.id != id || slot.handle().is_some() != handle);
         let gone = self.gesture_regions.len() != before;
         if gone {
+            disable_guard(self.handle.waker().context(), id);
             self.drop_touch_of(id);
         }
         gone
@@ -245,19 +259,22 @@ impl Shell {
     /// Whether the regions are in play: over a screen or the desktop, with nothing of the shell's
     /// over them — the shade, the prompt, the recent screens.
     fn regions_free(&self) -> bool {
-        self.overlay.is_closed() && !self.prompt.is_open() && !self.workspace.is_overview_open()
+        super::input_route::regions_can_capture(
+            self.overlay.is_closed(),
+            self.prompt.is_open(),
+            self.workspace.is_overview_open(),
+        )
     }
 
     /// **The keyboard's band** for the regions to keep off: from the top of the keys,
     /// or of where they will stop while they come up, down to the nav bar. `None` while the
     /// keyboard is down.
-    fn keys_band(&self, screen: Rect) -> Option<Rect> {
-        let floor = self
-            .layout
+    fn keys_band(&self, screen: Rect, layout: &super::Layout) -> Option<Rect> {
+        let floor = layout
             .nav
             .map_or(screen.max.y, |r| r.min.y.min(screen.max.y));
         let mut top = f32::INFINITY;
-        if let Some(keys) = self.layout.osk {
+        if let Some(keys) = layout.osk {
             top = top.min(keys.min.y);
         }
         if self.osk.is_shown() {
@@ -272,6 +289,7 @@ impl Shell {
     pub(super) fn place_regions(
         &mut self,
         screen: Rect,
+        layout: &super::Layout,
         edge_zones: [Rect; 4],
         blocked: EdgeMask,
     ) -> RegionZones {
@@ -282,26 +300,26 @@ impl Shell {
         {
             return placed;
         }
-        let keys = self.keys_band(screen);
+        let keys = self.keys_band(screen, layout);
         let focused = self
             .workspace
             .focused()
             .map(crate::workspace::Instance::decl_id);
         let cx = RegionPlaceCx {
             screen,
-            content: self.layout.content,
+            content: layout.content,
             focused,
             pane: if focused.is_some() {
-                self.workspace.focused_pane_rect()
+                self.workspace.focused_pane_in(layout.content)
             } else {
-                self.layout.content
+                layout.content
             },
             keys,
             blocked,
             scale: self.scale,
             edge_zones,
-            status_bar: self.layout.status,
-            nav_bar: self.layout.nav,
+            status_bar: layout.status,
+            nav_bar: layout.nav,
             nav_bar_on: self.nav_bar.enabled,
         };
         for (index, slot) in self.gesture_regions.iter_mut().enumerate() {
@@ -466,16 +484,32 @@ impl Shell {
     /// in the regions' order, so a popup a screen opens over a region does not take its presses
     /// back.
     ///
-    /// egui senses an `Area` at the size it ended the frame before with, and has no public way to
-    /// set it, so a guard is a frame behind a region that moves or grows: for the two frames after
-    /// the keyboard appears, a side strip's guard still reaches over the outer edge of the keys
-    /// beside it — a documented limit.
+    /// Seed the public area state with the current rectangle before registering the widget.
+    /// egui's widget hit testing still uses the previous pass; area size adds no extra lag.
     pub(super) fn guard_regions(&self, ctx: &egui::Context) {
+        let mut active = [false; 3 * MAX_HANDLES_A_SIDE + MAX_GESTURE_REGIONS];
+        for (_, tag) in self.region_zones.iter() {
+            if let Some(slot) = active.get_mut(usize::from(tag)) {
+                *slot = true;
+            }
+        }
+        for (index, slot) in self.gesture_regions.iter().enumerate() {
+            if !active.get(index).copied().unwrap_or(false) {
+                disable_guard(ctx, &slot.id);
+            }
+        }
         for (rect, tag) in self.region_zones.iter() {
             let Some(slot) = self.gesture_regions.get(usize::from(tag)) else {
                 continue;
             };
-            let id = Id::new(GUARD_AREA).with(&slot.id);
+            let id = Id::unique(GUARD_AREA).with(&slot.id);
+            let layer = LayerId::new(Order::Foreground, id);
+            let mut state = egui::AreaState::load(ctx, id).unwrap_or_default();
+            state.pivot = egui::Align2::LEFT_TOP;
+            state.pivot_pos = Some(rect.min);
+            state.size = Some(rect.size());
+            state.interactable = true;
+            ctx.memory_mut(|memory| memory.areas_mut().set_state(layer, state));
             let _ = egui::Area::new(id)
                 .order(Order::Foreground)
                 .fixed_pos(rect.min)
@@ -486,6 +520,25 @@ impl Shell {
                 .sense(Sense::click_and_drag())
                 .show(ctx, |ui| ui.allocate_rect(rect, Sense::click_and_drag()));
             ctx.move_to_top(LayerId::new(Order::Foreground, id));
+        }
+    }
+
+    /// Preserve guard priority after user popups, or retire guards if a modal opened.
+    pub(super) fn finish_region_guards(&mut self, ctx: &egui::Context) {
+        if !self.regions_free() {
+            self.region_zones = RegionZones::NONE;
+            for slot in &self.gesture_regions {
+                disable_guard(ctx, &slot.id);
+            }
+            return;
+        }
+        for (_, tag) in self.region_zones.iter() {
+            if let Some(slot) = self.gesture_regions.get(usize::from(tag)) {
+                ctx.move_to_top(LayerId::new(
+                    Order::Foreground,
+                    Id::unique(GUARD_AREA).with(&slot.id),
+                ));
+            }
         }
     }
 
@@ -502,7 +555,7 @@ impl Shell {
             icons,
             ..
         } = self;
-        let layer = ctx.layer_painter(LayerId::new(Order::Foreground, Id::new(REGION_LAYER)));
+        let layer = ctx.layer_painter(LayerId::new(Order::Foreground, Id::unique(REGION_LAYER)));
         for (rect, tag) in region_zones.iter() {
             let Some(RegionSlot { id, kind }) = gesture_regions.get_mut(usize::from(tag)) else {
                 continue;

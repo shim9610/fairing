@@ -43,18 +43,26 @@ fn warnings(work: impl FnOnce() -> fairing::Result<()>) -> fairing::Result<Vec<S
     Ok(SEEN.with(|seen| seen.borrow_mut().drain(..).collect()))
 }
 
-/// The bundled bold the examples carry — a real face, so it is not left out as unreadable.
-const BOLD: &[u8] = include_bytes!("../../../assets/fonts/NotoSansKR-Bold.ttf");
-
-fn bold() -> FontSource {
-    FontSource::from_static("bold", BOLD)
-        .families(FontFamilies::Strong)
-        .priority(FontPriority::First)
+/// Register a valid egui-bundled face in Strong. These tests check family registration
+/// and unreadable-font rejection, not the typographic weight of a particular font asset.
+fn strong_font() -> fairing::Result<FontSource> {
+    let font = fairing::egui::FontDefinitions::default()
+        .font_data
+        .into_values()
+        .next()
+        .ok_or_else(|| fairing::Error::Config("egui default_fonts has no font data".into()))?;
+    Ok(
+        FontSource::from_bytes("bold", font.font.as_ref().as_ref().to_vec())
+            .index(font.index)
+            .families(FontFamilies::Strong)
+            .priority(FontPriority::First),
+    )
 }
 
 /// A shell on `config` with a bold face, so only the nav item can be what is warned about.
 fn kbd_shell(config: ShellConfig) -> fairing::Result<Harness> {
-    let mut h = Harness::from_builder(move |ctx| Shell::builder(config).font(bold()).build(ctx))?;
+    let mut h =
+        Harness::from_builder(move |ctx| Shell::builder(config).font(strong_font()?).build(ctx))?;
     h.shell.add(nav_item("kbd", |ui, _cx| {
         let _ = ui.button("KBD");
     }));
@@ -207,7 +215,7 @@ fn a_bold_face_says_nothing() -> fairing::Result<()> {
     let seen = warnings(|| {
         let _ = Harness::from_builder(|ctx| {
             Shell::builder(single_level_access())
-                .font(bold())
+                .font(strong_font()?)
                 .build(ctx)
         })?;
         Ok(())
@@ -248,7 +256,7 @@ fn a_bar_size_the_code_overrides_says_so() -> fairing::Result<()> {
         config.nav_bar.height = Some(80.0);
         let _ = Harness::from_builder(move |ctx| {
             Shell::builder(config)
-                .font(bold())
+                .font(strong_font()?)
                 .metrics_spec(fairing::theme::MetricsSpec::legacy_du())
                 .build(ctx)
         })?;
@@ -272,7 +280,7 @@ fn a_bar_size_an_injected_theme_overrides_says_so() -> fairing::Result<()> {
         config.status_bar.icon_size = Some(26.0);
         let _ = Harness::from_builder(move |ctx| {
             Shell::builder(config)
-                .font(bold())
+                .font(strong_font()?)
                 .theme(fairing::Theme::dark())
                 .build(ctx)
         })?;
@@ -291,7 +299,9 @@ fn a_bar_size_that_takes_effect_says_nothing() -> fairing::Result<()> {
     let seen = warnings(|| {
         let mut config = single_level_access();
         config.status_bar.height = Some(48.0);
-        let _ = Harness::from_builder(move |ctx| Shell::builder(config).font(bold()).build(ctx))?;
+        let _ = Harness::from_builder(move |ctx| {
+            Shell::builder(config).font(strong_font()?).build(ctx)
+        })?;
         Ok(())
     })?;
     assert!(

@@ -1,23 +1,32 @@
 //! `ShellHandle` — the handle for sending the shell commands from any thread.
 //!
-//! Inside it is an `mpsc::Sender<Command>` plus a [`Waker`]. `Shell` owns the receiving end as an
-//! [`Inbox`](crate::inbox::Inbox) and drains it in stage 2 of the frame — the type has no blocking
-//! call to reach for. No locks.
+//! A bounded sender plus a [`Waker`]. Both transport endpoints expose only immediate
+//! send/receive operations. Queue capacity and per-update processing are builder choices.
 
 use crate::access::{Gate, Subject};
 use crate::desktop::Badge;
-use crate::inbox::Inbox;
-use crate::notify::{Notification, NotificationId, Toast};
+use crate::inbox::{
+    BoundedInbox, BoundedSender, Inbox, QueueCapacityError, QueueErrorKind, QueueStats,
+    TryBuildSendError, TrySendError,
+};
+use crate::notify::{Notification, NotificationId, Toast, ToastInput};
 use crate::screen::LaunchAction;
 use crate::services::Waker;
 use crate::settings::{SettingKey, SettingValue};
 use crate::theme::MotionTokens;
 use crate::workspace::InstanceId;
-use std::sync::mpsc::Sender;
+use std::sync::{
+    atomic::{AtomicU8, Ordering},
+    Arc,
+};
 
 /// A shell command. All of them are `Send`.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "bounded transport stores payloads inline to avoid infallible Box allocation on send"
+)]
 pub enum Command {
     /// Launch (the gate is checked by `Shell::launch`).
     Launch(LaunchAction),
@@ -57,22 +66,23 @@ pub enum Command {
         then: Option<LaunchAction>,
     },
     /// A notification (M2). The same id updates.
-    Notify(Box<Notification>),
+    Notify(Notification),
     /// A toast (M2).
-    Toast(Box<Toast>),
+    Toast(Toast),
     /// Dismiss a notification (M2). Persistent ones are ignored.
     DismissNotification(NotificationId),
     /// Toggle the shade (M2). Opening goes through the gate as `Launch(OpenOverlay)`.
     ToggleOverlay,
     /// Replace the motion tokens (M2, tuning from `examples/motion_lab.rs`). From the next frame.
-    SetMotion(Box<MotionTokens>),
+    SetMotion(MotionTokens),
 }
 
 /// A `Clone + Send` handle.
 #[derive(Debug, Clone)]
 pub struct ShellHandle {
-    tx: Sender<Command>,
+    tx: BoundedSender<Command>,
     waker: Waker,
+    display_omissions: Arc<AtomicU8>,
 }
 
 impl ShellHandle {
@@ -80,24 +90,128 @@ impl ShellHandle {
     ///
     /// The receiving end is an [`Inbox`](crate::inbox::Inbox) rather than a bare
     /// `std::sync::mpsc::Receiver`: the UI thread drains it every frame and must never wait on it.
-    #[must_use]
-    pub(crate) fn pair(waker: Waker) -> (Self, Inbox<Command>) {
-        let (tx, rx) = Inbox::pair();
-        (Self { tx, waker }, rx)
+    pub(crate) fn pair(
+        waker: Waker,
+        capacity: usize,
+    ) -> Result<(Self, BoundedInbox<Command>), QueueCapacityError> {
+        let (tx, rx) = Inbox::bounded(capacity)?;
+        Ok((
+            Self {
+                tx,
+                waker,
+                display_omissions: Arc::new(AtomicU8::new(0)),
+            },
+            rx,
+        ))
     }
 
-    /// Send a command and wake the UI. `false` if the shell is gone.
+    /// Send a command and wake the UI. `false` if full or the shell is gone.
+    /// Use `try_send` to distinguish rejection and recover the command.
     #[must_use]
     pub fn send(&self, command: Command) -> bool {
-        let ok = self.tx.send(command).is_ok();
-        self.waker.wake();
-        ok
+        self.try_send(command).is_ok()
+    }
+
+    /// Send without waiting or evicting another command.
+    ///
+    /// # Errors
+    /// Full or disconnected; the error owns the original command.
+    #[allow(
+        clippy::result_large_err,
+        reason = "return rejected ownership inline; boxing an allocation failure would allocate again"
+    )]
+    pub fn try_send(&self, command: Command) -> Result<(), TrySendError<Command>> {
+        let result = self.tx.try_send(command);
+        if result.is_ok() {
+            self.waker.wake();
+        }
+        result
+    }
+
+    /// Reserve capacity before constructing a command's variable-sized payload.
+    ///
+    /// # Errors
+    /// Full or disconnected. See `BoundedSender::try_send_with` for concurrent close semantics.
+    pub fn try_send_with(&self, make: impl FnOnce() -> Command) -> Result<(), QueueErrorKind> {
+        let result = self.tx.try_send_with(make);
+        if result.is_ok() {
+            self.waker.wake();
+        }
+        result
+    }
+
+    /// Reserve a command slot before a fallible payload factory runs.
+    /// A failed factory releases its reservation without logging or waking the UI.
+    ///
+    /// # Errors
+    /// Queue full/closed or the factory's own error. A rejected factory is not invoked.
+    pub fn try_send_fallible_with<E>(
+        &self,
+        make: impl FnOnce() -> Result<Command, E>,
+    ) -> Result<(), TryBuildSendError<E>> {
+        let result = self.tx.try_send_fallible_with(make);
+        if result.is_ok() {
+            self.waker.wake();
+        }
+        result
+    }
+
+    /// Send text using fallible bounded construction, without a per-message Box.
+    /// A full command queue skips text allocation. Admission is not display completion.
+    ///
+    /// # Errors
+    /// Queue full/closed, oversized text, or failed String allocation.
+    pub fn try_toast(
+        &self,
+        text: &str,
+    ) -> Result<(), TryBuildSendError<crate::notify::AdmissionError>> {
+        let result = self
+            .tx
+            .try_send_fallible_with(|| Toast::try_new(text).map(Command::Toast));
+        if result.is_ok() {
+            self.waker.wake();
+        } else {
+            let bits = if matches!(
+                result,
+                Err(TryBuildSendError::Build(
+                    crate::notify::AdmissionError::AllocationFailed
+                ))
+            ) {
+                3
+            } else {
+                1
+            };
+            self.display_omissions.fetch_or(bits, Ordering::Relaxed);
+        }
+        result
+    }
+
+    pub(super) fn display_status(&self, acknowledge: bool) -> crate::memory::DisplayStatus {
+        let bits = if acknowledge {
+            self.display_omissions.swap(0, Ordering::Relaxed)
+        } else {
+            self.display_omissions.load(Ordering::Relaxed)
+        };
+        crate::memory::DisplayStatus {
+            discarded: usize::from(bits & 1),
+            allocation_failed: bits & 2 != 0,
+        }
+    }
+
+    /// Queue capacity, outstanding reservations, high-water mark and full rejections.
+    #[must_use]
+    pub fn queue_stats(&self) -> QueueStats {
+        self.tx.stats()
     }
 
     fn post(&self, command: Command) {
-        if !self.send(command) {
-            log::warn!("ShellHandle: the shell is gone, dropping the command");
-        }
+        // Rejection must not call an application logger that may allocate under pressure.
+        // Try APIs and queue_stats expose refusal to hosts that need diagnostics/retry.
+        let _ = self.try_send(command);
+    }
+
+    fn post_with(&self, make: impl FnOnce() -> Command) {
+        let _ = self.try_send_with(make);
     }
 
     /// Launch (the shell checks the gate).
@@ -132,7 +246,7 @@ impl ShellHandle {
 
     /// A badge.
     pub fn set_badge(&self, id: impl Into<String>, badge: Option<Badge>) {
-        self.post(Command::SetBadge {
+        self.post_with(|| Command::SetBadge {
             id: id.into(),
             badge,
         });
@@ -140,7 +254,7 @@ impl ShellHandle {
 
     /// Write a setting. The shell checks the gate (`Shell::launch(LaunchAction::Set)`).
     pub fn set_setting(&self, key: impl Into<SettingKey>, value: SettingValue) {
-        self.post(Command::SetSetting {
+        self.post_with(|| Command::SetSetting {
             key: key.into(),
             value,
         });
@@ -150,7 +264,7 @@ impl ShellHandle {
     /// goes out, and in `prompt` mode with an authenticator the shell's prompt opens; a grant runs
     /// `then` through the gate.
     pub fn request_unlock(&self, gate: impl Into<Gate>, then: Option<LaunchAction>) {
-        self.post(Command::RequestUnlock {
+        self.post_with(|| Command::RequestUnlock {
             gate: gate.into(),
             then,
         });
@@ -158,12 +272,23 @@ impl ShellHandle {
 
     /// A notification, from any thread. A new one shows briefly as a heads-up and then goes into the shade.
     pub fn notify(&self, notification: Notification) {
-        self.post(Command::Notify(Box::new(notification)));
+        self.post_with(|| Command::Notify(notification));
     }
 
     /// A toast, from any thread. Either `"text"` or a [`Toast`].
-    pub fn toast(&self, toast: impl Into<Toast>) {
-        self.post(Command::Toast(Box::new(toast.into())));
+    pub fn toast<'a>(&self, toast: impl Into<ToastInput<'a>>) {
+        match toast.into() {
+            ToastInput::Text(text) => {
+                // Reporting through a user logger could allocate after an OOM rejection.
+                // Call try_toast when the producer needs the admission error.
+                let _ = self.try_toast(text);
+            }
+            ToastInput::Value(toast) => {
+                if self.try_send(Command::Toast(toast)).is_err() {
+                    self.display_omissions.fetch_or(1, Ordering::Relaxed);
+                }
+            }
+        }
     }
 
     /// Dismiss a notification.
@@ -178,7 +303,7 @@ impl ShellHandle {
 
     /// Replace the motion tokens (the tuning tool). Animations in flight are left alone.
     pub fn set_motion(&self, tokens: MotionTokens) {
-        self.post(Command::SetMotion(Box::new(tokens)));
+        self.post_with(|| Command::SetMotion(tokens));
     }
 
     /// The wake handle (hand it to backend and scenario threads).

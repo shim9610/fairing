@@ -1,8 +1,8 @@
 # 09. Product branding — giving the shell your machine's character
 
 This page collects, in one place, what a manufacturer touches and what they have to prepare in
-order to make a product look like their own. The default brand (the manta, the abyss) is **a
-default, not a lock** — override one colour, or replace the background, the mark and the icons
+order to make a product look like their own. The optional Abyss styling (the manta and
+the abyss) can be changed — override one colour, or replace the background, the mark and the icons
 outright, all without patching the crate.
 
 Read first: [04 Customization](04-customization.md) (theme injection, painter hooks) and
@@ -10,29 +10,29 @@ Read first: [04 Customization](04-customization.md) (theme injection, painter ho
 
 ---
 
-## 0. The 30-second decision table
+## 0. Branding options
 
-Where you reach depends on how far you want to go. **Cheap at the top, free at the bottom.**
+Choose the hook that matches the part of the product you want to change.
 
-| What you want | Where you go | Images | Effort |
-|---|---|---|---|
-| "Just our company colour" | One line of `[theme.palette] primary` | none | 1 min |
-| "Our own flat or gradient background" | `[desktop] wallpaper = "#0B2237"`, or `Wallpaper::Gradient` | none | 5 min |
-| "Pick one of the crate's presets" | `[theme] preset = "base"` \| `"abyss"` \| `"linen"` (**those three**) | none | 1 min |
-| **"Just use a crate default set"** | `.preset(Preset::Abyss)` — palette + background in one line (§8.1) | none | 1 min |
-| "Settings menus in our colours and layout" | `settings::add_all` + `SettingsConfig` (§8.3) | none | 10 min |
-| "Our whole colour system" | The `[theme.palette]` roles, or `ShellBuilder::palettes(dark, light)` | none | 30 min |
-| **"Our typeface"** | `ShellBuilder::fonts` (§3) — the crate carries no fonts | none | 1 hour |
-| "Change the feel of the layout" | `set_dock_placement` — a left rail, a floating band across the screen (§6.3) | none | 10 min |
-| **"Our own status bar and nav bar"** | `ShellBuilder::status_bar_painter` / `nav_bar_painter` (§6.2) | none | half a day |
-| "Our photo or artwork as the background" | The `image_loader` hook + `[desktop] wallpaper = "file:…"` (§1) | **yes** (§2) | 30 min |
-| "Our own procedural background art" | `Wallpaper::ThemedPainter` | none | days |
-| "Our icon set" | `register_icon_painter`, or replacing the SVGs (§4) | **yes** | 1–3 days |
-| "Our logo mark" | Register a painter, or author one with `brand::ribbon` (§5) | **yes** | 1 day |
-| "No trace of the crate's brand at all" | **Do nothing** (§8) | none | 0 |
+| What you want | Where you go | Images |
+|---|---|---|
+| "Just our company colour" | One line of `[theme.palette] primary` | none |
+| "Our own flat or gradient background" | `[desktop] wallpaper = "#0B2237"`, or `Wallpaper::Gradient` | none |
+| "Pick one of the crate's presets" | `[theme] preset = "base"` \| `"abyss"` \| `"linen"` | none |
+| "Use the Abyss preset" | `.preset(Preset::Abyss)` — palette + background (§8.1) | none |
+| "Settings menus in our colours and layout" | `settings::add_all` + `SettingsConfig` (§8.3) | none |
+| "Our whole colour system" | The `[theme.palette]` roles, or `ShellBuilder::palettes(dark, light)` | none |
+| "Our typeface" | `ShellBuilder::fonts` (§3) — the crate carries no fonts | none |
+| "Change the feel of the layout" | `set_dock_placement` — a left rail, a floating band across the screen (§6.3) | none |
+| "Our own status bar and nav bar" | `ShellBuilder::status_bar_painter` / `nav_bar_painter` (§6.2) | none |
+| "Our photo or artwork as the background" | The `image_loader` hook + `[desktop] wallpaper = "file:…"` (§1) | yes (§2) |
+| "Our own procedural background art" | `Wallpaper::ThemedPainter` | none |
+| "Our icon set" | `register_icon_painter`, or replacing the SVGs (§4) | SVGs or reference art for the chosen route |
+| "Our logo mark" | Register a custom mesh painter (§5) | Reference art for authoring |
+| "No trace of the crate's brand at all" | Keep the `Base` preset (§8) | none |
 
-**Only three rows need images.** The other nine are config and code — most of "our character" is
-colour, type and layout, not pictures.
+Colour, typography and layout changes use configuration and code. Prepare image
+assets or reference art for the routes identified in the last column.
 
 > **Why the last row is "do nothing".** The default config has no brand in it. `[theme] preset`
 > is `"base"` (neutral) and `[desktop] wallpaper` is `"background"` (a flat colour). The manta
@@ -45,7 +45,7 @@ colour, type and layout, not pictures.
 
 **Read this before §2; the rest of the page depends on it.**
 
-`fairing` has no image decoder dependency and will not get one. It does not read
+`fairing` delegates wallpaper decoding to the application's loader. It does not read
 PNG, JPEG or WebP for you — which codec fits depends on the machine (software `image`,
 `zune-image`, a hardware decoder …), and picking one in the crate makes every machine that does
 not want it pay for it.
@@ -167,7 +167,7 @@ breaks the crate's no-locks rule ([architecture §5](../architecture.md#5-thread
 > **Match the egui version.** The loader is the **only** place where you touch egui types
 > (`ColorImage`, `TextureHandle`) directly. If the egui in your `Cargo.toml` is a different minor
 > from the one `fairing` uses, two copies of egui get linked, the types stop matching and the build
-> breaks. Ask for the same minor with `egui = "0.36"` ([01 Getting started](01-getting-started.md)).
+> breaks. Ask for the same minor with `egui = "0.37"` ([01 Getting started](01-getting-started.md)).
 
 > **There are no mipmaps.** `TextureOptions::LINEAR` means `mipmap_mode: None`. Putting a
 > 2560×1440 image on an 800×480 panel is a 3.2× downscale with no mipmaps, so it **shimmers even
@@ -833,8 +833,9 @@ grep -rn 'manta_painter\|abyss\|Preset::Abyss' src/
 cargo tree -e features -i fairing | grep -c brand
 ```
 
-Zero on all three and what is left on screen is **the palette, the metrics, the 80 icons and the
-built-in settings screens** — and all of those are overridable per the table in §8.2.
+These searches locate explicit brand references and the enabled feature. Inspect the
+rendered result as well: the palette, metrics, 80 icons and built-in settings screens
+remain independently configurable through §8.2.
 
 ---
 
@@ -863,8 +864,8 @@ fn my_palette_is_legible() {
 > are the WCAG 2.x relative luminance formula, under ten lines).
 
 The crate's `every_preset_meets_the_contrast_floor` (`theme/mod.rs`) is the worked example.
-**White text almost always fails on a bright `primary`** — which is why the default dark
-palette's `on_primary` is not white.
+Check the actual `on_primary`/`primary` pair against the stated contrast floor.
+The default dark palette uses a dark `on_primary` rather than white.
 
 ### 9.2 Label legibility over the background
 
@@ -929,7 +930,7 @@ SVGs in 6 are converted to vectors at build time, so neither needs a decoder.
 
 ## Appendix A. Every `[desktop.abyss]` key
 
-These are for **using the default brand background but tuning it to taste**. They are only read
+These tune the optional Abyss background. They are only read
 when `wallpaper = "abyss"`.
 
 | Key | Default | Meaning |
@@ -974,8 +975,8 @@ when `wallpaper = "abyss"`.
 | `Shell::commit_power(request)` | Carrying out a power action. **Not calling it is the refusal** (§8.3) |
 | `ChromePolicy` (per declaration) | Per-screen ground colour, bar modes, fullscreen |
 
-`Wallpaper` has nine variants: `Solid(role)` · `Fixed(color)` · `Gradient{top,bottom}` (the mesh
-is cached, zero allocations per frame) · `Texture` · `TextureFit` · **`Owned`** (holds the
+`Wallpaper` has nine variants: `Solid(role)` · `Fixed(color)` · `Gradient{top,bottom}` (its
+mesh is cached until the rectangle or colours change) · `Texture` · `TextureFit` · **`Owned`** (holds the
 texture handle, §1.4) · `Painter` · `ThemedPainter` · `Themed{dark,light}` (a pair the shell
 picks from as the palette switches; `Wallpaper::themed(dark, light)`). It is `#[non_exhaustive]`, so a `match`
 **outside** the crate needs a `_` arm.

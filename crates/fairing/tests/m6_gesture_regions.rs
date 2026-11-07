@@ -65,6 +65,7 @@ struct Heard {
     touches: Vec<RegionTouch>,
     /// How many times it was asked where it is.
     placed: u32,
+    geometry: Option<(egui::Rect, egui::Rect, Option<egui::Rect>)>,
     /// What its painting was told last: the rect, and the touch.
     painted: Option<(egui::Rect, Option<RegionTouch>)>,
 }
@@ -98,8 +99,9 @@ impl Probe {
 }
 
 impl GestureRegion for Probe {
-    fn place(&mut self, _: &RegionPlaceCx<'_>) -> Option<egui::Rect> {
+    fn place(&mut self, cx: &RegionPlaceCx<'_>) -> Option<egui::Rect> {
         self.log.borrow_mut().placed += 1;
+        self.log.borrow_mut().geometry = Some((cx.content, cx.pane, cx.keys));
         self.here.get().then_some(self.rect)
     }
 
@@ -767,5 +769,236 @@ fn the_later_of_a_region_and_a_handle_is_on_top() -> fairing::Result<()> {
         log.borrow().phases.is_empty(),
         "the region under the handle heard its swipe"
     );
+    Ok(())
+}
+
+#[test]
+fn region_geometry_follows_resize_and_policy_in_the_same_frame() -> fairing::Result<()> {
+    let mut h = shell(single_level_access())?;
+    let log = Log::default();
+    h.shell
+        .add_gesture_region("probe", Probe::new(middle(&h), &log))?;
+    h.set_size(720.0, 960.0);
+    h.frame();
+    let (content, pane, _) = log.borrow().geometry.ok_or_else(|| fail("no geometry"))?;
+    assert_eq!(content, h.shell.layout().content);
+    assert_eq!(pane, content);
+    h.shell
+        .add(stub("full").chrome(fairing::screen::ChromePolicy::fullscreen()));
+    h.shell.launch(LaunchAction::open("full"));
+    h.frame();
+    let (content, pane, _) = log
+        .borrow()
+        .geometry
+        .ok_or_else(|| fail("no fullscreen geometry"))?;
+    assert_eq!(content, h.screen_rect());
+    assert_eq!(pane, content);
+    Ok(())
+}
+
+#[cfg(feature = "osk")]
+#[test]
+fn opening_the_keyboard_updates_the_region_band_without_an_extra_frame() -> fairing::Result<()> {
+    let mut h = shell(single_level_access())?;
+    let log = Log::default();
+    h.shell
+        .add_gesture_region("probe", Probe::new(middle(&h), &log))?;
+    h.shell
+        .add(stub("manual").chrome(fairing::screen::ChromePolicy {
+            osk: fairing::screen::OskMode::Manual,
+            ..fairing::screen::ChromePolicy::default()
+        }));
+    h.shell.launch(LaunchAction::open("manual"));
+    h.shell.osk_mut().toggle();
+    h.frame();
+    let (_, _, keys) = log
+        .borrow()
+        .geometry
+        .ok_or_else(|| fail("no keyboard geometry"))?;
+    let keys = keys.ok_or_else(|| fail("keyboard band was delayed"))?;
+    assert!(h.shell.osk().is_shown());
+    assert!(
+        keys.min.y
+            <= h.shell
+                .layout()
+                .nav
+                .map_or(h.screen_rect().max.y, |r| r.min.y)
+                - h.shell.osk().height()
+                + 0.1
+    );
+    Ok(())
+}
+
+#[test]
+fn a_region_guard_is_registered_before_user_widgets_are_drawn() -> fairing::Result<()> {
+    let seen = Rc::new(Cell::new(false));
+    let point = Rc::new(Cell::new(egui::Pos2::ZERO));
+    let read = seen.clone();
+    let at = point.clone();
+    let mut h = test_shell(single_level_access(), move |shell| {
+        shell.add(screen("watch", move |ui: &mut egui::Ui, _: &mut Cx| {
+            read.set(
+                ui.ctx()
+                    .layer_id_at(at.get())
+                    .is_some_and(|id| id.order == egui::Order::Foreground),
+            );
+            ui.label("screen");
+        }));
+    })?;
+    h.shell.launch(LaunchAction::open("watch"));
+    h.frames(3);
+    let log = Log::default();
+    let rect = middle(&h);
+    point.set(rect.center());
+    h.shell
+        .add_gesture_region("probe", Probe::new(rect, &log))?;
+    h.frame();
+    assert!(
+        seen.get(),
+        "new guard was not registered before user drawing"
+    );
+    let moved = rect.translate(egui::vec2(240.0, 0.0));
+    point.set(moved.center());
+    h.shell
+        .add_gesture_region("probe", Probe::new(moved, &log))?;
+    h.frame();
+    assert!(seen.get(), "moved guard retained its old area rectangle");
+    Ok(())
+}
+
+#[test]
+fn region_owned_taps_do_not_advance_hidden_corner_sequences() -> fairing::Result<()> {
+    use fairing::access::{Corner, HiddenEntry};
+    let mut h = shell(single_level_access())?;
+    h.shell.add_hidden_entry(HiddenEntry::corners(
+        "hidden",
+        [Corner::TopLeft, Corner::TopRight],
+        LaunchAction::open("service_menu"),
+    ));
+    let log = Log::default();
+    h.shell
+        .add_gesture_region("all", Probe::new(h.screen_rect(), &log))?;
+    h.frames(2);
+    let left = egui::pos2(8.0, 8.0);
+    let right = egui::pos2(h.screen_rect().max.x - 8.0, 8.0);
+    // Include a complete tap in one pass, with no warmed response between its edges.
+    h.press(left);
+    h.release(left);
+    h.frame();
+    h.tap(right);
+    assert_ne!(focused(&h), Some("service_menu"));
+    assert!(!h
+        .shell
+        .poll_events()
+        .iter()
+        .any(|e| matches!(e, ShellEvent::HiddenEntry { .. })));
+    assert!(h.shell.remove_gesture_region("all"));
+    h.frames(2);
+    h.tap(left);
+    h.tap(right);
+    assert_eq!(focused(&h), Some("service_menu"));
+    Ok(())
+}
+
+#[test]
+fn a_new_region_quick_tap_cannot_activate_the_underlying_button() -> fairing::Result<()> {
+    let hits = Rc::new(Cell::new(0));
+    let logic = Rc::new(Cell::new(0));
+    let ran = logic.clone();
+    let mut h = test_shell(single_level_access(), |sh| {
+        sh.add(button("under", &hits));
+        sh.add(fairing::action("during_omission", move |_| {
+            ran.set(ran.get() + 1);
+        }));
+    })?;
+    h.shell.launch(LaunchAction::open("under"));
+    h.frames(4);
+    let rect = middle(&h);
+    let log = Log::default();
+    h.shell
+        .add_gesture_region("probe", Probe::new(rect, &log))?;
+    h.shell
+        .handle()
+        .launch(LaunchAction::run("during_omission"));
+    h.press(rect.center());
+    h.release(rect.center());
+    h.frame();
+    assert_eq!(log.borrow().phases, [Phase::Started, Phase::Ended]);
+    assert_eq!(hits.get(), 0, "stale widget hit was delivered");
+    assert_eq!(logic.get(), 1, "queued work stopped during UI omission");
+    h.frames(2);
+    h.tap(rect.min - egui::vec2(40.0, 40.0));
+    assert_eq!(hits.get(), 1, "ordinary input did not resume");
+    let moved = rect.translate(egui::vec2(250.0, 0.0));
+    h.shell
+        .add_gesture_region("probe", Probe::new(moved, &log))?;
+    h.press(moved.center());
+    h.release(moved.center());
+    h.frame();
+    assert_eq!(
+        hits.get(),
+        1,
+        "moving the region delivered a stale widget hit"
+    );
+    h.frames(2);
+    h.tap(rect.center());
+    assert_eq!(hits.get(), 2, "the old guard still intercepted input");
+    Ok(())
+}
+
+#[test]
+fn a_new_region_hold_cannot_start_a_stale_widget_repeat() -> fairing::Result<()> {
+    let hits = Rc::new(Cell::new(0));
+    let count = hits.clone();
+    let mut h = test_shell(single_level_access(), |sh| {
+        sh.add(screen("under", move |ui: &mut egui::Ui, _: &mut Cx| {
+            if ui
+                .add_sized(ui.available_size(), egui::Button::new("repeat"))
+                .is_pointer_button_down_on()
+            {
+                count.set(count.get() + 1);
+            }
+        }));
+    })?;
+    h.shell.launch(LaunchAction::open("under"));
+    h.frames(4);
+    let rect = middle(&h);
+    let log = Log::default();
+    h.shell
+        .add_gesture_region("probe", Probe::new(rect, &log))?;
+    h.press(rect.center());
+    h.frames(12);
+    h.release(rect.center());
+    h.frame();
+    assert_eq!(hits.get(), 0, "stale press was retained by the widget");
+    assert_eq!(log.borrow().phases.last(), Some(&Phase::Ended));
+    Ok(())
+}
+
+#[test]
+fn removing_a_region_does_not_transfer_its_held_press_to_a_knock() -> fairing::Result<()> {
+    use fairing::access::{Corner, HiddenEntry};
+    let mut h = shell(single_level_access())?;
+    h.shell.add_hidden_entry(HiddenEntry::corners(
+        "hidden",
+        [Corner::TopLeft, Corner::TopRight],
+        LaunchAction::open("service_menu"),
+    ));
+    let log = Log::default();
+    h.shell
+        .add_gesture_region("all", Probe::new(h.screen_rect(), &log))?;
+    h.frames(2);
+    let left = egui::pos2(8.0, 8.0);
+    let right = egui::pos2(h.screen_rect().max.x - 8.0, 8.0);
+    h.press(left);
+    h.frame();
+    assert!(h.shell.remove_gesture_region("all"));
+    h.release(left);
+    h.frame();
+    h.tap(right);
+    assert_ne!(focused(&h), Some("service_menu"));
+    h.tap(left);
+    h.tap(right);
+    assert_eq!(focused(&h), Some("service_menu"));
     Ok(())
 }

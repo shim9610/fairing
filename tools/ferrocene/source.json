@@ -1,0 +1,14 @@
+{
+  "repository": "https://github.com/ferrocene/ferrocene.git",
+  "revision": "2eb9c33acc893467ee92070c839b51dea4b1c054",
+  "rust_version": "1.97.1",
+  "ferrocene_version": "26.08.1",
+  "ferrocene_channel": "beta",
+  "host": "x86_64-unknown-linux-gnu",
+  "toolchain": "fairing-ferrocene-source-1.97.1",
+  "submodules": {
+    "src/llvm-project": "dcc3606807c989700e0ac1cac18c31741bcd40d9",
+    "library/backtrace": "28ec93b503bf0410745bc3d571bf3dc1caac3019",
+    "src/tools/cargo": "c980f4866141969fab6254a680546a277789d6f0"
+  }
+}

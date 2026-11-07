@@ -61,13 +61,20 @@ impl Keys {
     /// Ask for these keys for the field `id` (the field's `Response::id`). Called each frame the
     /// field is drawn; the latest ask stands.
     pub fn ask(self, ctx: &egui::Context, id: egui::Id) {
-        ctx.data_mut(|d| d.insert_temp(Self::slot(id), self));
+        crate::interaction::store(ctx, Self::slot(id), self);
     }
 
-    /// What the field `id` asked for — [`Keys::Any`] if it never asked.
+    /// What the field `id` asked for — [`Keys::Any`] if it never asked or its request expired.
+    /// The owner renews its request each drawn pass; reading this value does not renew it.
     #[must_use]
     pub fn of(ctx: &egui::Context, id: egui::Id) -> Self {
-        ctx.data(|d| d.get_temp(Self::slot(id))).unwrap_or_default()
+        crate::interaction::load(
+            ctx,
+            Self::slot(id),
+            true,
+            crate::interaction::Lifetime::Mounted,
+        )
+        .unwrap_or_default()
     }
 }
 
@@ -112,26 +119,23 @@ pub struct TextField<'a> {
 /// Whether a password field shows its text, and the pass it was last drawn on — a gap means the
 /// field went away, and it comes back masked.
 #[derive(Debug, Clone, Copy)]
-struct Reveal {
-    shown: bool,
-    pass: u64,
-}
+struct Reveal;
 
 impl Reveal {
     fn slot(id: egui::Id) -> egui::Id {
         id.with("fairing.reveal")
     }
-
-    /// Shown, if it was shown on the pass before this one.
-    fn shown(ctx: &egui::Context, id: egui::Id) -> bool {
-        let pass = ctx.cumulative_pass_nr();
-        ctx.data(|d| d.get_temp::<Self>(Self::slot(id)))
-            .is_some_and(|r| r.shown && r.pass + 1 >= pass)
+    fn shown(ctx: &egui::Context, id: egui::Id, enabled: bool) -> bool {
+        crate::interaction::load::<bool>(
+            ctx,
+            Self::slot(id),
+            enabled,
+            crate::interaction::Lifetime::Mounted,
+        )
+        .unwrap_or(false)
     }
-
     fn store(ctx: &egui::Context, id: egui::Id, shown: bool) {
-        let pass = ctx.cumulative_pass_nr();
-        ctx.data_mut(|d| d.insert_temp(Self::slot(id), Self { shown, pass }));
+        crate::interaction::store(ctx, Self::slot(id), shown);
     }
 }
 
@@ -196,18 +200,19 @@ impl<'a> TextField<'a> {
         self
     }
 
-    /// Give each field a different value when a screen has more than one.
+    /// Give each field a stable source for its egui interaction-state identifier.
+    /// Use a different value for each field on the same screen.
     #[must_use]
-    pub const fn id_salt(mut self, salt: &'static str) -> Self {
-        self.id_salt = Some(salt);
+    pub const fn id_salt(mut self, id_source: &'static str) -> Self {
+        self.id_salt = Some(id_source);
         self
     }
 
     /// Draw it masked, single-line or [`multiline`](Self::multiline). A single-line one carries
     /// the [reveal button](TextField#the-reveal-button) unless [`reveal`](Self::reveal) turns it off.
     #[must_use]
-    pub const fn password(mut self, password: bool) -> Self {
-        self.password = password;
+    pub const fn password(mut self, masked: bool) -> Self {
+        self.password = masked;
         self
     }
 
@@ -256,7 +261,11 @@ impl<'a> TextField<'a> {
         };
         let width = self.width.unwrap_or_else(|| ui.available_width());
         let is_password = self.password;
-        let (empty, multiline, enabled) = (self.text.is_empty(), self.multiline, self.enabled);
+        let (empty, multiline, enabled) = (
+            self.text.is_empty(),
+            self.multiline,
+            self.enabled && ui.is_enabled(),
+        );
         let eye = is_password && self.reveal && !multiline;
         // The reveal state is read before the edit is built (it decides the mask), so a field with
         // an eye names its id up front — the same id the painter path already names.
@@ -269,7 +278,7 @@ impl<'a> TextField<'a> {
             self.id_salt
                 .map_or_else(|| ui.next_auto_id(), |salt| ui.make_persistent_id(salt))
         });
-        let shown = eye && id.is_some_and(|id| Reveal::shown(ui.ctx(), id));
+        let shown = eye && id.is_some_and(|id| Reveal::shown(ui.ctx(), id, enabled));
         let mut margin = egui::Margin::symmetric(round_i8(pad_x), round_i8(pad_y));
         if eye {
             // The eye is the edit's own right margin, so a tap on it is a tap on the field.
@@ -329,7 +338,12 @@ impl<'a> TextField<'a> {
         // Selecting text is a drag the field owns, and it says so: the rail's page swipe leaves
         // it alone.
         crate::drag::claim_if_held(&response);
-        self.keys.ask(ui.ctx(), response.id);
+        if enabled {
+            self.keys.ask(ui.ctx(), response.id);
+        } else {
+            let _ = crate::interaction::take::<Keys>(ui.ctx(), Keys::slot(response.id));
+            crate::interaction::forget_focus(ui.ctx(), response.id);
+        }
         if eye {
             Self::eye(ui, cx, &response, shown);
         }

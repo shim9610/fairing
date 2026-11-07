@@ -10,7 +10,7 @@
 //! instance would grow `areas` / `order` for ever on a device left running for days.
 
 use crate::icons::IconRef;
-use crate::screen::{BackAction, ChromePolicy, Cx, Lifecycle, Screen, ScreenDecl, SplitSupport};
+use crate::screen::{BackAction, ChromePolicy, Cx, Lifecycle, ScreenDecl, SplitSupport};
 use crate::theme::ColorRole;
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
@@ -32,13 +32,23 @@ pub enum InstanceScreen {
     /// borrow at run time.
     Resident,
     /// Spawned — owned.
-    Owned(Box<dyn Screen>),
+    Owned(crate::screen::ScreenHandle),
+}
+
+impl InstanceScreen {
+    /// Own a legacy screen without exposing its original payload.
+    #[must_use]
+    pub fn owned(screen: impl crate::screen::Screen + 'static) -> Self {
+        Self::Owned(crate::screen::ScreenHandle::legacy(Box::new(screen)))
+    }
 }
 
 /// One running screen.
 pub struct Instance {
     id: InstanceId,
     decl_id: String,
+    /// Resolved once; policy revalidation does not allocate a gate every frame.
+    gate: crate::access::Gate,
     title: String,
     icon: Option<IconRef>,
     screen: InstanceScreen,
@@ -73,6 +83,10 @@ impl std::fmt::Debug for Instance {
 }
 
 impl Instance {
+    pub(crate) fn gate(&self) -> &crate::access::Gate {
+        &self.gate
+    }
+
     /// Build from a declaration. `Created` goes into both queues (`on_lifecycle` and `cx.event`) together.
     #[must_use]
     pub fn new(id: InstanceId, decl: &ScreenDecl, screen: InstanceScreen) -> Self {
@@ -83,6 +97,7 @@ impl Instance {
         Self {
             id,
             decl_id: decl.id.clone(),
+            gate: decl.gate_name(),
             title: decl.title.clone(),
             icon: decl.icon.clone(),
             screen,
@@ -152,7 +167,7 @@ impl Instance {
     /// named without an instance — used by the slot warm-up and the z-order tests.
     #[must_use]
     pub(crate) fn slot_area_id(slot: u32) -> egui::Id {
-        egui::Id::new(("fairing.screen", slot))
+        egui::Id::unique(("fairing.screen", slot))
     }
 
     /// An [`egui::LayerId`] made from the slot number alone. See `Instance::slot_area_id`.
@@ -348,7 +363,7 @@ impl Instance {
 
     /// Take over the resident screen of a declaration that is going away: the instance owns it
     /// from now on, so its last events — `Destroyed` above all — reach it.
-    pub(crate) fn adopt(&mut self, screen: Box<dyn Screen>) {
+    pub(crate) fn adopt(&mut self, screen: crate::screen::ScreenHandle) {
         self.screen = InstanceScreen::Owned(screen);
     }
 
@@ -358,9 +373,13 @@ impl Instance {
     /// `cx` is the way to it — it takes the screen out for the length of the call and puts it back.
     /// Nothing happens where the declaration went away while the instance was
     /// still up.
-    fn with_screen(&mut self, cx: &mut Cx<'_>, f: impl FnOnce(&mut dyn Screen, &mut Cx<'_>)) {
+    fn with_screen(
+        &mut self,
+        cx: &mut Cx<'_>,
+        f: impl FnOnce(&mut crate::screen::ScreenHandle, &mut Cx<'_>),
+    ) {
         match &mut self.screen {
-            InstanceScreen::Owned(screen) => f(&mut **screen, cx),
+            InstanceScreen::Owned(screen) => f(screen, cx),
             InstanceScreen::Resident => {
                 cx.with_resident(&self.decl_id, f);
             }
@@ -462,7 +481,7 @@ mod tests {
     /// A spawned instance sharing the log.
     fn recorder_instance(decl: &ScreenDecl, id: u64) -> (Instance, Rc<RefCell<Vec<String>>>) {
         let log = Rc::new(RefCell::new(Vec::new()));
-        let screen = InstanceScreen::Owned(Box::new(Recorder(Rc::clone(&log))));
+        let screen = InstanceScreen::owned(Recorder(Rc::clone(&log)));
         (Instance::new(InstanceId(id), decl, screen), log)
     }
 

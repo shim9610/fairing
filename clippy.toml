@@ -13,7 +13,7 @@ disallowed-types = [
   { path = "std::sync::ReentrantLock", reason = "no blocking sync" },
   { path = "std::cell::LazyCell", reason = "single-threaded, but it panics where the initialiser re-enters. Use a const or OnceCell" },
   { path = "std::cell::UnsafeCell", reason = "unreachable under unsafe_code = \"forbid\" anyway. Named so the intent is on record" },
-  { path = "std::sync::mpsc::SyncSender", reason = "a bounded channel's send blocks; at capacity 0 it is a rendezvous. Use the unbounded channel" },
+  { path = "std::sync::mpsc::SyncSender", reason = "only the private BoundedSender transport may own this; its blocking methods must not escape" },
   { path = "std::sync::mpsc::Receiver", reason = "its receiving half blocks. Use fairing::inbox::Inbox, which owns one and only lends out try_recv" },
   { path = "std::sync::mpsc::Iter", reason = "iterating a Receiver blocks" },
   { path = "std::sync::mpsc::IntoIter", reason = "the same" },
@@ -26,7 +26,12 @@ disallowed-types = [
 # and clippy.toml is workspace-wide, so a backend running on its own thread would be caught
 # with them. `xtask sync-check` holds that rule instead, because it can scope by crate.
 disallowed-methods = [
-  { path = "std::sync::mpsc::sync_channel", reason = "it makes a SyncSender, whose send blocks" },
+  { path = "std::process::abort", reason = "product code returns errors instead of terminating the process" },
+  { path = "std::process::exit", reason = "the application owns process lifetime" },
+  { path = "std::panic::resume_unwind", reason = "callback failures must not be rethrown from product code" },
+  { path = "std::panic::panic_any", reason = "product code returns errors rather than starting an unwind" },
+  { path = "std::sync::mpsc::SyncSender::send", reason = "bounded sends must return Full instead of waiting; use BoundedSender::try_send" },
+  { path = "std::sync::mpsc::SyncSender::send_timeout", reason = "the UI must not wait for queue capacity", allow-invalid = true },
   # The receiving half, **resolved by type** — so an alias or a re-export cannot walk past it, which
   # is what the `xtask sync-check` text scan could not promise. `for msg in rx` is the one
   # form no lint can reach: it desugars to `IntoIterator::into_iter`, and banning that bans every
@@ -35,4 +40,18 @@ disallowed-methods = [
   { path = "std::sync::mpsc::Receiver::recv_timeout", reason = "the same, with a deadline" },
   { path = "std::sync::mpsc::Receiver::recv_deadline", reason = "the same, unstable", allow-invalid = true },
   { path = "std::sync::mpsc::Receiver::iter", reason = "it waits for the next message. Use Inbox::drain, which ends at the end of the queue" },
+]
+
+# Enabled on the two libraries only outside cfg(test). Clippy resolves macro aliases too.
+disallowed-macros = [
+  { path = "std::assert", reason = "return an error or handle the invalid state" },
+  { path = "std::assert_eq", reason = "the same" },
+  { path = "std::assert_ne", reason = "the same" },
+  { path = "std::debug_assert", reason = "debug product builds must remain recoverable too" },
+  { path = "std::debug_assert_eq", reason = "the same" },
+  { path = "std::debug_assert_ne", reason = "the same" },
+  { path = "std::panic", reason = "return an error or use a safe fallback" },
+  { path = "std::unreachable", reason = "unexpected states need a recoverable branch" },
+  { path = "std::todo", reason = "product code must handle this case" },
+  { path = "std::unimplemented", reason = "the same" },
 ]

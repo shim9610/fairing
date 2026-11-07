@@ -1,6 +1,6 @@
 //! `Cx` — the handle a screen uses to ask the shell for something. Most screens only use `ui`.
 
-use super::{ChromePolicy, LaunchAction, Lifecycle, Registry, Screen, ScreenValue};
+use super::{ChromePolicy, LaunchAction, Lifecycle, Registry, ScreenValue};
 use crate::access::{Access, Gate, LevelTable, Session};
 use crate::i18n::Strings;
 use crate::icons::IconSet;
@@ -162,6 +162,7 @@ impl CxParts<'_> {
         registry: Option<&'a mut Registry>,
     ) -> Cx<'a> {
         Cx {
+            authority_path: None,
             registry,
             shell: self.shell,
             session: self.access.session(),
@@ -205,6 +206,7 @@ fn guest_pane(host: &PaneInfo, rect: egui::Rect) -> PaneInfo {
 
 /// The handle to reach for when you need it.
 pub struct Cx<'a> {
+    authority_path: Option<&'a crate::access::mediation::AuthorityPath<'a>>,
     /// notify / toast / launch / close … from any thread.
     pub shell: &'a ShellHandle,
     /// The current subject and level (read-only).
@@ -239,7 +241,66 @@ pub struct Cx<'a> {
     frame: u64,
 }
 
-impl Cx<'_> {
+impl<'a> Cx<'a> {
+    pub(crate) fn authority_path(&self) -> Option<&'a crate::access::mediation::AuthorityPath<'a>> {
+        self.authority_path
+    }
+    /// Lend callback-local extension stores. A permitted callback may customize its
+    /// own controls, but cannot leave an unguarded painter in the shell for later
+    /// execution after revocation. The original stores are never mutated, including
+    /// during unwinding. Reborrowing keeps UI/app/backend access unchanged.
+    pub(crate) fn with_protected_resources<R>(
+        &mut self,
+        path: &crate::access::mediation::AuthorityPath<'_>,
+        callback: impl FnOnce(&mut Cx<'_>) -> R,
+    ) -> R {
+        let Self {
+            authority_path: _,
+            shell,
+            session,
+            services,
+            settings,
+            app,
+            strings,
+            theme,
+            icons: _,
+            pane,
+            now,
+            event,
+            access,
+            registry,
+            animations,
+            widget_painters: _,
+            requests,
+            hidden,
+            frame,
+        } = self;
+        let mut icons = IconSet::new();
+        let mut painters = fairing_widgets::widgets::WidgetPainters::new();
+        let mut scoped = Cx {
+            authority_path: Some(path),
+            shell,
+            session,
+            services,
+            settings,
+            app: app.as_deref_mut(),
+            strings,
+            theme,
+            icons: &mut icons,
+            pane: *pane,
+            now: *now,
+            event: *event,
+            access,
+            registry: registry.as_deref_mut(),
+            animations,
+            widget_painters: &mut painters,
+            requests,
+            hidden,
+            frame: *frame,
+        };
+        callback(&mut scoped)
+    }
+
     /// **The app's own state** — whatever it handed to
     /// [`Shell::frame_with`](crate::Shell::frame_with) this frame.
     ///
@@ -321,7 +382,9 @@ impl Cx<'_> {
     ///
     /// `None` where nothing was handed over, where `T` is the wrong type, or where it is **already
     /// out on loan** — a `with_app` inside a `with_app` gets `None` rather than a second `&mut`, so
-    /// a cycle stops instead of aliasing. A panic inside puts the reference back before carrying on.
+    /// a cycle stops instead of aliasing. With unwinding enabled, a callback panic restores the
+    /// reference and propagates to the shell runtime boundary, which quarantines the shell. The application's
+    /// panic hook still runs before the unwind is caught.
     pub fn with_app<T: std::any::Any, R>(
         &mut self,
         f: impl FnOnce(&mut T, &mut Self) -> R,
@@ -333,10 +396,7 @@ impl Cx<'_> {
         };
         let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(value, self)));
         self.app = Some(app);
-        match out {
-            Ok(value) => Some(value),
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
+        Some(crate::runtime::propagate(out))
     }
 
     /// **Whether a screen is declared under this id.**
@@ -456,27 +516,22 @@ impl Cx<'_> {
     /// [`Registry::take_resident`](crate::screen::Registry::take_resident). `None` where there was
     /// nothing to take.
     ///
-    /// The call is wrapped in [`catch_unwind`](std::panic::catch_unwind) **only so that the screen
-    /// goes home before the panic carries on**. Nothing is swallowed: the payload is resumed
-    /// immediately. Without it, an integrator who wraps the frame in `catch_unwind` — which the old
-    /// shared cell made pointless anyway, since it panicked of its own accord — would find that one
-    /// panic emptied the declaration for good and the screen silently never drew again.
+    /// With unwinding enabled, a callback panic restores the resident screen and propagates to the shell boundary.
+    /// This helper logs no payload, since an integrator's error may contain sensitive data.
+    /// The application's panic hook still runs before the unwind is caught.
     pub(crate) fn with_resident<R>(
         &mut self,
         id: &str,
-        f: impl FnOnce(&mut dyn Screen, &mut Self) -> R,
+        f: impl FnOnce(&mut super::ScreenHandle, &mut Self) -> R,
     ) -> Option<R> {
         let mut screen = self.registry.as_mut()?.take_resident(id)?;
-        let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&mut *screen, self)));
+        let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&mut screen, self)));
         // Where the declaration went in the meantime (`shell.remove(id)` from inside its own `ui`)
         // this drops the screen, which is right — there is nothing left for it to belong to.
         if let Some(registry) = self.registry.as_mut() {
             registry.put_resident(id, screen);
         }
-        match out {
-            Ok(value) => Some(value),
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
+        Some(crate::runtime::propagate(out))
     }
 
     /// Push onto the same pane (the shell checks the gate).
@@ -700,6 +755,22 @@ impl Cx<'_> {
         self.access.allows(&gate.into())
     }
 
+    pub(crate) fn allows_gate(&self, gate: &Gate) -> bool {
+        self.access.allows(gate)
+    }
+
+    pub(crate) fn authority_stamp(&self) -> Option<(crate::access::SessionId, u64)> {
+        self.access.authority_stamp()
+    }
+
+    pub(crate) fn requires_mediation(&self) -> bool {
+        self.access.requires_mediation()
+    }
+
+    pub(crate) fn token_mode(&self) -> bool {
+        self.access.uses_session_tokens()
+    }
+
     /// The level table (`[access] levels`).
     ///
     /// The [`Level`](crate::access::Level) from [`Cx::session`] is **a number**. Writing
@@ -724,7 +795,7 @@ impl Cx<'_> {
     ///
     /// `id` only has to be unique **within the instance**. There is one store in the shell, so
     /// [`PaneInfo::instance`] is mixed in here — two instances of the same declaration opened
-    /// with `LaunchMode::Multi` can both use `egui::Id::new("fade")` without their values
+    /// with `LaunchMode::Multi` can both use `egui::Id::unique("fade")` without their values
     /// mixing, and closing and reopening a screen gives a new instance id, so the animation
     /// starts over. Contexts with no instance (actions and status items,
     /// [`InstanceId::NONE`]) share one namespace.
@@ -756,7 +827,7 @@ impl Cx<'_> {
             theme: self.theme,
             icons: &mut *self.icons,
             anims: &mut *self.animations,
-            anim_scope: egui::Id::new(self.pane.instance.0),
+            anim_scope: egui::Id::unique(self.pane.instance.0),
             frame: self.frame,
             inset_bottom: self.pane.inset_bottom,
             painters: Some(&mut *self.widget_painters),
@@ -791,7 +862,7 @@ pub(crate) mod fixture {
     pub(crate) struct Fixture {
         handle: ShellHandle,
         /// The receiver has to stay alive or `ShellHandle::send` fails (it is never read).
-        _rx: crate::inbox::Inbox<Command>,
+        _rx: crate::inbox::BoundedInbox<Command>,
         access: Access,
         services: Services,
         settings: SettingsView,
@@ -810,10 +881,15 @@ pub(crate) mod fixture {
     }
 
     impl Fixture {
+        pub(crate) fn set_access(&mut self, access: Access) {
+            self.access = access;
+        }
+
         /// Build one with the default config (one level table).
         pub(crate) fn new() -> crate::Result<Self> {
             let ctx = egui::Context::default();
-            let (handle, rx) = ShellHandle::pair(Waker::new(&ctx));
+            let (handle, rx) = ShellHandle::pair(Waker::new(&ctx), 1024)
+                .map_err(|error| crate::Error::Config(error.to_string()))?;
             Ok(Self {
                 handle,
                 _rx: rx,
@@ -875,15 +951,50 @@ mod tests {
     use crate::workspace::InstanceId;
     use std::time::Duration;
 
+    /// Synthetic callback panics exercise recovery; these paths are never in product builds.
+    #[test]
+    #[allow(clippy::panic)]
+    fn callback_failures_restore_app_and_resident_loans() -> crate::Result<()> {
+        let mut fixture = Fixture::new()?;
+        let mut app = 0u32;
+        {
+            let mut parts = fixture.parts();
+            parts.app = Some(&mut app);
+            let mut cx = parts.cx(pane(InstanceId(1)), None);
+            let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                cx.with_app::<u32, ()>(|value, _| {
+                    *value = 7;
+                    panic!("synthetic app callback failure");
+                })
+            }));
+            assert!(failed.is_err());
+            assert_eq!(cx.with_app::<u32, _>(|value, _| *value), Some(7));
+        }
+        let mut registry = crate::screen::Registry::new();
+        registry.add(
+            crate::screen::screen("loan", |_: &mut egui::Ui, _: &mut crate::Cx<'_>| {}).into(),
+        );
+        let mut parts = fixture.parts();
+        let mut cx = parts.cx_in(pane(InstanceId(1)), None, Some(&mut registry));
+        let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            cx.with_resident::<()>("loan", |_, _| {
+                panic!("synthetic resident callback failure");
+            })
+        }));
+        assert!(failed.is_err());
+        assert_eq!(cx.with_resident("loan", |_, _| true), Some(true));
+        Ok(())
+    }
+
     /// The instance namespace: the same `egui::Id` in a different instance is a different entry.
     #[test]
     fn scope_id_separates_instances() {
-        let raw = egui::Id::new("fade");
+        let raw = egui::Id::unique("fade");
         assert_ne!(scope_id(raw, InstanceId(1)), scope_id(raw, InstanceId(2)));
         assert_eq!(scope_id(raw, InstanceId(1)), scope_id(raw, InstanceId(1)));
         assert_ne!(scope_id(raw, InstanceId::NONE), raw);
         assert_ne!(
-            scope_id(egui::Id::new("a"), InstanceId(1)),
+            scope_id(egui::Id::unique("a"), InstanceId(1)),
             scope_id(raw, InstanceId(1))
         );
     }
@@ -893,7 +1004,7 @@ mod tests {
     fn animate_does_not_mix_two_instances() -> crate::Result<()> {
         let mut fixture = Fixture::new()?;
         let mut parts = fixture.parts();
-        let raw = egui::Id::new("fade");
+        let raw = egui::Id::unique("fade");
         let tween = Tween::cubic_out(Duration::from_millis(100));
         // An id seen for the first time is at its target at once — the two instances start from different values.
         let a0 = parts.cx(pane(InstanceId(1)), None).animate(raw, 0.0, tween);
@@ -914,7 +1025,7 @@ mod tests {
     fn animate_with_instant_tween_jumps_to_target() -> crate::Result<()> {
         let mut fixture = Fixture::new()?;
         let mut parts = fixture.parts();
-        let id = egui::Id::new("reduce");
+        let id = egui::Id::unique("reduce");
         let first = parts
             .cx(pane(InstanceId(7)), None)
             .animate(id, 0.0, Tween::instant());

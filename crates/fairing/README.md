@@ -9,25 +9,34 @@ access gates: the parts every kiosk, panel and bench instrument rebuilds, in one
 process and one egui frame loop. It is not an OS, an app launcher or a window
 manager. You write screens as egui closures; fairing owns everything around them.
 
+Development toward 0.1.0; the crates have not been published yet. Use a reviewed
+repository revision until the first release:
+
 ```toml
 [dependencies]
-fairing = { version = "0.1", features = ["runner-x11"] }
+fairing = { git = "https://github.com/shim9610/fairing", features = ["runner-x11"] }
 ```
 
+The following app uses the ordinary `Shell` API with no login required by its
+default configuration. For typed, issuer-controlled UI, see **Sessions and
+protected UI** below.
+
 ```rust,no_run
-use fairing::{icon, screen, Cx};
+use fairing::{egui, icon, screen, Cx};
 
 fn main() -> fairing::Result<()> {
     let config = fairing::ShellConfig::load("/etc/myapp/fairing.toml")?; // defaults if absent
     fairing::runner::run_shell(fairing::runner::Options::default(), move |ctx| {
         let mut shell = fairing::Shell::builder(config)
             .services(fairing::Services::builder().build())
+            .physical_mm(154.0, 86.0) // replace with the panel's visible dimensions
             .build(ctx)?;
+        fairing::settings::add_all(&mut shell, &fairing::settings::SettingsConfig::default());
         shell.add(
             screen("dashboard", |ui: &mut egui::Ui, cx: &mut Cx| {
                 ui.heading("Dashboard");
-                if ui.button("Wi-Fi").clicked() {
-                    cx.open("settings.wifi");
+                if ui.button("Settings").clicked() {
+                    cx.open("settings.home");
                 }
             })
             .title("Dashboard")
@@ -39,9 +48,10 @@ fn main() -> fairing::Result<()> {
 }
 ```
 
-That needs the `runner` feature (`runner-x11` on a Linux desktop), and `egui = "0.36"`
-beside fairing for the `egui::Ui` in it (or `use fairing::egui;`). Without the runner,
-drive `Shell::frame` from an eframe app you already have.
+That needs the `runner` feature (`runner-x11` on a Linux desktop) and the default
+`settings` feature. It uses the `fairing::egui` re-export, so no direct egui
+dependency is needed. Without the runner, connect `Shell::logic*` and `Shell::frame*`
+from an eframe app you already have.
 
 ## What sets it apart
 
@@ -49,15 +59,46 @@ drive `Shell::frame` from an eframe app you already have.
   code lands correctly on a 4-inch panel and a 27-inch one.
 - **One gesture engine.** Edge swipes, flings, long presses and the shade arbitrate in
   one place, so nested scrolling and hand-off behave.
-- **No locks on the UI thread.** Threads talk over channels; a build gate enforces it.
-- **Nothing is hard-wired.** Every chrome surface is configuration, a declaration or a
-  painter you supply, without forking the crate.
+- **Non-waiting queue APIs.** UI code does not wait for messages or queue capacity.
+  The audit rejects application-level locks and blocking calls in product UI sources;
+  standard channel internals may synchronize.
+- **Customizable UI.** Use configuration and declarations; ordinary shells also
+  accept global painters. Protected custom UI uses typed elements.
 - **Your hardware, your backends.** The shell reaches clock, power, Wi-Fi, Bluetooth,
   display, audio, network and device info through traits, and anything else through a
   custom backend it polls each frame. It ships no system code: you plug in what your
   board speaks.
 - **Headless tests.** `fairing::testing::Harness` runs frames with no window and no
   GPU, and reports where things were drawn, so tests tap and drag at real positions.
+
+## Sessions and protected UI
+
+Credential verification belongs to your `Authenticator`. It keeps the non-cloneable
+`SessionController` and returns a read-only `SessionToken` to Fairing through a
+request-correlated `AuthOutcome::Session`. Roles expand to explicit independent
+grants; separate device and web sessions use separate controller/token pairs.
+`PinTable` is a plaintext reference authenticator for the legacy level flow.
+
+`ShellBuilder::build_protected` requires `access.session_tokens = true` and returns
+`ProtectedShell`. Define your enum or value struct with `Permission::gate(self)`,
+then register `Protected::new(value, declaration)`. External
+`Screen + PermissionBound` implementations use `add_screen`; `ElementTree` uses
+`add_elements`. Trees omit denied children before measurement/layout and recheck
+live authority before paint. A missing, revoked or expired token denies protected
+work; declaring a permission never grants it.
+
+Protected construction rejects untyped global painters/layouts, image loaders and
+procedural wallpapers. There is no mutable conversion to ordinary `Shell`.
+Admitted callbacks retain original UI/app/backend references and callback-local
+extension stores. The current `runner::run_shell*`/`run_app*` helpers accept ordinary
+`Shell` only; host `ProtectedShell::logic*`, `frame*` and `poll_events` yourself.
+
+See [session tokens](https://github.com/shim9610/fairing/blob/HEAD/docs/session-tokens.md)
+for a complete typed registration example, issuer lifecycle and nested elements.
+The [common mediation contract](https://github.com/shim9610/fairing/blob/HEAD/docs/protected-contracts.md)
+connects the proved admission kernel to compiler-discovered protected entries.
+Credential verification, metadata classification and arbitrary admitted callback
+effects remain integration responsibilities.
 
 ## Features
 
@@ -73,22 +114,26 @@ drive `Shell::frame` from an eframe app you already have.
 | `chrono` | off | A clock that follows the system time zone and daylight saving |
 
 The touch widgets, the theme tokens and the unit system live in
-[`fairing-widgets`](https://crates.io/crates/fairing-widgets) and are re-exported here.
+[`fairing-widgets`](https://github.com/shim9610/fairing/tree/HEAD/crates/fairing-widgets) and are re-exported here.
 
 ## Platforms
 
 The target is embedded Linux (Ubuntu Core with `ubuntu-frame`, `cage` or `weston`)
 with OpenGL ES 2 through eframe's `glow` backend, on x86_64 and aarch64. The crate
-also builds for macOS and Windows, which is enough to develop on, but it is only run
-and tested on Linux.
+uses eframe's platform support for desktop development. The full audit and graphical
+tours run on Linux. Selected CPU display and runtime-fault tests also run on Windows;
+the complete Windows runner and macOS are not validated by those checks.
 
 ## Documentation
 
+- The [migration guide](https://github.com/shim9610/fairing/blob/HEAD/docs/guide/10-migration.md)
+  covers source/API and default changes for applications using an earlier checkout.
 - The integrator guide is in the repository's
   [`docs/guide/`](https://github.com/shim9610/fairing/tree/HEAD/docs/guide):
   getting started, screens, chrome, customisation, access control, services, the
   config reference and troubleshooting.
-- The API reference is on [docs.rs](https://docs.rs/fairing).
+- Build the API reference with `cargo doc -p fairing --all-features --no-deps --open`.
+  [docs.rs](https://docs.rs/fairing) will host it after publication.
 - Screenshots and runnable examples are in the
   [repository README](https://github.com/shim9610/fairing).
 
@@ -112,10 +157,53 @@ binary anyway). In the `Cargo.toml` of the binary that goes onto the device:
 [profile.release]
 lto = "fat"
 codegen-units = 1
-panic = "abort"
+panic = "unwind"
 strip = true
 opt-level = 3      # for a UI, 3 beats "s"; strip wins the size back
 ```
+
+Use `panic = "unwind"` for runtime callback containment. `panic = "abort"` bypasses
+recovery and terminates the process on a panic; allocator aborts are not unwinds.
+
+## Memory limits
+
+`ShellBuilder::command_queue_capacity` (default 1,024) and
+`max_commands_per_update` (default 256) bound command admission and work count.
+`ShellHandle::try_send` distinguishes full/closed and preserves rejected ownership;
+`try_send_with` constructs payloads only after reserving space.
+`send` returns `false` for either full or closed queues; void helpers discard rejected
+commands without logging. Use `try_send` when refusal or ownership matters.
+`Inbox::bounded` supports worker channels, and `memory::FixedPool<T, N>` stores
+objects inline with stale/foreign handle rejection.
+
+Display admission uses fallible buffer growth, hard notification retention including
+persistent items, and a bounded waiting toast queue (default 64). Use `try_toast`,
+`try_notify` and the models' `try_new` constructors for explicit errors. Full or
+failed optional display admission does not evict accepted commands.
+
+Display pressure uses bounded inline histories and borrowed-image/bitmap-warning
+CPU raster functions under `fairing::memory`. Shell pending toasts default to
+KeepLatest; `toast_overflow_policy(RejectNew)` restores refusal. Omission status
+shows a compiled warning until acknowledged.
+
+The production `fixed-heap` feature was withdrawn because egui and remaining
+infallible Rust allocations can abort on out-of-memory (OOM) failures. The allocator
+is now an unpublished diagnostic with no product dependency edge. Whole-renderer
+continued operation under complete exhaustion is unsupported; see the
+[memory guide](https://github.com/shim9610/fairing/blob/HEAD/docs/memory-limits.md).
+
+## Application-owned transport and recovery
+
+`bridge::CommandSink` and `UpdateSource` let an application select its command/update
+transport without `Clone`, `Send`, `Sync` or `'static` bounds on messages. Fairing does
+not choose a queue, start a worker, or install retries through these traits. They do
+not replace `ShellHandle`'s internal transport or sandbox callback access.
+
+With unwinding enabled, runtime callback faults quarantine ordinary shell dispatch.
+`Shell::restart_with` accepts a host-built replacement, and `RecoveryUi` plus runner
+recovery callbacks expose optional guidance and host policy. Old handles remain
+disconnected. Shell replacement does not reset the egui context/GPU or undo business
+side effects. See the [recovery guide](https://github.com/shim9610/fairing/blob/HEAD/docs/memory-limits.md#runtime-panics-and-sensitive-ui-state).
 
 ## Licence
 

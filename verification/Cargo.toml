@@ -1,0 +1,62 @@
+[package]
+name = "fairing-assurance"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.95"
+publish = false
+license = "MIT"
+
+# Tool dependencies stay outside the published crates and the primary workspace.
+[workspace]
+
+[features]
+default = ["integration"]
+integration = ["dep:fairing"]
+loom = ["dep:loom"]
+fuzz = ["dep:libfuzzer-sys"]
+
+[dependencies]
+fairing = { path = "../crates/fairing", version = "0.1.0", default-features = false, features = ["mock", "overlay", "settings", "osk"], optional = true }
+loom = { version = "=0.7.2", optional = true }
+libfuzzer-sys = { version = "=0.4.13", optional = true }
+
+[dev-dependencies]
+proptest = { version = "=1.12.0", default-features = false, features = ["std"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "deny", check-cfg = ["cfg(fairing_loom)", "cfg(kani)"] }
+
+[package.metadata]
+cargo-fuzz = true
+
+[[bin]]
+name = "bool_protocol"
+path = "fuzz/bool_protocol.rs"
+test = false
+doc = false
+bench = false
+required-features = ["fuzz"]
+
+[[bin]]
+name = "config"
+path = "fuzz/config.rs"
+test = false
+doc = false
+bench = false
+required-features = ["fuzz", "integration"]
+
+[[bin]]
+name = "api_contracts"
+path = "fuzz/api_contracts.rs"
+test = false
+doc = false
+bench = false
+required-features = ["fuzz", "integration"]
+
+[[bin]]
+name = "shell_contracts"
+path = "fuzz/shell_contracts.rs"
+test = false
+doc = false
+bench = false
+required-features = ["fuzz", "integration"]

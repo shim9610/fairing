@@ -496,7 +496,7 @@ impl Lab {
         };
         let painter = ui.ctx().layer_painter(egui::LayerId::new(
             egui::Order::Tooltip,
-            egui::Id::new("motion_lab.graph"),
+            egui::Id::unique("motion_lab.graph"),
         ));
         painter.rect_filled(
             rect,

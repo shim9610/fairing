@@ -695,7 +695,12 @@ impl Authenticator for Accounts {
         }]
     }
 
-    fn submit(&mut self, credential: Credential, _now: Instant) -> AuthOutcome {
+    fn submit(
+        &mut self,
+        _request: fairing::access::AuthRequestId,
+        credential: Credential,
+        _now: Instant,
+    ) -> AuthOutcome {
         let Credential::Password { user, secret } = credential else {
             return AuthOutcome::Denied {
                 message: "no".to_owned(),
@@ -782,18 +787,33 @@ fn a_password_authenticator_gets_both_fields_and_the_keyboard() -> fairing::Resu
 
 /// A badge reader on its own thread: the prompt waits, and the answer arrives through `poll`.
 struct Reader {
+    request: Option<fairing::access::AuthRequestId>,
     badge: Rc<Cell<bool>>,
     cancelled: Rc<Cell<u32>>,
 }
 
 impl Authenticator for Reader {
+    fn begin(
+        &mut self,
+        request: fairing::access::AuthRequestId,
+        _: &fairing::access::Gate,
+        _: Instant,
+    ) {
+        self.request = Some(request);
+    }
     fn methods(&self) -> Vec<AuthMethod> {
         vec![AuthMethod::External {
             label: "Badge".to_owned(),
         }]
     }
 
-    fn submit(&mut self, credential: Credential, _now: Instant) -> AuthOutcome {
+    fn submit(
+        &mut self,
+        request: fairing::access::AuthRequestId,
+        credential: Credential,
+        _now: Instant,
+    ) -> AuthOutcome {
+        self.request = Some(request);
         // A keyboard-wedge reader types the badge number and Enter.
         match credential {
             Credential::External(bytes) if bytes == b"04A1B2" => AuthOutcome::Granted(Subject {
@@ -806,13 +826,17 @@ impl Authenticator for Reader {
         }
     }
 
-    fn poll(&mut self, _now: Instant) -> Option<AuthOutcome> {
-        self.badge.take().then(|| {
-            AuthOutcome::Granted(Subject {
-                level: Level(2),
-                ..Subject::default()
+    fn poll(&mut self, _now: Instant) -> Option<fairing::access::AuthResponse> {
+        let request = self.request?;
+        let outcome = {
+            self.badge.take().then(|| {
+                AuthOutcome::Granted(Subject {
+                    level: Level(2),
+                    ..Subject::default()
+                })
             })
-        })
+        };
+        outcome.map(|outcome| request.respond(outcome))
     }
 
     fn cancel(&mut self) {
@@ -825,6 +849,7 @@ fn an_external_method_answers_through_poll() -> fairing::Result<()> {
     let badge = Rc::new(Cell::new(false));
     let cancelled = Rc::new(Cell::new(0));
     let mut h = custom(Reader {
+        request: None,
         badge: Rc::clone(&badge),
         cancelled: Rc::clone(&cancelled),
     })?;
@@ -842,6 +867,7 @@ fn an_external_method_answers_through_poll() -> fairing::Result<()> {
 fn a_keyboard_wedge_reader_is_submitted_on_enter() -> fairing::Result<()> {
     let cancelled = Rc::new(Cell::new(0));
     let mut h = custom(Reader {
+        request: None,
         badge: Rc::new(Cell::new(false)),
         cancelled: Rc::clone(&cancelled),
     })?;
@@ -852,6 +878,7 @@ fn a_keyboard_wedge_reader_is_submitted_on_enter() -> fairing::Result<()> {
     assert!(h.shell.workspace().find("admin").is_some());
     // And a cancelled wait tells the authenticator.
     let mut h = custom(Reader {
+        request: None,
         badge: Rc::new(Cell::new(false)),
         cancelled: Rc::clone(&cancelled),
     })?;
@@ -932,7 +959,12 @@ impl Authenticator for Roster {
         }]
     }
 
-    fn submit(&mut self, credential: Credential, _now: Instant) -> AuthOutcome {
+    fn submit(
+        &mut self,
+        _request: fairing::access::AuthRequestId,
+        credential: Credential,
+        _now: Instant,
+    ) -> AuthOutcome {
         let Credential::Pin(pin) = credential else {
             return AuthOutcome::Pending;
         };
@@ -1126,7 +1158,12 @@ impl Authenticator for Stalled {
         }]
     }
 
-    fn submit(&mut self, _credential: Credential, _now: Instant) -> AuthOutcome {
+    fn submit(
+        &mut self,
+        _request: fairing::access::AuthRequestId,
+        _credential: Credential,
+        _now: Instant,
+    ) -> AuthOutcome {
         self.submits.set(self.submits.get() + 1);
         if self.submits.get() == 1 {
             return AuthOutcome::Pending;
@@ -1238,7 +1275,12 @@ impl Authenticator for Scripted {
         self.methods.clone()
     }
 
-    fn begin(&mut self, gate: &fairing::access::Gate, _now: Instant) {
+    fn begin(
+        &mut self,
+        _request: fairing::access::AuthRequestId,
+        gate: &fairing::access::Gate,
+        _now: Instant,
+    ) {
         let mut asked = self.asked.borrow_mut();
         asked.begun.push(gate.as_str().to_owned());
         asked.log.push(format!("begin {}", gate.as_str()));
@@ -1248,7 +1290,12 @@ impl Authenticator for Scripted {
         self.asked.borrow_mut().log.push("cancel".to_owned());
     }
 
-    fn submit(&mut self, credential: Credential, now: Instant) -> AuthOutcome {
+    fn submit(
+        &mut self,
+        _request: fairing::access::AuthRequestId,
+        credential: Credential,
+        now: Instant,
+    ) -> AuthOutcome {
         let what = match credential {
             Credential::Pin(pin) => pin,
             Credential::Password { secret, .. } => secret,
@@ -1427,7 +1474,13 @@ fn a_badge_read_waits_out_a_lockout_and_calls_off_a_wait() -> fairing::Result<()
     let waiting = two_reads(Answer::Wait)?;
     assert_eq!(
         waiting.borrow().log,
-        vec!["begin admin", "submit AAAA", "cancel", "submit BBBB"]
+        vec![
+            "begin admin",
+            "submit AAAA",
+            "cancel",
+            "submit BBBB",
+            "begin admin"
+        ]
     );
     Ok(())
 }
@@ -1855,7 +1908,13 @@ fn every_way_in_works_while_an_answer_is_awaited() -> fairing::Result<()> {
     h.frames(2);
     assert_eq!(
         asked.borrow().log,
-        vec!["begin admin", "submit first", "cancel", "submit second"]
+        vec![
+            "begin admin",
+            "submit first",
+            "cancel",
+            "submit second",
+            "begin admin"
+        ]
     );
 
     let (mut h, asked) = scripted(
@@ -1876,7 +1935,8 @@ fn every_way_in_works_while_an_answer_is_awaited() -> fairing::Result<()> {
             "begin admin",
             "submit [0, 1, 2, 5]",
             "cancel",
-            "submit [0, 3, 6, 7]"
+            "submit [0, 3, 6, 7]",
+            "begin admin"
         ]
     );
     Ok(())
@@ -1943,6 +2003,7 @@ fn every_close_without_an_answer_calls_the_check_off() -> fairing::Result<()> {
 
 /// An authenticator that answers through `poll` whenever the test says — awaited or not.
 struct Late {
+    request: Option<fairing::access::AuthRequestId>,
     submits: u32,
     /// Set, and the next `poll` grants.
     answer: Rc<Cell<bool>>,
@@ -1953,7 +2014,15 @@ impl Authenticator for Late {
         vec![pin4()]
     }
 
-    fn submit(&mut self, _credential: Credential, _now: Instant) -> AuthOutcome {
+    fn submit(
+        &mut self,
+        request: fairing::access::AuthRequestId,
+        _credential: Credential,
+        _now: Instant,
+    ) -> AuthOutcome {
+        if self.request.is_none() {
+            self.request = Some(request);
+        }
         self.submits += 1;
         if self.submits == 1 {
             AuthOutcome::Pending
@@ -1964,23 +2033,26 @@ impl Authenticator for Late {
         }
     }
 
-    fn poll(&mut self, _now: Instant) -> Option<AuthOutcome> {
-        self.answer.take().then(|| {
-            AuthOutcome::Granted(Subject {
-                level: Level(2),
-                ..Subject::default()
+    fn poll(&mut self, _now: Instant) -> Option<fairing::access::AuthResponse> {
+        let request = self.request?;
+        let outcome = {
+            self.answer.take().then(|| {
+                AuthOutcome::Granted(Subject {
+                    level: Level(2),
+                    ..Subject::default()
+                })
             })
-        })
+        };
+        outcome.map(|outcome| request.respond(outcome))
     }
 }
 
-/// The shell follows what the authenticator reports: an answer from `poll` is the
-/// state to move to, whether one was awaited or not. Which request it answers is the
-/// authenticator's business, not the shell's.
+/// A late response retains its original request token and cannot answer a newer attempt.
 #[test]
-fn the_shell_follows_what_poll_reports() -> fairing::Result<()> {
+fn the_shell_rejects_a_superseded_poll_response() -> fairing::Result<()> {
     let answer = Rc::new(Cell::new(false));
     let mut h = custom(Late {
+        request: None,
         submits: 0,
         answer: Rc::clone(&answer),
     })?;
@@ -1994,6 +2066,7 @@ fn the_shell_follows_what_poll_reports() -> fairing::Result<()> {
 
     let answer = Rc::new(Cell::new(false));
     let mut h = custom(Late {
+        request: None,
         submits: 0,
         answer: Rc::clone(&answer),
     })?;
@@ -2003,8 +2076,8 @@ fn the_shell_follows_what_poll_reports() -> fairing::Result<()> {
     answer.set(true);
     h.frames(2);
     assert!(
-        h.shell.workspace().find("admin").is_some(),
-        "applied all the same"
+        h.shell.workspace().find("admin").is_none(),
+        "the first request cannot grant after the second attempt"
     );
     Ok(())
 }

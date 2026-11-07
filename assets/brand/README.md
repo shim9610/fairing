@@ -1,9 +1,10 @@
 # fairing brand art
 
-The default art concept is a **manta ray**. The background, mark and palette the shell draws by
-default all come out of it — but **all of it is a default, not a fixture**: the palette, the
-background, the icons and the mark can each be changed, from overriding a single role colour to
-replacing the drawing entirely with your own painter (`docs/guide/04-customization.md`).
+The optional Abyss art concept uses a manta ray for its background, mark and palette.
+The shell's default `Base` preset uses a neutral palette and flat background; select
+`Preset::Abyss` to use the brand styling. Palette, background, icons and mark can
+each be changed, from a role colour to a custom painter; see
+[customization](../../docs/guide/04-customization.md).
 
 ## Files
 
@@ -24,7 +25,7 @@ replacing the drawing entirely with your own painter (`docs/guide/04-customizati
 | `abyss-light-landscape.webp` | 1672×941 | 1.78 | Landscape, **light palette** — pair it with the line above through `Wallpaper::themed` |
 | `abyss-portrait.webp` | 940×1672 | 0.56 | Portrait |
 | `abyss-ultrawide.webp` | 2560×640 | 4.00 | Bar-shaped instrument panels |
-| `abyss-square.webp` | 1440×1440 | 1.00 | Square HMIs |
+| `abyss-square.webp` | 1440×1440 | 1.00 | Square operator panels |
 | `abyss-4x3.webp` | 1600×1200 | 1.33 | Older industrial panels |
 | `abyss-splash-1920x1080.webp` | 1920×1080 | 1.78 | Splash / boot (one hero manta, the middle left empty) |
 | `abyss-splash-1080x1920.webp` | 1080×1920 | 0.56 | Splash / boot (portrait, a canyon) |
@@ -37,13 +38,14 @@ than 85 because a smooth pale gradient is exactly where WebP bands (measured: ma
 10 at q92 against 20 at q85).
 
 The last five are lossless WebP, around 1 MB each. If repository size becomes a problem, they
-re-encode at quality 95 to about a seventh of that (PSNR 47–51 dB, indistinguishable by eye).
+re-encode at quality 95 to about a seventh of that (recorded peak signal-to-noise
+ratio, or PSNR: 47–51 dB).
 
 ## None of this is compiled into the crate
 
-`fairing` takes no image decoder dependency. So the raster
-originals are **integrator assets that the crate never reads**. The background the shell draws by
-default is a **procedural** one that reproduces the same art direction with egui shapes alone
+Fairing delegates raster decoding to the application. The raster originals are
+integrator assets; the shell's own Abyss background is procedural and reproduces
+the art direction with egui shapes alone
 (`brand::abyss`), and the mark is a ribbon mesh rather than a raster (`brand::manta`).
 
 To actually use the raster originals, decoding is yours: decode with whichever image crate you
@@ -70,7 +72,7 @@ were traced from `manta-mark-black.png`. To reproduce them:
 1. Threshold at 128 to binarise, then an opening of radius 14 to take the thin tail off and leave
    the body.
 2. Sub-pixel contour tracing (marching squares), then split into an upper and a lower boundary at
-   the two ends of the PCA principal axis.
+   the two ends of the principal axis from principal component analysis (PCA).
 3. Scale the bounding box of the **whole** mark (tail included) uniformly into a 32×20 grid with
    a 2 % margin, centred.
 4. Least-squares fit a cubic Bézier chain to each boundary (four reparameterisation passes). The
@@ -78,15 +80,15 @@ were traced from `manta-mark-black.png`. To reproduce them:
    `manta-mark-two-tone.png`.
 
 The fit error is **at most 0.36** grid units (1.1 px on a 96 px mark), and rasterising the result
-at 32 samples gives an IoU of **0.976** against the reference art. The silhouettes of the two
-reference PNGs agree with each other at IoU 0.974, so they are the same drawing.
+at 32 samples gives an intersection over union (IoU) of **0.976** against the
+reference art. The two reference PNG silhouettes have a recorded IoU of 0.974.
 
 ## Provenance and licence
 
-Every file in this directory was **made by this project with a generative image model** and
-contains no third-party material. Unlike the Lucide subset in `assets/icons/` (ISC/MIT), there
-are no third-party licence obligations, so they are not listed in the assets table of
-`THIRD_PARTY.md`.
+The assets in this directory were generated for this project with an image model.
+They are recorded as project-generated assets rather than imported assets in
+[third-party notices](../../THIRD_PARTY.md). The imported Lucide subset in
+`assets/icons/` retains its separate ISC/MIT notices.
 
 They are distributed under the MIT licence, the same as the repository's code (`LICENSE`). Protecting the name and the logo as trademarks would mean excluding brand marks
 from the code licence, as is common; the repository owner has chosen to keep them under the code

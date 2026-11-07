@@ -20,12 +20,12 @@ use egui::{Event, Id, Key, Modifiers, RawInput};
 
 /// Where the injection queue lives (`ctx.data`).
 fn queue_id() -> Id {
-    Id::new("fairing.osk.inject.queue")
+    Id::unique("fairing.osk.inject.queue")
 }
 
 /// Whether the plugin has been registered (`ctx.data`).
 fn installed_id() -> Id {
-    Id::new("fairing.osk.inject.installed")
+    Id::unique("fairing.osk.inject.installed")
 }
 
 /// The egui plugin that appends the queue to the next pass's `RawInput`. All the state is in

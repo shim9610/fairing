@@ -21,6 +21,13 @@ release.
 | M5 | Two panes: `cx.open_in_other_pane`, the divider, the focus, `SplitSupport`; the recent screens; the split control and tile; `[workspace]` | Done | [02 §6.1](guide/02-screens.md#61-two-panes) · [03 §2.3](guide/03-chrome.md#23-recent-screens-and-the-split) · [07 §16](guide/07-config-reference.md#16-workspace) |
 | M6 | Finishing: the string table with Korean built in and live language switching; gesture navigation; the info popover on a held desktop icon; layouts and painters for the nav bar, toasts, banners, the keyboard and the shade; the status bar's items placed; painters for the lock screen, the unlock prompt, the recent screens and every kind of widget; thin gesture handles on the side and bottom edges; gesture regions of your own; the prelude and the `hello` example | Under way. What is left is the 0.1.0 release | [04 §9](guide/04-customization.md#9-text-and-translations) · [03 §2.6](guide/03-chrome.md#26-the-gesture-style) · [03 §3.8](guide/03-chrome.md#38-holding-an-icon-the-info-popover) · [04 §10](guide/04-customization.md#10-moving-and-redrawing-the-other-pieces) · [03 §9](guide/03-chrome.md#9-gestures) |
 
+The current pre-release also includes issuer-owned sessions, application-owned
+permission values, protected element trees and the
+[common mediation kernel/routing checks](protected-contracts.md). Queue/display
+admission and host-controlled unwind recovery are described in
+[memory limits](memory-limits.md). These changes are implemented in the checkout;
+see the [migration guide](guide/10-migration.md) for their API and host boundaries.
+
 ## 2. 0.1.0
 
 The first release publishes `fairing` and `fairing-widgets` to crates.io. From 0.1.0 on, changes
@@ -45,18 +52,35 @@ These are candidates, not promises. Each one waits for a real need.
 
 ## 4. Known limits
 
-These are how the crate behaves today. Each is small, and each has a reason.
+These are the current implementation and verification boundaries.
 
+- **Recovery is scoped to caught unwinds and selected fallible storage paths.**
+  `restart_with` replaces a shell, leaving egui/GPU and external application state
+  under host control. Complete renderer heap exhaustion, aborts and business-side
+  rollback are unsupported; see [memory limits](memory-limits.md).
+- **Component verification is scoped.** Proofs and generated/native UI histories do
+  not establish complete concrete UI-state coverage or universal interaction progress.
+  See [formal operability](formal-operability.md) and [API contracts](api-contracts.md).
+
+- **Background logic cannot present a frame.** The shell/state runners use eframe 0.37's
+  `App::logic` fallback for state processing, but drawing and animations still wait for a
+  UI pass. Access can be revoked in state while a compositor retains its last presented
+  frame. `runner::run` supplies only a UI closure. Hosts needing background shell work
+  must use a shell/state runner or implement `App::logic` and call `Shell::logic*` there.
+  Backends must still use `Waker` or `next_wake`.
 - **One finger.** The gesture engine follows a single touch. A second finger is not a gesture.
-- **Strips and regions are a frame or two behind the glass.** egui decides what a press hits from
-  where things were the frame before. So a gesture region that moves, grows or first appears
-  takes a frame or two to catch up, and so does a handle's strip when the keyboard comes up.
-  While the keyboard slides in, a side strip can cover the outer 2 mm of an edge key for up to
-  two frames, about 33 ms at 60 Hz, and a bottom strip can cover the space bar's lower rim for
-  one frame from the second showing on.
-- **Corner knocks count inside regions.** The hidden entries' corner knocks are read from the raw
-  pointer, so a tap in a region over a knock corner still counts. Keep a trackpad out of the
-  corners your hidden entries use ([03 §9.3](guide/03-chrome.md#93-gesture-regions-of-your-own)).
+- **Widget hits use the previous egui pass.** Fairing's regions use current shell/pane/keyboard
+  geometry and seed current guard area rectangles before user drawing. A showing keyboard
+  reserves its target band immediately. However, egui has already computed widget hits before
+  `Shell::frame` runs. If the region map changed and a new press belongs to a region, Fairing
+  skips ordinary UI callbacks for that pass and requests a repaint. This prevents dispatch
+  to both the region and a stale widget, at the cost of one omitted ordinary-view pass.
+  Backend/authorization work and region callbacks continue. A key or other widget outside
+  the claimed region is not retroactively given a hit swallowed by the previous geometry;
+  this is not an atomic input-rerouting guarantee.
+- **Corner knocks respect region ownership.** A press beginning in a gesture region does not
+  count toward hidden-entry corner knocks. Moving outside and back does not become a still tap.
+  The emergency hold remains global ([03 §9.3](guide/03-chrome.md#93-gesture-regions-of-your-own)).
 - **The bottom edge is the nav bar's or the handles'.** With the nav bar on, a bottom gesture
   handle is refused. Turn the bar off to put one there.
 - **No image decoder.** The crate draws textures you upload. Decoding is yours

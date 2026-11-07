@@ -1,8 +1,8 @@
 //! `fairing` — a touchscreen shell for embedded devices, built on `egui`.
 //!
 //! The status bar, the pull-down shade with quick-settings tiles and notifications
-//! ([`overlay`]), the desktop, a screen stack with transitions, the navigation bar, an
-//! on-screen keyboard with numeric, QWERTY and two-set Hangul layouts ([`osk`]), toasts and
+//! (feature `overlay`), the desktop, a screen stack with transitions, the navigation bar, an
+//! on-screen keyboard with numeric, QWERTY and two-set Hangul layouts (feature `osk`), toasts and
 //! heads-up banners ([`notify`]), device settings screens and access gates — the parts every
 //! kiosk, panel and bench instrument rebuilds, in one process and one `egui` frame loop.
 //!
@@ -19,6 +19,28 @@
 //! what comes next is in the
 //! [roadmap](https://github.com/shim9610/fairing/blob/HEAD/docs/roadmap.md).
 //!
+//! # Sessions and protected UI
+//!
+//! Credential verification belongs to [`access::Authenticator`]. In opt-in token mode,
+//! the issuer retains a [`access::SessionController`] and Fairing reads its
+//! [`access::SessionToken`] for explicit operation grants. Independent web and device
+//! login states require separate controller/token pairs.
+//!
+//! [`ShellBuilder::build_protected`] requires token mode and returns [`ProtectedShell`].
+//! Define an application-owned [`access::Permission`] value and register
+//! [`access::Protected`] declarations. External [`Screen`] implementations also implement
+//! [`access::PermissionBound`] and use [`ProtectedShell::add_screen`]. For nested UI,
+//! [`elements::ElementTree`] filters denied children before measurement/layout and checks
+//! live authority before paint through [`ProtectedShell::add_elements`].
+//!
+//! Protected construction rejects untyped global painter/layout hooks, image loaders and
+//! procedural wallpapers; ordinary [`ShellBuilder::build`] retains those trusted hooks.
+//! Admitted callbacks retain original UI/app/backend access. The
+//! [common mediation contract](https://github.com/shim9610/fairing/blob/HEAD/docs/protected-contracts.md)
+//! states the proved kernel and compiler-checked routing scope; the
+//! [session guide](https://github.com/shim9610/fairing/blob/HEAD/docs/session-tokens.md)
+//! shows issuance, typed registration, revocation and integration responsibilities.
+//!
 //! # Features
 //!
 //! | Feature | Default | What it adds |
@@ -33,6 +55,11 @@
 //! | `chrono` | off | A clock that follows the system time zone and daylight saving |
 //!
 //! # Example
+//!
+//! This example uses ordinary [`Shell`] registration with legacy level gates. Typed
+//! protected registration uses the APIs above. The optional `runner::run_shell*` and
+//! `run_app*` helpers accept ordinary `Shell`; host `ProtectedShell` through its
+//! `logic*`, `frame*` and `poll_events` methods.
 //!
 //! ```no_run
 //! use fairing::{screen, icon, Cx};
@@ -59,6 +86,22 @@
 //! ```
 
 #![forbid(unsafe_code)]
+// A single scoped loan-restoration helper propagates to the runtime catch boundary.
+// All other disallowed methods remain denied, including abort and exit.
+#![cfg_attr(not(test), deny(clippy::disallowed_methods))]
+// Product builds reject explicit panic/termination paths; tests retain assertions.
+#![cfg_attr(
+    not(test),
+    forbid(
+        clippy::disallowed_macros,
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::todo,
+        clippy::unimplemented
+    )
+)]
 // A `pub` item has to be reachable from the crate root — anything else is `pub(crate)`.
 // The audit's clippy stage denies warnings, so this keeps the public surface to what is meant.
 // It sits here rather than in the workspace lints because the examples, tests and xtask are
@@ -71,15 +114,18 @@
 pub mod access;
 #[cfg(feature = "brand")]
 pub mod brand;
+pub mod bridge;
 pub mod chrome;
 pub mod config;
 pub mod desktop;
+pub mod elements;
 pub mod gesture;
 pub mod i18n;
 pub mod inbox;
 pub mod layout;
 pub mod notify;
 pub mod prelude;
+pub mod recovery;
 pub mod screen;
 pub mod services;
 pub mod settings;
@@ -111,7 +157,7 @@ pub use egui;
 /// shell in the way. They are re-exported here under the names they have always
 /// had, so integrator code does not change: `fairing::unit::Dim` is `fairing_widgets::unit::Dim`.
 pub use fairing_widgets;
-pub use fairing_widgets::{drag, error, fonts, icons, motion, theme, unit, widgets};
+pub use fairing_widgets::{drag, error, fonts, icons, memory, motion, theme, unit, widgets};
 
 pub use access::{AccessEvent, Gate, Level, LevelTable, Subject, Visibility};
 pub use chrome::{
@@ -132,7 +178,7 @@ pub use screen::{
 };
 pub use services::{PowerRequest, Services};
 pub use settings::{SettingKey, SettingValue};
-pub use shell::{Layout, Shell, ShellBuilder, ShellEvent, ShellHandle};
+pub use shell::{Layout, ProtectedShell, Shell, ShellBuilder, ShellEvent, ShellHandle};
 pub use theme::{ColorRole, Theme};
 pub use unit::{Dim, Scale, ScalePolicy, Span};
 pub use workspace::InstanceId;
@@ -143,9 +189,11 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 // The guide doctest gate: every Rust block in docs/guide is compiled — and run, unless it is
 // marked `no_run` — as a doctest of this module. The guide is written against the whole feature
 // set (it shows the runner, chrono, the shade and the keyboard), so the gate needs every feature
-// on: the audit's stage 3 and CI run it, and a plain `cargo test` skips it.
+// on. The audit sets `--cfg fairing_repo_docs` in RUSTDOCFLAGS; the published package
+// excludes this repository-only module, so normal/all-feature package doctests omit it.
 #[cfg(all(
     doctest,
+    fairing_repo_docs,
     feature = "mock",
     feature = "overlay",
     feature = "osk",
@@ -155,3 +203,5 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
     feature = "chrono"
 ))]
 mod guide_probe;
+
+mod runtime;

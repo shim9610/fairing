@@ -195,7 +195,7 @@ remove one. See [03 §4.4a](03-chrome.md#44a-removing-reordering-adding).
 |---|---|---|---|---|
 | `heads_up` | `bool` | `true` | Show a new notification briefly as a banner | None |
 | `max_visible` | `u8` | `2` | Toasts on screen at once | `0` is an error |
-| `max_items` | `u16` | `100` | Notification centre capacity; the oldest non-persistent ones drop first | None |
+| `max_items` | `u16` | `100` | Hard retention cap including persistent entries; dismissible items may be replaced, otherwise new overflow is refused; zero selects 100 | None |
 | `toast_ms` | `u64` | `3000` | Default toast duration | None |
 | `dismiss_button` | `bool` | `true` | Draw the `×` on a shade notification row. Turn it off and the only ways to clear are **a left swipe and "Clear all"** | None |
 
@@ -489,7 +489,7 @@ the prompt has a tab for each kind
 | `show_path` | `bool` | `true` | Draw the path as the finger draws it | |
 | `attempt_limit` | `Option<u32>` | `None` | As `[access.pin_table]`'s, and the same count; where both set one, the stricter holds | 0 is an **error** |
 | `lock_secs` | `Option<u64>` | `None` | As `[access.pin_table]`'s; where both set one, the longer holds | 0 is an **error** |
-| Every other key | `String` (flattened) | — | Level name → clear-text pattern: the dots in the order drawn, row by row from 1, between `-`, `,` or spaces (`"1-2-3-6-9"`); on the 3 × 3 grid the digits alone do (`"12369"`) | A key not in `levels`, a dot off the grid or taken twice, fewer than `min_points` dots, a pattern a finger cannot draw as written (a stroke across a dot takes it — the error gives the path a finger would record), or two levels sharing a pattern is an **error** |
+| Every other key | `String` (flattened) | — | Level name → clear-text pattern: the dots in the order drawn, row by row from 1, between `-`, `,` or spaces (`"1-2-3-6-9"`); on the 3 × 3 grid the digits alone do (`"12369"`) | A key not in `levels`, a dot off the grid or taken twice, fewer than `min_points` dots, a pattern a finger cannot draw as written (a stroke across a dot takes it), or two levels sharing a pattern is an **error**. Diagnostics omit both configured and reconstructed secret paths |
 
 ```toml
 [access.pattern_table]
@@ -681,6 +681,7 @@ primary = "#2fe09b"
 on_primary = "#04110b"
 
 [access]
+session_tokens = false                 # true: explicit issuer-controlled gate grants; see session-tokens.md
 mode = "prompt"
 levels = ["viewer", "operator", "maintainer"]
 initial = "viewer"

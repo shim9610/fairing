@@ -59,6 +59,11 @@ use std::time::{Duration, Instant};
 /// The shell builder. Made with [`Shell::builder`].
 pub struct ShellBuilder {
     config: ShellConfig,
+    recovery_ui: Option<crate::recovery::RecoveryUi>,
+    command_capacity: usize,
+    commands_per_update: usize,
+    toast_capacity: usize,
+    toast_overflow: crate::notify::OverflowPolicy,
     services: Option<Services>,
     theme: Option<Theme>,
     palettes: Option<(Palette, Palette)>,
@@ -86,7 +91,7 @@ pub struct ShellBuilder {
     lock_screen_painter: Option<crate::access::LockScreenPainter>,
     unlock_prompt_painter: Option<crate::access::UnlockPromptPainter>,
     recents: crate::workspace::RecentsPainters,
-    widget_painters: crate::widgets::WidgetPainters,
+    widget_painters: Option<crate::widgets::WidgetPainters>,
     gesture_handle_painter: Option<crate::gesture::HandlePainter>,
 }
 
@@ -164,6 +169,23 @@ impl ShadeHooks {
     }
 }
 
+// Themed wallpapers may nest; check both branches, including the inactive theme.
+fn wallpaper_has_callback(wallpaper: &crate::desktop::Wallpaper) -> bool {
+    use crate::desktop::Wallpaper;
+    match wallpaper {
+        Wallpaper::Painter(_) | Wallpaper::ThemedPainter(_) => true,
+        Wallpaper::Themed { dark, light } => {
+            wallpaper_has_callback(dark) || wallpaper_has_callback(light)
+        }
+        Wallpaper::Solid(_)
+        | Wallpaper::Fixed(_)
+        | Wallpaper::Gradient { .. }
+        | Wallpaper::Texture { .. }
+        | Wallpaper::TextureFit { .. }
+        | Wallpaper::Owned { .. } => false,
+    }
+}
+
 impl std::fmt::Debug for ShellBuilder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut f = f.debug_struct("ShellBuilder");
@@ -220,9 +242,141 @@ impl std::fmt::Debug for ShellBuilder {
 }
 
 impl ShellBuilder {
+    /// Build a token-mode shell with mandatory typed application declarations.
+    /// Original UI/app/backend references remain available inside admitted callbacks.
+    ///
+    /// # Errors
+    /// Requires `access.session_tokens = true`. Untyped custom painters, layouts,
+    /// image loaders and wallpapers are rejected before any backend/authenticator
+    /// attachment or user hook execution. Use typed declarations for application UI;
+    /// use `build` when unmediated host customization is intentional.
+    pub fn build_protected(self, ctx: &egui::Context) -> crate::Result<super::ProtectedShell> {
+        if !self.config.access.session_tokens {
+            return Err(crate::Error::Config(
+                "build_protected requires access.session_tokens = true".to_owned(),
+            ));
+        }
+        self.validate_protected_hooks()?;
+        self.build(ctx).map(super::ProtectedShell::new)
+    }
+
+    /// Opt in to fault guidance and an optional request button. No restart policy is installed.
+    #[must_use]
+    pub fn recovery_ui(mut self, view: crate::recovery::RecoveryUi) -> Self {
+        self.recovery_ui = Some(view);
+        self
+    }
+
+    // Exhaustive matching makes every future builder field a security review point.
+    fn validate_protected_hooks(&self) -> crate::Result<()> {
+        let Self {
+            config: _,
+            recovery_ui: _,
+            command_capacity: _,
+            commands_per_update: _,
+            toast_capacity: _,
+            toast_overflow: _,
+            services: _,
+            theme: _,
+            palettes: _,
+            fonts: _,
+            translations: _,
+            scale_policy: _,
+            metrics_spec: _,
+            component_spec: _,
+            control_spec: _,
+            elevation_spec: _,
+            physical_mm: _,
+            status_bar_painter,
+            status_bar_layout,
+            nav_bar_painter,
+            nav_bar_layout,
+            notify_hooks,
+            #[cfg(feature = "osk")]
+            osk_hooks,
+            #[cfg(feature = "overlay")]
+            shade_hooks,
+            slot_painter,
+            image_loader,
+            wallpaper,
+            authenticator: _,
+            lock_screen_painter,
+            unlock_prompt_painter,
+            recents,
+            widget_painters,
+            gesture_handle_painter,
+        } = self;
+        let NotifyHooks {
+            toast_painter,
+            toast_layout,
+            heads_up_painter,
+            heads_up_layout,
+        } = notify_hooks;
+        let crate::workspace::RecentsPainters { card, ground } = recents;
+        let mut hooks = vec![
+            ("status_bar_painter", status_bar_painter.is_some()),
+            ("status_bar_layout", status_bar_layout.is_some()),
+            ("nav_bar_painter", nav_bar_painter.is_some()),
+            ("nav_bar_layout", nav_bar_layout.is_some()),
+            ("slot_painter", slot_painter.is_some()),
+            ("image_loader", image_loader.is_some()),
+            (
+                "wallpaper",
+                wallpaper.as_ref().is_some_and(wallpaper_has_callback),
+            ),
+            ("lock_screen_painter", lock_screen_painter.is_some()),
+            ("unlock_prompt_painter", unlock_prompt_painter.is_some()),
+            ("widget_painters", widget_painters.is_some()),
+            ("gesture_handle_painter", gesture_handle_painter.is_some()),
+            ("toast_painter", toast_painter.is_some()),
+            ("toast_layout", toast_layout.is_some()),
+            ("heads_up_painter", heads_up_painter.is_some()),
+            ("heads_up_layout", heads_up_layout.is_some()),
+            ("recents_card_painter", card.is_some()),
+            ("recents_ground_painter", ground.is_some()),
+        ];
+        #[cfg(feature = "osk")]
+        {
+            let OskHooks {
+                key_layout,
+                key_painter,
+            } = osk_hooks;
+            hooks.extend([
+                ("osk_key_layout", key_layout.is_some()),
+                ("osk_key_painter", key_painter.is_some()),
+            ]);
+        }
+        #[cfg(feature = "overlay")]
+        {
+            let ShadeHooks {
+                tile_layout,
+                tile_painter,
+                panel_painter,
+            } = shade_hooks;
+            hooks.extend([
+                ("shade_tile_layout", tile_layout.is_some()),
+                ("shade_tile_painter", tile_painter.is_some()),
+                ("shade_panel_painter", panel_painter.is_some()),
+            ]);
+        }
+        // Keep the same code valid in the minimal profile without unused_mut.
+        hooks.sort_unstable_by_key(|(name, _)| *name);
+        if let Some((name, _)) = hooks.into_iter().find(|(_, installed)| *installed) {
+            return Err(crate::Error::Config(format!(
+                "build_protected rejects untyped hook `{name}`; register UI with Protected<Permission, _> or use build for trusted host customization"
+            )));
+        }
+        Ok(())
+    }
+
     pub(crate) fn new(config: ShellConfig) -> Self {
         Self {
             config,
+            recovery_ui: None,
+            command_capacity: 1024,
+            commands_per_update: 256,
+            toast_capacity: crate::notify::DEFAULT_MAX_PENDING_TOASTS,
+            toast_overflow: crate::notify::OverflowPolicy::KeepLatest,
             services: None,
             theme: None,
             palettes: None,
@@ -250,9 +404,41 @@ impl ShellBuilder {
             lock_screen_painter: None,
             unlock_prompt_painter: None,
             recents: crate::workspace::RecentsPainters::default(),
-            widget_painters: crate::widgets::WidgetPainters::new(),
+            widget_painters: None,
             gesture_handle_painter: None,
         }
+    }
+
+    /// Pending toast overflow. Default `KeepLatest` discards only older display items.
+    /// Accepted commands, notification records and persistent alerts are unaffected.
+    #[must_use]
+    pub fn toast_overflow_policy(mut self, policy: crate::notify::OverflowPolicy) -> Self {
+        self.toast_overflow = policy;
+        self
+    }
+
+    /// Fixed command slots shared by all handles; default 1,024.
+    /// Build rejects zero or capacities above `inbox::MAX_BOUNDED_CAPACITY`.
+    /// Payload allocations are separate from the transport's slot storage.
+    #[must_use]
+    pub fn command_queue_capacity(mut self, capacity: usize) -> Self {
+        self.command_capacity = capacity;
+        self
+    }
+
+    /// Maximum commands executed in one UI/logic update; default 256.
+    /// This is a work-count budget, not a hard real-time guarantee.
+    #[must_use]
+    pub fn max_commands_per_update(mut self, count: usize) -> Self {
+        self.commands_per_update = count;
+        self
+    }
+
+    /// Maximum waiting toasts (default 64); zero disables new toasts.
+    #[must_use]
+    pub fn toast_queue_capacity(mut self, capacity: usize) -> Self {
+        self.toast_capacity = capacity;
+        self
     }
 
     /// **The authenticator** the unlock prompt and the lock screen ask.
@@ -270,7 +456,7 @@ impl ShellBuilder {
     /// # struct Badges;
     /// # impl Authenticator for Badges {
     /// #     fn methods(&self) -> Vec<AuthMethod> { Vec::new() }
-    /// #     fn submit(&mut self, _: Credential, _: std::time::Instant) -> AuthOutcome { AuthOutcome::Pending }
+    /// #     fn submit(&mut self, _request: fairing::access::AuthRequestId, _: Credential, _: std::time::Instant) -> AuthOutcome { AuthOutcome::Pending }
     /// # }
     /// # let ctx = egui::Context::default();
     /// let shell = fairing::Shell::builder(fairing::ShellConfig::default())
@@ -349,7 +535,7 @@ impl ShellBuilder {
     /// its press, its value and its motion; the painter is told its look and draws it.
     #[must_use]
     pub fn widget_painters(mut self, painters: crate::widgets::WidgetPainters) -> Self {
-        self.widget_painters = painters;
+        self.widget_painters = Some(painters);
         self
     }
 
@@ -896,6 +1082,11 @@ impl ShellBuilder {
     pub fn build(self, ctx: &egui::Context) -> Result<Shell> {
         let Self {
             config,
+            recovery_ui,
+            command_capacity,
+            commands_per_update,
+            toast_capacity,
+            toast_overflow,
             services,
             theme,
             palettes,
@@ -927,6 +1118,21 @@ impl ShellBuilder {
             gesture_handle_painter,
         } = self;
         config.validate()?;
+        if !(1..=crate::inbox::MAX_BOUNDED_CAPACITY).contains(&command_capacity) {
+            return Err(crate::Error::Config(
+                "command_queue_capacity must be 1..=65536".into(),
+            ));
+        }
+        if commands_per_update == 0 || commands_per_update > crate::inbox::MAX_BOUNDED_CAPACITY {
+            return Err(crate::Error::Config(
+                "max_commands_per_update must be 1..=65536".into(),
+            ));
+        }
+        if toast_capacity > crate::inbox::MAX_BOUNDED_CAPACITY {
+            return Err(crate::Error::Config(
+                "toast_queue_capacity must be 0..=65536".into(),
+            ));
+        }
         if status_bar_painter.is_some() && status_bar_layout.is_some() {
             log::warn!("status_bar_layout is never called: status_bar_painter draws the whole bar");
         }
@@ -956,7 +1162,7 @@ impl ShellBuilder {
         let (theme, palettes) = resolve_theme(theme, palettes, &config)?;
         // The fonts come first — `set_fonts` throws the font atlas and the galley cache away whole, so it
         // is called once, before the style. It runs even for an empty set — binding the strong
-        // family (`fonts::STRONG_FAMILY`) is part of it, and epaint panics on an unbound family.
+        // family (`fonts::STRONG_FAMILY`) is part of it, so strong text always has fallback faces.
         fonts.install(ctx);
         if !fonts.has_bold() {
             // egui's own face has one weight, so the titles come out flat and nothing on the
@@ -978,7 +1184,8 @@ impl ShellBuilder {
         // Every session timer is measured on the shell's clock, which starts here.
         let mono = Instant::now();
         access.start_clock(mono);
-        let (handle, rx) = ShellHandle::pair(waker);
+        let (handle, rx) = ShellHandle::pair(waker, command_capacity)
+            .map_err(|error| crate::Error::Config(error.to_string()))?;
         let mut desktop = DesktopView::from_config(&config.desktop);
         load_file_wallpaper(ctx, &config.desktop, &mut desktop, image_loader.as_deref());
         // A wallpaper given in code is stronger than the config — `[desktop] wallpaper` is the default for
@@ -1035,7 +1242,9 @@ impl ShellBuilder {
         let mut toasts = ToastQueue::new(
             usize::from(config.notify.max_visible),
             Duration::from_millis(config.notify.toast_ms),
-        );
+        )
+        .with_pending_capacity(toast_capacity)
+        .with_overflow_policy(toast_overflow);
         let mut heads_up = HeadsUp::new(theme.metrics.heads_up_height);
         notify_hooks.install(&mut toasts, &mut heads_up);
         let theme_fade = ThemeFade::idle(theme.palette);
@@ -1075,6 +1284,7 @@ impl ShellBuilder {
             tap_press: None,
             gesture_regions: Vec::new(),
             region_zones: crate::gesture::RegionZones::NONE,
+            region_frame_deferred: false,
             region_track: None,
             region_out: crate::gesture::RegionOut::default(),
             last_screen: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 480.0)),
@@ -1085,22 +1295,29 @@ impl ShellBuilder {
             animations: AnimationStore::new(),
             icons: IconSet::new(),
             settings,
+            pending_bools: std::collections::BTreeMap::new(),
             handle,
             rx,
-            held_command: None,
+            commands_per_update,
             events: Vec::new(),
             requests: Vec::new(),
             layout: Layout::default(),
+            faulted: false,
+            recovery_ui,
+            restart_requested: false,
+            boundary_active: false,
             frame_no: 0,
             last_dt: 0.0,
             mono,
+            clock_wall: mono,
+            logic_state: None,
             stale_wake_frames: 0,
             font_waits: 0,
             status_bar_painter,
             nav_bar_painter,
             nav_bar_layout,
             recents_painters: recents,
-            widget_painters,
+            widget_painters: widget_painters.unwrap_or_default(),
             handle_painter: gesture_handle_painter,
             image_loader,
             nav_item_checks: Vec::new(),
@@ -1129,11 +1346,14 @@ impl ShellBuilder {
             osk,
             notifications,
             toasts,
+            display_status: crate::memory::DisplayStatus::default(),
             heads_up,
             theme_fade,
             overlay_was_closed: true,
             focus_covered: false,
             prompt,
+            auth_request: None,
+            routed_auth: None,
             after_lock: None,
             osk_was_shown: false,
             split_was: false,

@@ -1,9 +1,10 @@
 //! Screens — declarations, the trait, the lifecycle and launch modes.
 //!
-//! A screen is one `FnMut(&mut egui::Ui, &mut Cx)`. Beyond filling the pane rect the shell hands
-//! it, there are no constraints. `screen(id, closure)` is **resident** (the instance is the
-//! declaration, and its state survives closing); `screen_with(id, factory)` is **factory-built**
-//! (created on open, dropped on close).
+//! A screen is an `FnMut(&mut egui::Ui, &mut Cx)` closure or a [`Screen`] implementation.
+//! `screen(id, closure)` is **resident**: the declaration owns its state across closing.
+//! `screen_with(id, factory)` is **factory-built**: each instance constructs its body lazily
+//! at the first dispatched hook and drops it with the instance. Protected registration
+//! requires admission before construction and rechecks it before invoking the screen.
 
 pub(crate) mod cx;
 mod policy;
@@ -16,6 +17,7 @@ pub use policy::{BarMode, ChromePolicy, OskMode};
 pub use registry::Registry;
 pub use registry::{Decl, DeclKind};
 
+pub use crate::access::mediation::ScreenHandle;
 use crate::access::{Gate, Visibility};
 use crate::i18n::LabelKey;
 use crate::icons::IconRef;
@@ -205,9 +207,9 @@ pub(crate) enum ScreenSource {
     /// It is an `Option` because the borrow is a **loan**: [`Registry::take_resident`] moves the
     /// screen out for the length of one call and [`Registry::put_resident`] puts it back, so while
     /// it is being drawn the slot is empty and nothing can reach it a second time.
-    Resident(Option<Box<dyn Screen>>),
+    Resident(Option<ScreenHandle>),
     /// Factory: a call per open.
-    Factory(Box<dyn FnMut() -> Box<dyn Screen>>),
+    Factory(crate::access::mediation::FactoryCallback),
 }
 
 /// A screen declaration, with its icon, gate and chrome (the builder table).
@@ -250,7 +252,10 @@ pub fn screen(
     ui: impl FnMut(&mut egui::Ui, &mut Cx<'_>) + 'static,
 ) -> ScreenDecl {
     let id = id.into();
-    ScreenDecl::new(id, ScreenSource::Resident(Some(Box::new(ui))))
+    ScreenDecl::new(
+        id,
+        ScreenSource::Resident(Some(ScreenHandle::legacy(Box::new(ui)))),
+    )
 }
 
 /// **A resident screen declaration from a value of your own** — a `struct` implementing
@@ -298,10 +303,16 @@ pub fn screen(
 /// declaration — it is [`LaunchMode::Single`] only.
 pub fn screen_of(id: impl Into<String>, screen: impl Screen + 'static) -> ScreenDecl {
     let id = id.into();
-    ScreenDecl::new(id, ScreenSource::Resident(Some(Box::new(screen))))
+    ScreenDecl::new(
+        id,
+        ScreenSource::Resident(Some(ScreenHandle::legacy(Box::new(screen)))),
+    )
 }
 
-/// A factory screen declaration. `factory` makes a new instance on every open.
+/// A factory screen declaration. Each instance invokes `factory` lazily at its first
+/// dispatched hook, not while queuing the open request. In a protected shell, both
+/// construction and the following hook require live admission. An instance disposed
+/// before its first dispatch may never construct its body.
 pub fn screen_with<S: Screen + 'static>(
     id: impl Into<String>,
     mut factory: impl FnMut() -> S + 'static,
@@ -309,7 +320,9 @@ pub fn screen_with<S: Screen + 'static>(
     let id = id.into();
     ScreenDecl::new(
         id,
-        ScreenSource::Factory(Box::new(move || Box::new(factory()))),
+        ScreenSource::Factory(crate::access::mediation::FactoryCallback::legacy(Box::new(
+            move || Box::new(factory()),
+        ))),
     )
 }
 
@@ -431,7 +444,7 @@ impl ScreenDecl {
 
     /// A resident screen, out of a declaration that is going away (`None` for a factory, or for
     /// one out on loan).
-    pub(crate) fn into_resident(self) -> Option<Box<dyn Screen>> {
+    pub(crate) fn into_resident(self) -> Option<ScreenHandle> {
         match self.source {
             ScreenSource::Resident(screen) => screen,
             ScreenSource::Factory(_) => None,
@@ -513,11 +526,14 @@ impl ScreenDecl {
     ///
     /// ```no_run
     /// # fn main() {
+    /// # #[cfg(feature = "settings")]
+    /// # {
     /// # let shell: &mut fairing::Shell = todo!();
     /// use fairing::settings::screens;
     ///
     /// // The built-in Display screen, as a second screen of our own.
     /// shell.add(screens::display().with_id("app.display").title("Panel"));
+    /// # }
     /// # }
     /// ```
     ///
@@ -573,14 +589,14 @@ impl ScreenDecl {
         matches!(self.source, ScreenSource::Resident(_))
     }
 
-    /// Build the screen for an instance. A resident declaration hands over nothing and keeps its
-    /// screen; a factory one gives the result of a call.
+    /// Prepare opaque ownership for an instance. A resident declaration keeps its
+    /// screen; a factory handle constructs its body at the first dispatched hook.
     pub(crate) fn spawn(&mut self) -> InstanceScreen {
         match &mut self.source {
             // Nothing is handed over — the declaration keeps the screen and the instance finds it
             // again by id. One owner, so no shared cell and no borrow that can fail.
             ScreenSource::Resident(_) => InstanceScreen::Resident,
-            ScreenSource::Factory(factory) => InstanceScreen::Owned(factory()),
+            ScreenSource::Factory(factory) => InstanceScreen::Owned(factory.instance()),
         }
     }
 }
@@ -595,7 +611,7 @@ pub struct ActionDecl {
     pub(crate) dock: bool,
     pub(crate) gate: Option<Gate>,
     pub(crate) visibility: Visibility,
-    pub(crate) run: Box<dyn FnMut(&mut Cx<'_>)>,
+    pub(crate) run: crate::access::mediation::ActionCallback,
 }
 
 impl std::fmt::Debug for ActionDecl {
@@ -619,7 +635,7 @@ pub fn action(id: impl Into<String>, run: impl FnMut(&mut Cx<'_>) + 'static) -> 
         dock: false,
         gate: None,
         visibility: Visibility::Locked,
-        run: Box::new(run),
+        run: crate::access::mediation::ActionCallback::legacy(Box::new(run)),
     }
 }
 
@@ -697,7 +713,7 @@ impl ActionDecl {
 
     /// Run it.
     pub fn run(&mut self, cx: &mut Cx<'_>) {
-        (self.run)(cx);
+        self.run.run(cx);
     }
 }
 

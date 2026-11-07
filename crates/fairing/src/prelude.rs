@@ -27,6 +27,7 @@
 //! }
 //! # let _ = (dashboard, handle);
 //! ```
+
 //!
 //! What is in it: building and running the shell, declaring screens and items, what a screen is
 //! handed, the events with everything they carry, the look (built-in icons, palette roles, units),
@@ -37,7 +38,9 @@
 //! two-parameter `Result` in every module that imports this; write `fairing::Result` where you
 //! want it.
 
+pub use crate::access::{Permission, PermissionBinding, PermissionBound, Protected};
 pub use crate::egui;
+pub use crate::shell::ProtectedShell;
 pub use crate::{
     action, nav_item, screen, screen_of, screen_with, status_item, AccessEvent, BarMode,
     ChromePolicy, ColorRole, Cx, Dim, Error, IconRef, InstanceId, LaunchAction, Lifecycle,

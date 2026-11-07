@@ -142,8 +142,20 @@ impl<'a> NumberField<'a> {
         if moved != 0.0 {
             // A figure typed when an end was pressed is taken first and the press steps from it.
             // Left in the store, it would be committed over the stepped value when the edit lets go.
-            let typed = ui.data_mut(|d| d.remove_temp::<Draft>(response.id.with("buf")));
-            if let Some(typed) = typed.and_then(|d| d.typed()) {
+            let typed = crate::interaction::load::<Draft>(
+                ui.ctx(),
+                response.id.with("buf"),
+                self.enabled && ui.is_enabled(),
+                crate::interaction::Lifetime::Mounted,
+            );
+            let _ = crate::interaction::take::<Draft>(ui.ctx(), response.id.with("buf"));
+            if let Some(typed) = typed
+                .filter(|d| {
+                    d.seed_bits == self.value.to_bits()
+                        && d.seed == figure(*self.value, self.decimals)
+                })
+                .and_then(|d| d.typed())
+            {
                 *self.value = clamp(typed, &self.range);
             }
             *self.value = clamp(self.stepped(moved > 0.0), &self.range);
@@ -280,23 +292,31 @@ impl<'a> NumberField<'a> {
     ) -> bool {
         let key = id.with("buf");
         let shown = figure(*self.value, self.decimals);
-        if !self.enabled {
+        if !self.enabled || !ui.is_enabled() {
+            let _ = crate::interaction::take::<Draft>(ui.ctx(), key);
+            crate::interaction::forget_focus(ui.ctx(), id.with("edit"));
             if !painted {
                 paint_figure(ui.painter(), cx, cell, &shown, ink.figure);
             }
             return false;
         }
-        let mut draft = ui
-            .data(|d| d.get_temp::<Draft>(key))
-            .unwrap_or_else(|| Draft {
-                seed: shown.clone(),
-                text: shown.clone(),
-            });
+        let mut draft = crate::interaction::load::<Draft>(
+            ui.ctx(),
+            key,
+            self.enabled && ui.is_enabled(),
+            crate::interaction::Lifetime::Mounted,
+        )
+        .filter(|draft| draft.seed_bits == self.value.to_bits() && draft.seed == shown)
+        .unwrap_or_else(|| Draft {
+            seed_bits: self.value.to_bits(),
+            seed: shown.clone(),
+            text: shown.clone(),
+        });
         let buf = &mut draft.text;
         let font = egui::FontId::proportional(cx.theme.metrics.type_scale.body);
         let edit = egui::TextEdit::singleline(buf)
             .id(id.with("edit"))
-            .horizontal_align(egui::Align::Center)
+            .align(egui::Align2::CENTER_TOP)
             .font(font.clone())
             // No frame of its own: the pill under it is already the field's boundary, and a
             // second one inside it would read as a box in a box.
@@ -321,15 +341,18 @@ impl<'a> NumberField<'a> {
         }
         .ask(ui.ctx(), response.id);
         if response.has_focus() {
-            ui.data_mut(|d| d.insert_temp(key, draft));
+            crate::interaction::store(ui.ctx(), key, draft);
             return false;
         }
         // Not focused: the store is stale by definition, so it goes, and whatever was typed is
         // committed once. Nothing typed commits nothing — the figure is the value rounded to
         // the decimals shown, and parsing it back would round the setpoint. A figure that
         // does not parse reverts — see the module doc.
-        let had = ui.data_mut(|d| d.remove_temp::<Draft>(key));
-        let Some(typed) = had.and_then(|d| d.typed()) else {
+        let had = crate::interaction::take::<Draft>(ui.ctx(), key);
+        let Some(typed) = had
+            .filter(|d| d.seed_bits == self.value.to_bits() && d.seed == shown)
+            .and_then(|d| d.typed())
+        else {
             return false;
         };
         let next = clamp(typed, &self.range);
@@ -347,6 +370,7 @@ const GRID_EPS: f64 = 1e-9;
 /// untouched commits nothing.
 #[derive(Debug, Clone, Default)]
 struct Draft {
+    seed_bits: u64,
     seed: String,
     text: String,
 }

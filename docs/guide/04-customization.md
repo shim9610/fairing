@@ -3,14 +3,20 @@
 ## 0. Principle
 
 The look of a fairing shell is **decided in code, at build time.** There is no runtime theme
-editor and no drag-a-widget-here mode, and there will not be one. A machine's screen has to look
+editor or drag-a-widget-here mode. A machine's screen has to look
 the way it looks when it ships, and the person who decides that is the integrator, not the end
 user.
 
-So customization splits into two layers. The config file (`fairing.toml`) only handles
-**placement and assignment** — which item in which slot, which gate at which level. Changing the
-drawing itself is always code. You do not have to fork or patch the crate: you hook into
-`Shell::builder(..)`.
+The config file (`fairing.toml`) selects placement, gate assignments, palette,
+motion and supported sizes. Custom drawing implementations live in code and can be
+supplied without forking the crate.
+
+The global painter/layout hooks below are for ordinary `ShellBuilder::build`.
+`build_protected` rejects untyped hooks, widget-painter bundles, image loaders and
+procedural wallpapers before setup. For protected custom drawing, implement
+`Element + PermissionBound` and register a typed tree with `add_elements`; see
+[typed integration](../session-tokens.md#typed-permission-requirements). Themes,
+metrics and other data-only configuration remain supported.
 
 | Hook | What it changes | Section |
 |---|---|---|
@@ -143,6 +149,10 @@ from `MetricsSpec` in physical units each frame rather than being fixed
 
 ### 1.3 MotionTokens
 
+The A1–A7 labels used below are the repository's `motion_lab` groups: shade,
+home/task, push/pop, pages, on-screen keyboard, toasts/banners and widgets,
+respectively. They are local example labels, not an external classification.
+
 `MotionTokens` is `[motion]` turned into motion-system types. The value table and how to tune
 them are in §8.
 
@@ -263,10 +273,8 @@ the whole cell, which is larger than the puck. `note_icon` is not pressable. `cl
 `footer_button`, though, **have hit areas equal to their drawing**, so shrinking these shrinks
 what can be pressed.
 
-**Why these are separate.** These twenty used to be `const`s inside their files. That meant
-changing one button's padding forced you up to rung 5 of the override ladder (the painter) and
-made you take over the drawing entirely — except **widgets have no painter hook at all**, and
-notifications had none until §10.2 arrived. There was no path.
+`ComponentSpec` changes these sizes without replacing a painter. For custom drawing,
+widget painters are available in §10.8 and notification painters in §10.2.
 
 **The entrance is the builder.** There is no `[components]` TOML section yet — `MetricsSpec` is
 in the same state, so the two have the same shape.
@@ -487,7 +495,7 @@ fn nav_bar_painter(ui: &mut egui::Ui, bar: &mut BarCx<'_>) {
         );
         let response = ui.interact(
             cell,
-            egui::Id::new(("device.nav", index)),
+            egui::Id::unique(("device.nav", index)),
             egui::Sense::click(),
         );
         let color = if item.live() {

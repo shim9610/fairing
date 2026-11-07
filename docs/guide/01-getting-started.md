@@ -8,14 +8,18 @@ the desktop, the navigation bar and the gestures; you draw the inside of each
 screen with egui. How it is put together is in
 [architecture](../architecture.md).
 
+The minimal app below uses ordinary `Shell` with legacy level gates. If your device
+requires issuer-owned sessions and typed permission declarations, also read
+[session tokens](../session-tokens.md) before choosing its registration and host APIs.
+
 ## 1. Requirements
 
 | Item | Value | Notes |
 |---|---|---|
-| Rust | 1.95 or newer | The crates' MSRV (`rust-version`). To work on fairing itself, `rust-toolchain.toml` at the repository root pins 1.99 and rustup fetches it |
+| Rust | 1.95 or newer | The crates' minimum supported Rust version (MSRV, `rust-version`). To work on fairing itself, `rust-toolchain.toml` at the repository root pins 1.99 and rustup fetches it |
 | Edition | 2021 | |
-| egui | `0.36` | `fairing` asks for egui 0.36 (any 0.36.x) and re-exports it as `fairing::egui`, so depending on egui directly is **optional** — if you do, ask for the same minor, `egui = "0.36"` |
-| OS | Linux | The main target is Ubuntu Core with `ubuntu-frame` (a Wayland kiosk); `cage` and `weston` are meant to work too. None of the three has been tried on a real device yet — development and CI run under X11 |
+| egui | `0.37` | `fairing` asks for egui 0.37 (any 0.37.x) and re-exports it as `fairing::egui`, so depending on egui directly is **optional** — if you do, ask for the same minor, `egui = "0.37"` |
+| OS | Linux | The main target is Ubuntu Core with `ubuntu-frame` (a Wayland kiosk); `cage` and `weston` are meant to work too. None of the three has been tried on a real device yet — graphical tours run under X11. Selected CPU display and runtime-fault tests also run on Windows |
 | Graphics | OpenGL ES 2 or newer (Mesa/EGL) | The runner uses eframe's `glow` backend. wgpu is not used |
 
 If you use the runner, a feature picks the windowing backend.
@@ -24,6 +28,20 @@ If you use the runner, a feature picks the windowing backend.
 |---|---|
 | Device (Wayland kiosk) | `runner` |
 | Desktop development, X11 included | `runner-x11` — a superset of `runner` plus `eframe/x11`, so the Wayland backend is still in |
+
+The runner explicitly enables `clipboard` and `default_fonts` on eframe 0.37, preserving
+OS copy/paste and bundled fallback faces with eframe's default features disabled. Its
+automatic system-font provider stays disabled; register device fonts through the builder.
+If you supply your own eframe host, choose those features in that host too.
+
+eframe's stalled-Wayland-redraw fallback calls `App::logic`, not `App::ui`. The shell/state
+runners connect it to `Shell::logic*`, keeping commands, backend polling, access deadlines
+and lifecycle requests working without drawing. They deliver events there as well as
+after UI work. The closure-only `runner::run` has no shell to tick automatically.
+
+For code migrating from egui 0.36, use `Id::unique` for the old global `Id::new` calls and
+`Ui::scope_id` for `Ui::id`. Screenshot results now arrive through callbacks instead of
+input events; see [egui's migration notes](https://github.com/emilk/egui/blob/0.37.0/CHANGELOG.md).
 
 After installing `rustup`, check the repository once:
 
@@ -53,7 +71,7 @@ fairing = { git = "https://github.com/shim9610/fairing", features = ["runner"] }
 # Leave it out and use `fairing::egui` - a version mismatch becomes impossible.
 # Put it in and it must be the same minor as fairing's, or you link two copies
 # of egui and the types stop matching.
-# egui = "0.36"
+# egui = "0.37"
 ```
 
 Screen closures take `&mut egui::Ui`, so the egui types have to be reachable.
@@ -61,7 +79,7 @@ Either of these works:
 
 ```rust
 use fairing::egui;          // the re-export - nothing to mismatch
-// use egui;                // a direct dependency, with `egui = "0.36"` in Cargo.toml
+// use egui;                // a direct dependency, with `egui = "0.37"` in Cargo.toml
 ```
 
 ### Feature list
@@ -100,10 +118,14 @@ binary. Put it in the `Cargo.toml` of whatever you ship:
 [profile.release]
 lto = "fat"
 codegen-units = 1
-panic = "abort"
+panic = "unwind"
 strip = true
 opt-level = 3      # for a UI, 3 beats "s"; strip wins the size back
 ```
+
+Use `panic = "unwind"` for runtime callback containment. `panic = "abort"` bypasses
+recovery and terminates the process on a panic; allocator aborts are not unwinds.
+
 
 ## 4. A minimal app
 
@@ -279,6 +301,20 @@ let shell = fairing::Shell::builder(fairing::ShellConfig::default())
 If you already have your own `eframe::App` or another egui host, skip the `runner`
 feature and call `Shell::frame(ui)` once per frame.
 
+To continue shell state processing while eframe withholds UI passes, also call
+`shell.logic(ctx)` in **every** `App::logic` callback, and keep `shell.frame(ui)` in
+`App::ui`. For shared app state, pair `logic_with(ctx, &mut state)` and
+`frame_with(ui, &mut state)`. Take `poll_events()` after either callback: commands and
+authentication can complete while hidden. The UI pass reuses its preceding logic update.
+Logic callbacks use a monotonic wall clock because egui's UI time and input events are
+stale while hidden. Hosts using only `frame` retain the egui input timeline, including
+virtual time in the headless harness. Drawing and animations wait for the next UI pass.
+
+`ProtectedShell` exposes the same `logic*`, `frame*` and `poll_events` hosting
+pattern. The current `runner::run_shell*` and `run_app*` helpers accept ordinary
+`Shell` only; use your own host for a protected shell. Their ordinary `Shell`
+examples cannot be switched to `build_protected` without changing the host.
+
 `ShellEvent` is not a reason to come here. `runner::run_shell` does drop events
 into `log::debug!`, but **`runner::run_shell_with(options, build, on_event)`**
 takes a handler in that spot — `run_shell` is the thin wrapper that supplies a
@@ -377,7 +413,8 @@ it expects to be looking at before each picture: `Act::Expect(Expect::Text("Lamp
 is the same with patience, for what arrives after an animation the shell does not own. A step
 that cannot find its target or an expectation that does not hold is logged with what *was*
 there, the script goes on so one run lists every miss, and the example exits non-zero at the end.
-`tools/tours.sh` runs every tour that way, stills only, and the public repository's CI runs it on every push.
+`tools/tours.sh` runs every tour that way, stills only, and the public repository's
+CI runs it on pull requests and pushes to `main`.
 
 Add `--record` and the tour runs on a fixed 60 Hz clock: each frame is 1/60 s after
 the one before, however long it took to draw, so a software rasteriser records as
@@ -494,9 +531,10 @@ conditions (resolution, icon count, `motion.reduce`) and the table of numbers `b
 runs on the same device: a p50 more than 30 % above an earlier one counts as a regression. p95
 wobbles run to run on shared machines, so re-run two or three times before calling it.
 
-Per-frame heap allocations are not counted. A counting allocator needs
-`unsafe impl GlobalAlloc`, and the workspace is `unsafe_code = "forbid"`. The idle
-desktop p50 is the proxy.
+The bench table does not count per-frame allocations. The separate diagnostic
+allocator example measures process-wide counters and injects actual failures;
+it is not a production feature. Timing alone does not establish whether a render
+path allocates; see [memory limits](../memory-limits.md).
 
 ## 8. Where to go next
 

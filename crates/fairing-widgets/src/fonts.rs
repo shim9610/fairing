@@ -87,11 +87,10 @@ pub const STRONG_FAMILY: &str = "fairing-strong";
 
 /// **Whether this crate's named font families are live on `ctx` yet.**
 ///
-/// `Context::set_fonts` does not apply in the pass it is called from — egui swaps the new
-/// definitions in at the start of the next one. A [`FontId`](egui::FontId) naming a family that is
-/// not yet live is not a fallback, it is a panic inside epaint, so a shell built from *inside* a
-/// frame must not draw in that frame. `Shell` asks this for you; ask it yourself if you drive the
-/// widgets without one.
+/// egui 0.37 applies font definitions immediately before text has been laid out in a pass.
+/// After layout it defers them to the next pass. A shell waits only while its named families
+/// are not installed, rather than drawing missing glyphs. `Shell` checks this for you; ask it
+/// yourself if you drive the widgets without one.
 #[must_use]
 pub fn families_are_live(ctx: &egui::Context) -> bool {
     ctx.fonts(|f| {
@@ -319,20 +318,17 @@ impl FontSet {
     /// Install into egui.
     ///
     /// It runs even for an empty set, because binding [`FontFamilies::Strong`] and
-    /// [`FontFamilies::Display`] is part of the job and epaint panics on an unbound family. An
+    /// [`FontFamilies::Display`] is part of the job, so neither draws replacement glyphs. An
     /// empty set therefore installs egui's own fonts plus those two families pointing at the same
     /// faces — the same render as before, with the weight and display axes in place for anyone who
     /// fills them.
     ///
     /// `set_fonts` rebuilds the glyph atlas and is expensive, so call it **once, at startup**.
-    /// Give it through `fairing_widgets::ShellBuilder::fonts` and the shell calls it once for you.
+    /// Pass it through `fairing::ShellBuilder::fonts` and the shell calls it once for you.
     ///
-    /// **It does not take effect in the pass it is called from.** `Context::set_fonts` stores the
-    /// definitions and egui swaps them in "at the start of the next pass", so until then the live
-    /// set is still the old one — which has no [`STRONG_FAMILY`] and no [`DISPLAY_FAMILY`] in it.
-    /// Ask for one of those in that window and epaint does not fall back, it panics:
-    /// `FontFamily::Name("fairing-strong") is not bound to any fonts`. [`families_are_live`] is the
-    /// question to ask before drawing.
+    /// egui 0.37 installs definitions immediately before text layout in the current pass,
+    /// and otherwise defers them to the next pass. Ask [`families_are_live`] before drawing;
+    /// installation inside a pass does not always require a wait.
     pub fn install(&self, ctx: &egui::Context) {
         ctx.set_fonts(self.definitions());
     }
@@ -343,9 +339,9 @@ impl FontSet {
     /// which family holds which faces — without a `Context`, a glyph atlas or a real font file.
     fn definitions(&self) -> egui::FontDefinitions {
         let mut defs = egui::FontDefinitions::default();
-        // **The strong family is seeded with the regular faces and always bound.** epaint panics
-        // outright on a `FontFamily::Name` with no fonts, so "bold if there is one" cannot be
-        // decided at the call site — it is decided here, once. With no bold registered the family
+        // **The strong family is seeded with regular faces and always bound.** A missing named
+        // family would draw missing-glyph boxes, so its fallback is chosen here, once.
+        // With no bold registered the family
         // holds exactly what `Proportional` holds and every `Theme::strong` draw is unchanged.
         let regular = defs
             .families
@@ -362,7 +358,7 @@ impl FontSet {
                 continue;
             }
             let data = egui::FontData {
-                font: source.bytes.clone(),
+                font: std::sync::Arc::new(source.bytes.clone()),
                 index: source.index,
                 tweak: egui::FontTweak::default(),
             };
@@ -596,10 +592,8 @@ mod tests {
 
     /// **Every named family is bound, even when nothing is registered.**
     ///
-    /// epaint does not fall back on a `FontFamily::Name` it has no fonts for — it panics — so a
-    /// slot that is only *sometimes* bound is a crash waiting for the first shell that fills
-    /// neither. `Strong` and `Display` are both seeded for that reason, and this is the test a
-    /// third slot added later cannot forget.
+    /// Missing named families draw missing-glyph boxes. Both slots are seeded with usable
+    /// faces, and a later slot must preserve that guarantee too.
     #[test]
     fn every_named_family_is_bound_even_with_nothing_registered() {
         let defs = FontSet::default().definitions();

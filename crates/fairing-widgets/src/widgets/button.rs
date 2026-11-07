@@ -38,6 +38,7 @@
 use super::{ButtonLook, HoldLook};
 use crate::cx::WidgetCx as Cx;
 use crate::icons::{IconColor, IconRef, IconStyle};
+use crate::interaction::concrete::HoldPhase;
 use crate::motion::{Easing, Tween};
 use crate::theme::ColorRole;
 use crate::unit::round_u8;
@@ -49,13 +50,6 @@ use std::time::Duration;
 // the long press's completion pop runs on the `press` tween and the cancel reverse on
 // `press_release`, so both follow `[motion.press]` and go instant under `reduce`. They were
 // literals once (120 ms and 80 ms) and kept animating with reduce on.
-/// Long-press ring state: released.
-const RING_IDLE: u8 = 0;
-/// Long-press ring state: being held (not yet 100 %).
-const RING_ARMED: u8 = 1;
-/// Long-press ring state: completion has already been reported.
-const RING_DONE: u8 = 2;
-
 /// The kind of button — **what it is for**, which then settles whether it is filled.
 ///
 /// There are three and there is no fourth. A "tonal" or "text" kind was considered and rejected:
@@ -378,7 +372,7 @@ impl BigButton {
         let drawn = rect.expand(t.press_grow * press);
         // The hold advances whoever draws it.
         let hold = match self.long_press {
-            Some(duration) if self.enabled => Some(hold(ui, cx, id, pressed, duration)),
+            Some(duration) if self.enabled => Some(hold(ui, cx, id, &response, duration)),
             _ => None,
         };
         let focused = response.has_focus();
@@ -557,16 +551,32 @@ struct Hold {
 /// Seeding the entry at 0 on the first frame happens here too — `animate` **puts an id it has
 /// not seen straight on the target**, and this stops a button that first appears
 /// already pressed from completing on that frame.
-fn hold(ui: &egui::Ui, cx: &mut Cx<'_>, id: egui::Id, pressed: bool, duration: Duration) -> Hold {
+fn hold(
+    ui: &egui::Ui,
+    cx: &mut Cx<'_>,
+    id: egui::Id,
+    response: &Response,
+    duration: Duration,
+) -> Hold {
     let ring_id = id.with("ring");
     let state_id = id.with("ring.state");
-    let state = ui.data(|data| data.get_temp::<u8>(state_id));
+    let state = crate::interaction::load::<HoldPhase>(
+        ui.ctx(),
+        state_id,
+        ui.is_enabled(),
+        crate::interaction::Lifetime::Press,
+    );
+    let pressed = crate::interaction::concrete::hold_admitted(
+        state,
+        ui.is_enabled(),
+        crate::interaction::pointer(response),
+    );
     if state.is_none() {
         // A button seen for the first time: the ring is planted at 0.
         cx.animate(ring_id, 0.0, Tween::instant());
-        ui.data_mut(|data| data.insert_temp(state_id, RING_IDLE));
+        crate::interaction::store(ui.ctx(), state_id, HoldPhase::Idle);
     }
-    let state = state.unwrap_or(RING_IDLE);
+    let state = state.unwrap_or(HoldPhase::Idle);
 
     let tween = if pressed {
         Tween {
@@ -579,16 +589,10 @@ fn hold(ui: &egui::Ui, cx: &mut Cx<'_>, id: egui::Id, pressed: bool, duration: D
     let progress = cx.animate(ring_id, if pressed { 1.0 } else { 0.0 }, tween);
     let full = progress >= 1.0 - 1e-4;
 
-    let (next, completed) = match (pressed, full, state) {
-        (false, _, _) => (RING_IDLE, false),
-        (true, false, _) => (RING_ARMED, false),
-        (true, true, RING_ARMED) => (RING_DONE, true),
-        (true, true, other) => (other, false),
-    };
-    if next != state {
-        ui.data_mut(|data| data.insert_temp(state_id, next));
-    }
-    let done = next == RING_DONE;
+    let outcome = crate::interaction::concrete::hold_finish(state, pressed, full);
+    let (next, completed) = (outcome.phase, outcome.completed);
+    crate::interaction::store(ui.ctx(), state_id, next);
+    let done = next == HoldPhase::Done;
     let mut scale = 1.0;
     if progress > 0.0 {
         let pop = cx.animate(

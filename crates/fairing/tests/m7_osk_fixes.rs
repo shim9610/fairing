@@ -331,7 +331,7 @@ fn a_tap_on_empty_space_after_back_does_not_reopen() -> fairing::Result<()> {
     assert!(!h.shell.osk().is_shown(), "back did not close it");
     assert!(
         h.ctx.memory(egui::Memory::focused).is_some(),
-        "precondition: the field keeps its focus after a programmatic back"
+        "Back must retain the active field while hiding only the keyboard"
     );
     let rect = need(field.borrow().rect, "field rect")?;
     let empty = rect.center() + egui::vec2(0.0, 150.0);
