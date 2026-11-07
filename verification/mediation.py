@@ -115,15 +115,18 @@ def reachable(roots,edges):
 
 def solve(profile,scope,roots,nodes,edges,sites):
     ids={node:i for i,node in enumerate(sorted(nodes))}
+    # IDs are injective in this finite graph. This changes no path semantics;
+    # a 32-bit Datalog universe needlessly materializes billions of unused IDs.
+    width=max(1,(len(ids)-1).bit_length())
     # Finite Horn clauses compute the least reachable set. Edges overapproximate
     # branch feasibility/dispatch: SAT is a candidate, not a concrete Rust trace.
     lines=['(set-option :fp.engine datalog)','(set-option :timeout 120000)',
-           '(define-sort N () (_ BitVec 32))','(declare-rel Edge (N N))','(declare-rel Reach (N))','(declare-rel Sink (N))','(declare-rel Bad ())','(declare-var x N)','(declare-var y N)',
+           f'(define-sort N () (_ BitVec {width}))','(declare-rel Edge (N N))','(declare-rel Reach (N))','(declare-rel Sink (N))','(declare-rel Bad ())','(declare-var x N)','(declare-var y N)',
            '(rule (=> (and (Reach x) (Edge x y)) (Reach y)))','(rule (=> (and (Reach x) (Sink x)) Bad))']
-    for a,b in sorted(edges):lines.append(f'(rule (Edge (_ bv{ids[a]} 32) (_ bv{ids[b]} 32)))')
-    for node in roots:lines.append(f'(rule (Reach (_ bv{ids[node]} 32)))')
+    for a,b in sorted(edges):lines.append(f'(rule (Edge (_ bv{ids[a]} {width}) (_ bv{ids[b]} {width})))')
+    for node in roots:lines.append(f'(rule (Reach (_ bv{ids[node]} {width})))')
     for node in sites:
-        if node[0]!=GUARD:lines.append(f'(rule (Sink (_ bv{ids[node]} 32)))')
+        if node[0]!=GUARD:lines.append(f'(rule (Sink (_ bv{ids[node]} {width})))')
     lines.append('(query Bad)')
     path=OUT/profile/(scope+'.smt2');path.write_text('\n'.join(lines)+'\n')
     z3=install.tool('verus').parent/'z3'

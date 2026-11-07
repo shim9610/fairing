@@ -55,7 +55,9 @@ Only its source-proved kernel caller may create that cut; an adapter that calls 
 with a literal `true` is rejected.
 Horn reachability must report `unsat` for protected payload entry outside that
 cut, and an independent traversal must agree. Loops and recursion have no path
-length enumeration bound. Every monitor helper is an analysis root, including
+length enumeration bound. Solver identifiers use the smallest bit width that
+uniquely represents every compiled node; unused identifier values add no edges
+and this does not bound path length. Every monitor helper is an analysis root, including
 private helpers. Bridge closures may contain at most one protected entry and
 cannot cycle through it. A new adapter that duplicates or loops a payload call
 is rejected; composition uses separately mediated operations. Adding an operation
