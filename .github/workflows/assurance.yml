@@ -83,6 +83,9 @@ jobs:
       - name: Check shared carrier confinement in both feature profiles
         if: always()
         run: python3 verification/central_mediation.py --skip-build
+      - name: Connect construction, scoped ownership and carrier proof receipts
+        if: always()
+        run: python3 verification/global_mediation.py --skip-build --prove
       - name: Reject compiled production bypass mutations
         if: always()
         run: python3 verification/central_mediation_controls.py
@@ -92,11 +95,15 @@ jobs:
           name: callback-mediation-evidence
           path: |
             target/mediation/summary.json
+            target/mediation/connected-obligations.json
             target/mediation/concrete-probe.log
             target/mediation/all/
             target/mediation/minimal/
             target/mediation/fixture/
             target/assurance/central-mediation/confinement.json
+            target/assurance/central-mediation/connections.json
+            target/assurance/central-mediation/construction/
+            target/assurance/central-mediation/carriers/
             target/assurance/central-mediation/controls/
           retention-days: 14
 
@@ -109,7 +116,10 @@ jobs:
       - name: Install pinned Kani and Verus
         run: python3 verification/install.py proofs
       - name: Prove common admission and arbitrary ancestor paths
-        run: python3 verification/central_proofs.py
+        run: |
+          python3 verification/central_proofs.py
+          python3 verification/verus/construction.py
+          python3 verification/carrier_proofs.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

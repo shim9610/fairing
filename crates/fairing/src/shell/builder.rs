@@ -27,6 +27,9 @@
 //! (`screen` / `action` / `status_item` / `nav_item`), `Wallpaper::Painter` and
 //! `register_icon_painter`. There is a real example in `examples/custom_chrome.rs`.
 
+mod protected;
+pub(super) use protected::CallbackFreeBuilder;
+
 use super::{Shell, ShellHandle};
 use crate::access::{Access, Authenticator};
 use crate::chrome::{BarCx, BarPainter, NavLayout};
@@ -257,7 +260,7 @@ impl ShellBuilder {
             ));
         }
         self.validate_protected_hooks()?;
-        self.build(ctx).map(super::ProtectedShell::new)
+        super::ProtectedShell::new(CallbackFreeBuilder::from_builder(self)?, ctx)
     }
 
     /// Opt in to fault guidance and an optional request button. No restart policy is installed.

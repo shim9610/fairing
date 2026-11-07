@@ -17,6 +17,7 @@ fn carrier(tcx: TyCtxt<'_>, def: rustc_hir::def_id::DefId) -> bool {
             | "fairing::access::mediation::ScreenHandle"
             | "fairing::access::mediation::FactoryCallback"
             | "fairing::access::mediation::element::ElementHandle"
+            | "fairing::access::mediation::declared::Declared"
             | "fairing::access::mediation::protected::Protected"
     )
 }
@@ -138,6 +139,58 @@ pub fn protocol_references<'tcx>(
 fn identity(tcx: TyCtxt<'_>, def: rustc_hir::def_id::DefId) -> String {
     super::metadata::definition_path(tcx, def)
 }
+
+pub fn type_shape(tcx: TyCtxt<'_>, value: ty::Ty<'_>) -> String {
+    match value.kind() {
+        ty::Pat(inner, _) => type_shape(tcx, *inner),
+        ty::Adt(def, args) => format!(
+            "{{\"kind\":\"adt\",\"id\":{},\"arguments\":{}}}",
+            super::quote(&identity(tcx, def.did())),
+            super::array(args.iter().enumerate().filter_map(|(index, arg)| {
+                arg.as_type()
+                    .map(|ty| format!("{{\"index\":{},\"value\":{}}}", index, type_shape(tcx, ty)))
+            }))
+        ),
+        ty::Ref(_, inner, mutability) => format!(
+            "{{\"kind\":\"reference\",\"mutable\":{},\"value\":{}}}",
+            mutability.is_mut(),
+            type_shape(tcx, *inner)
+        ),
+        ty::RawPtr(inner, _) => format!(
+            "{{\"kind\":\"pointer\",\"value\":{}}}",
+            type_shape(tcx, *inner)
+        ),
+        ty::Slice(inner) | ty::Array(inner, _) => format!(
+            "{{\"kind\":\"sequence\",\"value\":{}}}",
+            type_shape(tcx, *inner)
+        ),
+        ty::Tuple(items) => format!(
+            "{{\"kind\":\"tuple\",\"values\":{}}}",
+            super::array(items.iter().map(|ty| type_shape(tcx, ty)))
+        ),
+        ty::Param(parameter) => format!("{{\"kind\":\"parameter\",\"index\":{}}}", parameter.index),
+        ty::Alias(_, alias) if alias.kind.try_to_projection().is_some() => format!(
+            "{{\"kind\":\"projection\",\"id\":{},\"values\":{}}}",
+            super::quote(&identity(
+                tcx,
+                alias.kind.try_to_projection().unwrap().into()
+            )),
+            super::array(alias.args.types().map(|ty| type_shape(tcx, ty)))
+        ),
+        ty::Dynamic(..) => format!(
+            "{{\"kind\":\"dynamic\",\"protocols\":{}}}",
+            super::array(protocols(tcx, value).iter().map(|id| super::quote(id)))
+        ),
+        ty::FnPtr(..) | ty::FnDef(..) | ty::Closure(..) => "{\"kind\":\"callable\"}".into(),
+        ty::Bool | ty::Char | ty::Int(..) | ty::Uint(..) | ty::Float(..) | ty::Str | ty::Never => {
+            "{\"kind\":\"scalar\"}".into()
+        }
+        _ => format!(
+            "{{\"kind\":\"unresolved\",\"type\":{}}}",
+            super::quote(&value.to_string())
+        ),
+    }
+}
 fn protocols(tcx: TyCtxt<'_>, value: ty::Ty<'_>) -> Vec<String> {
     let mut found = Vec::new();
     for argument in value.walk() {
@@ -163,8 +216,12 @@ fn protocols(tcx: TyCtxt<'_>, value: ty::Ty<'_>) -> Vec<String> {
 }
 pub fn schema(tcx: TyCtxt<'_>) -> String {
     let mut records = Vec::new();
-    for local in tcx.iter_local_def_id() {
-        let def = local.to_def_id();
+    let mut pending: Vec<_> = tcx.iter_local_def_id().map(|id| id.to_def_id()).collect();
+    let mut done = std::collections::HashSet::new();
+    while let Some(def) = pending.pop() {
+        if !done.insert(def) {
+            continue;
+        }
         if !matches!(
             tcx.def_kind(def),
             DefKind::Struct | DefKind::Enum | DefKind::Union
@@ -177,19 +234,25 @@ pub fn schema(tcx: TyCtxt<'_>) -> String {
         };
         let fields = adt.all_fields().map(|field| {
             let value = field.ty(tcx, args).skip_norm_wip();
+            for argument in value.walk() {
+                if let Some(value) = argument.as_type() {
+                    if let ty::Adt(dependency,_) = value.kind() { pending.push(dependency.did()); }
+                }
+            }
             format!(
-                "{{\"id\":{},\"type\":{},\"visibility\":{},\"protocols\":{},\"raw_protocols\":{}}}",
+                "{{\"id\":{},\"type\":{},\"visibility\":{},\"protocols\":{},\"raw_protocols\":{},\"shape\":{}}}",
                 super::quote(&identity(tcx, field.did)),
                 super::quote(&value.to_string()),
                 super::quote(&visibility(tcx, field.did)),
                 super::array(protocols(tcx, value).iter().map(|p| super::quote(p))),
-                super::array(raw_protocols(tcx, value).iter().map(|p| super::quote(p)))
+                super::array(raw_protocols(tcx, value).iter().map(|p| super::quote(p))),type_shape(tcx,value)
             )
         });
         records.push(format!(
-            "{{\"id\":{},\"visibility\":{},\"fields\":{}}}",
+            "{{\"id\":{},\"visibility\":{},\"local\":{},\"fields\":{}}}",
             super::quote(&identity(tcx, def)),
             super::quote(&visibility(tcx, def)),
+            def.is_local(),
             super::array(fields)
         ));
     }
@@ -334,6 +397,32 @@ pub fn constructions<'tcx>(tcx: TyCtxt<'tcx>, body: &rustc_middle::mir::Body<'tc
                 }
                 _ => ("other", Vec::new(), None, None),
             };
+            let operand_facts = match &assignment.1 {
+                Rvalue::Use(operand, _) | Rvalue::Cast(_, operand, _) => {
+                    vec![operand_value(tcx, body, operand)]
+                }
+                Rvalue::Ref(_, _, place) | Rvalue::CopyForDeref(place) => {
+                    vec![place_value(tcx, body, *place)]
+                }
+                Rvalue::Aggregate(_, operands) => operands
+                    .iter()
+                    .map(|operand| operand_value(tcx, body, operand))
+                    .collect(),
+                _ => Vec::new(),
+            };
+            let closure = if let Rvalue::Aggregate(kind, _) = &assignment.1 {
+                if let mir::AggregateKind::Closure(def, _) = &**kind {
+                    Some(format!(
+                        "{}::{}",
+                        tcx.crate_name(def.krate),
+                        tcx.def_path_str(*def)
+                    ))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
             let mut fields = Vec::new();
             if let Rvalue::Aggregate(kind, operands) = &assignment.1 {
                 if let mir::AggregateKind::Adt(def, index, ..) = &**kind {
@@ -352,8 +441,8 @@ pub fn constructions<'tcx>(tcx: TyCtxt<'tcx>, body: &rustc_middle::mir::Body<'tc
                     }
                 }
             }
-            found.push(format!("{{\"block\":{},\"destination\":{},\"kind\":{},\"values\":{},\"owner\":{},\"variant\":{},\"fields\":{},\"written_fields\":{}}}",
-                bb.as_usize(),super::quote(&format!("{destination:?}")),super::quote(kind),super::array(values.iter().map(|v|super::quote(v))),owner.as_deref().map(super::quote).unwrap_or_else(||"null".into()),variant.as_deref().map(super::quote).unwrap_or_else(||"null".into()),super::array(fields),super::array(written_fields.map(|field|super::quote(&field)))));
+            found.push(format!("{{\"block\":{},\"destination\":{},\"kind\":{},\"values\":{},\"owner\":{},\"variant\":{},\"fields\":{},\"written_fields\":{},\"operand_facts\":{},\"destination_value\":{},\"closure\":{}}}",
+                bb.as_usize(),super::quote(&format!("{destination:?}")),super::quote(kind),super::array(values.iter().map(|v|super::quote(v))),owner.as_deref().map(super::quote).unwrap_or_else(||"null".into()),variant.as_deref().map(super::quote).unwrap_or_else(||"null".into()),super::array(fields),super::array(written_fields.map(|field|super::quote(&field))),super::array(operand_facts),place_value(tcx,body,*destination),closure.as_deref().map(super::quote).unwrap_or_else(||"null".into())));
         }
     }
     super::array(found)
@@ -380,4 +469,70 @@ pub fn callable_parameters(tcx: TyCtxt<'_>, def: rustc_hir::def_id::DefId) -> Ve
             Some(parameter.index)
         })
         .collect()
+}
+
+pub fn place_value<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    body: &rustc_middle::mir::Body<'tcx>,
+    place: rustc_middle::mir::Place<'tcx>,
+) -> String {
+    use rustc_middle::mir::ProjectionElem;
+    let projections = place
+        .iter_projections()
+        .map(|(base, projection)| match projection {
+            ProjectionElem::Deref => "{\"kind\":\"deref\"}".to_owned(),
+            ProjectionElem::Field(index, _) => {
+                let base_ty = base.ty(&body.local_decls, tcx);
+                let field = match base_ty.ty.kind() {
+                    ty::Adt(def, _) => Some(identity(
+                        tcx,
+                        base_ty
+                            .variant_index
+                            .map(|variant| def.variant(variant).fields[index].did)
+                            .unwrap_or_else(|| def.non_enum_variant().fields[index].did),
+                    )),
+                    _ => None,
+                };
+                format!(
+                    "{{\"kind\":\"field\",\"index\":{},\"id\":{}}}",
+                    index.as_usize(),
+                    field
+                        .as_deref()
+                        .map(super::quote)
+                        .unwrap_or_else(|| "null".into())
+                )
+            }
+            ProjectionElem::Downcast(_, index) => {
+                format!("{{\"kind\":\"downcast\",\"index\":{}}}", index.as_usize())
+            }
+            ProjectionElem::Index(..) | ProjectionElem::ConstantIndex { .. } => {
+                "{\"kind\":\"index\"}".into()
+            }
+            _ => "{\"kind\":\"other\"}".into(),
+        });
+    format!(
+        "{{\"kind\":\"place\",\"local\":{},\"projections\":{},\"shape\":{}}}",
+        place.local.as_usize(),
+        super::array(projections),
+        type_shape(tcx, place.ty(&body.local_decls, tcx).ty)
+    )
+}
+
+pub fn operand_value<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    body: &rustc_middle::mir::Body<'tcx>,
+    operand: &rustc_middle::mir::Operand<'tcx>,
+) -> String {
+    match operand {
+        rustc_middle::mir::Operand::Copy(place) | rustc_middle::mir::Operand::Move(place) => {
+            place_value(tcx, body, *place)
+        }
+        rustc_middle::mir::Operand::Constant(..) => format!(
+            "{{\"kind\":\"constant\",\"objects\":{},\"literal\":{},\"shape\":{}}}",
+            callable_objects(tcx, operand.ty(&body.local_decls, tcx)),
+            super::quote(&format!("{operand:?}")),
+            type_shape(tcx, operand.ty(&body.local_decls, tcx))
+        ),
+        _ => "{\"kind\":\"unknown\"}".into(),
+    }
 }

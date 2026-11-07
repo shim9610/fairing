@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 
 import central_mediation as c
+import global_mediation as g
 import mediation as m
 
 ROOT = m.ROOT
@@ -40,6 +41,30 @@ def main():
          '\nimpl ActionCallback { pub(crate) fn proof_external_bypass(&mut self, cx: &mut Cx<\'_>) { let _ = Some(cx).map(&mut *self.body); } }\n', 'unguarded-payload-entry'),
         ('external-wrapped-callback', 'crates/fairing/src/access/mediation.rs', None,
          '\nimpl ActionCallback { pub(crate) fn proof_external_bypass(&mut self, cx: &mut Cx<\'_>) { let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (self.body)(cx))); } }\n', 'unguarded-payload-entry'),
+        ('nested-payload-extraction', 'crates/fairing/src/access/mediation.rs', None,
+         '\nstruct ProofPayload { callback: Box<dyn FnMut(&mut Cx<\'_>)> }\nimpl ActionCallback { pub(crate) fn proof_extract(self) -> ProofPayload { ProofPayload { callback: self.body } } }\n', 'executable-kernel-export'),
+        ('write-payload-through-app-borrow', 'crates/fairing/src/access/mediation.rs', None,
+         '\nimpl ActionCallback { pub(crate) fn proof_park(self, cx: &mut Cx<\'_>) { if let Some(slot) = cx.app_mut::<Option<Box<dyn FnMut(&mut Cx<\'_>)>>>() { *slot = Some(self.body); } } }\n', 'executable-payload-write-through-borrow'),
+        ('generic-helper-payload-export', 'crates/fairing/src/access/mediation.rs', None,
+         '\nimpl<T: ?Sized> Callback<T> { pub(crate) fn proof_park(self, slot: &mut Option<Box<T>>) { proof_sink(self.body, slot); } }\nfn proof_sink<T: ?Sized>(body: Box<T>, slot: &mut Option<Box<T>>) { *slot = Some(body); }\n', 'executable-payload-write-through-borrow'),
+        ('unclassified-generic-owner', 'crates/fairing/src/access/mediation.rs', None,
+         '\nstruct ProofOpaque<T> { payload: T }\n', 'unclassified-executable-kernel-storage'),
+        ('captured-payload-export', 'crates/fairing/src/access/mediation.rs', None,
+         '\nimpl<T: ?Sized> Callback<T> { pub(crate) fn proof_park(self, slot: &mut Option<Box<T>>) { let _ = Some(self.body).map(|body| { *slot = Some(body); }); } }\n', 'executable-payload-write-through-borrow'),
+        ('retain-untyped-global-hook', 'crates/fairing/src/shell/builder/protected.rs',
+         'status_bar_painter: None, status_bar_layout: None,',
+         'status_bar_painter: Some(Box::new(|_, _| {})), status_bar_layout: None,', 'untyped-hook-not-cleared'),
+        ('expose-construction-capability', 'crates/fairing/src/shell/builder/protected.rs',
+         'struct CallbackFreeWallpaper(Wallpaper);', 'struct CallbackFreeWallpaper(pub(crate) Wallpaper);', 'construction-capability-field-visible'),
+        ('restore-global-icon-alias', 'crates/fairing/src/screen/cx.rs',
+         'icons: &mut icons,', 'icons: &mut *self.icons,', 'scoped-resource-aliases-global'),
+        ('wrong-context-grant', 'crates/fairing/src/screen/cx.rs',
+         'self.access.allows(gate)', 'self.access.allows(&Gate::borrowed("public"))', 'context-observer-binding'),
+        ('hide-protected-mode', 'crates/fairing/src/access/mod.rs',
+         '        self.mediation_required\n', '        false\n', 'authority-boolean-observer-binding'),
+        ('scope-constructor-installs-callback', 'crates/fairing-widgets/src/widgets/painters.rs',
+         '    pub fn new() -> Self {\n        Self::default()\n    }',
+         '    pub fn new() -> Self {\n        Self::default().button(|_, _| {})\n    }', 'scoped-resource-aliases-global'),
     ]
     results = []
     with tempfile.TemporaryDirectory(prefix='central-controls-', dir=ROOT / 'target') as temporary:
@@ -77,10 +102,14 @@ def main():
                 m.graph('all')
                 data = [json.loads((m.OUT / 'all' / (crate + '.json')).read_text()) for crate in m.CRATES]
                 outcome = c.analyze(data)
+                capabilities = g.capability_check(data)
+                exports, _ = g.payload_boundaries(data, outcome)
+                outcome['connected_errors'] = capabilities['errors'] + exports
                 kinds = {error['kind'] for error in outcome['errors']}
+                kinds.update(error['kind'] for error in outcome['connected_errors'])
                 if outcome['unguarded_payload_entries']:
                     kinds.add('unguarded-payload-entry')
-                assert outcome['status'] == 'rejected' and expected in kinds, (label, outcome)
+                assert (outcome['status'] == 'rejected' or outcome['connected_errors']) and expected in kinds, (label, outcome)
                 (OUT / (label + '.json')).write_text(json.dumps(outcome, indent=2) + '\n')
                 shutil.copy2(m.OUT / 'all/compiler.log', OUT / (label + '-compiler.log'))
                 results.append({'case': label, 'status': 'compiled-and-rejected', 'reason': expected})

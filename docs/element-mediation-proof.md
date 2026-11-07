@@ -36,6 +36,10 @@ receive explicit library requirements. Untyped global hooks remain rejected by
 | Every ancestor is checked | Verus verifies the unchanged production ancestor-walk body with ghost invariants | Arbitrary finite depth; one stable observation interval and normalized grant-identity contract |
 | Opaque protocol ownership and entry cut | Compiler-owned fields, visibility, method-item references, return types and callable substitutions in both feature profiles | Registered-payload confinement; not complete arbitrary heap/erasure analysis |
 | Bypass checker rejects new routes | Compiled production mutations in an isolated checkout | Direct calls, raw storage, raw/generic extraction, field exposure, an unguarded adapter and discarded/overwritten context ancestry |
+| Protected construction contains no untyped hook | Compiler checks a private callback-free builder and its field conversions; Verus checks the production recursive wallpaper predicate and validated constructor | Host interfaces and platform resource implementations remain trusted; later noninstallation is separate |
+| Scoped resources borrow the original owner | Compiler checks every actual scoped `Cx` field and callback-empty icon/widget constructors | Authority, app and backend borrows are preserved; extension stores are fresh |
+| Factory result retains its requirement | Kani checks unchanged production `FactoryCallback::instance` and `ScreenHandle::invoke` bodies | Shared live authority can change inside the factory; post-factory admission must still hold |
+| Executable payloads cannot be exported before admission | Deep compiler type expansion, actual call arguments and writes through borrows | Explicit standard ownership-container contracts; arbitrary erasure/receiver provenance is not a whole-program theorem |
 
 The ancestor proof has no depth, child-count or permission-catalog enumeration.
 Dropping the parent during construction, or removing an ancestor step, grant check,
@@ -52,14 +56,17 @@ the admission cut.
 
 ## Remaining whole-library obligations
 
-Complete mediation remains **not proved**. The strict global gate remains nonzero.
-The outstanding connection includes protected construction and noninstallation of
-legacy hooks, complete payload provenance through type erasure and indirect
-function pointers, factory/binding data refinement, and the concrete authority
-observation contract. The production ancestor proof establishes the walk under its
-context contract; it does not prove arbitrary concurrent or stateful narrowing-policy behavior
-or the Rust atomic memory model. Compact floating-point geometry is covered by
-product regressions, not an unbounded layout theorem.
+Complete mediation remains **not proved**. The strict global gate consumes the
+connected compiler/proof report and remains nonzero for its unresolved obligations.
+Protected construction, scoped ownership, deep exports and factory data refinement
+are connected. Remaining work is protected-root legacy-hook preservation with
+complete receiver provenance, and refinement of the concrete authority observers
+to the ancestor proof's stable-interval contract. The context-insensitive graph
+merges generic callback targets from different callers; its remaining candidates
+are not concrete bypasses and are not certified safe. Stateful narrowing policies
+and concurrent issuer observations must not be treated as an immutable grant set.
+Compact floating-point geometry is covered by product regressions, not an
+unbounded layout theorem.
 
 Authenticators/backends and arbitrary effects inside an admitted application body
 remain trusted. The guarantee concerns admission to library-managed callbacks;
@@ -72,7 +79,8 @@ python3 verification/install.py proofs
 python3 verification/central_proofs.py
 python3 verification/central_mediation.py
 python3 verification/central_mediation_controls.py
-# The whole-library claim still rejects, retaining its diagnostic inventory.
+python3 verification/global_mediation.py --skip-build --prove
+# The whole-library claim still rejects for explicit undischarged obligations.
 python3 verification/mediation.py --require-proved
 ```
 

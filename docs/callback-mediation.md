@@ -20,6 +20,13 @@ hook execution. Exhaustive builder/hook field matches require review when fields
 are added. Both branches of nested themed wallpapers are inspected; data-only
 wallpapers remain supported.
 
+Successful validation now consumes a private callback-free builder rather than
+passing a general-purpose builder into the protected shell. Compiler facts check
+its recursive field types, private constructors, data preservation, cleared hook
+slots and validated wallpaper conversion. The production wallpaper predicate has
+an unbounded recursive Verus proof. This establishes construction; it does not
+by itself establish that no later operation can install an untyped hook.
+
 Application UI enters through `Protected<P, D>` declarations. Legacy `build`
 retains unmediated host customization. Authenticators and host backends remain
 trusted integrations; requiring an authenticated session before calling the

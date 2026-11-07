@@ -19,10 +19,14 @@ pub struct ProtectedShell {
 }
 
 impl ProtectedShell {
-    pub(super) fn new(mut inner: Shell) -> Self {
+    pub(super) fn new(
+        builder: super::builder::CallbackFreeBuilder,
+        ctx: &egui::Context,
+    ) -> crate::Result<Self> {
+        let mut inner = builder.build(ctx)?;
         inner.access.require_mediation();
         inner.registry.bind_initial_library_requirements();
-        Self { inner }
+        Ok(Self { inner })
     }
 
     /// Register a declaration with its mandatory requirement. The binding overrides

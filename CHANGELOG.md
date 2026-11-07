@@ -11,6 +11,10 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Added
 
+- Compiler-bound callback-free protected construction, full scoped-context field
+  ownership checks, deep payload export checks and production factory refinement.
+  Connected proof receipts identify the remaining whole-library obligations and
+  keep the strict mediation gate nonzero until those obligations are discharged.
 - Shared admission kernel with opaque screen/factory/action/chrome/tile/element
   carriers, automatically inherited ancestor requirements, compiler confinement
   controls and an unbounded production ancestor-walk proof. Complete whole-library

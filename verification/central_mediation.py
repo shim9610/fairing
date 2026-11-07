@@ -15,7 +15,15 @@ import mediation as m
 KERNEL = 'fairing::access::mediation::'
 PROTOCOLS = {'fairing::screen::Screen', 'fairing::elements::Element'}
 FUNCTIONS = {'core::ops::function::Fn', 'core::ops::function::FnMut', 'core::ops::function::FnOnce'}
-CARRIERS = {KERNEL + name for name in ('Callback', 'FactoryCallback', 'ScreenHandle', 'element::ElementHandle', 'protected::Protected')}
+CARRIERS = {KERNEL + name for name in ('Callback', 'FactoryCallback', 'ScreenHandle', 'element::ElementHandle', 'declared::Declared', 'protected::Protected')}
+CARRIER_FIELDS = {
+    KERNEL+'Callback': {'body','requirement'},
+    KERNEL+'FactoryCallback': {'body','requirement'},
+    KERNEL+'ScreenHandle': {'body','factory','requirement'},
+    KERNEL+'element::ElementHandle': {'body'},
+    KERNEL+'declared::Declared': {'body','binding'},
+    KERNEL+'protected::Protected': {'body','binding'},
+}
 
 
 def kernel(name):
@@ -101,7 +109,7 @@ def context_contracts(bodies):
     return errors, scopes
 
 
-def analyze(data):
+def analyze(data, root_filter=kernel_entry):
     bodies = {}
     for inventory in data:
         for body in inventory['bodies']:
@@ -115,8 +123,15 @@ def analyze(data):
     errors.extend(context_errors)
     stores = []
     legacy_stores = []
+    observed_carriers=set()
     for inventory in data:
         for owner in inventory['storage_schema']:
+            if not owner['local']:
+                continue
+            if owner['id'] in CARRIERS:
+                observed_carriers.add(owner['id'])
+                if {field['id'].rsplit('::',1)[-1] for field in owner['fields']}!=CARRIER_FIELDS[owner['id']]:
+                    errors.append({'kind':'carrier-field-contract','owner':owner['id']})
             for field in owner['fields']:
                 if field['id'] == 'fairing::screen::cx::Cx::authority_path' and field['visibility'] != 'fairing::screen::cx':
                     errors.append({'kind': 'authority-path-field-visibility', 'field': field['id']})
@@ -124,11 +139,15 @@ def analyze(data):
                 if raw & PROTOCOLS and not kernel(owner['id']):
                     errors.append({'kind': 'raw-protocol-storage', 'field': field['id']})
                 if kernel(owner['id']) and field['id'].endswith('::body'):
+                    if owner['id'] not in CARRIERS:
+                        errors.append({'kind':'unclassified-payload-owner','owner':owner['id']})
                     if not field['visibility'].startswith('fairing::access::mediation'):
                         errors.append({'kind': 'payload-field-visibility', 'field': field['id']})
                     stores.append(field['id'])
                 elif raw & FUNCTIONS or 'function-pointer' in raw:
                     legacy_stores.append(field['id'])
+    if observed_carriers!=CARRIERS:
+        errors.append({'kind':'carrier-definition-inventory','missing':sorted(CARRIERS-observed_carriers)})
     references = []
     for name, body in bodies.items():
         for ref in body['protocol_references']:
@@ -194,7 +213,7 @@ def analyze(data):
         if body['closure'] and parent in bodies:
             for index in parameter_indices[name]:
                 constraints.append(((parent, index), (name, index)))
-    roots = {(name, 0) for name, body in bodies.items() if kernel_entry(body)}
+    roots = {(name, 0) for name, body in bodies.items() if root_filter(body)}
     assert roots, 'No callable kernel entry roots'
     for name, _ in roots:
         for index in parameter_indices[name]:
@@ -284,6 +303,7 @@ def analyze(data):
         'errors': errors, 'unguarded_payload_entries': bypasses, 'unsupported_reachable': unsupported_reachable,
         'opaque_payload_fields': stores, 'protocol_references': references, 'kernel_roots': sorted(roots),
         'reachable_blocks_without_admission': len(previous), 'callable_flow_constraints': len(constraints),
+        'pre_admission_blocks': sorted(previous),
         'context_scope_contracts': context_scopes,
         'legacy_callable_fields_requiring_construction_proof': sorted(legacy_stores),
         'global_mediation': 'not-proved',

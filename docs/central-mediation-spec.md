@@ -29,6 +29,13 @@ requirements; registration cannot turn a protected requirement back into legacy.
 Untyped global hooks remain rejected. Their absence and callback-local resources
 are state invariants, not a list of apparently harmless call sites.
 
+Protected construction consumes a private `CallbackFreeBuilder`, whose compiler
+type graph contains only configuration data and explicitly trusted host interfaces.
+The conversion clears every untyped hook slot; the compiler inventory checks those
+assignments and the preservation of data fields. Procedural wallpapers cannot
+enter the private validated wrapper. Its production recursive predicate and
+constructor are verified for arbitrary finite nesting, including inactive themes.
+
 ## Tree representation and induction
 
 A prepared leaf borrows its actual opaque carrier. It does not store an index
@@ -65,13 +72,21 @@ forwarding or ownership obligations keep the strict gate nonzero.
 - [x] All supported registered application payload families use opaque carriers.
 - [x] All registered payload operations use the common invocation primitive;
   standard operation adapters are generated.
-- [ ] Raw payload extraction and new bypass calls fail compiler controls.
+- [x] Raw payload extraction and new bypass calls fail compiler controls.
 - [x] Actual recursive plans preserve identity through borrowed carriers.
 - [ ] Arbitrary-tree authority/requirement invariants are proved compositionally.
 - [ ] The global checker connects all protected roots and carrier operations,
   with no unclassified application callback/storage/forwarding obligation.
 - [ ] The existing strict mediation gate succeeds for the stated property;
   deliberately broken guards, bindings, factories and escapes fail semantically.
+
+`global_mediation.py` joins fresh production admission, ancestor-path,
+construction and factory receipts to both compiler feature inventories. It checks
+all scoped-context fields, deep return types and pre-admission payload transfers,
+including writes through application-state borrows. The strict gate consumes this
+report. A successful connection check does not discharge the remaining
+protected-root legacy-hook preservation and concrete authority-observer refinement
+obligations; each remains explicitly false in the generated obligation report.
 
 Do not replace these criteria with new small-harness counts, mark unknown paths
 safe, or label an abstract graph theorem a complete runtime proof.

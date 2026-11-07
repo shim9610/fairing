@@ -137,9 +137,10 @@ impl Callbacks for Inventory {
             let body = tcx.optimized_mir(def);
             let locals = array(body.local_decls.iter_enumerated().map(|(local, data)| {
                 format!(
-                    "{{\"local\":{},\"type\":{}}}",
+                    "{{\"local\":{},\"type\":{},\"shape\":{}}}",
                     local.as_usize(),
-                    quote(&data.ty.to_string())
+                    quote(&data.ty.to_string()),
+                    schema::type_shape(tcx, data.ty)
                 )
             }));
             let mut blocks = Vec::new();
@@ -171,6 +172,20 @@ impl Callbacks for Inventory {
                             (format!("{ty}"), None, false)
                         };
                         extra=format!(",\"callee\":{},\"trait\":{},\"local_callee\":{},\"operand\":{},\"arguments\":{}",quote(&callee),owner.as_deref().map(quote).unwrap_or_else(||"null".into()),local,quote(&format!("{func:?}")),array(args.iter().map(|arg|format!("{{\"value\":{},\"type\":{}}}",quote(&format!("{:?}",arg.node)),quote(&arg.node.ty(&body.local_decls,tcx).to_string())))));
+                        if let mir::TerminatorKind::Call { destination, .. } = &term.kind {
+                            extra.push_str(&format!(
+                                ",\"destination_value\":{}",
+                                schema::place_value(tcx, body, *destination)
+                            ));
+                        }
+
+                        extra.push_str(&format!(
+                            ",\"argument_values\":{}",
+                            array(
+                                args.iter()
+                                    .map(|arg| schema::operand_value(tcx, body, &arg.node))
+                            )
+                        ));
                         extra.push_str(&format!(
                             ",\"closure_arguments\":{}",
                             array(closure_targets.iter().map(|s| quote(s)))

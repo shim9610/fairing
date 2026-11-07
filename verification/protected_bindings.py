@@ -14,6 +14,7 @@ def inputs():
         'crates/fairing/src/screen/cx.rs',
         'crates/fairing/src/shell/protected.rs',
         'crates/fairing/src/shell/builder.rs',
+        'crates/fairing/src/shell/builder/protected.rs',
         'crates/fairing/src/overlay/tiles.rs',
         'crates/fairing/src/elements.rs', 'crates/fairing/src/elements/dispatch.rs',
         'crates/fairing/src/elements/tests.rs', 'crates/fairing/src/access/mediation.rs',
@@ -48,7 +49,7 @@ def audit():
         'protected-builder-rejects-hooks': 'self.validate_protected_hooks()?;' in builder and 'build_protected rejects untyped hook' in builder,
         'callback-local-extension-stores': all(s in cx for s in ['fn with_protected_resources', 'let mut icons = IconSet::new();', 'icons: &mut icons,', 'widget_painters: &mut painters,']),
         'recursive-wallpaper-review': 'wallpaper_has_callback(dark) || wallpaper_has_callback(light)' in builder,
-        'token-mode-build': 'if !self.config.access.session_tokens {' in builder and 'self.build(ctx).map(super::ProtectedShell::new)' in builder,
+        'token-mode-build': 'if !self.config.access.session_tokens {' in builder and 'CallbackFreeBuilder::from_builder(self)?' in builder,
         'tile-panel-guard': 'body.into_inner().required(binding)' in (ROOT / 'crates/fairing/src/overlay/tiles.rs').read_text(),
     }
     failed = [name for name, passed in checks.items() if not passed]
