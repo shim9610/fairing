@@ -33,7 +33,7 @@ They live in `fairing::services` and all have `Backend` as a supertrait.
 ```rust,ignore
 pub trait Backend {
     fn attach(&mut self, waker: Waker) {}                 // once, at start-up
-    fn poll(&mut self) {}                                 // every frame
+    fn poll(&mut self) {}                                // every state update, including logic-only
     fn poll_at(&mut self, now: Instant) { self.poll(); }  // what actually gets called
     fn next_wake(&self) -> Option<Instant> { None }       // when to be woken next
     fn capabilities(&self) -> Capabilities { Capabilities::NONE }

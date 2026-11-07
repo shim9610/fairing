@@ -7,10 +7,16 @@ editor or drag-a-widget-here mode. A machine's screen has to look
 the way it looks when it ships, and the person who decides that is the integrator, not the end
 user.
 
-So customization splits into two layers. The config file (`fairing.toml`) only handles
-**placement and assignment** — which item in which slot, which gate at which level. Changing the
-drawing itself is always code. You do not have to fork or patch the crate: you hook into
-`Shell::builder(..)`.
+The config file (`fairing.toml`) selects placement, gate assignments, palette,
+motion and supported sizes. Custom drawing implementations live in code and can be
+supplied without forking the crate.
+
+The global painter/layout hooks below are for ordinary `ShellBuilder::build`.
+`build_protected` rejects untyped hooks, widget-painter bundles, image loaders and
+procedural wallpapers before setup. For protected custom drawing, implement
+`Element + PermissionBound` and register a typed tree with `add_elements`; see
+[typed integration](../session-tokens.md#typed-permission-requirements). Themes,
+metrics and other data-only configuration remain supported.
 
 | Hook | What it changes | Section |
 |---|---|---|

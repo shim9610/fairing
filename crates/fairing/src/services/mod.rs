@@ -153,7 +153,8 @@ impl std::error::Error for ServiceError {}
 /// A backend result.
 pub type ServiceResult = Result<(), ServiceError>;
 
-/// What every backend shares. `poll` is called on the UI thread every frame and never blocks.
+/// What every backend shares. Polling runs on the event-loop thread for each state
+/// update, including logic-only ticks, and must not block.
 pub trait Backend {
     /// Given once by the shell at startup. Hand it to a worker thread and `wake()` when the state changes.
     fn attach(&mut self, _waker: Waker) {}

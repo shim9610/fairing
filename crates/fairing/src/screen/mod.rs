@@ -1,9 +1,10 @@
 //! Screens — declarations, the trait, the lifecycle and launch modes.
 //!
-//! A screen is one `FnMut(&mut egui::Ui, &mut Cx)`. Beyond filling the pane rect the shell hands
-//! it, there are no constraints. `screen(id, closure)` is **resident** (the instance is the
-//! declaration, and its state survives closing); `screen_with(id, factory)` is **factory-built**
-//! (created on open, dropped on close).
+//! A screen is an `FnMut(&mut egui::Ui, &mut Cx)` closure or a [`Screen`] implementation.
+//! `screen(id, closure)` is **resident**: the declaration owns its state across closing.
+//! `screen_with(id, factory)` is **factory-built**: each instance constructs its body lazily
+//! at the first dispatched hook and drops it with the instance. Protected registration
+//! requires admission before construction and rechecks it before invoking the screen.
 
 pub(crate) mod cx;
 mod policy;
@@ -308,7 +309,10 @@ pub fn screen_of(id: impl Into<String>, screen: impl Screen + 'static) -> Screen
     )
 }
 
-/// A factory screen declaration. `factory` makes a new instance on every open.
+/// A factory screen declaration. Each instance invokes `factory` lazily at its first
+/// dispatched hook, not while queuing the open request. In a protected shell, both
+/// construction and the following hook require live admission. An instance disposed
+/// before its first dispatch may never construct its body.
 pub fn screen_with<S: Screen + 'static>(
     id: impl Into<String>,
     mut factory: impl FnMut() -> S + 'static,
@@ -522,11 +526,14 @@ impl ScreenDecl {
     ///
     /// ```no_run
     /// # fn main() {
+    /// # #[cfg(feature = "settings")]
+    /// # {
     /// # let shell: &mut fairing::Shell = todo!();
     /// use fairing::settings::screens;
     ///
     /// // The built-in Display screen, as a second screen of our own.
     /// shell.add(screens::display().with_id("app.display").title("Panel"));
+    /// # }
     /// # }
     /// ```
     ///
@@ -582,8 +589,8 @@ impl ScreenDecl {
         matches!(self.source, ScreenSource::Resident(_))
     }
 
-    /// Build the screen for an instance. A resident declaration hands over nothing and keeps its
-    /// screen; a factory one gives the result of a call.
+    /// Prepare opaque ownership for an instance. A resident declaration keeps its
+    /// screen; a factory handle constructs its body at the first dispatched hook.
     pub(crate) fn spawn(&mut self) -> InstanceScreen {
         match &mut self.source {
             // Nothing is handed over — the declaration keeps the screen and the instance finds it

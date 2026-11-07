@@ -270,9 +270,11 @@ pub enum AuthOutcome {
 pub trait Authenticator {
     /// The ways in, in the order the prompt offers them. Read each time the prompt opens.
     ///
-    /// An empty list leaves the shell nothing to draw: the request then goes out as
-    /// [`AccessEvent::UnlockRequested`](super::AccessEvent::UnlockRequested) only, as in
-    /// `routing` mode.
+    /// An empty list leaves the shell nothing to draw: the request goes out as
+    /// [`AccessEvent::UnlockRequested`](super::AccessEvent::UnlockRequested), as in
+    /// `routing` mode. Token mode also emits
+    /// [`AccessEvent::SessionRequested`](super::AccessEvent::SessionRequested) for a
+    /// request-correlated host response.
     fn methods(&self) -> Vec<AuthMethod>;
 
     /// Check what was entered. **Return at once** — it runs on the UI thread, inside a frame. A
@@ -288,14 +290,15 @@ pub trait Authenticator {
     ) -> AuthOutcome;
 
     /// Finish what [`AuthOutcome::Pending`] started, or report an external method's result. The
-    /// shell calls it once a frame while the prompt is up; `None` means nothing new.
+    /// shell calls it once per state update while the prompt is up, including
+    /// logic-only updates without a UI pass; `None` means nothing new.
     ///
     /// Return `request.respond(outcome)` using the token captured when the operation started.
     /// Fairing rejects responses from cancelled, superseded or completed requests. Cancellation
     /// should still stop unnecessary work and release backend resources.
     ///
-    /// A frame only comes when something asks for one, so a reader thread that has an answer
-    /// should call the [`Waker`] from [`Authenticator::attach`].
+    /// Updates depend on scheduling, so a reader thread that has an answer should
+    /// call the [`Waker`] from [`Authenticator::attach`].
     fn poll(&mut self, _now: Instant) -> Option<AuthResponse> {
         None
     }

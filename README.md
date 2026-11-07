@@ -12,15 +12,17 @@
 
 # fairing
 
-**A touchscreen shell for embedded devices, built on [egui](https://github.com/emilk/egui).**
+A touchscreen shell for embedded devices, built on [egui](https://github.com/emilk/egui).
 
-Status bar, pull-down shade, desktop, virtual screens, navigation bar, on-screen
-keyboard, local access control and device settings — all inside **one process and
-one egui frame loop**. It is not an OS, not an app launcher, not a window manager.
+Fairing provides the UI around your device application: status and navigation bars,
+a desktop, screen stacks, quick settings, notifications, an on-screen keyboard and
+device settings. Your screens and hardware backends run in the same process and
+egui frame loop. Touch sizes resolve from physical panel dimensions; screens,
+chrome and widgets share theme and motion tokens.
 
-You write screens as egui closures. fairing owns everything around them: layout
-rectangles, touch targets sized in millimetres, gestures, transitions, gates and
-repaint policy.
+**Development toward 0.1.0; the crates are not published yet.** This documentation
+describes the current checkout. Start with the [integrator guide](docs/guide/README.md),
+or read the [migration guide](docs/guide/10-migration.md) when updating an existing app.
 
 <table>
   <tr>
@@ -47,111 +49,47 @@ repaint policy.
     <td>Two-set Hangul with composition on the on-screen keyboard (<code>demo</code>)</td>
     <td>One of the built-in settings screens (<code>demo</code>)</td>
   </tr>
-  <tr>
-    <td><img src="docs/images/unlock-pin.png" alt="The unlock prompt over the desktop: a PIN and Pattern switch, four empty PIN dots and a number pad with backspace and confirm keys"></td>
-    <td><img src="docs/images/unlock-pattern.png" alt="The unlock prompt's pattern method: a three-by-three grid of dots with a Z-shaped pattern drawn through seven of them"></td>
-  </tr>
-  <tr>
-    <td>The unlock prompt asks for a PIN before a protected screen opens (<code>demo</code>)</td>
-    <td>The same prompt with the pattern method, a pattern drawn (<code>demo</code>)</td>
-  </tr>
 </table>
 
-```rust
-shell.add(
-    screen("dashboard", |ui: &mut egui::Ui, cx: &mut Cx| {
-        ui.heading("Dashboard");
-        if ui.button("Settings").clicked() {
-            cx.open("settings.home");
-        }
-    })
-    .title("Dashboard")
-    .icon(icon::GAUGE)
-    .desktop(),
-);
-```
+## What is included
 
-## Why
-
-Device UIs keep rebuilding the same shell. Every kiosk, every panel, every piece of
-lab equipment grows its own status bar, its own back button, its own "are you sure"
-dialog and its own idea of how big a finger is — and each one gets the hard parts
-slightly wrong. fairing is that shell, once, with the hard parts already decided:
-
-- **Touch targets are physical.** Sizes resolve through panel millimetres, not
-  pixels, so the same code lands correctly on a 4-inch panel and a 27-inch one.
-- **Bounded command admission.** Choose queue capacity and work per update; full
-  queues return an error. UI code uses non-waiting receive/send APIs. The build
-  gate rejects blocking calls and shared-state locks in the UI sources.
-- **Application-owned UI/business boundary.** Optional `CommandSink` and `UpdateSource`
-  traits work with your transport and message types. Thread placement, delivery and
-  retry policy stay in the application; [guide 06](docs/guide/06-services.md#application-owned-uibusiness-boundary)
-  describes the contracts.
-- **Recoverable display admission.** Bound queued toasts and retained notifications;
-  fallible text/buffer allocation refuses or defers optional display work. The global
-  fixed-heap option was withdrawn because egui cannot universally recover from OOM.
-  Inline display histories now keep newest samples; borrowed-image preview and
-  compiled warning rasterization work without allocation. The shell reclaims older
-  optional toasts and reports reduced display. Whole stock-egui OOM recovery remains
-  unestablished; [memory limits](docs/memory-limits.md) records the exact scope.
-- **Little is hard-wired.** Every chrome surface takes configuration and
-  declarations; the bars, toasts, banners, keyboard keys, the shade's tiles and panel,
-  the desktop cells, the lock screen, the unlock prompt, the recent screens and every
-  widget also take a layout or a painter you supply — without forking the crate.
-- **Gestures are one engine.** Edge swipes, flings, long presses and the shade all
-  arbitrate in one place, so nested scrolling and hand-off behave — and so do the thin
-  gesture handles you put on the side and bottom edges, swiped the way One Hand Operation+
-  handles are, and the gesture regions you write yourself, such as part of a screen used as a
-  trackpad.
-
-## What you get
-
-| Surface | What it does |
+| Area | Capabilities |
 |---|---|
-| Status bar | Clock, Wi-Fi, Bluetooth, battery, notification badge, your own items |
-| Shade | Quick-settings tiles and the notification list, as one panel or split in two; drawn down as a curtain or arriving as a floating card on frosted glass; peek when the bar is hidden |
-| Desktop | Icon grid with pages, dock, badges, wallpaper |
-| Screens | A stack per pane, icon-zoom and push/pop transitions, lifecycle callbacks |
-| Two panes | Two screens side by side (or stacked) with a divider that follows the finger and keeps each screen's minimum; the pane last touched has the focus |
-| Recent screens | A card for every live task: tap to bring it back, swipe up to close it, put it beside the screen on show, or close them all |
-| Navigation bar | Buttons or edge gestures, your own items |
-| Notifications | Center, toasts, heads-up — postable from any thread |
-| On-screen keyboard | Numpad, QWERTY and Hangul (two-set) with composition |
-| Settings | Eleven built-in screens, added with one call and narrowed, replaced or dropped from there |
-| Access control | Gates on every screen, action, tile and setting key; an unlock prompt with a PIN pad, a pattern, a password card or a badge-reader wait, a lock screen, temporary unlocks and session timeouts. You own the credential check through `Authenticator`; opt-in [session tokens](docs/session-tokens.md) support issuer-owned revocation and independent operation permissions. `build_protected` requires application-owned permission values; `add_elements` filters and lays out a typed UI tree before live paint/callback checks |
-| Screen layout | Pages with a pinned action bar, section cards, grids, a rail with a list/detail split, tab bars and expandable rows, all drawn from theme tokens |
-| Widgets | 23 touch widgets, from buttons, switches and sliders to a dropdown, a wheel picker, a progress ring, a PIN pad and a pattern pad. They live in [`fairing-widgets`](crates/fairing-widgets) and work without the shell |
+| Shell | Desktop grid and dock, screen stacks, lifecycle events, transitions, two panes and recent-screen cards |
+| Chrome | Status/nav bars, pull-down quick settings and notifications, toasts and heads-up banners |
+| Input | Touch gestures, edge handles, custom gesture regions, numeric/QWERTY/two-set Hangul keyboard |
+| Device integration | Clock, power, Wi-Fi, Bluetooth, display, audio, network and device-information traits, null backends and optional mocks |
+| Access | Legacy level gates, credential prompts and lock screens; opt-in issuer-controlled sessions and typed protected UI |
+| Layout and widgets | Screen containers, cards, grids, rails and tabs; 23 touch widgets, physical units, vector icons and theme tokens |
+| Host integration | Bounded command admission, application-owned command/update transports, caught-unwind quarantine and host-controlled shell replacement |
 
-80 vector icons ship with it, plus six parametric ones (Wi-Fi strength, battery
-level and friends) that redraw from state.
+[`fairing-widgets`](crates/fairing-widgets/README.md) can be used on its own in an
+egui application. Fairing re-exports it and egui, so a shell application needs
+only the `fairing` dependency.
 
 ## Quick start
 
-fairing is not on crates.io yet. Until 0.1.0 is published, depend on this repository:
+For a Linux desktop, enable `runner-x11`; a Wayland device can use `runner`.
+Pin a reviewed Git revision when integrating a device build.
 
 ```toml
 [dependencies]
 fairing = { git = "https://github.com/shim9610/fairing", features = ["runner-x11"] }
-egui = "0.37"   # the same minor as fairing's; or name it through `fairing::egui`
 ```
 
-```rust
-use fairing::prelude::*; // the shell, the declarations, Cx, the events, the icons, egui
+This minimal app uses the ordinary `Shell` API. Its default configuration does
+not require a login; typed session enforcement is a separate choice below.
+
+```rust,no_run
+use fairing::{egui, icon, screen, Cx, Services, Shell, ShellConfig};
 
 fn main() -> fairing::Result<()> {
-    let config = ShellConfig::load("/etc/myapp/fairing.toml")?; // defaults if absent
-    let options = fairing::runner::Options::default();          // fullscreen kiosk
-
-    fairing::runner::run_shell(options, move |ctx| {
-        let mut shell = Shell::builder(config)
-            .services(Services::builder().build())               // real clock, null everything else
-            .physical_mm(154.0, 86.0)                            // the panel's visible area: millimetres become real
+    fairing::runner::run_shell(fairing::runner::Options::default(), |ctx| {
+        let mut shell = Shell::builder(ShellConfig::default())
+            .services(Services::builder().build())
+            .physical_mm(154.0, 86.0)
             .build(ctx)?;
-
-        // The built-in settings screens: `settings.home` and the ones under it. Wi-Fi,
-        // Bluetooth, network and power join only when a backend has them.
         fairing::settings::add_all(&mut shell, &fairing::settings::SettingsConfig::default());
-
         shell.add(
             screen("dashboard", |ui: &mut egui::Ui, cx: &mut Cx| {
                 ui.heading("Dashboard");
@@ -163,250 +101,198 @@ fn main() -> fairing::Result<()> {
             .icon(icon::GAUGE)
             .desktop(),
         );
-        shell.add(status_item("temp", Slot::Right, |ui, _cx| {
-            ui.label("36.5 °C");
-        }));
-        shell.add(nav_item("kbd", |ui, _cx| {                           // drawn where [nav_bar] items names it
-            let _ = ui.button("⌨");
-        }));
-        shell.remove("status.bluetooth"); // built-ins go away by id
-
         Ok(shell)
     })
 }
 ```
 
-```toml
-# /etc/myapp/fairing.toml
-[nav_bar]
-items = ["back", "home", "kbd"]   # a nav item is drawn only where this list names it
+The [standalone `hello` example](crates/fairing/examples/hello.rs) also shows custom
+status/nav items. Run it with:
+
+```sh
+cargo run -p fairing --example hello --features runner-x11
 ```
 
-The same app is [`examples/hello.rs`](crates/fairing/examples/hello.rs), in a window and
-with the nav bar list set in code: `cargo run -p fairing --example hello --features runner-x11`
-runs it, and it shares nothing with the other examples, so it can be copied whole.
+Set `physical_mm` to the panel's visible dimensions for calibrated touch targets.
+Load your product fonts with `ShellBuilder::fonts` or `font`; egui's fallback faces
+do not contain Hangul. Without the runner, connect `logic`/`logic_with` and
+`frame`/`frame_with` in your own host, then drain `poll_events` after either update.
+[Getting started](docs/guide/01-getting-started.md) covers fonts, configuration,
+features and hosting.
 
-The `runner-x11` feature runs it on a Linux desktop as well as under Wayland; leave
-the runner off and drive `Shell::frame` yourself to embed the shell in an eframe app
-you already have.
+## Sessions and protected UI
 
-Three things the defaults cannot know. The shell logs a warning at startup for each
-until you tell it:
+Choose the integration boundary explicitly:
 
-- **The panel's size.** Without `.physical_mm(w, h)` (or a display backend that reports
-  it) the shell assumes a density, and the 9 mm touch targets are a guess.
-- **Fonts.** The crate carries no face of its own, on purpose: which faces a device shows,
-  and under what licence, is the device's call. egui's built-in face has one weight and Latin
-  letters only: titles come out flat, and Hangul or `₩` come out as boxes. The shell warns when there is no bold, and
-  when its own language's letters are missing. Give it your faces with
-  `.font(FontSource::from_path(..)?)` — [guide 01 §4](docs/guide/01-getting-started.md#4-a-minimal-app)
-  shows the bold and the Korean one.
-- **Which nav items to draw.** A `nav_item` appears only where `[nav_bar] items` lists
-  its id.
+| API | Application registration | Authority |
+|---|---|---|
+| `ShellBuilder::build` | Ordinary declarations and trusted custom hooks | Legacy level gates by default; token mode can be enabled separately |
+| `ShellBuilder::build_protected` | Typed `Protected` declarations, `add_screen` and `add_elements`; no mutable legacy-shell conversion | Requires token mode and checks current issuer grants before protected callbacks |
 
-## Making it yours
+Your authenticator verifies credentials and owns a non-cloneable
+`SessionController`. Fairing holds its read-only `SessionToken`. The issuer expands
+roles into independent grants, updates them or terminally revokes the session.
+Use separate controller/token pairs for device and web login state.
+`PinTable` is a plaintext reference authenticator for the legacy flow; use your
+own `Authenticator` for production credential verification.
 
-Three rungs, from cheapest to most invasive. Each one only exists because the one
-below it could not express something.
-
-**1 — Configuration.** A TOML file decides what appears and where.
-
-```toml
-[status_bar]
-right = ["status.clock", "status.wifi", "status.battery"]
-
-[overlay]
-tiles = ["tile.wifi", "tile.hopper", "tile.brightness"]   # yours can sit between built-ins
-tile_columns = 3
-
-[nav_bar]
-enabled = false          # no bar; screens carry their own back button
-
-[theme.palette]
-primary = "#2fe09b"      # role colours, including #RRGGBBAA
-```
-
-**2 — Declarations.** Screens, actions, status items, nav items and tiles are all
-`shell.add(...)`, all removable by id. Tiles can be a toggle, a slider, an action,
-a read-only status, or a row of gauges you describe:
+Define your own permission enum and map its values to token grant identifiers:
 
 ```rust
-shell.add(
-    tile("tile.hopper", TileKind::Gauges {
-        rows: vec![
-            Gauge::new("hopper.a", "Resin A").color(ColorRole::Primary),
-            Gauge::new("hopper.b", "Resin B").color(ColorRole::Warning),
-            Gauge::new("hopper.c", "Solvent").read_only(true),
-        ],
-        label_width: 96.0,
-    })
-    .label("Hoppers")
-    .icon(icon::GAUGE),
-);
-```
+use fairing::{action, egui, screen, Gate, ProtectedShell, Shell, ShellConfig};
+use fairing::access::{Permission, Protected};
 
-**3 — Painters.** When the shape itself is wrong, take the brush. The shell keeps
-the rectangle, the gate check and the hit test; you draw.
+#[derive(Clone, Copy)]
+enum PermissionId { ViewResults, ExportResults }
 
-| Builder | What you take over |
-|---|---|
-| `.theme(Theme)` | Palette, metrics and motion tokens in full |
-| `.status_bar_painter(\|ui, bar\| ..)` · `.nav_bar_painter(..)` | The whole bar |
-| `.nav_bar_layout(..)` · `.status_bar_layout(..)` | Where the nav bar's and the status bar's items go |
-| `.toast_painter(..)` · `.heads_up_painter(..)` (and `_layout`) | Each toast's card and the banner, and where they go |
-| `.osk_key_painter(..)` · `.osk_key_layout(..)` | Each keyboard key, and where the keys go |
-| `.shade_tile_painter(..)` · `.shade_panel_painter(..)` · `.shade_tile_layout(..)` | Each quick-settings tile and the panel under them, and where the tiles go |
-| `.lock_screen_painter(..)` · `.unlock_prompt_painter(..)` | The lock screen's ground and clock, and the unlock prompt's backdrop and card; the keypad stays the shell's |
-| `.recents_card_painter(..)` · `.recents_ground_painter(..)` | Each recent screen's card and the ground under them; the carousel stays the shell's |
-| `.widget_painters(WidgetPainters::new().button(..).switch(..))` | Each kind of widget, wherever it is drawn; the widget keeps its press, value and motion |
-| `.gesture_handle_painter(..)` | Each gesture handle's strip and the arrow while it is swiped; the strips and the gestures stay the shell's |
-| `impl GestureRegion` · `Shell::add_gesture_region(..)` | A stretch of the glass of your own, such as a trackpad: where it is, what its touches do, how it looks; the guard and the touch's delivery stay the shell's |
-| `.slot_painter(\|ui, slot\| ..)` | Every desktop cell |
-| `Wallpaper::Painter(..)` | The background |
-| `tile_panel(id, height, \|ui, cx\| ..)` | A quick-settings tile's expanded row |
+impl Permission for PermissionId {
+    fn gate(self) -> Gate {
+        Gate::borrowed(match self {
+            Self::ViewResults => "results.view",
+            Self::ExportResults => "results.export",
+        })
+    }
+}
 
-**Backends.** The shell reaches the hardware only through traits — clock, power,
-Wi-Fi, Bluetooth, display, audio, network and device info — and ships nothing but
-`Null` defaults and a `Mock` simulator. Your device speaks sysfs, a vendor SDK, D-Bus
-or a PLC protocol; plug in your own implementations, and anything the shell has no
-slot for as a custom backend. It is polled every frame like the others, and screens
-reach it by its type:
-
-```rust
-let services = Services::builder()
-    .display(Backlight::open("/sys/class/backlight/panel")?) // yours
-    .custom(DoorSensor::spawn())                              // yours, no slot needed
-    .build();
-
-// in a screen
-if let Some(door) = cx.services.custom::<DoorSensor>() {
-    ui.label(if door.is_open() { "Door open" } else { "Door closed" });
+fn build(ctx: &egui::Context) -> fairing::Result<ProtectedShell> {
+    let mut config = ShellConfig::default();
+    config.access.session_tokens = true;
+    let mut shell = Shell::builder(config).build_protected(ctx)?;
+    shell.add(Protected::new(
+        PermissionId::ViewResults,
+        screen("results", |ui, _cx| { ui.heading("Results"); }).desktop(),
+    ));
+    shell.add(Protected::new(
+        PermissionId::ExportResults,
+        action("export", |cx| { cx.shell.toast("Export requested"); }),
+    ));
+    Ok(shell)
 }
 ```
 
-**No files behind your back.** The shell writes none. A setting someone changes reaches you as
-`ShellEvent::SettingChanged`, to keep wherever your device keeps such things, and
-`Shell::restore_settings` puts what you kept back at start.
+This registers requirements; it does not issue a session. Until the authenticator
+returns a valid `AuthOutcome::Session(token)`, protected work is denied. Issue
+matching grants with `SessionGrant::base_for(value)` after authentication; the
+[session guide](docs/session-tokens.md) covers issuance, asynchronous request
+correlation, role expansion, expiry and logout.
+
+For permission-dependent content inside a screen, implement `PermissionBound` and
+`elements::Element`, then register an `ElementTree` with `add_elements`. Fairing
+omits denied children before measurement/layout and rechecks authority before
+paint. Custom `Screen + PermissionBound` implementations use `add_screen`.
+The [typed integration example](docs/session-tokens.md#typed-permission-requirements)
+shows nested UI and independent operation permissions.
+
+Host a `ProtectedShell` through its `logic*`, `frame*` and `poll_events` methods.
+The current `runner::run_shell*`/`run_app*` helpers accept ordinary `Shell` only.
+Protected construction rejects untyped global painters/layouts, image loaders and
+procedural wallpapers; put custom protected UI in typed declarations or elements.
+
+The [common mediation contract](docs/protected-contracts.md) proves the shared
+admission kernel and automatically checks compiler-discovered protected entry
+routes. An admitted callback retains raw egui, app and backend access; credential
+verification, permission classification and arbitrary callback effects remain
+integration responsibilities. This is a UI execution boundary within one process.
+
+## Customization and backends
+
+- **Configuration:** choose placement, visibility, gate assignments, palette and
+  motion in `fairing.toml`.
+- **Declarations:** add/replace/remove screens, actions, status/nav items and tiles
+  by identifier. Protected registration carries a permission value.
+- **Drawing:** supply themes and metrics; ordinary shells also accept global
+  painter/layout hooks. Protected custom drawing uses typed elements.
+- **Hardware:** implement backend traits or register a custom backend. Backends
+  publish snapshots and wake the UI; the application owns workers and transport.
+- **Persistence:** consume `ShellEvent::SettingChanged`, save values in your own
+  storage and restore them at startup. Fairing writes no files itself.
+
+See [customization](docs/guide/04-customization.md),
+[services](docs/guide/06-services.md) and the
+[configuration reference](docs/guide/07-config-reference.md).
+
+Command admission defaults to 1,024 shared slots and 256 commands per update.
+Use `try_send` to recover rejected ownership. Optional display work has separate
+bounds and fallible APIs. Caught callback unwinds quarantine the shell; the host
+chooses recovery. These mechanisms do not establish whole-renderer recovery from
+heap exhaustion; the fixed-heap crate is an isolated unpublished diagnostic.
+[Memory and recovery](docs/memory-limits.md) describes the limits and APIs.
 
 ## Examples
 
-The windowed examples run on a Linux desktop with `--features runner-x11`, and all but `hello`
-take `--size=WxH`. All of them but `hello` and `motion_lab` take `--tour <dir>`, which drives the
-example through a script and writes a PNG at each step. Add `--record` and the tour
-runs on a fixed 60 Hz clock, however slowly the machine draws, and writes the frames
-of its animated stretches as well. The screenshots and animations on this page come
-from those tours, and `tools/readme-gifs.sh` rebuilds them all. `bench` is
-headless.
+```sh
+cargo run -p fairing --example demo --features runner-x11 -- --size=1024x600
+cargo run -p fairing --example console --features runner-x11 -- --size=1280x800
+```
 
-| Example | What it shows |
+| Example | Focus |
 |---|---|
-| `hello` | The smallest complete app: the quick start above as a file that stands alone, to copy into a new project |
-| `demo` | Everything, on a 1024×600 panel |
-| `console` | A bench instrument rather than a phone: a rail down the left joined to the status bar, five pages with their own transitions, and the shade split into two floating cards. 1280×800 |
-| `kiosk` | A production-shaped café ordering flow, portrait 1080×2560, laid out and styled almost entirely by the crate — what it still draws itself (photo scrims, a cart stepper) is listed in its header. `--layout=portrait\|counter\|compact` puts the same code on three devices, and a switch on its attract screen changes the language of every screen at run time |
-| `custom_chrome` | The same shell with a hand-drawn status bar, circular desktop badges, a procedural wallpaper, no nav bar, a gauges tile the crate draws from a declaration, and a jog-pad tile it knows nothing about |
-| `motion_lab` | Every `[motion]` token on a slider, with looped playback and a frame-time graph. Exports the tuned values as TOML |
-| `palette_sheet` | One frame with every control on it, for comparing palettes |
-| `bench` | p50/p95 frame times per scenario |
+| `hello` | A minimal standalone app |
+| `demo` | Shell features, settings, keyboard and legacy unlock prompts |
+| `console` | Bench instrument, rail layout and split shade |
+| `kiosk` | Café ordering, portrait/counter/compact layouts and live language switching |
+| `custom_chrome` | Custom bar, desktop cells, wallpaper and tiles |
+| `motion_lab` | Interactive motion-token tuning and TOML export |
+| `palette_sheet` | Widget palette comparison |
+| `bench` | Headless frame-time scenarios |
+
+The gallery comes from the example tours. [Contributing](CONTRIBUTING.md#rebuilding-the-readmes-animations)
+explains screenshot and GIF regeneration.
+
+## Verification
+
+`fairing::testing::Harness` drives actual egui frames without a window or GPU and
+reports rendered geometry for pointer-driven tests. The repository also checks:
+
+| Check | Evidence |
+|---|---|
+| Strict audit | Formatting, Clippy, workspace/guide doctests, API docs, dependency approvals, generated files, aarch64 type-check and blocking-call scan |
+| API and UI regressions | Native/generated histories, retained widget state, independent expectations and production mutation controls |
+| Protected execution | Source-bound Kani/Verus kernel proofs, compiler-derived routing checks and extension/bypass controls |
+| Additional assurance | Miri, Loom concurrency scenarios, sanitizer fuzzing, coverage and dependency inventories |
+| Release archives | Extracted-package tests and an external consumer for minimal/default/all features |
+| Code scanning | GitHub-managed CodeQL for Rust, Python and Actions |
 
 ```sh
-cargo run -p fairing --features runner-x11 --example demo -- --size=1024x600
-cargo run -p fairing --features runner-x11 --example console -- --size=1280x800
+cargo run -p xtask --locked -- audit --strict
 ```
 
-<table>
-  <tr>
-    <td width="33%"><img src="docs/images/kiosk-language.gif" alt="Animated: the kiosk's attract screen in English; a tap on 한국어 turns it to Korean, and the dine-in choice and the menu follow in Korean"></td>
-    <td width="33%"><img src="docs/images/kiosk-menu.png" alt="The kiosk's menu: category chips over a grid of product photos, three of them in the cart"></td>
-    <td width="33%"><img src="docs/images/kiosk-cart.png" alt="The kiosk's cart: the total, the lines with steppers and a pay button"></td>
-  </tr>
-  <tr>
-    <td colspan="3">The <code>kiosk</code> example on a 1080×2560 portrait panel, laid out and styled almost entirely by the crate. The language switch on the attract screen writes the shell's <code>ui.locale</code> setting, and every screen follows that setting from the next frame. The product photos are the example's own assets.</td>
-  </tr>
-</table>
+[Rust assurance](docs/rust-assurance.md), the [API contract map](docs/api-contracts.md)
+and [release checks](docs/release-checks.md) describe commands, evidence and scope.
+Verification is tied to source/configuration; it is not a certification of arbitrary
+application code or all possible UI histories.
 
-Both run in English. The demo's keyboard opens on QWERTY; its tour switches to
-two-set Hangul to show composition, and `[osk] layout = "hangul"` in `demo.toml`
-starts there. The kiosk switches language at run time, as shown above, and doubles
-as the localisation harness: Korean puts the same layout code through strings
-roughly half as long. `--lang=ko` starts it in Korean.
+## Platforms and current limits
 
-## Testing
+The target is embedded Linux on x86_64/aarch64 with OpenGL ES 2 through eframe's
+`glow` backend. CI runs the full audit and graphical tours on Linux and type-checks
+aarch64; it does not validate a physical aarch64 device. Selected CPU display and
+runtime-fault checks also run on Windows. The complete Windows runner and macOS
+are not validated. The declared minimum Rust version is 1.95; repository development uses 1.99.
 
-`fairing::testing::Harness` runs frames with no window, no GPU and no
-dev-dependencies. It reports real geometry (`icon_rect`, `item_rect`, `tile_rect`,
-`key_rect`) so tests tap, drag, fling and hold at the places the shell actually
-drew, instead of re-deriving layout maths.
+Built-in text is English/Korean; supply translations and fonts for your product.
+The keyboard has numeric, QWERTY and two-set Hangul layouts. There is no accessibility
+tree or right-to-left layout. See the [roadmap](docs/roadmap.md) for further limits.
 
-```rust
-let mut h = Harness::new(config, Services::null())?;
-h.frames(2);
-let cell = h.shell.overlay().tile_rect("tile.wifi").expect("tile");
-h.tap(cell.center());
-```
+## Documentation and workspace
 
-The crate's own tests also read a little internal state — the shell's registry and
-gesture engine, the shade's scrim alpha, a screen's layer id. Those accessors are public
-but `#[doc(hidden)]`: your tests may use them too, but they are not part of the API and
-any release, patch releases included, may change them.
-
-Over a thousand tests pass today. `cargo run -p xtask --locked -- audit --strict`
-runs the full gate — formatting, clippy with `-D warnings`, tests (the guide's code blocks
-included), docs, duplicate
-versions, a dependency allow-list, `cargo-audit`, `cargo-deny`, licence notices,
-generated-file checks, an aarch64 cross-check (`cargo check --target`) and the no-locks
-scan. CI runs all fourteen stages on pull requests and pushes to `main`, and on a
-weekly schedule. [Contributing](CONTRIBUTING.md#repository-checks-and-merge-rules)
-describes the separate CodeQL scan and repository merge rules.
-
-## Platforms
-
-The target is embedded Linux — Ubuntu Core with `ubuntu-frame`, `cage` or `weston` —
-on x86_64 and aarch64, drawing with OpenGL ES 2 through eframe's `glow` backend. The
-audit type-checks the aarch64 build on every run; nothing runs it on aarch64 hardware.
-The full audit and graphical tours run on Linux. Selected CPU display and runtime-fault
-tests also run on Windows; these do not validate the complete Windows runner. macOS
-is not checked in CI. The declared minimum Rust version is 1.95; CI checks that version
-and runs the main audit with 1.99.
-
-## Not yet
-
-Honest gaps, not a roadmap:
-
-- **Two built-in languages.** The shell's own text comes in English and Korean; any other
-  language is a table you add with `ShellBuilder::translations`.
-- **Two bars.** There is the status bar and the nav bar. Bars on other edges, rows of bars
-  and the `[[bar]]` TOML section that would declare them come after 0.1; a band of your own
-  goes inside your screens (`layout::action_bar`, `layout::tab_bar`).
-- **No accessibility tree and no right-to-left layout.** Nothing is reported to a screen
-  reader, and layouts run left to right.
-
-## Layout
-
-| Crate | Role |
+| Resource | Purpose |
 |---|---|
-| `fairing-fixed-heap` | Unpublished allocation-failure diagnostic, isolated from product dependencies; one reviewed unsafe arena claim |
-| `fairing` | The shell. `fairing-widgets`, `egui`, `serde`, `toml` and `log`; features `mock`, `overlay`, `osk`, `brand` and `settings` on by default, `runner`/`runner-x11` (eframe) and `chrono` optional |
-| `fairing-widgets` | The element layer, usable without the shell: touch widgets, theme tokens, the `du`/`mm` unit system, icons and motion. `egui`, `serde` and `log` |
-| `xtask` | The audit, the dependency allow-list, the icon compiler, the licence notices |
+| [Integrator guide](docs/guide/README.md) | Installation, screens, chrome, access, backends and deployment |
+| [Migration](docs/guide/10-migration.md) | Source and behavior changes from the earlier checkout |
+| [Architecture](docs/architecture.md) | State ownership, frame order and module map |
+| [Session contract](docs/session-tokens.md) | Issuer/session lifecycle and typed UI integration |
+| [Protected mediation](docs/protected-contracts.md) | Shared kernel and automatic route verification |
+| [Application metadata checker](docs/permission-metadata-check.md) | Check your workspace's permission declarations |
 
-## Documentation
+Build the local API reference with `cargo doc -p fairing --all-features --no-deps --open`.
+docs.rs will host it after publication. The [changelog](CHANGELOG.md) records changes.
 
-The integrator guide lives in [`docs/guide/`](docs/guide/README.md). Read
-[01 Getting started](docs/guide/01-getting-started.md) →
-[02 Screens](docs/guide/02-screens.md) → [03 Chrome](docs/guide/03-chrome.md) and
-you have a running device UI. The guide index carries a task-to-page table. The API
-reference will be on docs.rs once the crates are published; until then,
-`cargo doc --open` builds it. What changed is in [`CHANGELOG.md`](CHANGELOG.md).
+`fairing` and `fairing-widgets` are the product crates. `xtask` owns repository
+maintenance; `verification` is an unpublished assurance workspace.
+`fairing-fixed-heap` is a diagnostic with no product dependency edge.
 
-How the crate is put together is in [`docs/architecture.md`](docs/architecture.md). Where it
-stands, what comes after 0.1 and the limits it has today are in
-[`docs/roadmap.md`](docs/roadmap.md).
+## Security and licence
 
-## Security
-
-Please report security problems privately, as [`SECURITY.md`](SECURITY.md) describes.
-
-## Licence
-
-MIT, see [`LICENSE`](LICENSE). Third-party notices are in [`THIRD_PARTY.md`](THIRD_PARTY.md).
+Report vulnerabilities privately through [SECURITY.md](SECURITY.md).
+MIT; see [LICENSE](LICENSE) and [third-party notices](THIRD_PARTY.md).

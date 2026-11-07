@@ -9,10 +9,17 @@ access gates: the parts every kiosk, panel and bench instrument rebuilds, in one
 process and one egui frame loop. It is not an OS, an app launcher or a window
 manager. You write screens as egui closures; fairing owns everything around them.
 
+Development toward 0.1.0; the crates have not been published yet. Use a reviewed
+repository revision until the first release:
+
 ```toml
 [dependencies]
-fairing = { version = "0.1", features = ["runner-x11"] }
+fairing = { git = "https://github.com/shim9610/fairing", features = ["runner-x11"] }
 ```
+
+The following app uses the ordinary `Shell` API with no login required by its
+default configuration. For typed, issuer-controlled UI, see **Sessions and
+protected UI** below.
 
 ```rust,no_run
 use fairing::{egui, icon, screen, Cx};
@@ -22,6 +29,7 @@ fn main() -> fairing::Result<()> {
     fairing::runner::run_shell(fairing::runner::Options::default(), move |ctx| {
         let mut shell = fairing::Shell::builder(config)
             .services(fairing::Services::builder().build())
+            .physical_mm(154.0, 86.0) // replace with the panel's visible dimensions
             .build(ctx)?;
         fairing::settings::add_all(&mut shell, &fairing::settings::SettingsConfig::default());
         shell.add(
@@ -54,14 +62,43 @@ from an eframe app you already have.
 - **Non-waiting queue APIs.** UI code does not wait for messages or queue capacity.
   The audit rejects application-level locks and blocking calls in product UI sources;
   standard channel internals may synchronize.
-- **Nothing is hard-wired.** Every chrome surface is configuration, a declaration or a
-  painter you supply, without forking the crate.
+- **Customizable UI.** Use configuration and declarations; ordinary shells also
+  accept global painters. Protected custom UI uses typed elements.
 - **Your hardware, your backends.** The shell reaches clock, power, Wi-Fi, Bluetooth,
   display, audio, network and device info through traits, and anything else through a
   custom backend it polls each frame. It ships no system code: you plug in what your
   board speaks.
 - **Headless tests.** `fairing::testing::Harness` runs frames with no window and no
   GPU, and reports where things were drawn, so tests tap and drag at real positions.
+
+## Sessions and protected UI
+
+Credential verification belongs to your `Authenticator`. It keeps the non-cloneable
+`SessionController` and returns a read-only `SessionToken` to Fairing through a
+request-correlated `AuthOutcome::Session`. Roles expand to explicit independent
+grants; separate device and web sessions use separate controller/token pairs.
+`PinTable` is a plaintext reference authenticator for the legacy level flow.
+
+`ShellBuilder::build_protected` requires `access.session_tokens = true` and returns
+`ProtectedShell`. Define your enum or value struct with `Permission::gate(self)`,
+then register `Protected::new(value, declaration)`. External
+`Screen + PermissionBound` implementations use `add_screen`; `ElementTree` uses
+`add_elements`. Trees omit denied children before measurement/layout and recheck
+live authority before paint. A missing, revoked or expired token denies protected
+work; declaring a permission never grants it.
+
+Protected construction rejects untyped global painters/layouts, image loaders and
+procedural wallpapers. There is no mutable conversion to ordinary `Shell`.
+Admitted callbacks retain original UI/app/backend references and callback-local
+extension stores. The current `runner::run_shell*`/`run_app*` helpers accept ordinary
+`Shell` only; host `ProtectedShell::logic*`, `frame*` and `poll_events` yourself.
+
+See [session tokens](https://github.com/shim9610/fairing/blob/HEAD/docs/session-tokens.md)
+for a complete typed registration example, issuer lifecycle and nested elements.
+The [common mediation contract](https://github.com/shim9610/fairing/blob/HEAD/docs/protected-contracts.md)
+connects the proved admission kernel to compiler-discovered protected entries.
+Credential verification, metadata classification and arbitrary admitted callback
+effects remain integration responsibilities.
 
 ## Features
 
@@ -77,7 +114,7 @@ from an eframe app you already have.
 | `chrono` | off | A clock that follows the system time zone and daylight saving |
 
 The touch widgets, the theme tokens and the unit system live in
-[`fairing-widgets`](https://crates.io/crates/fairing-widgets) and are re-exported here.
+[`fairing-widgets`](https://github.com/shim9610/fairing/tree/HEAD/crates/fairing-widgets) and are re-exported here.
 
 ## Platforms
 
@@ -95,7 +132,8 @@ the complete Windows runner and macOS are not validated by those checks.
   [`docs/guide/`](https://github.com/shim9610/fairing/tree/HEAD/docs/guide):
   getting started, screens, chrome, customisation, access control, services, the
   config reference and troubleshooting.
-- The API reference is on [docs.rs](https://docs.rs/fairing).
+- Build the API reference with `cargo doc -p fairing --all-features --no-deps --open`.
+  [docs.rs](https://docs.rs/fairing) will host it after publication.
 - Screenshots and runnable examples are in the
   [repository README](https://github.com/shim9610/fairing).
 
@@ -127,11 +165,6 @@ opt-level = 3      # for a UI, 3 beats "s"; strip wins the size back
 Use `panic = "unwind"` for runtime callback containment. `panic = "abort"` bypasses
 recovery and terminates the process on a panic; allocator aborts are not unwinds.
 
-
-## Licence
-
-MIT, see [`LICENSE`](LICENSE).
-
 ## Memory limits
 
 `ShellBuilder::command_queue_capacity` (default 1,024) and
@@ -148,18 +181,16 @@ persistent items, and a bounded waiting toast queue (default 64). Use `try_toast
 `try_notify` and the models' `try_new` constructors for explicit errors. Full or
 failed optional display admission does not evict accepted commands.
 
-The production `fixed-heap` feature was withdrawn: egui and remaining infallible
-Rust paths can abort on OOM. The unpublished allocator is now a separate diagnostic
-with no dependency edge from either product crate. Whole-renderer continued
-operation under complete exhaustion remains unsupported. See the
-[memory guide](https://github.com/shim9610/fairing/blob/HEAD/docs/memory-limits.md).
-
-
 Display pressure uses bounded inline histories and borrowed-image/bitmap-warning
 CPU raster functions under `fairing::memory`. Shell pending toasts default to
 KeepLatest; `toast_overflow_policy(RejectNew)` restores refusal. Omission status
-shows a compiled warning until acknowledged. These owned-path guarantees do not
-establish whole stock-egui frame/GPU recovery from complete heap exhaustion.
+shows a compiled warning until acknowledged.
+
+The production `fixed-heap` feature was withdrawn because egui and remaining
+infallible Rust allocations can abort on out-of-memory (OOM) failures. The allocator
+is now an unpublished diagnostic with no product dependency edge. Whole-renderer
+continued operation under complete exhaustion is unsupported; see the
+[memory guide](https://github.com/shim9610/fairing/blob/HEAD/docs/memory-limits.md).
 
 ## Application-owned transport and recovery
 
@@ -174,15 +205,6 @@ recovery callbacks expose optional guidance and host policy. Old handles remain
 disconnected. Shell replacement does not reset the egui context/GPU or undo business
 side effects. See the [recovery guide](https://github.com/shim9610/fairing/blob/HEAD/docs/memory-limits.md#runtime-panics-and-sensitive-ui-state).
 
-Issuer-controlled device sessions use explicit operation grants and split controller/token
-capabilities. See [session tokens](https://github.com/shim9610/fairing/blob/main/docs/session-tokens.md)
-for multiple roles, revocation and verification scope.
+## Licence
 
-`ShellBuilder::build_protected` requires token mode and returns a `ProtectedShell`
-whose declarations carry `Protected::new(value, declaration)` requirements. Your
-own enum implements `Permission::gate(self)`; Fairing compares that value with the
-current token. Implement `PermissionBound` for external screens/elements and use
-`add_screen` / `add_elements` for library-owned dispatch. Element trees filter before
-measurement/layout and recheck authority before paint, preserving UI/app/backend
-access inside admitted callbacks. See the session guide for typed grants, stable
-metadata, factory/lifecycle behavior and the callback-effect boundary.
+MIT, see [`LICENSE`](LICENSE).

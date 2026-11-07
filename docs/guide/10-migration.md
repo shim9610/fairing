@@ -16,6 +16,7 @@ It describes changes for existing checkout users, not a published-version upgrad
 | `Command::Notify`, `Toast`, `SetMotion` | Boxed payloads | Inline values; remove `Box::new` at explicit command construction sites |
 | `Shell::toast`, `ShellHandle::toast` | `impl Into<Toast>` | `impl Into<ToastInput<'a>>` |
 | `CenterChange` | `Added`, `Updated` | Adds `Rejected`; update exhaustive matches |
+| `InstanceScreen::Owned` | Stores `Box<dyn Screen>` | Stores opaque `ScreenHandle`; construct with `InstanceScreen::owned(screen)` |
 
 ### Authentication
 
@@ -192,6 +193,12 @@ concrete UI-state coverage or universal interaction progress.
 The original screen cannot be borrowed or extracted from that handle. Factory
 creation occurs at the first dispatched hook, including legacy shells; move
 launch-time setup that must run earlier into explicit application setup.
+
+`ProtectedShell` has `logic*`, `frame*` and `poll_events` for a custom host. The
+current `runner::run_shell*` and `run_app*` helpers, `testing::Harness` and
+`settings::add_all` take ordinary `Shell`; they do not accept the protected facade.
+Register application screens/elements through its typed API rather than looking
+for mutable access to the legacy shell.
 
 Protected operation adapters and their automatic coverage derive from the same
 [mediation contract](../protected-contracts.md). New operation declarations do not

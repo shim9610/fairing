@@ -9,7 +9,7 @@
 //! keeps such things, and [`Shell::restore_settings`](crate::Shell::restore_settings) hands the
 //! stored values back at start.
 //!
-//! **The built-in screens** ([`add_all`]) are behind feature `settings`. Turn it off and they
+//! **The built-in screens** (`add_all`) are behind feature `settings`. Turn it off and they
 //! leave the build, and the integrator registers their own screens under the same ids.
 //!
 //! # All of it can be overridden
@@ -19,6 +19,8 @@
 //!
 //! ```no_run
 //! # fn main() {
+//! # #[cfg(feature = "settings")]
+//! # {
 //! # let shell: &mut fairing::Shell = todo!();
 //! use fairing::screen;
 //! use fairing::settings::{add_all, SettingsConfig};
@@ -27,15 +29,16 @@
 //! shell.add(screen("settings.wifi", my_wifi_screen));  // one of them replaced with ours
 //! # fn my_wifi_screen(_: &mut egui::Ui, _: &mut fairing::Cx<'_>) {}
 //! # }
+//! # }
 //! ```
 //!
-//! You can also never call it, or drop screens with [`SettingsConfig::without`]. The shallow
+//! You can also never call it, or drop screens with `SettingsConfig::without`. The shallow
 //! routes — colours, metrics, labels — are tabulated in guide 09 §8.
 //!
 //! # The list itself is yours
 //!
 //! Which rows `settings.home` offers is a `Vec` you own:
-//! [`screens::entries`] gives the built-in one, and [`add_all_with`] takes whatever you make of
+//! `screens::entries` gives the built-in one, and `add_all_with` takes whatever you make of
 //! it — rows out, rows of your own in, in whatever order.
 //!
 //! # A built-in is a template, not a wall
@@ -45,6 +48,8 @@
 //!
 //! ```no_run
 //! # fn main() {
+//! # #[cfg(feature = "settings")]
+//! # {
 //! # let shell: &mut fairing::Shell = todo!();
 //! use fairing::screen;
 //! use fairing::settings::screens;
@@ -60,6 +65,7 @@
 //!         screens::display_body(ui, cx);
 //!     });
 //! }));
+//! # }
 //! # }
 //! ```
 //!
@@ -161,7 +167,7 @@ pub mod keys {
 
 /// How the built-in settings screens are registered. Feature `settings`.
 ///
-/// The default is **register everything**, and [`add_all`] drops the ones whose backend is
+/// The default is **register everything**, and `add_all` drops the ones whose backend is
 /// missing.
 ///
 /// ```no_run
@@ -271,10 +277,10 @@ pub fn add_all(shell: &mut crate::Shell, config: &SettingsConfig) {
 
 /// **The same, over a settings list of your own**. Feature `settings`.
 ///
-/// [`screens::entries`] gives the built-in list; take rows out of it, put rows in, move them
+/// `screens::entries` gives the built-in list; take rows out of it, put rows in, move them
 /// about, and the `settings.home` this registers draws that list instead. Everything else —
 /// which screens are registered, the capability filter, the desktop icon — works exactly as in
-/// [`add_all`].
+/// `add_all`.
 ///
 /// A row is drawn only where a screen really is registered under its id, so a row of your own
 /// wants a screen of your own with it:

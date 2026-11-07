@@ -895,7 +895,7 @@ impl Shell {
     ///
     /// The crate ships two: [`SystemClock`](crate::services::clock::SystemClock), which is
     /// `SystemTime` plus **an offset you give it**, and — behind feature `chrono` —
-    /// [`ChronoClock`](crate::services::clock::ChronoClock), which follows the system time zone and
+    /// `services::clock::ChronoClock` (feature `chrono`), which follows the system time zone and
     /// its summer time. Anything else is a [`ClockSource`](crate::services::ClockSource)
     /// implementation of your own: a device that gets its time from a PLC or a GPS receiver hands
     /// that over here and the shell asks it, rather than the shell deciding what the time is.

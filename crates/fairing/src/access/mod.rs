@@ -393,9 +393,10 @@ pub enum AccessEvent {
         /// Protected operation gate.
         gate: Gate,
     },
-    /// Something failed its gate. In `routing` mode — and in `prompt` mode with no authenticator
-    /// — this is all that happens, and authentication is the integrator's; in `prompt` mode the
-    /// shell's prompt opens as well.
+    /// Something failed its gate. In legacy `routing` mode, or `prompt` mode without
+    /// an authenticator, authentication is the integrator's. Token mode additionally
+    /// emits [`AccessEvent::SessionRequested`] for host-owned login. Otherwise the
+    /// configured credential prompt opens.
     UnlockRequested {
         /// The gate.
         gate: Gate,

@@ -7,7 +7,11 @@ the level/PIN behavior below describes the default legacy mode.
 For mandatory typed application declarations, use `build_protected` and
 `Protected<P, D>`; see [typed requirements](../session-tokens.md#typed-permission-requirements).
 The facade retains ordinary UI/app/backend references inside admitted callbacks
-and checks the current token before invoking them.
+and checks the current token before invoking them. The
+[common mediation contract](../protected-contracts.md) describes the shared kernel
+proof and automatic protected-route check. The
+[application metadata checker](../permission-metadata-check.md) checks supported
+permission getters/mappers in an integrator's workspace.
 
 ## 0. The principle, and what exists today
 
@@ -36,7 +40,8 @@ Three modes decide how much of that the shell does:
 `prompt` needs something to ask. With no `[access.pin_table]` PINs and no
 `ShellBuilder::authenticator`, there is nothing to draw and it behaves as
 `routing` does — the event, and no prompt with nothing behind it. A single-level
-table never prompts at all.
+table never prompts at all in legacy mode. Token mode requires explicit grants
+even with one level and rejects `mode = "off"`.
 
 ## 1. The level table
 
@@ -616,7 +621,7 @@ tap a locked item
            you: if `then` is Some, handle.launch(then) - it re-enters Shell::launch and is re-checked
 ```
 
-The whole thing, handled wherever you call `poll_events()` each frame (see
+The whole thing, handled when you drain `poll_events()` after UI or logic updates (see
 "When you are not using the runner" in
 [01 §4](01-getting-started.md#4-a-minimal-app) if you host egui yourself):
 
@@ -730,7 +735,9 @@ above its start; a tap is a logout. Give it a gate everyone passes
 ## 8. Audit logging with `AccessEvent`
 
 ```rust,ignore
+#[non_exhaustive]
 pub enum AccessEvent {
+    SessionRequested { request: AuthRequestId, gate: Gate },      // token-mode host login
     UnlockRequested { gate: Gate, then: Option<LaunchAction> },  // a gate failed (every mode)
     Unlocked { gate: Gate, subject_id: Option<String>, level: Level, mode: UnlockMode },
     Denied { gate: Gate },                                       // the authenticator said no
@@ -738,13 +745,17 @@ pub enum AccessEvent {
     SessionChanged { from: Level, to: Level, reason: ChangeReason },
     LockScreenToggled(bool),                                     // the shell's lock screen came up / went
 }
-pub enum ChangeReason { Unlock, Logout, Timeout, ElevationExpired, Lock, Integrator }
+#[non_exhaustive]
+pub enum ChangeReason { Unlock, Logout, Timeout, ElevationExpired, Lock, Integrator, SessionToken }
 ```
 
 They arrive as `ShellEvent::Access(..)`. The shell only emits; writing to a file
 or shipping to a server is yours. No credential value is ever in an event — only
-`Subject.id` and `Level`. An unlock from the lock screen reports the gate
-`session.lock`.
+identity, level and gate metadata plus the opaque request correlation id.
+`SessionRequested` carries the request needed by `accept_auth_response`; a
+`SessionChanged` reason of `SessionToken` also covers issuer permission publication,
+revocation or expiry, including changes at the same numeric level. An unlock from
+the lock screen reports the gate `session.lock`.
 
 ```rust
 # use fairing::ShellEvent;

@@ -912,7 +912,7 @@ pub struct OskConfig {
     pub min_key_px: f32,
     /// The default layout: `"qwerty"`, `"numpad"`, or `"hangul"` (= `"ko"`, the dubeolsik).
     ///
-    /// With `"hangul"` the jamo do not go in as they are; [`crate::osk::HangulComposer`]
+    /// With `"hangul"` the jamo do not go in as they are; `osk::HangulComposer` (feature `osk`)
     /// composes them into syllables. A `한/영` key on the bottom row switches to
     /// the English qwerty and back. **A font with Hangul glyphs has to be installed with it** —
     /// egui's default fonts have no CJK, so the key labels come out as □

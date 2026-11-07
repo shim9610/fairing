@@ -38,7 +38,7 @@ Integrating for the first time, read in this order.
 4. [07 Config reference](07-config-reference.md) — keep it open once you start writing
    `fairing.toml`.
 5. As needed: [04 Customization](04-customization.md) (paint the shell yourself) ·
-   [05 Access control](05-access-control.md) (lock screens) · [06 Services](06-services.md)
+   [05 Access control](05-access-control.md) (sessions, permissions and lock screens) · [06 Services](06-services.md)
    (attach real hardware).
 6. [08 Troubleshooting](08-troubleshooting.md) — when it does not come up or looks wrong, and at
    deployment and audit time.
@@ -88,6 +88,9 @@ at a time as you need it.
 | Turn off the shade, the OSK, gestures | [04 §6.1](04-customization.md#61-what-can-be-turned-off-and-how) |
 | Add a gesture of my own | [03 §9.2](03-chrome.md#92-gesture-handles) · [§9.3](03-chrome.md#93-gesture-regions-of-your-own) |
 | Tune how the animation feels | [04 §8 Tuning motion](04-customization.md#8-tuning-motion) |
+| Use issuer-controlled roles, revocation and independent device/web login | [Session tokens](../session-tokens.md) |
+| Register typed screens and nested permission-aware UI | [Typed requirements](../session-tokens.md#typed-permission-requirements) |
+| Verify protected entry routes or application permission metadata | [Common mediation contract](../protected-contracts.md) · [Application checker](../permission-metadata-check.md) |
 | Lock screens behind levels | [05 §2 Gates](05-access-control.md#2-gates) |
 | Attach PIN or card-reader authentication | [05 §5 the prompt](05-access-control.md#5-the-shells-prompt-and-the-authenticator) · [05 §6 routing](05-access-control.md#6-doing-authentication-yourself-with-routing) |
 | Develop with no hardware, on mocks | [06 §3 Assembling `Services`](06-services.md#3-assembling-services) |
@@ -111,12 +114,12 @@ at a time as you need it.
 | [02 Screens](02-screens.md) | Five kinds of declaration · the `ScreenDecl` builder · resident vs factory · `Cx` · lifecycle · stack navigation · per-screen chrome · common patterns |
 | [03 Chrome](03-chrome.md) | Status bar · nav bar · desktop · shade · notifications and toasts · OSK · touch widgets · icons · gestures |
 | [04 Customization](04-customization.md) | Injecting a `Theme` · `[theme.palette]` · bar, slot and wallpaper painters · turning parts off · tuning motion · text and translations · layouts and painters for the nav bar, toasts, the banner, the keyboard and the shade's tiles |
-| [05 Access control](05-access-control.md) | The level table · gates · `Visibility` · `AccessPolicy` · the unlock prompt and `Authenticator` · the `routing` flow · the session and the lock screen · audit logging |
+| [05 Access control](05-access-control.md) | Legacy levels, gates and prompts · `Authenticator` and routing · session/lock behavior · issuer-controlled sessions and typed UI links |
 | [06 Services](06-services.md) | The backend traits · `Capabilities` · assembling `Services` · mocks · writing a real backend · setting values · clocks |
 | [07 Config reference](07-config-reference.md) | Every section and key of `fairing.toml`, with defaults, validation rules and a complete example |
 | [08 Troubleshooting](08-troubleshooting.md) | Error messages · silent failures · confirming 0 fps at idle · fonts · performance · the 14 audit stages · deployment · FAQ |
 | [09 Product branding](09-branding.md) | Image loaders · background, type, icon and mark requirements · the override table · the pre-ship review |
-| [10 Migration](10-migration.md) | Authentication tokens · command/display admission · icon-cache borrowing · optional transport and recovery APIs |
+| [10 Migration](10-migration.md) | Request/session tokens · permission values and protected hooks · deferred factories/opaque screen ownership · command/display admission · transport and recovery |
 
 ## What exists and what does not
 

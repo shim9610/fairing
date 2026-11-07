@@ -21,6 +21,13 @@ release.
 | M5 | Two panes: `cx.open_in_other_pane`, the divider, the focus, `SplitSupport`; the recent screens; the split control and tile; `[workspace]` | Done | [02 §6.1](guide/02-screens.md#61-two-panes) · [03 §2.3](guide/03-chrome.md#23-recent-screens-and-the-split) · [07 §16](guide/07-config-reference.md#16-workspace) |
 | M6 | Finishing: the string table with Korean built in and live language switching; gesture navigation; the info popover on a held desktop icon; layouts and painters for the nav bar, toasts, banners, the keyboard and the shade; the status bar's items placed; painters for the lock screen, the unlock prompt, the recent screens and every kind of widget; thin gesture handles on the side and bottom edges; gesture regions of your own; the prelude and the `hello` example | Under way. What is left is the 0.1.0 release | [04 §9](guide/04-customization.md#9-text-and-translations) · [03 §2.6](guide/03-chrome.md#26-the-gesture-style) · [03 §3.8](guide/03-chrome.md#38-holding-an-icon-the-info-popover) · [04 §10](guide/04-customization.md#10-moving-and-redrawing-the-other-pieces) · [03 §9](guide/03-chrome.md#9-gestures) |
 
+The current pre-release also includes issuer-owned sessions, application-owned
+permission values, protected element trees and the
+[common mediation kernel/routing checks](protected-contracts.md). Queue/display
+admission and host-controlled unwind recovery are described in
+[memory limits](memory-limits.md). These changes are implemented in the checkout;
+see the [migration guide](guide/10-migration.md) for their API and host boundaries.
+
 ## 2. 0.1.0
 
 The first release publishes `fairing` and `fairing-widgets` to crates.io. From 0.1.0 on, changes

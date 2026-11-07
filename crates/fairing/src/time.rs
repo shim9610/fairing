@@ -3,7 +3,7 @@
 //! The default clock is "UTC seconds plus a local offset in minutes". The offset is **a
 //! configured value**, so it does not know about summer time — somewhere with DST it is an hour
 //! out twice a year. A device where that matters turns on the `chrono` feature and uses
-//! [`ChronoClock`](crate::services::clock::ChronoClock). It produces the same [`WallTime`], so
+//! `services::clock::ChronoClock`. It produces the same [`WallTime`], so
 //! screen code does not change by a line.
 
 use crate::i18n::Strings;

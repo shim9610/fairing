@@ -8,6 +8,10 @@ the desktop, the navigation bar and the gestures; you draw the inside of each
 screen with egui. How it is put together is in
 [architecture](../architecture.md).
 
+The minimal app below uses ordinary `Shell` with legacy level gates. If your device
+requires issuer-owned sessions and typed permission declarations, also read
+[session tokens](../session-tokens.md) before choosing its registration and host APIs.
+
 ## 1. Requirements
 
 | Item | Value | Notes |
@@ -305,6 +309,11 @@ authentication can complete while hidden. The UI pass reuses its preceding logic
 Logic callbacks use a monotonic wall clock because egui's UI time and input events are
 stale while hidden. Hosts using only `frame` retain the egui input timeline, including
 virtual time in the headless harness. Drawing and animations wait for the next UI pass.
+
+`ProtectedShell` exposes the same `logic*`, `frame*` and `poll_events` hosting
+pattern. The current `runner::run_shell*` and `run_app*` helpers accept ordinary
+`Shell` only; use your own host for a protected shell. Their ordinary `Shell`
+examples cannot be switched to `build_protected` without changing the host.
 
 `ShellEvent` is not a reason to come here. `runner::run_shell` does drop events
 into `log::debug!`, but **`runner::run_shell_with(options, build, on_event)`**

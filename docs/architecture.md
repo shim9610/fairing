@@ -15,7 +15,7 @@ each part is in the [integrator guide](guide/README.md); what is planned is in t
 │ fairing                 the shell                               │
 │   shell · chrome · overlay · osk · notify · desktop · workspace │
 │   screen · gesture · access · settings · services · i18n        │
-│   layout · config · time · inbox · brand · testing              │
+│   elements · layout · config · time · inbox · brand · testing   │
 ├─────────────────────────────────────────────────────────────────┤
 │ fairing-widgets         the element layer                       │
 │   unit · theme · motion · icons · fonts · widgets · drag        │
@@ -96,7 +96,8 @@ they do not expose new application APIs.
 
 | Module | What it does |
 |---|---|
-| `shell` | `Shell`, `ShellBuilder`, `ShellHandle` and `ShellEvent`. Runs the frame below |
+| `shell` | `Shell`, `ProtectedShell`, `ShellBuilder`, `ShellHandle` and `ShellEvent`. Runs the frame below |
+| `elements` | Permission-aware leaf/row/column trees with library-owned filtering, measurement, layout and paint dispatch |
 | `screen` | `Screen`, `ScreenDecl`, `Cx`, `ChromePolicy`, the lifecycle. A screen is a closure or a type you register |
 | `workspace` | The screen stack, transitions, two panes with a divider, the recent screens |
 | `desktop` | The icon grid, pages, the dock and the icon rail, the wallpaper |
@@ -109,7 +110,7 @@ they do not expose new application APIs.
 | `recovery` | Fault guidance, shell-replacement errors and panic-payload cleanup diagnostics |
 | `memory` | Re-exported fixed pools, fallible strings, display windows and CPU raster helpers |
 | `gesture` | One gesture engine for edges, flings, long presses, handles and your own regions |
-| `access` | Levels, gates, the session, the unlock prompt, the lock screen, `Authenticator` |
+| `access` | Legacy levels/gates, issuer-controlled controller/token sessions, typed permission bindings, common admission kernel, credential prompts and `Authenticator` |
 | `settings` | Setting keys and values, and the built-in settings screens |
 | `services` | The backend traits, `Null` and `Mock`, `Services`, `Waker` |
 | `i18n` | The string table, with English and Korean built in, switched live |
@@ -119,6 +120,31 @@ they do not expose new application APIs.
 | `brand` | The mark and the procedural background |
 | `testing` | `Harness`: frames with no window and no GPU |
 | `runner` | The optional window bootstrap |
+
+### Protected execution
+
+Ordinary `build` permits untyped host customization. `build_protected` requires
+token mode, rejects untyped builder hooks before setup and returns a facade with
+no mutable legacy-shell conversion. User permission values map to issuer grant
+identifiers; `Protected` declarations and `PermissionBound` screens retain those
+requirements. `ElementTree` owns nested layout and omits denied children before
+measurement; it invalidates stale plans and checks live authority before paint.
+
+The authenticator owns the mutable `SessionController`; the shell reads its
+`SessionToken`. Revocation/publication wakes the host, and access is observed during
+logic-only updates as well as rendering and protected-operation admission. The
+[session guide](session-tokens.md) describes issuer and clock assumptions. Admitted
+application bodies retain raw UI/app/backend access.
+
+The [common contract](protected-contracts.md) generates opaque payload storage and
+operation adapters. Source-bound kernel proofs and compiler-MIR routing checks
+connect library-managed protected entries to one admission boundary. The
+[metadata checker](permission-metadata-check.md) separately checks supported
+workspace permission getters/mappers. These are distinct contracts.
+
+Current `runner::run_shell*`/`run_app*`, `testing::Harness` and `settings::add_all`
+accept ordinary `Shell`. A protected application connects its facade's `logic*`,
+`frame*` and `poll_events` in its own host and uses typed registration.
 
 ## 4. One frame
 

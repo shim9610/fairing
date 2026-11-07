@@ -62,7 +62,11 @@
 //! - [`fonts`] — font installation, including the bold face the weight axis needs.
 //! - [`widgets`] — the touch controls.
 //!
-//! The shell re-exports all of it, so integrator code says `fairing_widgets::…` as it always did.
+//! The shell re-exports these modules, so shell applications can use `fairing::widgets`,
+//! `fairing::theme` and the other module paths without a direct widget-crate dependency.
+//! Standalone widgets do not enforce shell session permissions. For library-managed
+//! protected measurement and paint, use `fairing::elements::ElementTree` through
+//! `fairing::ProtectedShell::add_elements`.
 
 #![forbid(unsafe_code)]
 #![cfg_attr(

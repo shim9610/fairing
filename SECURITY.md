@@ -50,8 +50,10 @@ for configuration and analysis triggers.
   [extension checker](docs/permission-metadata-check.md) checks a restricted subset
   of workspace metadata implementations; imported implementations need separate checks.
   Admitted callbacks retain raw UI/app/backend access. Requirement selection, arbitrary
-  effects, host hooks, destructors and prior disclosures remain trusted. Complete
-  mediation and whole-program information-flow confinement are not proved.
+  effects, host hooks, destructors and prior disclosures remain trusted. The
+  [common mediation contract](docs/protected-contracts.md) proves the shared admission
+  kernel and checks compiler-discovered library-managed protected entry routes.
+  Whole-program information-flow confinement is outside that contract.
 - **Recovery does not undo completed side effects.** Caught runtime unwinds quarantine
   the shell; the host controls replacement and reconciliation. Abort/OOM and panic-hook
   behavior have separate limits documented in [memory limits](docs/memory-limits.md#runtime-panics-and-sensitive-ui-state).

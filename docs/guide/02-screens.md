@@ -2,7 +2,13 @@
 
 Everything about building a screen: declaration → builder → state → `Cx` → lifecycle → stack navigation → per-screen chrome.
 
-A screen is not an app and not a process. It is one `FnMut(&mut egui::Ui, &mut Cx)`, and the only thing asked of it is that it fills the rect the shell hands it. Inside, it is plain egui.
+A screen is a registered UI body: an `FnMut(&mut egui::Ui, &mut Cx)` closure or a
+`Screen` implementation. It draws inside the rectangle the shell supplies.
+
+The examples below use ordinary `Shell` registration. In a `ProtectedShell`, wrap
+declarations in `Protected::new(permission, declaration)`, or use `add_screen` for
+`Screen + PermissionBound` and `add_elements` for an owned permission-aware tree.
+See [typed registration](../session-tokens.md#typed-permission-requirements).
 
 ## 1. Five kinds of declaration
 
@@ -70,7 +76,7 @@ fn main() -> fairing::Result<()> {
         .desktop(),
     );
 
-    // 2) Factory screen. Every open runs the factory and gets a fresh instance.
+    // 2) Factory screen. Each new instance constructs its body at its first dispatched hook.
     shell.add(
         screen_with("counter", Counter::default)
             .title("Counter")
@@ -182,13 +188,20 @@ the factory. Reach for `screen_of` when your screen is a `struct` — that is wh
 |---|---|---|
 | Instances | Always one. The declaration is the instance | A new one per open |
 | State lives in | What the closure captured (owned by the declaration) | The struct the factory built (owned by the instance) |
-| State lifetime | `add` … `remove`. Survives closing | `Created` … `Destroyed`. Dropped when closed |
+| State lifetime | `add` … `remove`. Survives closing | First dispatched hook … instance disposal. A denied lifecycle hook may be skipped |
 | `LaunchMode` | Always `Single` | `Single` by default, `Multi` allowed |
 | `.evict_after` | Ignored (warns) | Works |
-| Initialisation | `screen_of`: build the value before you register it. `screen`: by hand inside the closure, on `cx.event == Some(Lifecycle::Created)` | The factory builds a fresh value every time |
+| Initialisation | `screen_of`: build the value before you register it. `screen`: by hand inside the closure, on `cx.event == Some(Lifecycle::Created)` | The first dispatched hook constructs the body; protected construction requires admission before and after the factory |
 | `on_back` / `on_lifecycle` / `on_result` | `screen_of` only (a closure is `ui` and nothing else) | Yes |
 | Embeddable with `cx.draw_screen` | Yes | **No** — it owns no screen between opens |
 | Fits | Dashboards, settings — one of them, and the state should survive | Item details, wizards — start clean each time, reclaim on close |
+
+A factory body is created lazily at the first dispatched hook, including in ordinary
+shells, rather than when the open request is queued. An instance closed before
+that dispatch may never construct its body. Put setup that must happen at request
+time in explicit application code. In protected shells, denied hooks, including
+`Destroyed`, are skipped; keep cleanup that must run after revocation in owned
+resources/destructors or host events.
 
 A resident screen cannot be `Multi` because there is only one instance: pushing it twice would
 draw the same state in two places.

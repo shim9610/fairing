@@ -1,8 +1,8 @@
 //! `fairing` — a touchscreen shell for embedded devices, built on `egui`.
 //!
 //! The status bar, the pull-down shade with quick-settings tiles and notifications
-//! ([`overlay`]), the desktop, a screen stack with transitions, the navigation bar, an
-//! on-screen keyboard with numeric, QWERTY and two-set Hangul layouts ([`osk`]), toasts and
+//! (feature `overlay`), the desktop, a screen stack with transitions, the navigation bar, an
+//! on-screen keyboard with numeric, QWERTY and two-set Hangul layouts (feature `osk`), toasts and
 //! heads-up banners ([`notify`]), device settings screens and access gates — the parts every
 //! kiosk, panel and bench instrument rebuilds, in one process and one `egui` frame loop.
 //!
@@ -19,6 +19,28 @@
 //! what comes next is in the
 //! [roadmap](https://github.com/shim9610/fairing/blob/HEAD/docs/roadmap.md).
 //!
+//! # Sessions and protected UI
+//!
+//! Credential verification belongs to [`access::Authenticator`]. In opt-in token mode,
+//! the issuer retains a [`access::SessionController`] and Fairing reads its
+//! [`access::SessionToken`] for explicit operation grants. Independent web and device
+//! login states require separate controller/token pairs.
+//!
+//! [`ShellBuilder::build_protected`] requires token mode and returns [`ProtectedShell`].
+//! Define an application-owned [`access::Permission`] value and register
+//! [`access::Protected`] declarations. External [`Screen`] implementations also implement
+//! [`access::PermissionBound`] and use [`ProtectedShell::add_screen`]. For nested UI,
+//! [`elements::ElementTree`] filters denied children before measurement/layout and checks
+//! live authority before paint through [`ProtectedShell::add_elements`].
+//!
+//! Protected construction rejects untyped global painter/layout hooks, image loaders and
+//! procedural wallpapers; ordinary [`ShellBuilder::build`] retains those trusted hooks.
+//! Admitted callbacks retain original UI/app/backend access. The
+//! [common mediation contract](https://github.com/shim9610/fairing/blob/HEAD/docs/protected-contracts.md)
+//! states the proved kernel and compiler-checked routing scope; the
+//! [session guide](https://github.com/shim9610/fairing/blob/HEAD/docs/session-tokens.md)
+//! shows issuance, typed registration, revocation and integration responsibilities.
+//!
 //! # Features
 //!
 //! | Feature | Default | What it adds |
@@ -33,6 +55,11 @@
 //! | `chrono` | off | A clock that follows the system time zone and daylight saving |
 //!
 //! # Example
+//!
+//! This example uses ordinary [`Shell`] registration with legacy level gates. Typed
+//! protected registration uses the APIs above. The optional `runner::run_shell*` and
+//! `run_app*` helpers accept ordinary `Shell`; host `ProtectedShell` through its
+//! `logic*`, `frame*` and `poll_events` methods.
 //!
 //! ```no_run
 //! use fairing::{screen, icon, Cx};

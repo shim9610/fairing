@@ -112,7 +112,7 @@
 //!
 //! Nothing in there is the settings module's to lend. A built-in screen is the same call with a
 //! body that happens to read [`Cx::settings`](crate::Cx) — which is why
-//! [`settings::screens`](crate::settings::screens) exports its bodies: to be dropped into a page of
+//! `settings::screens` (feature `settings`) exports its bodies: to be dropped into a page of
 //! yours, or cloned under an id of yours with
 //! [`ScreenDecl::with_id`](crate::screen::ScreenDecl::with_id).
 //!

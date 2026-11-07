@@ -4,7 +4,13 @@ The chrome is the shell around the content: the status bar, the nav bar, the des
 notifications, the OSK, touch widgets, icons and gestures. It is drawn even if you register no
 screens at all.
 
-There are three ways to work with it.
+The examples below use ordinary `Shell`. With `ProtectedShell`, wrap custom
+screen/action/status/nav/tile declarations in `Protected::new(value, declaration)`;
+the library checks their token requirements before dispatch. Untyped global painter
+hooks are rejected. Use [typed elements](../session-tokens.md#typed-permission-requirements)
+for custom protected drawing.
+
+There are three ways to work with an ordinary shell.
 
 | Way | What it decides | When to use it |
 |---|---|---|
