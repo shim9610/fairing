@@ -22,7 +22,9 @@ protected_contract!(operation Callback<dyn TrendView>, render(ui: &mut egui::Ui)
 
 There is no Python carrier/protocol list to update. The compiler discovers the
 contract implementations, associated payload types, actual carrier instantiations
-and generic payload bounds from compiled Rust. The same rule discovers the new
+and generic payload bounds from compiled Rust. It also compares the declared
+payload contract with the actual executable field types, including nested containers;
+a generated marker with a false payload type is rejected. The same rule discovers the new
 protocol and its invocation sites. A direct call that bypasses the generated
 adapter is rejected. The extension controls compile both dynamic and generic
 new protocols against the unchanged checker and unchanged kernel proof.
@@ -42,13 +44,14 @@ permission decisions may reject nondeterministically.
 The compiler checker derives its targets from the runtime contracts. It checks
 raw protocol storage/references, opaque field visibility, deep return types,
 payload movement through private generic helpers and captures, context ownership,
-resource isolation and authority-observer forwarding. Unclassified executable
-storage, payload export, reachable unknown forwarding and unsupported reachable
+resource isolation and authority-observer forwarding. Unknown payload type shapes
+reject the contract. Unclassified executable storage, payload export, unclassified
+application-trait dispatch, reachable unknown forwarding and unsupported reachable
 control flow reject the certificate.
 
 The resulting control-flow and callable-flow graph retains caller continuations
-after a guarded call. The common dispatch boundary is the only admission cut. Only its source-proved
-kernel caller may create that cut; an adapter that calls the lower-level dispatcher
+after a guarded call. The common dispatch boundary is the only admission cut.
+Only its source-proved kernel caller may create that cut; an adapter that calls the lower-level dispatcher
 with a literal `true` is rejected.
 Horn reachability must report `unsat` for protected payload entry outside that
 cut, and an independent traversal must agree. Loops and recursion have no path

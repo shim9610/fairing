@@ -17,6 +17,8 @@ KERNEL = 'fairing::access::mediation::'
 PROTOCOLS = set()
 FUNCTIONS = {'core::ops::function::Fn', 'core::ops::function::FnMut', 'core::ops::function::FnOnce'}
 CARRIERS = set()
+# Fixed kernel interfaces; these are metadata/authority contracts, not a payload roster.
+OBSERVATION_PROTOCOLS = {'fairing::access::AccessPolicy'} | {KERNEL+'protected::'+name for name in ('Permission','PermissionBound','sealed::Declaration')}
 
 
 def kernel(name):
@@ -249,6 +251,8 @@ def analyze(data):
                 continue
             if block.get('canonical_trait') in PROTOCOLS:
                 sinks[node] = 'application-protocol'
+            elif block.get('canonical_trait') and not block['canonical_trait'].startswith(('core::','alloc::','std::')) and block['canonical_trait'] not in OBSERVATION_PROTOCOLS:
+                sinks[node] = 'unclassified-protocol-dispatch'
             elif block.get('callable_trait'):
                 objects = block.get('argument_objects', [[]])[0]
                 possible = targets(name, objects)
@@ -316,6 +320,26 @@ def analyze(data):
     unsupported_reachable = sorted(set(unsupported) & set(previous))
     from contract_types import Types, kernel_exports, payload_boundaries, context_isolation, observer_bindings
     types=Types(data,trusted_host=False)
+    metadata={KERNEL+'protected::PermissionBinding'}
+    # A generated marker cannot hide executable storage behind a false Payload.
+    # Compare actual fields with the compiled associated type, through containers.
+    for contract in contracts:
+        if contract['role']!='carrier':continue
+        expected=types.violations(contract['payload_shape'],stops=CARRIERS|metadata)
+        for problem in expected:
+            if problem['kind'] not in ('parameter','dynamic-input','callable'):
+                errors.append({'kind':'unclassified-payload-contract','owner':contract['owner'],'detail':problem})
+        def covered(problem):
+            if problem['kind']=='dynamic-input':
+                declared_protocols={p for item in expected if item['kind']=='dynamic-input' for p in item['protocols']}
+                actual=set(problem['protocols']);produced=actual-FUNCTIONS
+                # A factory may produce the declared protocol. A bare callable
+                # still has to be declared; an empty Payload cannot hide it.
+                return actual <= declared_protocols or bool(produced) and produced <= declared_protocols
+            return any({k:v for k,v in item.items() if k!='path'}=={k:v for k,v in problem.items() if k!='path'} for item in expected)
+        for field in types.definitions[contract['owner']]['fields']:
+            for problem in types.violations(field['shape'],stops=CARRIERS|metadata):
+                if not covered(problem):errors.append({'kind':'carrier-payload-contract-mismatch','field':field['id'],'detail':problem})
     errors.extend(kernel_exports(bodies,types))
     resource_errors,resource_contract=context_isolation(bodies,types);errors.extend(resource_errors)
     observer_errors,observer_contract=observer_bindings(bodies,types);errors.extend(observer_errors)

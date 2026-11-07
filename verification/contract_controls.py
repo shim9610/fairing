@@ -16,6 +16,11 @@ pub(crate) trait ContractExtension { fn execute(&mut self, cx: &mut Cx<'_>); }
 protected_contract!(operation Callback<dyn ContractExtension>, extension(), |body,cx|body.execute(cx));
 '''
 CASES=[
+ ('unclassified-protocol','crates/fairing/src/access/mediation.rs',None,"\npub(crate)trait HiddenProtocol{fn execute(&mut self,cx:&mut Cx<'_>);}\npub(crate)fn bypass_unknown<T:HiddenProtocol>(body:&mut T,cx:&mut Cx<'_>){body.execute(cx)}\n",'unguarded-payload-entry'),
+ ('unclassified-payload-shape','crates/fairing/src/access/mediation.rs',None,"\ntrait Opaque{type Item;}\nprotected_contract!(carrier struct Hidden<T:Opaque>:T::Item {body:T::Item});\n",'unclassified-payload-contract'),
+ ('false-dynamic-payload','crates/fairing/src/access/mediation.rs',None,"\npub(crate)trait HiddenProtocol{fn execute(&mut self,cx:&mut Cx<'_>);}\nprotected_contract!(carrier struct Hidden: () {body:Box<dyn HiddenProtocol>});\nimpl Hidden{pub(crate)fn bypass(&mut self,cx:&mut Cx<'_>){self.body.execute(cx);}}\n",'carrier-payload-contract-mismatch'),
+ ('false-callable-payload','crates/fairing/src/access/mediation.rs',None,"\nprotected_contract!(carrier struct Hidden: () {body:Box<dyn FnMut()>});\nimpl Hidden{pub(crate)fn bypass(&mut self){(self.body)();}}\n",'carrier-payload-contract-mismatch'),
+ ('false-generic-payload','crates/fairing/src/access/mediation.rs',None,"\nprotected_contract!(carrier struct Hidden<T: ?Sized>: () {body:Box<T>});\nimpl<T:?Sized>Hidden<T>{pub(crate)fn export(self)->Box<T>{self.body}}\n",'carrier-payload-contract-mismatch'),
  ('one-line-extension','crates/fairing/src/access/mediation.rs',None,EXTENSION,None),
  ('extension-bypass','crates/fairing/src/access/mediation.rs',None,EXTENSION+'''\nimpl Callback<dyn ContractExtension> { pub(crate) fn bypass(&mut self,cx:&mut Cx<'_>) {self.body.execute(cx);} }\n''','unguarded-payload-entry'),
  ('generic-one-line-extension','crates/fairing/src/access/mediation.rs',None,EXTENSION.split('protected_contract!')[0]+"protected_contract!(operation [T: ContractExtension] Callback<T>, extension_generic(), |body,cx|body.execute(cx));\n",None),

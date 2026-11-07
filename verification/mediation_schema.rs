@@ -16,6 +16,7 @@ struct Contract {
     role: String,
     protocols: Vec<String>,
     generated: bool,
+    payload_shape: String,
     parameters: Vec<u32>,
 }
 thread_local! {
@@ -79,6 +80,9 @@ fn declarations(tcx: TyCtxt<'_>) -> Vec<Contract> {
                         .map(|value| raw_parameters_in(tcx, value, false))
                         .unwrap_or_default(),
                     generated,
+                    payload_shape: payload
+                        .map(|value| type_shape(tcx, value))
+                        .unwrap_or_else(|| "null".into()),
                 });
             }
         }
@@ -94,11 +98,12 @@ fn carrier(tcx: TyCtxt<'_>, def: rustc_hir::def_id::DefId) -> bool {
 pub fn contracts(tcx: TyCtxt<'_>) -> String {
     super::array(declarations(tcx).iter().map(|entry| {
         format!(
-            "{{\"owner\":{},\"role\":{},\"protocols\":{},\"generated\":{}}}",
+            "{{\"owner\":{},\"role\":{},\"protocols\":{},\"generated\":{},\"payload_shape\":{}}}",
             super::quote(&identity(tcx, entry.owner)),
             super::quote(&entry.role),
             super::array(entry.protocols.iter().map(|p| super::quote(p))),
-            entry.generated
+            entry.generated,
+            entry.payload_shape
         )
     }))
 }
