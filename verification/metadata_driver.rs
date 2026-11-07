@@ -17,7 +17,7 @@ fn qualified(tcx: TyCtxt<'_>, id: DefId) -> String {
 }
 // Diagnostic paths may use a public re-export in a downstream crate. Security
 // subjects are matched using the compiler's definition path, not pretty printing.
-fn definition_path(tcx: TyCtxt<'_>, id: DefId) -> String {
+pub(super) fn definition_path(tcx: TyCtxt<'_>, id: DefId) -> String {
     let parts = tcx
         .def_path(id)
         .data
@@ -199,9 +199,9 @@ pub fn check(tcx: TyCtxt<'_>) {
         let name = symbol.as_str();
         if !matches!(
             (owner.as_str(), name),
-            ("fairing::access::protected::Permission", "gate")
+            ("fairing::access::mediation::protected::Permission", "gate")
                 | (
-                    "fairing::access::protected::PermissionBound",
+                    "fairing::access::mediation::protected::PermissionBound",
                     "required_permission"
                 )
         ) {

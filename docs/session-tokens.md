@@ -278,7 +278,9 @@ check missing metadata, missing mappings, incompatible tree permission types and
 private storage. Product and mutation tests cover enum-value separation, external
 registration, pre-layout filtering, authority/metadata invalidation, stable widget
 identity and per-callback rechecks. These establish the implemented component and
-execution-path evidence; [complete mediation](callback-mediation.md) remains unproved.
+execution-path evidence. The [common mediation gate](protected-contracts.md)
+separately proves the shared monitor and automatically checks every
+library-managed protected payload entry against that boundary.
 
 Raw egui/app/backend effects inside an admitted callback, trusted authentication,
 backends and destructors remain documented boundaries. The library cannot infer

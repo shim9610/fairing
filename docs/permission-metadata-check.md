@@ -65,5 +65,6 @@ members or check their workspaces separately.
 This result establishes the restricted metadata contract and ordinary Rust type
 conformance. It does not validate business permission mappings, prove that every
 callback is mediated, or constrain arbitrary admitted callback effects. The
-[complete-mediation gate](callback-mediation.md) remains separate and unproved.
+[common mediation gate](protected-contracts.md) separately proves the monitor
+and checks compiler-discovered protected entry paths.
 CI runs the library check and consumer rejection controls in `permission-metadata`.

@@ -2,14 +2,19 @@
 
 ## Status and checkpoint
 
-This is the implementation specification for issue #11. Runtime checkpoint:
-`5789bbc271eb508ee9fa6032142c9b720011d7e4`. That revision fixes the confirmed
-painter bypass, but complete mediation remains unproved. This specification is
-committed before changing the runtime so the refactor can be reviewed against it.
+This is the original execution-architecture specification for issue #11. The
+architecture is implemented; the subsequent [common mediation contract](protected-contracts.md)
+defines the current single-declaration runtime/proof connection and strict gate.
+The checkpoint and milestone statements below record the original implementation order.
 
-The immediate milestone is the execution architecture and its connected tests.
-A completed architecture is a prerequisite for the later global mediation proof;
-it must not be reported as that proof itself.
+Original runtime checkpoint:
+`5789bbc271eb508ee9fa6032142c9b720011d7e4`. That revision fixes the confirmed
+painter bypass; the mediation proof had not yet been implemented at that checkpoint.
+The specification was committed before changing the runtime so the refactor
+could be reviewed against it.
+
+The original first milestone was the execution architecture and its connected
+tests. That architecture alone did not establish the subsequent mediation proof.
 
 ## Ownership and permission vocabulary
 
@@ -85,8 +90,8 @@ frame; already-admitted work and output are not retroactively undone. Layout wor
 is bounded; invalidation must not trigger an unbounded retry loop.
 
 Measurement results must be finite and nonnegative. Invalid measurements are
-omitted without invoking paint. Layout records contain framework-owned indices
-and rectangles, not reusable authorization capabilities. Structural node paths and
+omitted without invoking paint. Layout records borrow opaque element handles and contain framework-owned
+rectangles, not reusable authorization capabilities. Structural node paths and
 normalized requirements namespace widget IDs independently of visible sibling
 order. Protected callbacks keep the original UI/app/backend access and
 callback-local extension stores.
@@ -126,8 +131,9 @@ covers Fairing-owned protected element entry, not all arbitrary Rust execution.
   Re-run relevant product, component-proof and assurance checks; bind receipts to
   the final sources.
 
-The compiler MIR detector and strict complete-mediation gate remain in place.
-Newly unknown paths remain obligations. Source inventories, contract tests and a
-local decision proof must not be relabeled as a global absence theorem. Extend
-consumer analysis and the whole-library proof after this execution path exists.
+The compiler MIR diagnostic remains available. The current strict gate combines
+the source-bound common kernel proof with automatic protected-contract discovery
+and routing analysis. Unknown reachable protected forwarding rejects that gate;
+source inventories or a local decision proof alone cannot satisfy it. See the
+[common contract](protected-contracts.md) for the property and interface assumptions.
 No merge, release or branch-protection changes are included.

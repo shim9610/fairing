@@ -75,16 +75,21 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install pinned compiler development components and solver
         run: python3 verification/install.py proofs
-      - name: Require complete callback mediation
+      - name: Prove the common kernel and cover every protected contract
         run: python3 verification/mediation.py --require-proved
       - name: Require SAT and UNSAT compiler-fixture controls
         if: always()
         run: python3 verification/mediation_controls.py
+      - name: Check one-line extension and reject compiled bypasses
+        if: always()
+        run: python3 verification/contract_controls.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: callback-mediation-evidence
           path: |
+            target/assurance/protected-contracts/
+            target/assurance/central-mediation/
             target/mediation/summary.json
             target/mediation/concrete-probe.log
             target/mediation/all/

@@ -23,8 +23,10 @@ checks for paths outside the local dispatcher. Its confirmed unauthenticated
 custom-painter route is now blocked by protected-builder validation. Untyped hook
 families are rejected, and protected callbacks cannot persist icon/widget painters
 in shared shell stores. Regression and mutation controls cover those repairs.
-The complete mediation property remains **not proved**: conservative candidate
-paths and unresolved dispatch/model boundaries still make the strict gate fail.
+The [common mediation gate](protected-contracts.md) proves the shared monitor
+and automatically checks all library-managed protected payload entries. The broad
+legacy diagnostic still reports conservative candidates outside that certificate.
+This routing result does not discharge the whole-application operability theorem above.
 
 ## Statement and required proof order
 
@@ -60,7 +62,8 @@ The actual generic dispatch branch returns `None` without invoking its body when
 entry is false. Kani checks that branch with arbitrary u64 effect/payload clients,
 and Verus checks the exact admission predicate. Compiler clients establish the
 registration/type boundary, including mandatory external element metadata; source
-tripwires and product witnesses cover erased screen/action/chrome/tile adapters and the post-factory recheck.
+tripwires and product witnesses cover erased screen/action/chrome/tile adapters and the post-factory recheck. The common mediation gate also consumes source-bound
+kernel proofs and compiler-discovered carrier, declaration and routing contracts.
 
 The resulting component contract is absence of a new callback invocation through
 denied protected dispatch. It does not classify arbitrary app data, erase prior

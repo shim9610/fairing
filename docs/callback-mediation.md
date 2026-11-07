@@ -1,13 +1,23 @@
 # Callback mediation verification
 
+The [common protected contract](protected-contracts.md) is the current strict
+verification entrypoint. It proves the common monitor and automatically checks
+all contract-owned protected entry paths. Run
+`python3 verification/mediation.py --require-proved`.
+
+The sections below describe the broad legacy reachability diagnostic and the
+original status-painter repair. That diagnostic includes explicit standalone
+legacy APIs and is not the protected routing certificate.
+
+
 The target is that every application callback entry passes a current check for
 its required permission. The local `invoke(false, callback)` proof does not show
 that every caller uses `invoke`. The compiler-derived detector found a real
 unauthenticated custom status-painter route in `ProtectedShell`.
 
 That route is now blocked at construction. This repair does **not** establish the
-absence of other paths: complete mediation remains **not proved**, and the strict
-security check still rejects that claim.
+absence of other paths: the repair alone does not prove coverage. The strict protected-contract
+checker separately requires the common kernel proof and automatic coverage.
 
 ## Repairs and supported API
 
@@ -49,11 +59,12 @@ and invokes measurement/paint after live checks. Denied children have no plan en
 space or gap. Authority revisions and metadata identity invalidate prepared geometry.
 Stable structural paths namespace widget IDs independently of visible sibling order.
 
-This is the architecture needed for subsequent coverage/refinement proofs. The
+The compiler-discovered contracts connect this architecture to the common kernel. The
 [extension checker](permission-metadata-check.md) checks workspace metadata
-getters/mappers against a restricted effect and termination contract. It does not
-discharge the existing MIR graph's unresolved protocol calls or supply its missing
-ownership/state model; the strict complete-mediation property remains unproved.
+getters/mappers against a restricted effect and termination contract. The broad
+legacy diagnostic retains unresolved calls outside that checker. The strict command
+verifies the protected contract
+using compiler-discovered opaque carriers and the proved common admission cut.
 See [the recorded specification](permission-value-refactor.md) and
 [value-based integration](session-tokens.md#typed-permission-requirements).
 
@@ -67,8 +78,8 @@ python3 verification/mediation_controls.py
 
 The pinned Kani compiler supplies `rustc_driver`; the verified Verus bundle supplies
 Z3. Minimal and all-feature Linux profiles of `fairing` and `fairing-widgets` are
-analyzed. `--require-proved` still exits nonzero with `UNPROVED_COMPLETE_MEDIATION`
-after the concrete repair. The `callback-mediation` CI job preserves this verdict
+analyzed. `--require-proved` runs the source-bound kernel/contract certificate described
+in the linked contract; ordinary diagnostic mode retains the graph evidence. The `callback-mediation` CI job preserves this verdict
 and uploads its evidence. Detector controls run even after the property failure.
 
 `--expect-counterexample` requires a matching compiler path and concrete violation;
@@ -117,8 +128,8 @@ be installed through the protected API.
 Unresolved generic/virtual calls, external bodies, destructors and unsupported MIR
 terminators are reported. They are never silently classified safe. An `unsat` result
 does not discharge those boundaries or the unproved full compiler/model correspondence.
-Gate/session matching and freshness are also outside this graph analysis. The detector
-currently cannot issue a positive whole-library certificate; fixing the native witness
+Gate/session matching and freshness are also outside this graph analysis. The broad diagnostic alone
+cannot issue a protected routing certificate; fixing the native witness
 alone must not make its strict gate green.
 
 ## Evidence and controls

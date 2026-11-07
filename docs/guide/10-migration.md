@@ -184,3 +184,15 @@ and unread state for a later retry. See [memory limits](../memory-limits.md).
 The [API contract map](../api-contracts.md) links implementation paths and test
 evidence. Component proofs and finite UI histories do not establish complete
 concrete UI-state coverage or universal interaction progress.
+
+## Protected mediation ownership
+
+`InstanceScreen::Owned` now stores an opaque `ScreenHandle`. Replace
+`InstanceScreen::Owned(Box::new(screen))` with `InstanceScreen::owned(screen)`.
+The original screen cannot be borrowed or extracted from that handle. Factory
+creation occurs at the first dispatched hook, including legacy shells; move
+launch-time setup that must run earlier into explicit application setup.
+
+Protected operation adapters and their automatic coverage derive from the same
+[mediation contract](../protected-contracts.md). New operation declarations do not
+require a new proof per screen or a separate verifier registration.

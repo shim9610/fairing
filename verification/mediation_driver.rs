@@ -77,6 +77,8 @@ fn closures(tcx: TyCtxt<'_>, ty: ty::Ty<'_>, out: &mut Vec<String>) {
 }
 #[path = "metadata_driver.rs"]
 mod metadata;
+#[path = "mediation_schema.rs"]
+mod schema;
 
 struct Inventory {
     output: Option<PathBuf>,
@@ -135,9 +137,15 @@ impl Callbacks for Inventory {
             let body = tcx.optimized_mir(def);
             let locals = array(body.local_decls.iter_enumerated().map(|(local, data)| {
                 format!(
-                    "{{\"local\":{},\"type\":{}}}",
+                    "{{\"local\":{},\"type\":{},\"shape\":{},\"protected_protocols\":{}}}",
                     local.as_usize(),
-                    quote(&data.ty.to_string())
+                    quote(&data.ty.to_string()),
+                    schema::type_shape(tcx, data.ty),
+                    array(
+                        schema::protected_protocols(tcx, data.ty, def)
+                            .iter()
+                            .map(|p| quote(p))
+                    )
                 )
             }));
             let mut blocks = Vec::new();
@@ -169,10 +177,61 @@ impl Callbacks for Inventory {
                             (format!("{ty}"), None, false)
                         };
                         extra=format!(",\"callee\":{},\"trait\":{},\"local_callee\":{},\"operand\":{},\"arguments\":{}",quote(&callee),owner.as_deref().map(quote).unwrap_or_else(||"null".into()),local,quote(&format!("{func:?}")),array(args.iter().map(|arg|format!("{{\"value\":{},\"type\":{}}}",quote(&format!("{:?}",arg.node)),quote(&arg.node.ty(&body.local_decls,tcx).to_string())))));
+                        if let mir::TerminatorKind::Call { destination, .. } = &term.kind {
+                            extra.push_str(&format!(
+                                ",\"destination_value\":{}",
+                                schema::place_value(tcx, body, *destination)
+                            ));
+                        }
+
+                        extra.push_str(&format!(
+                            ",\"argument_values\":{}",
+                            array(
+                                args.iter()
+                                    .map(|arg| schema::operand_value(tcx, body, &arg.node))
+                            )
+                        ));
                         extra.push_str(&format!(
                             ",\"closure_arguments\":{}",
                             array(closure_targets.iter().map(|s| quote(s)))
                         ));
+                        if let ty::FnDef(called, _) = ty.kind() {
+                            extra.push_str(&format!(
+                                ",\"canonical_callee\":{},\"canonical_trait\":{}",
+                                quote(&metadata::definition_path(tcx, *called)),
+                                schema::protocol_of_assoc(tcx, *called)
+                                    .map(|id| quote(&metadata::definition_path(tcx, id)))
+                                    .unwrap_or_else(|| "null".into())
+                            ));
+                        }
+                        extra.push_str(&format!(
+                            ",\"argument_objects\":{}",
+                            array(args.iter().map(|arg| schema::callable_objects(
+                                tcx,
+                                arg.node.ty(&body.local_decls, tcx)
+                            )))
+                        ));
+                        if let ty::FnDef(called, generic_args) = ty.kind() {
+                            extra.push_str(&format!(
+                                ",\"callable_generic_parameters\":{}",
+                                array(
+                                    schema::callable_parameters(tcx, *called)
+                                        .iter()
+                                        .map(|index| index.to_string())
+                                )
+                            ));
+                            extra.push_str(&format!(
+                                ",\"generic_objects\":{}",
+                                array(generic_args.skip_binder().iter().enumerate().filter_map(
+                                    |(index, arg)| arg.as_type().map(|value| format!(
+                                        "{{\"index\":{},\"objects\":{}}}",
+                                        index,
+                                        schema::callable_objects(tcx, value)
+                                    ))
+                                ))
+                            ));
+                        }
+
                         let owner = if let ty::FnDef(def, _) = ty.kind() {
                             tcx.trait_of_assoc(*def)
                         } else {
@@ -222,17 +281,19 @@ impl Callbacks for Inventory {
                 };
                 blocks.push(format!("{{\"block\":{},\"cleanup\":{},\"statements\":{},\"kind\":{},\"successors\":{},\"location\":{},\"terminator\":{}{} }}",bb.as_usize(),data.is_cleanup,array(data.statements.iter().map(|s|quote(&format!("{:?}",s.kind)))),quote(kind),array(term.successors().map(|b|b.as_usize().to_string())),location(tcx,term.source_info),quote(&format!("{:?}",term.kind)),extra));
             }
-            records.push(format!("{{\"id\":{},\"public\":{},\"closure\":{},\"argument_count\":{},\"locals\":{},\"blocks\":{}}}",quote(&tcx.def_path_str(def)),tcx.visibility(def).is_public(),matches!(tcx.def_kind(def),rustc_hir::def::DefKind::Closure),body.arg_count,locals,array(blocks)));
+            records.push(format!("{{\"id\":{},\"public\":{},\"closure\":{},\"argument_count\":{},\"locals\":{},\"blocks\":{},\"impl_owner\":{},\"canonical_id\":{},\"visibility\":{},\"impl_protocol\":{},\"return_type\":{},\"bounds\":{},\"return_raw_protocols\":{},\"protocol_references\":{},\"lexical_parent\":{},\"return_parameters\":{},\"input_payload_parameters\":{},\"constructions\":{}}}",quote(&tcx.def_path_str(def)),tcx.visibility(def).is_public(),matches!(tcx.def_kind(def),rustc_hir::def::DefKind::Closure),body.arg_count,locals,array(blocks),schema::impl_owner(tcx,def).map(|v|quote(&v)).unwrap_or_else(||"null".into()),quote(&metadata::definition_path(tcx,def)),quote(&schema::visibility(tcx,def)),schema::inherited_protocol(tcx,def).map(|v|quote(&v)).unwrap_or_else(||"null".into()),quote(&body.local_decls[mir::RETURN_PLACE].ty.to_string()),schema::bounds(tcx,def),array(schema::raw_protocols(tcx,body.local_decls[mir::RETURN_PLACE].ty).iter().map(|p|quote(p))),schema::protocol_references(tcx,body),tcx.opt_parent(def).map(|parent| quote(&format!("{}::{}",tcx.crate_name(parent.krate),tcx.def_path_str(parent)))).unwrap_or_else(||"null".into()),array(schema::raw_parameters(tcx,body.local_decls[mir::RETURN_PLACE].ty).iter().map(|p|p.to_string())),array(schema::input_payload_parameters(tcx,body).iter().map(|p|p.to_string())),schema::constructions(tcx,body)));
         }
         fs::create_dir_all(output.parent().unwrap()).unwrap();
         fs::write(
             output,
             format!(
-                "{{\"crate\":{},\"mir_keys\":{},\"skipped_non_functions\":{},\"bodies\":{}}}\n",
+                "{{\"crate\":{},\"mir_keys\":{},\"skipped_non_functions\":{},\"bodies\":{},\"storage_schema\":{},\"contracts\":{}}}\n",
                 quote(tcx.crate_name(rustc_hir::def_id::LOCAL_CRATE).as_str()),
                 keys.len(),
                 array(skipped),
-                array(records)
+                array(records),
+                schema::schema(tcx),
+                schema::contracts(tcx)
             ),
         )
         .unwrap();

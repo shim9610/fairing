@@ -11,6 +11,11 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Added
 
+- A common protected mediation contract with compiler-discovered payloads and
+  generated operation/binding adapters. Kernel proofs and automatic routing
+  checks use the same declaration; dynamic and generic extension controls require
+  no verifier-side registration. See [the contract](docs/protected-contracts.md).
+
 - Compiled-MIR checker for workspace permission metadata contracts and downstream
   rejection controls. See [application checking](docs/permission-metadata-check.md)
   for the accepted subset and configuration/dependency scope.
@@ -56,6 +61,11 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Changed
 
+- `InstanceScreen::Owned` contains an opaque `ScreenHandle`; use
+  `InstanceScreen::owned(screen)`. Factories are deferred to the first dispatched
+  hook in both legacy and protected shells so their payload cannot escape the
+  monitor. See the migration guide.
+
 - Replace `Permission::GATE` with `Permission::gate(self)`. `Protected::new` and typed
   session grant/snapshot helpers now take an application permission value. Token-mode
   nav layout removes denied custom cells before sizing. See the migration guide.
@@ -87,7 +97,9 @@ for source changes, queue/display defaults and recovery behavior.
   procedural wallpaper branches. This blocks the confirmed token-less status-painter
   path. Keep icon/widget painter stores local to protected callbacks so an admitted
   callback cannot install a later unguarded shell painter, including during unwind.
-  Full compiler-derived callback mediation remains unproved; its strict gate stays closed.
+  The strict protected-contract certificate now combines the common kernel proof
+  with automatic compiler-derived routing coverage; broad legacy reachability
+  remains a separate diagnostic.
 - `Authenticator::begin/submit` receive `AuthRequestId`; `poll` returns
   `Option<AuthResponse>`. Replies retain their original request token. Canceled,
   replaced and consumed requests cannot grant a later challenge or replay a continuation.

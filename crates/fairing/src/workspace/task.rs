@@ -162,7 +162,7 @@ mod tests {
     }
 
     fn instance(decl: &ScreenDecl, id: u64) -> Instance {
-        Instance::new(InstanceId(id), decl, InstanceScreen::Owned(Box::new(Blank)))
+        Instance::new(InstanceId(id), decl, InstanceScreen::owned(Blank))
     }
 
     /// Build a stack from `[(declaration id, instance id)]` (bottom to top).

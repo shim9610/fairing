@@ -7,7 +7,7 @@ pub(crate) fn declared<S: Screen + PermissionBound + 'static>(
     body: S,
     required: S::Required,
 ) -> ScreenDecl {
-    super::screen_of(
+    crate::screen::screen_of(
         id,
         Declared {
             binding: PermissionBinding::new(required),
@@ -16,10 +16,13 @@ pub(crate) fn declared<S: Screen + PermissionBound + 'static>(
     )
 }
 
-struct Declared<S: PermissionBound> {
+protected_contract! { carrier
+struct Declared<S: PermissionBound> : S {
     binding: PermissionBinding<S::Required>,
     body: S,
 }
+}
+
 impl<S: Screen + PermissionBound> Declared<S> {
     fn with_body<R>(
         &mut self,

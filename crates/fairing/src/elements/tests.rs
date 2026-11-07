@@ -24,11 +24,20 @@ impl Permission for Rights {
 }
 
 fn fixture() -> crate::Result<(Fixture, SessionController)> {
+    fixture_with_policy(None)
+}
+
+fn fixture_with_policy(
+    policy: Option<Box<dyn crate::access::AccessPolicy>>,
+) -> crate::Result<(Fixture, SessionController)> {
     let mut runtime = Fixture::new()?;
     let mut access = Access::from_config(&AccessConfig {
         session_tokens: true,
         ..AccessConfig::default()
     })?;
+    if let Some(policy) = policy {
+        access.set_policy(policy);
+    }
     let (owner, token) = SessionController::issue(
         Subject::default(),
         vec![
@@ -360,5 +369,62 @@ fn an_authorized_parent_does_not_authorize_child_measurement() -> crate::Result<
     );
     assert_eq!(seen.paints.get(), 0);
     assert_eq!(consumed, Vec2::ZERO);
+    Ok(())
+}
+
+#[test]
+fn ancestor_policy_changes_block_later_children_without_an_issuer_revision() -> crate::Result<()> {
+    struct ParentPolicy(Rc<Cell<bool>>);
+    impl crate::access::AccessPolicy for ParentPolicy {
+        fn allows(&self, _: &Subject, gate: &crate::Gate) -> bool {
+            gate.as_str() != "edit" || self.0.get()
+        }
+    }
+    for during_paint in [false, true] {
+        let parent_allowed = Rc::new(Cell::new(true));
+        let (mut runtime, mut owner) =
+            fixture_with_policy(Some(Box::new(ParentPolicy(Rc::clone(&parent_allowed)))))?;
+        owner
+            .replace_grants(
+                vec![
+                    SessionGrant::base_for(Rights::View),
+                    SessionGrant::base_for(Rights::Edit),
+                ],
+                None,
+                runtime.now,
+            )
+            .map_err(|error| crate::Error::Config(error.to_string()))?;
+        let stamp = runtime.parts().access.authority_stamp();
+        let (mut first, first_seen) = probe(Rights::View, egui::vec2(30.0, 10.0));
+        let change = Box::new(move || parent_allowed.set(false));
+        if during_paint {
+            first.on_paint = Some(change);
+        } else {
+            first.on_measure = Some(change);
+        }
+        let (second, second_seen) = probe(Rights::View, egui::vec2(30.0, 10.0));
+        let nested = ElementTree::column(
+            Rights::Edit,
+            5.0,
+            vec![ElementTree::leaf(first), ElementTree::leaf(second)],
+        )?;
+        let mut tree = ElementTree::row(Rights::View, 5.0, vec![nested])?;
+        let consumed = draw(&mut tree, &mut runtime);
+        assert_eq!(runtime.parts().access.authority_stamp(), stamp);
+        assert_eq!(first_seen.measures.get(), 1);
+        assert_eq!(
+            second_seen.paints.get(),
+            0,
+            "ancestor policy denial did not block a later child"
+        );
+        if during_paint {
+            assert_eq!(first_seen.paints.get(), 1);
+            assert_eq!(second_seen.measures.get(), 1);
+        } else {
+            assert_eq!(second_seen.measures.get(), 0);
+            assert_eq!(first_seen.paints.get(), 0);
+            assert_eq!(consumed, Vec2::ZERO);
+        }
+    }
     Ok(())
 }

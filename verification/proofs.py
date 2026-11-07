@@ -100,7 +100,7 @@ audit_protected()
 protected_before = hashes(protected_inputs())
 results.append(execute("verus-protected", [sys.executable, ROOT / "verification/verus/protected.py"], environment))
 results.append(execute("kani-protected", [kani, ROOT / "verification/kani_protected.rs"], kani_env))
-results.append(execute("protected-capability-types", ["cargo", "test", "--locked", "-p", "fairing", "--no-default-features", "--doc", "access::protected"], environment))
+results.append(execute("protected-capability-types", ["cargo", "test", "--locked", "-p", "fairing", "--no-default-features", "--doc", "access::mediation::protected"], environment))
 if "test result: ok. 5 passed;" not in (OUT / "protected-capability-types.log").read_text():
     raise SystemExit("Expected one positive and four compile-fail protected clients")
 results.append(execute("element-contract-types", ["cargo", "test", "--locked", "-p", "fairing", "--no-default-features", "--doc", "elements"], environment))
