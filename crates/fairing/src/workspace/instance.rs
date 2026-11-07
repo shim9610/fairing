@@ -10,7 +10,7 @@
 //! instance would grow `areas` / `order` for ever on a device left running for days.
 
 use crate::icons::IconRef;
-use crate::screen::{BackAction, ChromePolicy, Cx, Lifecycle, ScreenDecl, SplitSupport};
+use crate::screen::{BackAction, ChromePolicy, Cx, Lifecycle, Screen, ScreenDecl, SplitSupport};
 use crate::theme::ColorRole;
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
@@ -32,15 +32,7 @@ pub enum InstanceScreen {
     /// borrow at run time.
     Resident,
     /// Spawned — owned.
-    Owned(crate::screen::ScreenHandle),
-}
-
-impl InstanceScreen {
-    /// Own a legacy screen without exposing its original payload.
-    #[must_use]
-    pub fn owned(screen: impl crate::screen::Screen + 'static) -> Self {
-        Self::Owned(crate::screen::ScreenHandle::legacy(Box::new(screen)))
-    }
+    Owned(Box<dyn Screen>),
 }
 
 /// One running screen.
@@ -363,7 +355,7 @@ impl Instance {
 
     /// Take over the resident screen of a declaration that is going away: the instance owns it
     /// from now on, so its last events — `Destroyed` above all — reach it.
-    pub(crate) fn adopt(&mut self, screen: crate::screen::ScreenHandle) {
+    pub(crate) fn adopt(&mut self, screen: Box<dyn Screen>) {
         self.screen = InstanceScreen::Owned(screen);
     }
 
@@ -373,13 +365,9 @@ impl Instance {
     /// `cx` is the way to it — it takes the screen out for the length of the call and puts it back.
     /// Nothing happens where the declaration went away while the instance was
     /// still up.
-    fn with_screen(
-        &mut self,
-        cx: &mut Cx<'_>,
-        f: impl FnOnce(&mut crate::screen::ScreenHandle, &mut Cx<'_>),
-    ) {
+    fn with_screen(&mut self, cx: &mut Cx<'_>, f: impl FnOnce(&mut dyn Screen, &mut Cx<'_>)) {
         match &mut self.screen {
-            InstanceScreen::Owned(screen) => f(screen, cx),
+            InstanceScreen::Owned(screen) => f(&mut **screen, cx),
             InstanceScreen::Resident => {
                 cx.with_resident(&self.decl_id, f);
             }
@@ -481,7 +469,7 @@ mod tests {
     /// A spawned instance sharing the log.
     fn recorder_instance(decl: &ScreenDecl, id: u64) -> (Instance, Rc<RefCell<Vec<String>>>) {
         let log = Rc::new(RefCell::new(Vec::new()));
-        let screen = InstanceScreen::owned(Recorder(Rc::clone(&log)));
+        let screen = InstanceScreen::Owned(Box::new(Recorder(Rc::clone(&log))));
         (Instance::new(InstanceId(id), decl, screen), log)
     }
 

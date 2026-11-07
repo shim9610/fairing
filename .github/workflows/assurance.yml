@@ -80,51 +80,16 @@ jobs:
       - name: Require SAT and UNSAT compiler-fixture controls
         if: always()
         run: python3 verification/mediation_controls.py
-      - name: Check shared carrier confinement in both feature profiles
-        if: always()
-        run: python3 verification/central_mediation.py --skip-build
-      - name: Connect construction, scoped ownership and carrier proof receipts
-        if: always()
-        run: python3 verification/global_mediation.py --skip-build --prove
-      - name: Reject compiled production bypass mutations
-        if: always()
-        run: python3 verification/central_mediation_controls.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: callback-mediation-evidence
           path: |
             target/mediation/summary.json
-            target/mediation/connected-obligations.json
             target/mediation/concrete-probe.log
             target/mediation/all/
             target/mediation/minimal/
             target/mediation/fixture/
-            target/assurance/central-mediation/confinement.json
-            target/assurance/central-mediation/connections.json
-            target/assurance/central-mediation/construction/
-            target/assurance/central-mediation/carriers/
-            target/assurance/central-mediation/controls/
-          retention-days: 14
-
-  central-mediation:
-    needs: inputs
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Install pinned Kani and Verus
-        run: python3 verification/install.py proofs
-      - name: Prove common admission and arbitrary ancestor paths
-        run: |
-          python3 verification/central_proofs.py
-          python3 verification/verus/construction.py
-          python3 verification/carrier_proofs.py
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
-        with:
-          name: central-mediation-proofs
-          path: target/assurance/central-mediation/
           retention-days: 14
 
   permission-metadata:
@@ -245,7 +210,7 @@ jobs:
           cargo "+$nightly" miri test --locked -p fairing-widgets --no-default-features --lib interaction::tests 2>&1 | tee target/assurance/logs/miri-interaction.log
           cargo "+$nightly" miri test --locked -p fairing --lib runtime::tests::supported_payloads_are_released_and_numeric_codes_are_observable -- --exact 2>&1 | tee target/assurance/logs/miri-payloads.log
           cargo "+$nightly" miri test --locked -p fairing --lib access::session::tests 2>&1 | tee target/assurance/logs/miri-session-admin.log
-          cargo "+$nightly" miri test --locked -p fairing --lib access::mediation::protected::tests::protected_scope_uses_current_context_and_never_caches_admission -- --exact 2>&1 | tee target/assurance/logs/miri-protected-scope.log
+          cargo "+$nightly" miri test --locked -p fairing --lib access::protected::tests::protected_scope_uses_current_context_and_never_caches_admission -- --exact 2>&1 | tee target/assurance/logs/miri-protected-scope.log
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

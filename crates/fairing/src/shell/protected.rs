@@ -19,14 +19,8 @@ pub struct ProtectedShell {
 }
 
 impl ProtectedShell {
-    pub(super) fn new(
-        builder: super::builder::CallbackFreeBuilder,
-        ctx: &egui::Context,
-    ) -> crate::Result<Self> {
-        let mut inner = builder.build(ctx)?;
-        inner.access.require_mediation();
-        inner.registry.bind_initial_library_requirements();
-        Ok(Self { inner })
+    pub(super) fn new(inner: Shell) -> Self {
+        Self { inner }
     }
 
     /// Register a declaration with its mandatory requirement. The binding overrides
@@ -45,7 +39,7 @@ impl ProtectedShell {
         let required = screen.required_permission();
         self.add(Protected::new(
             required,
-            crate::access::mediation::declared::declared(id, screen, required),
+            crate::screen::protected::declared(id, screen, required),
         ));
     }
 

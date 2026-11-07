@@ -18,7 +18,7 @@ def check(manifest, output, extra=()):
     manifest = manifest.resolve(strict=True)
     output.mkdir(parents=True, exist_ok=True)
     (output / 'report.json').unlink(missing_ok=True)
-    driver_paths = [ROOT / 'verification/mediation_driver.rs', ROOT / 'verification/metadata_driver.rs', ROOT / 'verification/mediation_schema.rs', Path(__file__), ROOT / 'verification/tools.json']
+    driver_paths = [ROOT / 'verification/mediation_driver.rs', ROOT / 'verification/metadata_driver.rs', Path(__file__), ROOT / 'verification/tools.json']
     def hashes(paths):
         return {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(set(paths))}
     driver_before = hashes(driver_paths)

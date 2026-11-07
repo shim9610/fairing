@@ -20,13 +20,6 @@ hook execution. Exhaustive builder/hook field matches require review when fields
 are added. Both branches of nested themed wallpapers are inspected; data-only
 wallpapers remain supported.
 
-Successful validation now consumes a private callback-free builder rather than
-passing a general-purpose builder into the protected shell. Compiler facts check
-its recursive field types, private constructors, data preservation, cleared hook
-slots and validated wallpaper conversion. The production wallpaper predicate has
-an unbounded recursive Verus proof. This establishes construction; it does not
-by itself establish that no later operation can install an untyped hook.
-
 Application UI enters through `Protected<P, D>` declarations. Legacy `build`
 retains unmediated host customization. Authenticators and host backends remain
 trusted integrations; requiring an authenticated session before calling the
@@ -63,12 +56,6 @@ discharge the existing MIR graph's unresolved protocol calls or supply its missi
 ownership/state model; the strict complete-mediation property remains unproved.
 See [the recorded specification](permission-value-refactor.md) and
 [value-based integration](session-tokens.md#typed-permission-requirements).
-
-The [shared mediation evidence](element-mediation-proof.md) describes opaque
-payload ownership, generated adapters, a compiler-derived admission cut and the
-unbounded production ancestor-walk proof. Borrowed plans retain the actual leaf
-receiver. The [completion specification](central-mediation-spec.md) records the
-remaining connection to the whole-library guarantee.
 
 ## Run
 

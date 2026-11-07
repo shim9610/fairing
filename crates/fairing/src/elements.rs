@@ -82,7 +82,6 @@ mod dispatch;
 #[cfg(test)]
 mod tests;
 
-use crate::access::mediation::ElementHandle;
 use crate::access::{Permission, PermissionBinding, PermissionBound};
 use crate::screen::{Cx, Screen};
 use egui::Vec2;
@@ -106,7 +105,7 @@ enum Axis {
 }
 
 enum Node<P: Permission> {
-    Leaf(ElementHandle<P>),
+    Leaf(Box<dyn Element<Required = P>>),
     Group {
         axis: Axis,
         gap: f32,
@@ -127,10 +126,9 @@ pub struct ElementTree<P: Permission> {
 impl<P: Permission> ElementTree<P> {
     /// Own a custom leaf. No measurement or painting occurs during construction.
     pub fn leaf(element: impl Element<Required = P> + 'static) -> Self {
-        let element = ElementHandle::new(element);
         Self {
-            required: element.requirement(),
-            node: Node::Leaf(element),
+            required: element.required_permission(),
+            node: Node::Leaf(Box::new(element)),
         }
     }
 
@@ -180,33 +178,36 @@ impl<P: Permission> Screen for ElementTree<P> {
             return;
         };
         let available = ui.available_size();
-        let Some(mut plan) = self.prepare(available, cx, stamp) else {
+        let Some(plan) = self.prepare(available, cx, stamp) else {
             return;
         };
-        if !plan.validate(cx, stamp) {
+        if !self.validate(&plan, cx, stamp) {
             ui.ctx().request_repaint();
             return;
         }
         let (rect, _) = ui.allocate_exact_size(plan.size, egui::Sense::hover());
-        if !plan.paint(ui, cx, rect, stamp, ui.scope_id().with("fairing.elements")) {
+        if !self.paint_plan(
+            ui,
+            cx,
+            &plan,
+            rect,
+            stamp,
+            ui.scope_id().with("fairing.elements"),
+        ) {
             ui.ctx().request_repaint();
         }
     }
 }
 
-struct Plan<'tree, P: Permission> {
+struct Plan<P: Permission> {
     binding: PermissionBinding<P>,
     size: Vec2,
-    node: PlanNode<'tree, P>,
+    children: Vec<ChildPlan<P>>,
 }
-enum PlanNode<'tree, P: Permission> {
-    Leaf(&'tree mut ElementHandle<P>),
-    Group(Vec<ChildPlan<'tree, P>>),
-}
-struct ChildPlan<'tree, P: Permission> {
+struct ChildPlan<P: Permission> {
     index: usize,
     offset: Vec2,
-    plan: Plan<'tree, P>,
+    plan: Plan<P>,
 }
 
 struct PainterElement<P: Permission, F> {

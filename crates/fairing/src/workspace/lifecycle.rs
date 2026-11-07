@@ -394,7 +394,7 @@ impl Workspace {
     /// instance, wherever that is — on a stack, leaving through a transition or waiting for its
     /// `Destroyed` — so what that instance hears from now on reaches the screen it ran, not
     /// whatever the registry holds under the id next. Without an instance it is dropped here.
-    pub(crate) fn adopt_resident(&mut self, decl_id: &str, screen: crate::screen::ScreenHandle) {
+    pub(crate) fn adopt_resident(&mut self, decl_id: &str, screen: Box<dyn crate::screen::Screen>) {
         let outgoing = match &mut self.stack {
             StackTransition::Popping { outgoing, .. }
             | StackTransition::DraggingBack { outgoing, .. } => outgoing.as_deref_mut(),

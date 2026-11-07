@@ -82,19 +82,6 @@ Do not retain their custom icon IDs for a later frame. For persistent custom
 rendering, own the stores in your screen and use them only inside its admitted
 callback. App/backend references retain their original meaning.
 
-### Opaque screen ownership
-
-`InstanceScreen::Owned` now contains an opaque `screen::ScreenHandle`. Replace
-`InstanceScreen::Owned(Box::new(screen))` with `InstanceScreen::owned(screen)`.
-The ordinary `screen`, `screen_of`, `screen_with` and protected registration
-helpers remain the preferred construction APIs. Raw resident-screen extraction
-and mutation are unavailable.
-
-Factory instances are now created lazily on their first dispatched hook in legacy
-and protected shells. Factory setup that must happen at launch belongs in host
-code. In protected mode, a factory and its resulting hooks receive separate live
-admission checks.
-
 ### Commands and toast inputs
 
 Pass values directly when constructing command variants:

@@ -6,7 +6,6 @@ use super::*;
 use crate::access::{Access, SessionController, SessionGrant, Subject};
 use crate::config::AccessConfig;
 use crate::screen::cx::fixture::{pane, Fixture};
-use crate::screen::{BackAction, Lifecycle, Screen, ScreenValue};
 use crate::services::Waker;
 use crate::workspace::InstanceId;
 use std::cell::{Cell, RefCell};
@@ -251,8 +250,8 @@ fn erased_action_and_chrome_callbacks_keep_their_typed_binding() -> crate::Resul
     let ctx = egui::Context::default();
     ctx.run_ui(egui::RawInput::default(), |ui| {
         action.run(&mut cx);
-        status.ui.paint(ui, &mut cx);
-        nav.ui.paint(ui, &mut cx);
+        (status.ui)(ui, &mut cx);
+        (nav.ui)(ui, &mut cx);
     })
     .drop_without_applying_deltas();
     let before = calls.get();
@@ -260,8 +259,8 @@ fn erased_action_and_chrome_callbacks_keep_their_typed_binding() -> crate::Resul
     owner.revoke();
     ctx.run_ui(egui::RawInput::default(), |ui| {
         action.run(&mut cx);
-        status.ui.paint(ui, &mut cx);
-        nav.ui.paint(ui, &mut cx);
+        (status.ui)(ui, &mut cx);
+        (nav.ui)(ui, &mut cx);
     })
     .drop_without_applying_deltas();
     assert_eq!(calls.get(), before, "erased callback lost its typed guard");

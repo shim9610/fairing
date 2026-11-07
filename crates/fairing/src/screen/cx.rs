@@ -1,6 +1,6 @@
 //! `Cx` — the handle a screen uses to ask the shell for something. Most screens only use `ui`.
 
-use super::{ChromePolicy, LaunchAction, Lifecycle, Registry, ScreenValue};
+use super::{ChromePolicy, LaunchAction, Lifecycle, Registry, Screen, ScreenValue};
 use crate::access::{Access, Gate, LevelTable, Session};
 use crate::i18n::Strings;
 use crate::icons::IconSet;
@@ -162,7 +162,6 @@ impl CxParts<'_> {
         registry: Option<&'a mut Registry>,
     ) -> Cx<'a> {
         Cx {
-            authority_path: None,
             registry,
             shell: self.shell,
             session: self.access.session(),
@@ -206,7 +205,6 @@ fn guest_pane(host: &PaneInfo, rect: egui::Rect) -> PaneInfo {
 
 /// The handle to reach for when you need it.
 pub struct Cx<'a> {
-    authority_path: Option<&'a crate::access::mediation::AuthorityPath<'a>>,
     /// notify / toast / launch / close … from any thread.
     pub shell: &'a ShellHandle,
     /// The current subject and level (read-only).
@@ -241,21 +239,16 @@ pub struct Cx<'a> {
     frame: u64,
 }
 
-impl<'a> Cx<'a> {
-    pub(crate) fn authority_path(&self) -> Option<&'a crate::access::mediation::AuthorityPath<'a>> {
-        self.authority_path
-    }
+impl Cx<'_> {
     /// Lend callback-local extension stores. A permitted callback may customize its
     /// own controls, but cannot leave an unguarded painter in the shell for later
     /// execution after revocation. The original stores are never mutated, including
     /// during unwinding. Reborrowing keeps UI/app/backend access unchanged.
     pub(crate) fn with_protected_resources<R>(
         &mut self,
-        path: &crate::access::mediation::AuthorityPath<'_>,
         callback: impl FnOnce(&mut Cx<'_>) -> R,
     ) -> R {
         let Self {
-            authority_path: _,
             shell,
             session,
             services,
@@ -278,7 +271,6 @@ impl<'a> Cx<'a> {
         let mut icons = IconSet::new();
         let mut painters = fairing_widgets::widgets::WidgetPainters::new();
         let mut scoped = Cx {
-            authority_path: Some(path),
             shell,
             session,
             services,
@@ -522,10 +514,10 @@ impl<'a> Cx<'a> {
     pub(crate) fn with_resident<R>(
         &mut self,
         id: &str,
-        f: impl FnOnce(&mut super::ScreenHandle, &mut Self) -> R,
+        f: impl FnOnce(&mut dyn Screen, &mut Self) -> R,
     ) -> Option<R> {
         let mut screen = self.registry.as_mut()?.take_resident(id)?;
-        let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&mut screen, self)));
+        let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&mut *screen, self)));
         // Where the declaration went in the meantime (`shell.remove(id)` from inside its own `ui`)
         // this drops the screen, which is right — there is nothing left for it to belong to.
         if let Some(registry) = self.registry.as_mut() {
@@ -761,10 +753,6 @@ impl<'a> Cx<'a> {
 
     pub(crate) fn authority_stamp(&self) -> Option<(crate::access::SessionId, u64)> {
         self.access.authority_stamp()
-    }
-
-    pub(crate) fn requires_mediation(&self) -> bool {
-        self.access.requires_mediation()
     }
 
     pub(crate) fn token_mode(&self) -> bool {

@@ -22,7 +22,7 @@ def digest(path):
 
 def source_hashes():
     paths = list((ROOT / 'crates').rglob('*.rs')) + list((ROOT / 'crates').rglob('Cargo.toml'))
-    paths += [ROOT / p for p in ['Cargo.toml', 'Cargo.lock', 'verification/mediation_driver.rs', 'verification/metadata_driver.rs', 'verification/mediation_schema.rs', 'verification/check_extension.py', 'verification/metadata_controls.py', 'verification/mediation.py', 'verification/mediation_controls.py', 'verification/central_mediation.py', 'verification/central_mediation_controls.py', 'verification/central_proofs.py', 'verification/carrier_proofs.py', 'verification/global_mediation.py', 'verification/verus/construction.py', 'verification/verus/mediation_path.py', 'verification/fixtures/mediation.rs', 'verification/examples/mediation_probe.rs', 'verification/tools.json']]
+    paths += [ROOT / p for p in ['Cargo.toml', 'Cargo.lock', 'verification/mediation_driver.rs', 'verification/metadata_driver.rs', 'verification/check_extension.py', 'verification/metadata_controls.py', 'verification/mediation.py', 'verification/mediation_controls.py', 'verification/fixtures/mediation.rs', 'verification/examples/mediation_probe.rs', 'verification/tools.json']]
     return {str(p.relative_to(ROOT)): digest(p) for p in sorted(paths)}
 
 def build(profile):
@@ -187,20 +187,12 @@ def main():
             raise SystemExit('Concrete regression inconclusive; inspect concrete-probe.log')
     assert source_hashes()==before,'Inputs changed during mediation analysis'
     confirmed=probe is not None and probe['status']=='counterexample-confirmed'
-    connections={}
-    if args.require_proved:
-        import global_mediation as connected
-        connected.run_proofs()
-        connections={profile:connected.check(profile) for profile in reports}
-        (OUT/'connected-obligations.json').write_text(json.dumps({'inputs':before,'profiles':connections},indent=2)+'\n')
-    complete=bool(connections) and all(r['status']=='connections-checked' and r['complete_mediation'] for r in connections.values())
-    assert source_hashes()==before,'Inputs changed while connecting compiler and proof receipts'
-    summary={'connections':{p:{k:r[k] for k in ('status','complete_mediation','obligations')}for p,r in connections.items()},'property':'Every application callback entry is mediated by a current permission check.','status':'violated-confirmed' if confirmed else 'proved-under-stated-contracts' if complete else 'not-proved','profiles':reports,'inputs':before,'concrete_probe':probe,
+    summary={'property':'Every application callback entry is mediated by a current permission check.','status':'violated-confirmed' if confirmed else 'not-proved','profiles':reports,'inputs':before,'concrete_probe':probe,
              'scope':'Compiler MIR call/CFG inventory and finite Horn reachability over a conservative graph. SAT paths are candidates until reproduced. Generic/trait dispatch, external bodies, branch feasibility and complete compiler/model refinement remain unresolved; no absence theorem is claimed. The local invoke contract is assumed only for its scoped callback execution, never for later calls.'}
     (OUT/'summary.json').write_text(json.dumps(summary,indent=2)+'\n');print(json.dumps({k:v for k,v in summary.items() if k!='inputs'},indent=2))
     if args.expect_counterexample:
         assert confirmed,'Expected mediation counterexample was not reproduced'
-    elif confirmed or (args.require_proved and not complete):
+    elif args.require_proved or confirmed:
         raise SystemExit('COMPLETE_MEDIATION_VIOLATED' if confirmed else 'UNPROVED_COMPLETE_MEDIATION: inspect report paths and unresolved boundaries')
 
 if __name__=='__main__':main()

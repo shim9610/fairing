@@ -120,7 +120,7 @@ pub enum NavAction {
 }
 
 /// The closure that draws a nav item.
-pub(super) type NavItemUi = crate::access::mediation::UiCallback;
+pub(super) type NavItemUi = Box<dyn FnMut(&mut egui::Ui, &mut Cx<'_>)>;
 
 /// What a nav bar layout places the items with (rung 4 of the override ladder).
 ///
@@ -250,7 +250,7 @@ pub fn nav_item(
     NavItemDecl {
         gate: Some(Gate::from(&id)),
         id,
-        ui: crate::access::mediation::UiCallback::legacy(Box::new(ui)),
+        ui: Box::new(ui),
         enabled: true,
     }
 }
@@ -697,7 +697,7 @@ fn draw_custom(
         instance: InstanceId::NONE,
     };
     let mut cx = parts.cx(pane, None);
-    decl.ui.paint(&mut child, &mut cx);
+    (decl.ui)(&mut child, &mut cx);
     response
         .clicked()
         .then(|| NavAction::Custom(decl.id.clone()))

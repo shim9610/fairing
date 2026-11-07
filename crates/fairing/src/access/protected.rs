@@ -44,8 +44,8 @@
 //! }
 //! ```
 
-use super::{Gate, Visibility};
-use crate::screen::{Cx, Decl, ScreenSource};
+use super::{protected_dispatch, Gate, Visibility};
+use crate::screen::{BackAction, Cx, Decl, Lifecycle, Screen, ScreenSource, ScreenValue};
 
 #[cfg(test)]
 #[path = "protected_tests.rs"]
@@ -103,10 +103,6 @@ impl<P: Permission> PermissionBinding<P> {
         &self.gate
     }
 
-    pub(super) fn into_gate(self) -> Gate {
-        self.gate
-    }
-
     /// Observe the calling context's current token and narrowing policy.
     #[must_use]
     pub fn allows(&self, cx: &Cx<'_>) -> bool {
@@ -118,7 +114,9 @@ impl<P: Permission> PermissionBinding<P> {
     /// application-owned store if it must persist across calls. Arbitrary effects
     /// inside an admitted callback remain trusted.
     pub fn run<R>(&self, cx: &mut Cx<'_>, callback: impl FnOnce(&mut Cx<'_>) -> R) -> Option<R> {
-        super::invoke_gate(&self.gate, cx, callback)
+        let permission = self.allows(cx);
+        let allowed = protected_dispatch::admitted(cx.token_mode(), permission);
+        protected_dispatch::invoke(allowed, || cx.with_protected_resources(callback))
     }
 
     /// Draw only after a fresh check; denied callbacks receive neither UI nor context.
@@ -196,16 +194,77 @@ impl<P: Permission, T: ProtectedDeclaration> Protected<P, T> {
     }
 }
 
+struct GuardedScreen<P: Permission> {
+    binding: PermissionBinding<P>,
+    body: Option<Box<dyn Screen>>,
+    factory: Option<Box<dyn FnMut() -> Box<dyn Screen>>>,
+}
+
+impl<P: Permission> GuardedScreen<P> {
+    fn with_body<R>(
+        &mut self,
+        cx: &mut Cx<'_>,
+        callback: impl FnOnce(&mut dyn Screen, &mut Cx<'_>) -> R,
+    ) -> Option<R> {
+        let Self {
+            binding,
+            body,
+            factory,
+        } = self;
+        binding
+            .run(cx, |cx| {
+                if body.is_none() {
+                    if let Some(factory) = factory {
+                        *body = Some(factory());
+                    }
+                }
+                // A factory can revoke its session. Recheck before the screen callback.
+                body.as_mut()
+                    .and_then(|body| binding.run(cx, |cx| callback(&mut **body, cx)))
+            })
+            .flatten()
+    }
+}
+
+impl<P: Permission> Screen for GuardedScreen<P> {
+    fn ui(&mut self, ui: &mut egui::Ui, cx: &mut Cx<'_>) {
+        self.with_body(cx, |body, cx| body.ui(ui, cx));
+    }
+    fn on_back(&mut self, cx: &mut Cx<'_>) -> BackAction {
+        self.with_body(cx, |body, cx| body.on_back(cx))
+            .unwrap_or(BackAction::Pop)
+    }
+    fn on_lifecycle(&mut self, event: Lifecycle, cx: &mut Cx<'_>) {
+        self.with_body(cx, |body, cx| body.on_lifecycle(event, cx));
+    }
+    fn on_result(&mut self, from: &str, value: ScreenValue, cx: &mut Cx<'_>) {
+        self.with_body(cx, |body, cx| body.on_result(from, value, cx));
+    }
+}
+
 impl ProtectedDeclaration for crate::screen::ScreenDecl {}
 impl sealed::Declaration for crate::screen::ScreenDecl {
     fn protect<P: Permission>(mut self, binding: PermissionBinding<P>) -> Decl {
         self.gate = Some(binding.gate().clone());
         self.visibility = Visibility::Hidden;
         self.source = match self.source {
-            ScreenSource::Resident(body) => {
-                ScreenSource::Resident(body.map(|body| body.required(binding)))
+            ScreenSource::Resident(body) => ScreenSource::Resident(Some(Box::new(GuardedScreen {
+                binding,
+                body,
+                factory: None,
+            }))),
+            ScreenSource::Factory(factory) => {
+                let required = binding.required_permission();
+                let factory = std::rc::Rc::new(std::cell::RefCell::new(factory));
+                ScreenSource::Factory(Box::new(move || {
+                    let factory = std::rc::Rc::clone(&factory);
+                    Box::new(GuardedScreen::<P> {
+                        binding: PermissionBinding::new(required),
+                        body: None,
+                        factory: Some(Box::new(move || (factory.borrow_mut())())),
+                    })
+                }))
             }
-            ScreenSource::Factory(factory) => ScreenSource::Factory(factory.required(binding)),
         };
         Decl::Screen(self)
     }
@@ -216,7 +275,10 @@ impl sealed::Declaration for crate::screen::ActionDecl {
     fn protect<P: Permission>(mut self, binding: PermissionBinding<P>) -> Decl {
         self.gate = Some(binding.gate().clone());
         self.visibility = Visibility::Hidden;
-        self.run = self.run.required(binding);
+        let mut body = self.run;
+        self.run = Box::new(move |cx| {
+            binding.run(cx, &mut body);
+        });
         Decl::Action(self)
     }
 }
@@ -225,7 +287,10 @@ impl ProtectedDeclaration for crate::chrome::StatusItemDecl {}
 impl sealed::Declaration for crate::chrome::StatusItemDecl {
     fn protect<P: Permission>(mut self, binding: PermissionBinding<P>) -> Decl {
         self.gate = Some(binding.gate().clone());
-        self.ui = self.ui.required(binding);
+        let mut body = self.ui;
+        self.ui = Box::new(move |ui, cx| {
+            binding.render(ui, cx, &mut body);
+        });
         Decl::StatusItem(self)
     }
 }
@@ -234,7 +299,10 @@ impl ProtectedDeclaration for crate::chrome::NavItemDecl {}
 impl sealed::Declaration for crate::chrome::NavItemDecl {
     fn protect<P: Permission>(mut self, binding: PermissionBinding<P>) -> Decl {
         self.gate = Some(binding.gate().clone());
-        self.ui = self.ui.required(binding);
+        let mut body = self.ui;
+        self.ui = Box::new(move |ui, cx| {
+            binding.render(ui, cx, &mut body);
+        });
         Decl::NavItem(self)
     }
 }

@@ -219,7 +219,7 @@ pub struct TileDecl {
 }
 
 /// A [`TileKind::Panel`] body — a closure shaped like a screen's body.
-type PanelBody = crate::access::mediation::UiCallback;
+type PanelBody = Box<dyn FnMut(&mut egui::Ui, &mut Cx<'_>)>;
 
 impl std::fmt::Debug for TileDecl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -281,24 +281,21 @@ pub fn tile_panel(
     ui: impl FnMut(&mut egui::Ui, &mut Cx<'_>) + 'static,
 ) -> TileDecl {
     let mut decl = tile(id, TileKind::Panel { height });
-    decl.body = Some(RefCell::new(PanelBody::legacy(Box::new(ui))));
+    decl.body = Some(RefCell::new(Box::new(ui)));
     decl
 }
 
 impl TileDecl {
-    pub(crate) fn bind_library_requirement(&mut self) {
-        let gate = self.gate_name().clone();
-        if let Some(body) = &mut self.body {
-            body.get_mut().library_requirement(gate);
-        }
-    }
     pub(crate) fn protect_panel<P: crate::access::Permission>(
         mut self,
         binding: crate::access::PermissionBinding<P>,
     ) -> Self {
         self.tile.gate = binding.gate().clone();
         if let Some(body) = self.body.take() {
-            self.body = Some(RefCell::new(body.into_inner().required(binding)));
+            let mut body = body.into_inner();
+            self.body = Some(RefCell::new(Box::new(move |ui, cx| {
+                binding.render(ui, cx, &mut body);
+            })));
         }
         self
     }
@@ -310,7 +307,7 @@ impl TileDecl {
             return;
         };
         if let Ok(mut body) = body.try_borrow_mut() {
-            body.paint(ui, cx);
+            body(ui, cx);
         }
     }
 
