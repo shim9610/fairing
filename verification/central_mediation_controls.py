@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Compile production mutations in an isolated checkout; require checker rejection."""
+import argparse
 import json
 from pathlib import Path
 import shutil
@@ -66,6 +67,10 @@ def main():
          '    pub fn new() -> Self {\n        Self::default()\n    }',
          '    pub fn new() -> Self {\n        Self::default().button(|_, _| {})\n    }', 'scoped-resource-aliases-global'),
     ]
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--only',action='append',choices=[case[0] for case in cases])
+    args=parser.parse_args()
+    if args.only:cases=[case for case in cases if case[0] in args.only]
     results = []
     with tempfile.TemporaryDirectory(prefix='central-controls-', dir=ROOT / 'target') as temporary:
         checkout = Path(temporary)
@@ -118,7 +123,7 @@ def main():
                 path.write_text(original)
     m.ROOT = ROOT; m.OUT = ROOT / 'target/mediation'
     assert before == m.source_hashes(), 'User source changed while checking mutations'
-    report.write_text(json.dumps({'inputs': before, 'controls': results}, indent=2) + '\n')
+    report.write_text(json.dumps({'inputs': before, 'controls': results, 'selected_cases':[case[0] for case in cases]}, indent=2) + '\n')
 
 
 if __name__ == '__main__': main()

@@ -41,9 +41,9 @@ class Types:
         kind = shape['kind']
         if kind == 'scalar': return []
         if kind in ('reference','pointer','sequence'):
-            return self.violations(shape['value'],arguments,active,path,stops)
+            return self.violations(shape['value'],{},active,path,stops)
         if kind == 'tuple':
-            return [error for item in shape['values'] for error in self.violations(item,arguments,active,path,stops)]
+            return [error for item in shape['values'] for error in self.violations(item,{},active,path,stops)]
         if kind == 'dynamic':
             return [] if self.trusted_host and set(shape['protocols']) <= HOST else [{'path':path,'kind':'dynamic-input','protocols':shape['protocols']}]
         if kind=='projection' and shape['id']=='alloc::borrow::ToOwned::Owned' and shape['values']==[{'kind':'scalar'}]:
@@ -55,7 +55,9 @@ class Types:
         if kind != 'adt': return [{'path':path,'kind':kind, **({'index':shape['index']} if kind=='parameter' else {})}]
         name = shape['id']
         if name in stops: return []
-        local = {item['index']: self.substitute(item['value'],arguments) for item in shape['arguments']}
+        # The outer substitution is complete. Residual parameters belong to the
+        # caller, not to this ADT's binder, even when their numeric indices match.
+        local = {item['index']: item['value'] for item in shape['arguments']}
         key = (name,json.dumps(local,sort_keys=True))
         if key in active: return []
         if len(active) > 150: return [{'path':path,'kind':'unresolved-type-recursion'}]
