@@ -804,10 +804,11 @@ mod tests {
     /// Under `reduce` the tweens are 0 ms, so entering and leaving finish on that frame.
     #[test]
     fn reduce_settles_immediately() {
-        let t = MotionTokens::from_config(&crate::config::MotionConfig {
-            reduce: true,
-            ..crate::config::MotionConfig::default()
-        });
+        let t = MotionTokens::from_config(&(crate::config::MotionConfig::default()).configure(
+            |api_config_value| {
+                api_config_value.reduce = true;
+            },
+        ));
         let now = Instant::now();
         let mut q = ToastQueue::new(2, Duration::from_secs(3));
         q.push(Toast::new("a"));

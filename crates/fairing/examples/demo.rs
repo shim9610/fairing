@@ -512,11 +512,11 @@ fn main() -> fairing::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let size = common::arg_size(&args);
     let tour = common::arg_tour(&args);
-    let options = Options {
-        fullscreen: tour.is_none() && size.is_none(),
-        title: "fairing demo".to_owned(),
-        size: Some(size.unwrap_or(SIZE)),
-    };
+    let options = (Options::default()).configure(|config| {
+        config.fullscreen = tour.is_none() && size.is_none();
+        "fairing demo".clone_into(&mut config.title);
+        config.size = Some(size.unwrap_or(SIZE));
+    });
     // `--nav=gesture` tours the gesture navigation instead.
     let plan = if nav_arg().as_deref() == Some("gesture") {
         GESTURE_PLAN

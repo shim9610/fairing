@@ -501,10 +501,9 @@ mod tests {
     }
 
     fn reduced() -> MotionTokens {
-        MotionTokens::from_config(&MotionConfig {
-            reduce: true,
-            ..MotionConfig::default()
-        })
+        MotionTokens::from_config(&(MotionConfig::default()).configure(|api_config_value| {
+            api_config_value.reduce = true;
+        }))
     }
 
     fn content() -> Rect {

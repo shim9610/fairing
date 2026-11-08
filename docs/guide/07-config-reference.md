@@ -725,31 +725,23 @@ fn main() {
 
 ## 14. Configuring in code, with no file
 
-You can skip `fairing.toml` entirely and build a `ShellConfig` literal. Every
-sub-config implements `Default`, so fill in what you need and finish with
-`..Type::default()`. All the types are public in `fairing::config`.
+Build from `Default` and customize fields directly or with `.configure(...)`.
+Configuration structs are `#[non_exhaustive]`, so external struct literals,
+including update literals with `..Default::default()`, are rejected. This lets
+new fields be added without changing this construction pattern. The builder
+customizes data; normal validation still occurs when the shell is built.
 
 ```rust
-use fairing::config::{AccessConfig, DesktopConfig, ShellConfig, StatusBarConfig};
+use fairing::config::ShellConfig;
 
 fn config() -> ShellConfig {
-    ShellConfig {
-        status_bar: StatusBarConfig {
-            right: vec!["status.wifi".to_owned(), "status.battery".to_owned()],
-            ..StatusBarConfig::default()
-        },
-        desktop: DesktopConfig {
-            columns: 5,
-            rows: 2,
-            ..DesktopConfig::default()
-        },
-        access: AccessConfig {
-            levels: vec!["viewer".to_owned(), "admin".to_owned()],
-            default_gate: Some("top".to_owned()),
-            ..AccessConfig::default()
-        },
-        ..ShellConfig::default()
-    }
+    ShellConfig::default().configure(|config| {
+        config.status_bar.right = vec!["status.wifi".to_owned(), "status.battery".to_owned()];
+        config.desktop.columns = 5;
+        config.desktop.rows = 2;
+        config.access.levels = vec!["viewer".to_owned(), "admin".to_owned()];
+        config.access.default_gate = Some("top".to_owned());
+    })
 }
 
 fn main() -> fairing::Result<()> {

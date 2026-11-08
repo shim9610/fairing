@@ -49,7 +49,7 @@ pub fn exercise(events: &[u8]) {
             _ => None,
         })
         .unwrap();
-    let now = shell.shell().now();
+    let now = shell.now();
     let (mut owner, token) = SessionController::issue(
         Subject::default(),
         vec![

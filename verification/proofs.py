@@ -89,9 +89,21 @@ session_before = hashes(session_inputs())
 results.append(execute("verus-session", [sys.executable, ROOT / "verification/verus/session.py"], environment))
 results.append(execute("kani-session", [kani, ROOT / "verification/kani_session.rs"], kani_env))
 results.append(execute("session-capability-types", ["cargo", "test", "--locked", "-p", "fairing", "--no-default-features", "--doc", "access::session::"], environment))
-if "test result: ok. 4 passed;" not in (OUT / "session-capability-types.log").read_text():
-    raise SystemExit("Expected one positive and three compile-fail session capability clients")
+if "test result: ok. 5 passed;" not in (OUT / "session-capability-types.log").read_text():
+    raise SystemExit("Expected one positive and four compile-fail session capability clients")
 receipt("session", session_inputs(), session_before)
+
+# Complete external implementations isolate the sealed/private/type boundaries.
+for name, fragment in [
+    ("sealed-host-types", "shell::host::HostedShell"),
+    ("private-observer-types", "shell::observation::ShellView"),
+    ("protected-replacement-types", "shell::protected::ProtectedShell"),
+]:
+    results.append(execute(name, ["cargo", "test", "--locked", "-p", "fairing", "--no-default-features", "--doc", fragment], environment))
+    log = (OUT / (name + ".log")).read_text()
+    if "test result: ok. 1 passed;" not in log or "compile fail ... ok" not in log:
+        raise SystemExit("Expected one external boundary rejection: " + name)
+
 
 # Typed declarations and the exact callback branch are independently checked.
 from protected_bindings import audit as audit_protected, inputs as protected_inputs

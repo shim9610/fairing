@@ -69,11 +69,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         exposed |= output.shapes.iter().any(|s| contains(&s.shape, SECRET));
         output.drop_without_applying_deltas();
     }
-    let unauthenticated = shell.shell().access().session_token().is_none();
-    let required_denied = !shell
-        .shell()
-        .access()
-        .allows(&Gate::from("probe.private-result"));
+    let unauthenticated = shell.observe().session_token().is_none();
+    let required_denied = !shell.observe().allows(&Gate::from("probe.private-result"));
     let confirmed = unauthenticated
         && required_denied
         && denied.get()

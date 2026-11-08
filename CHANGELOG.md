@@ -11,6 +11,12 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Added
 
+- Sealed host support for ordinary/protected runners and headless harnesses;
+  protected replacement/recovery and typed built-in settings registration.
+- Narrow `ShellView` state/diagnostic queries, focused dock placement, a protected
+  development example and compiler-derived API inventory/comparison tooling.
+
+
 - A common protected mediation contract with compiler-discovered payloads and
   generated operation/binding adapters. Kernel proofs and automatic routing
   checks use the same declaration; dynamic and generic extension controls require
@@ -121,6 +127,14 @@ for source changes, queue/display defaults and recovery behavior.
   retention is not globally bounded. No production fixed-heap or renderer IPC feature
   is provided; the allocator diagnostic is outside product dependency graphs.
 - Pin external CI actions to verified commit SHAs.
+
+### Changed
+
+- Pre-release API evolution: configuration structs are non-exhaustive with
+  `Default`/`configure` construction; session grant fields use constructors and
+  getters. Session errors and declaration enums are non-exhaustive.
+- Remove `Shell::registry` and `ProtectedShell::shell`; use `observe` queries.
+  Runner functions and `Harness` now support both shell modes. See the migration guide.
 
 ### Fixed
 

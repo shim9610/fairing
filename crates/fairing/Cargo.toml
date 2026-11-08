@@ -55,6 +55,10 @@ chrono = ["dep:chrono"]
 # The smallest complete app, standing alone (no `mod common`) so it can be copied. It runs on
 # the null backends, so it needs no `mock`; `settings` is stated for the screens it adds.
 [[example]]
+name = "protected"
+required-features = ["runner", "settings"]
+
+[[example]]
 name = "hello"
 required-features = ["runner", "settings"]
 

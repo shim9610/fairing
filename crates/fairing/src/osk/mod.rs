@@ -1211,10 +1211,10 @@ mod tests {
     /// frame `wants` turns false → true. `Manual` closes on `hide()` too.
     #[test]
     fn hide_sticks_until_focus_is_regained() {
-        let tokens = MotionTokens::from_config(&MotionConfig {
-            reduce: true,
-            ..MotionConfig::default()
-        });
+        let tokens =
+            MotionTokens::from_config(&(MotionConfig::default()).configure(|api_config_value| {
+                api_config_value.reduce = true;
+            }));
         let mut osk = qwerty();
         let t0 = Instant::now();
         let step = Duration::from_millis(16);
@@ -1299,10 +1299,10 @@ mod tests {
     /// The height target follows a growing screen (A5, "the interruption rule").
     #[test]
     fn height_follows_the_screen() {
-        let tokens = MotionTokens::from_config(&MotionConfig {
-            reduce: true,
-            ..MotionConfig::default()
-        });
+        let tokens =
+            MotionTokens::from_config(&(MotionConfig::default()).configure(|api_config_value| {
+                api_config_value.reduce = true;
+            }));
         let mut osk = qwerty();
         let t0 = Instant::now();
         osk.update(true, OskMode::Auto, 600.0, t0, 0.016, &tokens);

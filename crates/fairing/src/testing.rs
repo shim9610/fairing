@@ -13,15 +13,15 @@
 use crate::config::{AccessConfig, ShellConfig};
 use crate::error::Result;
 use crate::services::Services;
-use crate::shell::Shell;
+use crate::shell::{HostedShell, Shell};
 use egui::{Event, Modifiers, PointerButton, Pos2, RawInput, Rect, Vec2};
 
 /// A headless shell plus synthetic input.
-pub struct Harness {
+pub struct Harness<H: HostedShell = Shell> {
     /// The egui context.
     pub ctx: egui::Context,
     /// The shell.
-    pub shell: Shell,
+    pub shell: H,
     size: Vec2,
     time: f64,
     pending: Vec<Event>,
@@ -64,7 +64,9 @@ impl Harness {
     pub fn new(config: ShellConfig, services: Services) -> Result<Self> {
         Self::from_builder(|ctx| Shell::new(config, services, ctx))
     }
+}
 
+impl<H: HostedShell> Harness<H> {
     /// Build the shell the way an integrator would and wrap it — for setups [`Harness::new`]
     /// cannot express, such as the theme injection and painter hooks of
     /// [`crate::Shell::builder`]. `build` receives the headless context the
@@ -72,7 +74,7 @@ impl Harness {
     ///
     /// # Errors
     /// Whatever `build` returned (usually [`crate::Error::Config`]).
-    pub fn from_builder(build: impl FnOnce(&egui::Context) -> Result<Shell>) -> Result<Self> {
+    pub fn from_builder(build: impl FnOnce(&egui::Context) -> Result<H>) -> Result<Self> {
         let ctx = egui::Context::default();
         let shell = build(&ctx)?;
         Ok(Self {
@@ -479,6 +481,6 @@ pub fn test_shell(mut config: ShellConfig, setup: impl FnOnce(&mut Shell)) -> Re
 }
 
 /// `run_frames(&mut shell, n)`.
-pub fn run_frames(harness: &mut Harness, n: usize) {
+pub fn run_frames<H: HostedShell>(harness: &mut Harness<H>, n: usize) {
     harness.frames(n);
 }

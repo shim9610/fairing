@@ -77,10 +77,11 @@ fn settled_delay(h: &mut Harness) -> Duration {
 }
 
 fn reduced_motion() -> MotionTokens {
-    MotionTokens::from_config(&fairing::config::MotionConfig {
-        reduce: true,
-        ..fairing::config::MotionConfig::default()
-    })
+    MotionTokens::from_config(&(fairing::config::MotionConfig::default()).configure(
+        |api_config_value| {
+            api_config_value.reduce = true;
+        },
+    ))
 }
 
 /// Toggling an injected theme (equal sides of the palette pair) still moves egui's `Visuals`.

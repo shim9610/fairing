@@ -58,8 +58,9 @@
 //!
 //! This example uses ordinary [`Shell`] registration with legacy level gates. Typed
 //! protected registration uses the APIs above. The optional `runner::run_shell*` and
-//! `run_app*` helpers accept ordinary `Shell`; host `ProtectedShell` through its
-//! `logic*`, `frame*` and `poll_events` methods.
+//! `run_app*` helpers and [`testing::Harness::from_builder`] accept both shell modes.
+//! Protected built-ins use `settings::add_all_protected`; [`ProtectedShell::observe`]
+//! provides host state without a legacy-shell loan.
 //!
 //! ```no_run
 //! use fairing::{screen, icon, Cx};

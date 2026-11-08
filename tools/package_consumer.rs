@@ -57,22 +57,61 @@ impl fairing::elements::Element for ConsumerElement {
     }
 }
 
+// Unknown future read errors must remain refusals for downstream callers.
+fn read_error_kind(error: fairing::access::SessionReadError) -> &'static str {
+    use fairing::access::SessionReadError;
+    match error {
+        SessionReadError::Revoked => "revoked",
+        SessionReadError::Expired => "expired",
+        SessionReadError::Updating => "updating",
+        _ => "denied",
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let ctx = fairing::egui::Context::default();
-    let mut protected_config = fairing::ShellConfig::default();
-    protected_config.access.session_tokens = true;
-    let mut protected = fairing::Shell::builder(protected_config).build_protected(&ctx)?;
-    protected.add_elements(
-        "consumer-tree",
-        fairing::elements::ElementTree::row(
-            ConsumerPermission::View,
-            4.0,
-            vec![
-                fairing::elements::ElementTree::leaf(ConsumerElement(ConsumerPermission::View)),
-                fairing::elements::ElementTree::leaf(ConsumerElement(ConsumerPermission::Edit)),
-            ],
-        )?,
+    assert_eq!(
+        read_error_kind(fairing::access::SessionReadError::Revoked),
+        "revoked"
     );
+    assert_eq!(
+        read_error_kind(fairing::access::SessionReadError::Expired),
+        "expired"
+    );
+    assert_eq!(
+        read_error_kind(fairing::access::SessionReadError::Updating),
+        "updating"
+    );
+    let mut protected_host = Harness::from_builder(|ctx| {
+        let protected_config =
+            fairing::ShellConfig::default().configure(|c| c.access.session_tokens = true);
+        let mut protected = fairing::Shell::builder(protected_config).build_protected(ctx)?;
+        protected.add_elements(
+            "consumer-tree",
+            fairing::elements::ElementTree::row(
+                ConsumerPermission::View,
+                4.0,
+                vec![
+                    fairing::elements::ElementTree::leaf(ConsumerElement(ConsumerPermission::View)),
+                    fairing::elements::ElementTree::leaf(ConsumerElement(ConsumerPermission::Edit)),
+                ],
+            )?,
+        );
+        Ok(protected)
+    })?;
+    protected_host.frame();
+    assert!(protected_host.shell.observe().has_screen("consumer-tree"));
+    assert!(protected_host.shell.observe().session_token().is_none());
+    let old = protected_host.shell.handle();
+    protected_host.shell.restart_with(|| {
+        let config = fairing::ShellConfig::default().configure(|c| c.access.session_tokens = true);
+        fairing::Shell::builder(config).build_protected(&protected_host.ctx)
+    })?;
+    assert!(old.try_send(fairing::shell::Command::Home).is_err());
+    assert!(!protected_host.shell.is_faulted());
+    let grant = fairing::access::SessionGrant::new("consumer.view", true, None);
+    assert_eq!(grant.gate().as_str(), "consumer.view");
+    assert!(grant.is_base());
+    assert_eq!(grant.temporary_until(), None);
     let _grants = [
         fairing::access::SessionGrant::base_for(ConsumerPermission::View),
         fairing::access::SessionGrant::inactive_for(ConsumerPermission::Edit),

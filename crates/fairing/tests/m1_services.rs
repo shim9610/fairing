@@ -109,10 +109,10 @@ fn mock_backlog_continues_in_logic_only_ticks() -> Result<(), Box<dyn std::error
     use fairing::inbox::{InboxCapacity, InboxConfig};
     use fairing::services::mock::WifiMsg;
 
-    let wifi = MockWifi::with_inbox(InboxConfig {
-        capacity: InboxCapacity::Bounded(3),
-        batch_limit: 1,
-    })?;
+    let wifi = MockWifi::with_inbox((InboxConfig::default()).configure(|config| {
+        config.capacity = InboxCapacity::Bounded(3);
+        config.batch_limit = 1;
+    }))?;
     let control = wifi.control();
     for strength in 1..=3 {
         assert!(control

@@ -12,6 +12,7 @@ use crate::overlay::TileDecl;
 
 /// The unit of `shell.add` (Decl).
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Decl {
     /// A screen.
     Screen(ScreenDecl),
@@ -87,6 +88,7 @@ impl Decl {
 
 /// The kind of a declaration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DeclKind {
     /// A screen.
     Screen,
@@ -103,7 +105,7 @@ pub enum DeclKind {
 /// The declaration store. Preserves insertion order (which is `.desktop()`'s auto-placement order).
 #[derive(Debug, Default)]
 #[doc(hidden)]
-pub struct Registry {
+pub(crate) struct Registry {
     screens: Vec<ScreenDecl>,
     actions: Vec<ActionDecl>,
     status_items: Vec<StatusItemDecl>,
@@ -150,7 +152,7 @@ impl Registry {
 
     /// An empty registry.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
@@ -166,7 +168,7 @@ impl Registry {
     ///
     /// A new declaration always goes on the end — so even after a replacement the insertion
     /// order (which is `.desktop()`'s auto-placement order) is "by most recent `add`".
-    pub fn add(&mut self, decl: Decl) -> Option<Decl> {
+    pub(crate) fn add(&mut self, decl: Decl) -> Option<Decl> {
         warn_unusable_icon_placement(&decl);
         if let Some(previous) = self.kind(decl.id()) {
             let kind = decl.kind();
@@ -191,7 +193,7 @@ impl Registry {
     }
 
     /// Remove by id (whatever the kind).
-    pub fn remove(&mut self, id: &str) -> Option<Decl> {
+    pub(crate) fn remove(&mut self, id: &str) -> Option<Decl> {
         if let Some(i) = self.screens.iter().position(|d| d.id == id) {
             self.dirty = true;
             return Some(Decl::Screen(self.screens.remove(i)));
@@ -218,7 +220,7 @@ impl Registry {
 
     /// Look up the kind.
     #[must_use]
-    pub fn kind(&self, id: &str) -> Option<DeclKind> {
+    pub(crate) fn kind(&self, id: &str) -> Option<DeclKind> {
         if self.screens.iter().any(|d| d.id == id) {
             Some(DeclKind::Screen)
         } else if self.actions.iter().any(|d| d.id == id) {
@@ -236,7 +238,7 @@ impl Registry {
 
     /// A screen declaration.
     #[must_use]
-    pub fn screen(&self, id: &str) -> Option<&ScreenDecl> {
+    pub(crate) fn screen(&self, id: &str) -> Option<&ScreenDecl> {
         self.screens.iter().find(|d| d.id == id)
     }
 
@@ -281,7 +283,7 @@ impl Registry {
     /// Whether a screen is declared under this id. The list a screen draws is filtered on it, so an
     /// entry never points at something that is not there.
     #[must_use]
-    pub fn has_screen(&self, id: &str) -> bool {
+    pub(crate) fn has_screen(&self, id: &str) -> bool {
         self.screens.iter().any(|d| d.id() == id)
     }
 
@@ -300,13 +302,13 @@ impl Registry {
 
     /// Every screen, in insertion order.
     #[must_use]
-    pub fn screens(&self) -> &[ScreenDecl] {
+    pub(crate) fn screens(&self) -> &[ScreenDecl] {
         &self.screens
     }
 
     /// Every action, in insertion order.
     #[must_use]
-    pub fn actions(&self) -> &[ActionDecl] {
+    pub(crate) fn actions(&self) -> &[ActionDecl] {
         &self.actions
     }
 
@@ -317,7 +319,7 @@ impl Registry {
 
     /// The status bar items.
     #[must_use]
-    pub fn status_items(&self) -> &[StatusItemDecl] {
+    pub(crate) fn status_items(&self) -> &[StatusItemDecl] {
         &self.status_items
     }
 
@@ -329,7 +331,7 @@ impl Registry {
     /// The tile declarations (feature `overlay`).
     #[cfg(feature = "overlay")]
     #[must_use]
-    pub fn tiles(&self) -> &[TileDecl] {
+    pub(crate) fn tiles(&self) -> &[TileDecl] {
         &self.tiles
     }
 
@@ -346,7 +348,7 @@ impl Registry {
 
     /// The nav bar items.
     #[must_use]
-    pub fn nav_items(&self) -> &[NavItemDecl] {
+    pub(crate) fn nav_items(&self) -> &[NavItemDecl] {
         &self.nav_items
     }
 

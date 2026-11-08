@@ -98,7 +98,19 @@ jobs:
         run: cargo run -p xtask --locked -- audit --strict
 
       - name: Test minimal-feature library units
-        run: cargo test --locked -p fairing --no-default-features --lib
+        run: cargo test --locked -p fairing --no-default-features --lib --test protected_host
+
+      - name: Inventory public API contracts
+        run: |
+          python3 tools/test_api_surface.py
+          python3 tools/api_surface.py
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: public-api-inventory
+          path: target/api-surface/
+          retention-days: 14
 
       - name: Test release archives and an external consumer
         run: python3 tools/package_check.py

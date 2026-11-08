@@ -65,8 +65,8 @@ for nested scopes, cleanup and the callback-effect boundary.
 Set `[access] session_tokens = true` and return `AuthOutcome::Session(token)` to
 adopt split capabilities. The authenticator retains the non-cloneable controller.
 Existing authenticators keep their legacy behavior when this flag is false.
-`AccessConfig` struct literals need the new `session_tokens` field or
-`..Default::default()`. The optional `Authenticator::session_ended` callback revokes
+`AccessConfig` now uses extensible construction: start with `Default` and set
+`session_tokens`, directly or through `.configure(...)`. The optional `Authenticator::session_ended` callback revokes
 the matching controller after local detachment. Direct subject injection does not
 authorize token-mode work; host-owned login flows use the request-bound
 `SessionRequested` / `accept_auth_response` path. See [session tokens](../session-tokens.md)
@@ -194,12 +194,42 @@ The original screen cannot be borrowed or extracted from that handle. Factory
 creation occurs at the first dispatched hook, including legacy shells; move
 launch-time setup that must run earlier into explicit application setup.
 
-`ProtectedShell` has `logic*`, `frame*` and `poll_events` for a custom host. The
-current `runner::run_shell*` and `run_app*` helpers, `testing::Harness` and
-`settings::add_all` take ordinary `Shell`; they do not accept the protected facade.
-Register application screens/elements through its typed API rather than looking
-for mutable access to the legacy shell.
+`runner::run_shell*`, `run_app*` and `Harness::from_builder` accept both shell modes.
+For protected built-ins use `settings::add_all_protected(shell, config, permission_for)`
+or its custom-list variant. The mapper returns your application permission value
+for each registered screen ID. It selects requirements during construction and
+does not grant write permissions. Protected recovery accepts only protected replacements.
 
 Protected operation adapters and their automatic coverage derive from the same
 [mediation contract](../protected-contracts.md). New operation declarations do not
 require a new proof per screen or a separate verifier registration.
+
+
+## Public API evolution after 217373f
+
+The following are intentional pre-release source changes; there is no published
+crate version to upgrade from yet.
+
+| Before | Current migration |
+| --- | --- |
+| External literals for shell/widget configuration, including `..Default::default()` | `Type::default().configure(\|c\| { c.field = value; })` or direct field assignment on a default value; all configuration structs are non-exhaustive |
+| `SessionGrant { gate, base, temporary_until }` | `SessionGrant::new(gate, base, temporary_until)`; read through `gate()`, `is_base()`, `temporary_until()` |
+| Exhaustive matches on `SessionError`, `SessionReadError`, `Decl`, `DeclKind` | Handle known cases and retain a fallback; these enums are non-exhaustive |
+| `screen::Registry`, `Shell::registry()` or `ProtectedShell::shell()` | `observe()` queries: `screen_ids`, `has_screen`, `screen_is_resident`, `nav_item_rect`, `settings`, `session_token`, `allows`, layout/time/fault/prompt state |
+| `runner::run_app::<State>(...)` | Prefer inference or use `runner::run_app::<State, _>(...)`; the host type is now generic |
+
+Ordinary `Harness` type annotations still mean `Harness<Shell>`; annotate a
+protected harness as `Harness<ProtectedShell>` or let `from_builder` infer it.
+Recovery callbacks receive the concrete shell mode and may use its
+`restart_with`, `set_recovery_ui` and `take_restart_request` methods.
+
+```rust
+use fairing::{Shell, ShellConfig, ProtectedShell, testing::Harness};
+let mut harness: Harness<ProtectedShell> = Harness::from_builder(|ctx| {
+    let config = ShellConfig::default().configure(|c| c.access.session_tokens = true);
+    Shell::builder(config).build_protected(ctx)
+})?;
+harness.frame();
+assert!(harness.shell.observe().session_token().is_none());
+# Ok::<(), fairing::Error>(())
+```

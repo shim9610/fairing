@@ -10,3 +10,7 @@ target/
 *.swp
 .idea/
 .vscode/
+
+# Python tool caches
+__pycache__/
+*.py[cod]

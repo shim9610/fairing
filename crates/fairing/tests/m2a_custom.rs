@@ -626,10 +626,11 @@ fn injected_theme_survives_theme_toggle() -> fairing::Result<()> {
             primary: purple,
             ..Palette::dark()
         },
-        motion: fairing::theme::MotionTokens::from_config(&fairing::config::MotionConfig {
-            reduce: true,
-            ..fairing::config::MotionConfig::default()
-        }),
+        motion: fairing::theme::MotionTokens::from_config(
+            &(fairing::config::MotionConfig::default()).configure(|api_config_value| {
+                api_config_value.reduce = true;
+            }),
+        ),
         ..Theme::dark()
     };
 

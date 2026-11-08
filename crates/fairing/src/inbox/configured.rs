@@ -16,6 +16,7 @@ pub enum InboxCapacity {
 
 /// Connection configuration. Storage and processing limits are independent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct InboxConfig {
     /// Storage policy. Unbounded storage can exhaust process memory.
     pub capacity: InboxCapacity,
@@ -191,5 +192,14 @@ mod tests {
         }
         assert_eq!(count, 7);
         assert_eq!(rx.try_recv(), Ok(7));
+    }
+}
+
+impl InboxConfig {
+    /// Customize an extensible configuration without an exhaustive literal.
+    #[must_use]
+    pub fn configure(mut self, customize: impl FnOnce(&mut Self)) -> Self {
+        customize(&mut self);
+        self
     }
 }

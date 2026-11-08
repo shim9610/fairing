@@ -804,8 +804,7 @@ by sending `ClockMsg::Set(WallTime)` to the `MockControl<ClockMsg>` from
 
 ## Bounded service channels
 
-Choose storage and work limits per connection with `Inbox::configured(InboxConfig {
-capacity: InboxCapacity::Bounded(1024), batch_limit: 256 })`. Both worker examples
+Choose storage and work limits per connection with `Inbox::configured((InboxConfig::default()).configure(|config| { config.capacity = InboxCapacity::Bounded(1024); config.batch_limit = 256; }))`. Both worker examples
 above use configured update channels and finite polling. `InboxCapacity::Unbounded`
 selects unlimited storage for a trusted, rate-controlled producer; `drain()` still
 respects the finite `batch_limit`. A zero batch limit pauses consumption. After a
@@ -820,10 +819,7 @@ poll). Existing constructors keep their signatures. To choose limits explicitly:
 ```rust
 use fairing::inbox::{InboxCapacity, InboxConfig};
 use fairing::services::mock::MockWifi;
-let mut wifi = MockWifi::with_inbox(InboxConfig {
-    capacity: InboxCapacity::Bounded(32),
-    batch_limit: 8,
-})?;
+let mut wifi = MockWifi::with_inbox((InboxConfig::default()).configure(|config| { config.capacity = InboxCapacity::Bounded(32); config.batch_limit = 8; }))?;
 wifi.set_inbox_batch_limit(0); // pause; accepted messages and controls remain valid
 wifi.set_inbox_batch_limit(8); // resume; poll again after changing the budget
 # Ok::<(), fairing::inbox::QueueCapacityError>(())

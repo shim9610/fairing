@@ -23,8 +23,19 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 /// The whole of `fairing.toml`.
+///
+/// Configuration sections are extensible: construct through `Default` and customize fields.
+///
+/// ```
+/// let config = fairing::ShellConfig::default().configure(|c| c.access.session_tokens = true);
+/// assert!(config.access.session_tokens);
+/// ```
+/// ```compile_fail
+/// let config = fairing::ShellConfig { ..Default::default() };
+/// ```
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct ShellConfig {
     /// `[shell]`.
     pub shell: ShellSection,
@@ -348,6 +359,7 @@ impl ShellConfig {
 /// `[shell]`.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct ShellSection {
     /// The locale (`"en"`, `"ko"`).
     pub locale: String,
@@ -429,6 +441,7 @@ pub enum AbyssTier {
 /// gate** (rule G): with `brand` off it parses and is ignored.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct AbyssConfig {
     /// The quality tier.
     pub tier: AbyssTier,
@@ -490,6 +503,7 @@ impl Default for AbyssConfig {
 /// `[status_bar]`. The slot lists are declaration ids.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct StatusBarConfig {
     /// On or off.
     pub enabled: bool,
@@ -551,6 +565,7 @@ impl Default for StatusBarConfig {
 /// `[nav_bar]`. M1 implements `buttons` only.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct NavBarConfig {
     /// On or off. `false` draws no bar and the content grows by that much (edge gestures are M2).
     pub enabled: bool,
@@ -583,6 +598,7 @@ impl Default for NavBarConfig {
 /// `[desktop]`. Icons come from code declarations; this only overrides position and label.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct DesktopConfig {
     /// The column count. 0 derives it from the cell size.
     pub columns: u8,
@@ -697,6 +713,7 @@ impl Default for DesktopConfig {
 /// One page of `[[desktop.pages]]`.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct PageConfig {
     /// The icon overrides, in row-major order.
     pub icons: Vec<IconOverride>,
@@ -705,6 +722,7 @@ pub struct PageConfig {
 /// The override for one icon cell in a page.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct IconOverride {
     /// The declaration id (no prefix).
     pub id: String,
@@ -728,6 +746,7 @@ pub struct IconOverride {
 /// them.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct OverlayConfig {
     /// `"unified"` (the Android style, the default): one shade wherever it is pulled from — the
     /// tiles at the top, the notifications below, the footer at the bottom.
@@ -872,6 +891,7 @@ impl Default for OverlayConfig {
 /// `[notify]`.
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct NotifyConfig {
     /// Show a new notification briefly as a heads-up banner at the top.
     pub heads_up: bool,
@@ -905,6 +925,7 @@ impl Default for NotifyConfig {
 /// `[osk]`.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct OskConfig {
     /// The height = the screen height × this ratio — but no row of keys taller than
     /// `metrics.osk_max_key` (one and a half fingers), so a tall panel does not get rows the size
@@ -944,6 +965,7 @@ impl Default for OskConfig {
 /// `[gesture]`. The slop, tap and long press are `[motion]`, and the edge width is `theme.metrics.edge_px`.
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct GestureConfig {
     /// Gestures on or off, globally. Off means no edge swipes, long presses or flings. **The
     /// emergency gesture** (a 2 s press in a top corner) is a safety device and
@@ -977,6 +999,7 @@ impl Default for GestureConfig {
 /// keeps one screen at a time, or has an overview of its own.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct WorkspaceConfig {
     /// The shell's split panes: `cx.open_in_other_pane`, the split tile and the nav bar's
     /// `"split"` item open the other pane. Off, `open_in_other_pane` opens in the same pane.
@@ -1019,6 +1042,7 @@ impl WorkspaceConfig {
 /// `[access]`. The levels, gates and mode are all the integrator's to define.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct AccessConfig {
     /// Require issuer-owned session tokens and explicit gate grants. Incompatible with mode off.
     /// Legacy level/PIN grants and direct subject injection do not authorize token-mode work.
@@ -1062,6 +1086,7 @@ pub struct AccessConfig {
 /// `[access.lock_screen]`.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct LockScreenConfig {
     /// Offer a "Continue" button that leaves the lock screen **without** authenticating — as the
     /// starting subject, so only what that subject passes is open. Off by default: a lock screen
@@ -1094,6 +1119,7 @@ impl Default for AccessConfig {
 /// level can be named after one of them.
 #[derive(Clone, Default, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct PinTableConfig {
     /// This many wrong tries in a row lock the prompt (optional). Counted in memory, and shared
     /// with `[access.pattern_table]` — a wrong pattern and a wrong PIN are both a wrong try.
@@ -1132,6 +1158,7 @@ impl std::fmt::Debug for PinTableConfig {
 /// (`"12369"`), the way the dots sit on a phone's keypad.
 #[derive(Clone, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct PatternTableConfig {
     /// Dots on a side, 3 to 5.
     pub grid: u8,
@@ -1367,3 +1394,35 @@ lock_secs = 60
         assert!(ShellConfig::from_toml("[motion.press]\nscale = 1.5\n").is_err());
     }
 }
+
+// Extensible configuration is built through Default and field customization.
+macro_rules! configuration_builders {
+    ($($ty:ty),* $(,)?) => { $(impl $ty {
+        /// Customize a configuration value without constructing an exhaustive literal.
+        /// The callback runs synchronously once during host configuration.
+        #[must_use]
+        pub fn configure(mut self, customize: impl FnOnce(&mut Self)) -> Self {
+            customize(&mut self);
+            self
+        }
+    })* };
+}
+configuration_builders!(
+    ShellConfig,
+    ShellSection,
+    AbyssConfig,
+    StatusBarConfig,
+    NavBarConfig,
+    DesktopConfig,
+    PageConfig,
+    IconOverride,
+    OverlayConfig,
+    NotifyConfig,
+    OskConfig,
+    GestureConfig,
+    WorkspaceConfig,
+    AccessConfig,
+    LockScreenConfig,
+    PinTableConfig,
+    PatternTableConfig
+);

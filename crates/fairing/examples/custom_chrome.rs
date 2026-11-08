@@ -92,11 +92,11 @@ fn main() -> fairing::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let size = common::arg_size(&args);
     let tour = common::arg_tour(&args);
-    let options = Options {
-        fullscreen: tour.is_none() && size.is_none(),
-        title: "fairing custom chrome".to_owned(),
-        size: Some(size.unwrap_or(SIZE)),
-    };
+    let options = (Options::default()).configure(|config| {
+        config.fullscreen = tour.is_none() && size.is_none();
+        "fairing custom chrome".clone_into(&mut config.title);
+        config.size = Some(size.unwrap_or(SIZE));
+    });
     match tour {
         Some(dir) => common::run_tour(options, dir, PLAN, |ctx| Ok((build(ctx)?, ()))),
         None => runner::run_shell(options, build),
@@ -138,42 +138,35 @@ fn metrics() -> MetricsSpec {
     }
 }
 
-/// A config literal — settled in code, with no file. No dock, no nav bar.
+/// Configuration settled in code, with no file. No dock, no nav bar.
 fn config() -> ShellConfig {
-    ShellConfig {
-        status_bar: StatusBarConfig {
-            // The slot lists settle only **what to show**. The layout and the drawing are the
-            // painter's, and the gate decisions are the shell's and arrive through `BarCx::items()`.
-            left: Vec::new(),
-            center: Vec::new(),
-            right: vec!["status.clock".to_owned(), "status.wifi".to_owned()],
-            ..StatusBarConfig::default()
-        },
-        nav_bar: NavBarConfig {
-            enabled: false,
-            ..NavBarConfig::default()
-        },
-        desktop: DesktopConfig {
-            columns: 4,
-            rows: 2,
-            dock: Vec::new(),
-            ..DesktopConfig::default()
-        },
-        overlay: OverlayConfig {
-            // **A tile the crate knows nothing of is slotted in.** The list can mix built-in ids and
-            // declaration ids, and the order is settled here — `tile.hopper` and `tile.jog` are ours.
-            // A built-in tile not in the list (the theme, the lock …) does not stand at all.
-            tiles: vec![
+    (ShellConfig::default()).configure(|api_config_value| {
+        api_config_value.status_bar = (StatusBarConfig::default()).configure(|api_config_value| {
+            // Slot lists choose what to show; the painter owns layout/drawing,
+            // while gate decisions arrive through BarCx::items().
+            api_config_value.left = Vec::new();
+            api_config_value.center = Vec::new();
+            api_config_value.right = vec!["status.clock".to_owned(), "status.wifi".to_owned()];
+        });
+        api_config_value.nav_bar = (NavBarConfig::default()).configure(|api_config_value| {
+            api_config_value.enabled = false;
+        });
+        api_config_value.desktop = (DesktopConfig::default()).configure(|api_config_value| {
+            api_config_value.columns = 4;
+            api_config_value.rows = 2;
+            api_config_value.dock = Vec::new();
+        });
+        api_config_value.overlay = (OverlayConfig::default()).configure(|api_config_value| {
+            // Application tiles mix with built-ins; omitted built-ins stay absent.
+            api_config_value.tiles = vec![
                 "tile.wifi".to_owned(),
                 "tile.hopper".to_owned(),
                 "tile.jog".to_owned(),
                 "tile.brightness".to_owned(),
-            ],
-            tile_columns: 4,
-            ..OverlayConfig::default()
-        },
-        ..ShellConfig::default()
-    }
+            ];
+            api_config_value.tile_columns = 4;
+        });
+    })
 }
 
 /// The Mock backends (unlike the demo, with no scenario thread — for the tour's reproducibility).

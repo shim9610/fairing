@@ -2495,12 +2495,11 @@ fn main() -> fairing::Result<()> {
     // but no title is ever on screen here: every screen hides both bars.
     set_lang(Lang::parse(&args));
     let size = common::arg_size(&args);
-    let options = fairing::runner::Options {
-        title: "fairing kiosk".to_owned(),
-        size,
-        // With no tour and no window size given, it is fullscreen as on a real device.
-        fullscreen: size.is_none() && common::arg_tour(&args).is_none(),
-    };
+    let options = (fairing::runner::Options::default()).configure(|config| {
+        "fairing kiosk".clone_into(&mut config.title);
+        config.size = size;
+        config.fullscreen = size.is_none() && common::arg_tour(&args).is_none();
+    });
     let panel_mm = common::arg_panel_mm(&args);
     let shape = Shape::pick(&args, size, panel_mm);
     let opts = Opts::parse(&args);

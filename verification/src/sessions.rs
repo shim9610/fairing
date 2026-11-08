@@ -58,11 +58,13 @@ pub fn exercise(events: &[u8]) {
             let grants = names
                 .iter()
                 .enumerate()
-                .map(|(i, name)| SessionGrant {
-                    gate: Gate::from(*name),
-                    base: candidate_base[i],
-                    temporary_until: (candidate_temporary[i] > 0)
-                        .then(|| origin + Duration::from_secs(candidate_temporary[i])),
+                .map(|(i, name)| {
+                    SessionGrant::new(
+                        Gate::from(*name),
+                        candidate_base[i],
+                        (candidate_temporary[i] > 0)
+                            .then(|| origin + Duration::from_secs(candidate_temporary[i])),
+                    )
                 })
                 .collect();
             let result = controller.replace_grants(grants, None, now);

@@ -52,7 +52,7 @@ fn authenticate(shell: &mut ProtectedShell, ctx: &egui::Context) -> SessionContr
             SessionGrant::inactive_for(AppPermission::Edit),
         ],
         None,
-        shell.shell().now(),
+        shell.now(),
         fairing::services::Waker::new(ctx),
     )
     .unwrap();
@@ -134,8 +134,8 @@ fn customer_enum_and_trait_elements_are_dispatched_without_manual_child_guards(
     assert_eq!((calls[0].get(), measures[0].get()), (0, 0));
     assert!(rects[0].get().is_none());
     let compact = rects[1].get().unwrap();
-    let token = shell.shell().access().session_token().unwrap();
-    let snapshot = token.snapshot(shell.shell().now()).unwrap();
+    let token = shell.observe().session_token().unwrap();
+    let snapshot = token.snapshot(shell.now()).unwrap();
     assert!(snapshot.allows_permission(AppPermission::View));
     assert!(
         !snapshot.allows_permission(AppPermission::Edit),
@@ -148,7 +148,7 @@ fn customer_enum_and_trait_elements_are_dispatched_without_manual_child_guards(
                 SessionGrant::base_for(AppPermission::Edit),
             ],
             None,
-            shell.shell().now(),
+            shell.now(),
         )
         .unwrap();
     frame(&mut shell, &ctx);
@@ -176,9 +176,8 @@ fn denied_custom_nav_values_do_not_reserve_cells_before_layout() -> fairing::Res
     let mut owner = authenticate(&mut shell, &ctx);
     frame(&mut shell, &ctx);
     let compact = shell
-        .shell()
-        .nav_bar()
-        .item_rect(&fairing::chrome::NavItem::Home)
+        .observe()
+        .nav_item_rect(&fairing::chrome::NavItem::Home)
         .unwrap();
     assert_eq!(calls.get(), 0);
     config.nav_bar.items = vec!["home".into()];
@@ -188,9 +187,8 @@ fn denied_custom_nav_values_do_not_reserve_cells_before_layout() -> fairing::Res
     assert_eq!(
         Some(compact),
         baseline
-            .shell()
-            .nav_bar()
-            .item_rect(&fairing::chrome::NavItem::Home),
+            .observe()
+            .nav_item_rect(&fairing::chrome::NavItem::Home),
         "denied custom navigation reserved a cell"
     );
     owner
@@ -200,7 +198,7 @@ fn denied_custom_nav_values_do_not_reserve_cells_before_layout() -> fairing::Res
                 SessionGrant::base_for(AppPermission::Edit),
             ],
             None,
-            shell.shell().now(),
+            shell.now(),
         )
         .unwrap();
     frame(&mut shell, &ctx);
@@ -208,15 +206,14 @@ fn denied_custom_nav_values_do_not_reserve_cells_before_layout() -> fairing::Res
     assert_ne!(
         Some(compact),
         shell
-            .shell()
-            .nav_bar()
-            .item_rect(&fairing::chrome::NavItem::Home)
+            .observe()
+            .nav_item_rect(&fairing::chrome::NavItem::Home)
     );
     owner
         .replace_grants(
             vec![SessionGrant::base_for(AppPermission::View)],
             None,
-            shell.shell().now(),
+            shell.now(),
         )
         .unwrap();
     let count = calls.get();
@@ -225,14 +222,12 @@ fn denied_custom_nav_values_do_not_reserve_cells_before_layout() -> fairing::Res
     assert_eq!(
         Some(compact),
         shell
-            .shell()
-            .nav_bar()
-            .item_rect(&fairing::chrome::NavItem::Home)
+            .observe()
+            .nav_item_rect(&fairing::chrome::NavItem::Home)
     );
     assert!(shell
-        .shell()
-        .nav_bar()
-        .item_rect(&fairing::chrome::NavItem::Custom("private".into()))
+        .observe()
+        .nav_item_rect(&fairing::chrome::NavItem::Custom("private".into()))
         .is_none());
     Ok(())
 }

@@ -258,34 +258,32 @@ progress properties are proved and which widget paths are checked dynamically.
 
 ## Public surface and evolution
 
-The current checkout is pre-release. Encapsulation is strongest around
-`SessionController`, `SessionToken`, `SessionSnapshot`, `PermissionBinding` and
-`ProtectedShell`: their private storage permits implementation changes without
-exposing a mutable token or a mutable legacy-shell conversion. External
-permission enums remain application-owned. Admitted callbacks intentionally
-retain raw UI/app/backend access; removing that is a contract change.
+The pre-release API decisions below implement issue #13 against the reviewed
+baseline `217373f`. [Migration examples](guide/10-migration.md#public-api-evolution-after-217373f)
+cover the intentional source changes. Both product crates are inventoried from
+compiler-generated rustdoc JSON in minimal/all-feature configurations with
+`tools/api_surface.py`; see [the API policy](api-evolution.md) for comparison scope.
 
-Other public APIs have concrete compatibility costs:
-
-| Surface | Current commitment | Maintenance consequence |
+| Surface | Decision | Evolution boundary |
 | --- | --- | --- |
-| `ShellConfig`, its section structs and `SessionGrant` | Public fields; external struct literals are permitted | Adding fields breaks complete literals. Prefer `Default` plus field assignment for configs and the grant constructors; this is usage guidance, not enforced extensibility |
-| `SessionError`, `SessionReadError`, `Decl` and `DeclKind` | Exhaustive public enums | Adding variants breaks exhaustive downstream matches. Review whether each enum needs an extension policy before the first release |
-| `Shell::*_mut` component accessors | Concrete mutable component APIs for trusted legacy hosts | Replacing component types or their invariants can affect callers. New host operations should prefer focused methods when unrestricted mutation is unnecessary |
-| `Shell::registry` and other `#[doc(hidden)]` diagnostics | Public and callable despite being omitted from rendered API docs | Hiding documentation does not remove compatibility obligations. A future diagnostic feature or snapshot API requires a migration decision |
-| `ProtectedShell::shell() -> &Shell` | Broad shared observation access | No mutable conversion is provided, but future shared/interior-mutable `Shell` APIs must be reviewed for their effect on the protected facade |
-| Public implementable traits | Downstream implementations are allowed | New required methods are source-breaking. Default methods need behavior/security review; sealed registration contracts can evolve internally |
-| Re-exported `egui` types | UI signatures use the selected egui version | An incompatible egui upgrade remains a public API migration even when Fairing's method names do not change |
+| Shell/widget configuration structs | Non-exhaustive, public customization fields; construct with `Default` and `.configure(...)` | Add fields with defaults while preserving this construction pattern; changing existing field types still requires migration |
+| `SessionGrant` | Private fields; full constructor, typed convenience constructors and read accessors | Internal extension does not require external exhaustive literals |
+| `SessionError`, `SessionReadError`, `Decl`, `DeclKind` | Non-exhaustive | New variants require a downstream fallback; known-variant behavior remains a contract |
+| Other public value enums | Retain existing closed/open status | A closed domain model is intentionally exhaustive; review a new variant as a source change |
+| Ordinary `Shell::*_mut` | Retain trusted legacy customization access | These concrete component types remain supported API; use declaration replacement, existing focused operations and `set_dock_placement` where sufficient |
+| `Shell::registry`, `ProtectedShell::shell` | Removed | `ShellView` provides screen/geometry/session/settings/fault queries without borrowing implementation stores |
+| Remaining hidden read-only test queries | Retain their paths as supported diagnostic APIs | Hidden rustdoc status grants no compatibility exemption; do not expose them through a mutable protected-shell conversion |
+| Runner and harness | Generic over sealed `HostedShell`, implemented only by the two shell modes | Shared host orchestration cannot install untyped declarations or convert protection modes |
+| Protected recovery | Protected-only replacement factory; old admission closes before construction | Construction/disposal failure stays quarantined and old handles cannot replay work |
+| Protected settings | Application-supplied permission values selected per registered built-in ID | Screen visibility does not issue setting or credential write grants |
+| External traits | Application implementations remain supported | New required methods are breaking; default methods require authorization and object-safety review |
+| Re-exported `egui` types | Retain the selected egui version in UI signatures | An incompatible egui upgrade requires a documented migration |
 
-The audit does not retroactively mark these types `non_exhaustive` or privatize
-fields: either action itself breaks existing callers. Before freezing a release,
-choose extension points explicitly and check an external consumer against the
-chosen baseline. Source reachability lints and passing doctests do not prove
-semantic-version compatibility.
+The private session capabilities, typed requirements and automatic common-kernel
+routing remain the authorization boundary. Admitted callbacks intentionally retain
+raw UI/app/backend access. `ShellView::allows` is an observation, not a durable
+permission or a replacement for dispatch-time enforcement.
 
-Protected hosting currently requires a custom loop. Runner, harness and built-in
-settings helpers take ordinary `Shell`; the facade also has no `restart_with`,
-`set_recovery_ui` or `take_restart_request` forwarding methods. A host can own and
-replace the complete `ProtectedShell`, but the ordinary shell's recovery helpers
-are not automatically available through its shared observer. Future helpers must
-preserve protected construction rather than exposing `&mut Shell`.
+`SessionToken::snapshot(now)` captures its supplied time. Acquire a fresh snapshot
+for each new external admission decision; publication/revocation detection does
+not advance its clock. See [session observation semantics](session-tokens.md#changes-expiration-and-logout).

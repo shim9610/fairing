@@ -39,12 +39,7 @@ fn bare_shell(config: SettingsConfig) -> fairing::Result<Harness> {
 
 /// The registered declaration ids.
 fn declared(h: &Harness) -> Vec<String> {
-    h.shell
-        .registry()
-        .screens()
-        .iter()
-        .map(|d| d.id().to_owned())
-        .collect()
+    h.shell.observe().screen_ids().map(str::to_owned).collect()
 }
 
 /// One call registers every one of the eleven that a backend stands behind.

@@ -145,11 +145,11 @@ fn main() -> fairing::Result<()> {
 
     // 2) Window options. Ship devices with Options::default() (fullscreen);
     //    only pass a size when you are looking at it on a desktop.
-    let options = Options {
-        fullscreen: false,
-        title: "mydevice".to_owned(),
-        size: Some((1024.0, 600.0)),
-    };
+    let options = Options::default().configure(|options| {
+        options.fullscreen = false;
+        "mydevice".clone_into(&mut options.title);
+        options.size = Some((1024.0, 600.0));
+    });
 
     // 3) Build the shell once the window exists. The runner hands you ctx.
     runner::run_shell(options, move |ctx| {
@@ -311,9 +311,10 @@ stale while hidden. Hosts using only `frame` retain the egui input timeline, inc
 virtual time in the headless harness. Drawing and animations wait for the next UI pass.
 
 `ProtectedShell` exposes the same `logic*`, `frame*` and `poll_events` hosting
-pattern. The current `runner::run_shell*` and `run_app*` helpers accept ordinary
-`Shell` only; use your own host for a protected shell. Their ordinary `Shell`
-examples cannot be switched to `build_protected` without changing the host.
+pattern. `runner::run_shell*`, `run_app*` and `Harness::from_builder` accept both
+shell modes. Switch construction to `build_protected`, enable token mode, and
+register application callbacks with typed requirements. Use
+`settings::add_all_protected` instead of ordinary settings registration.
 
 `ShellEvent` is not a reason to come here. `runner::run_shell` does drop events
 into `log::debug!`, but **`runner::run_shell_with(options, build, on_event)`**
