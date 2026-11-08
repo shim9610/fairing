@@ -5,6 +5,12 @@ order to make a product look like their own. The optional Abyss styling (the man
 the abyss) can be changed — override one colour, or replace the background, the mark and the icons
 outright, all without patching the crate.
 
+The global painter, procedural wallpaper and image-loader hooks below describe
+ordinary `Shell` customization. Protected construction rejects untyped hooks;
+use themes/fonts and permission-bound UI elements for protected integration.
+See [security architecture](../security-architecture.md#2-construction-and-registration)
+for that boundary.
+
 Read first: [04 Customization](04-customization.md) (theme injection, painter hooks) and
 [07 Config reference](07-config-reference.md) (the TOML keys).
 
@@ -799,8 +805,10 @@ press it. To see the screens during development, use `SettingsConfig::ignoring_c
 ```toml
 # The default features are ["mock", "overlay", "osk", "brand", "settings"].
 # Drop what you want gone and **re-list the rest**, or it disappears quietly.
-fairing = { git = "https://github.com/shim9610/fairing", default-features = false,
-            features = ["mock", "overlay", "osk", "runner"] }
+[dependencies.fairing]
+git = "https://github.com/shim9610/fairing"
+default-features = false
+features = ["mock", "overlay", "osk", "runner"]
 #            ↑ without brand (manta, abyss) and settings (the built-in screens)
 ```
 

@@ -2,8 +2,10 @@
 
 Working documentation for device integrators. It carries what you need to put `fairing` into your
 own device binary, declare your screens, and reshape the shell into your product — nothing else.
-How the crate is put together is in [architecture](../architecture.md), and what comes next, with
-the limits it has today, is in the [roadmap](../roadmap.md).
+Component ownership and execution flow are in [system architecture](../architecture.md).
+Authentication, token authority and protected admission are in
+[security architecture](../security-architecture.md). Both include SVG diagrams.
+Planned work and current limits are in the [roadmap](../roadmap.md).
 
 Rust blocks on these pages, except those marked `ignore`, are compiled — and run
 unless marked `no_run` — by stage 3
@@ -13,9 +15,13 @@ turns each page into doctests, with every feature on. So when the source moves, 
 longer matches it fails the audit instead of quietly becoming false. The blocks marked `ignore`
 are of two kinds: **API outlines** (signatures without bodies, kept in step with the source by
 hand) and code that needs something outside this repository (a crate such as `image` or
-`zeroize`, or a font file of your own). Every `fairing.toml` fragment was put through
-`ShellConfig::from_toml` + `validate` by hand, once. Where the code cannot do something yet, that
-is written down as "it cannot".
+`zeroize`, or a font file of your own). API outlines show the relevant public
+members, not complete constructible definitions. TOML examples are syntax-checked;
+device-configuration fragments are deserialized and range-validated through
+`ShellConfig::from_toml` / `validate`. Partial fragments still need the surrounding
+configuration for declaration, gate and startup cross-checks; validate the complete
+configuration when building the shell. Cargo manifests are not `ShellConfig` input.
+Where behavior is not implemented, the guide says so.
 
 The audit explicitly enables `fairing_repo_docs` in `RUSTDOCFLAGS` for this gate.
 An extracted release archive omits these repository-only pages and instead runs
@@ -61,7 +67,7 @@ at a time as you need it.
 | Change the logo mark | [09 §5 Logo marks](09-branding.md#5-logo-marks--requirements) |
 | Remove every trace of the brand | [09 §8.5](09-branding.md#85-checking-that-nothing-of-ours-is-left) |
 | Start a new project from a file that runs (`examples/hello.rs`) | [01 §4](01-getting-started.md#4-a-minimal-app) · [01 §5](01-getting-started.md#5-running-the-bundled-examples) |
-| Run the bundled examples (`hello` · `demo` · `console` · `kiosk` · `custom_chrome` · `motion_lab` · `palette_sheet`) | [01 §5](01-getting-started.md#5-running-the-bundled-examples) |
+| Run the bundled examples (`hello` · `protected` · `demo` · `console` · `kiosk` · `custom_chrome` · `motion_lab` · `palette_sheet`) | [01 §5](01-getting-started.md#5-running-the-bundled-examples) |
 | Test my UI with no window and no GPU | [01 §6 Headless](01-getting-started.md#6-testing-your-ui-headless) |
 | Add another screen | [02 §1 Five kinds of declaration](02-screens.md#1-five-kinds-of-declaration) |
 | Decide where a screen's state lives | [02 §3 Resident and factory](02-screens.md#3-resident-and-factory-screens) |

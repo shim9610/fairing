@@ -8,7 +8,7 @@ straight to stderr or the log — it names the key.
 
 | Symptom | Message (verbatim) | Cause | Fix |
 |---|---|---|---|
-| More than one level and it will not start | `[access] default_gate is required once levels has more than one entry` | With several levels, something has to say where an unassigned gate goes. The shell will not quietly pick a side | Add `[access] default_gate = "top"`, `"bottom"`, or one of the `levels` names |
+| More than one level and it will not start | `[access] default_gate is required once levels has more than one entry` | In legacy mode with several levels, something has to say where an unassigned gate goes. The shell will not quietly pick a side | Add `[access] default_gate = "top"`, `"bottom"`, or one of the `levels` names |
 | Typo in `default_gate` | `[access] default_gate = "op" is not in levels` | Only `"top"`, `"bottom"` or an exact `levels` name is allowed | Match the spelling, or use `top` / `bottom` |
 | Gate assigned to a level that does not exist | `[access.gates] "settings.wifi" = "op" - no such level` | Values in `[access.gates]` must appear in `levels` too | Fix the typo |
 | `initial` names no level | `[access] initial = "x" is not in levels` | Same rule | Fix the typo |
@@ -218,8 +218,10 @@ ownership before propagating to that boundary; they do not return `None` and
 continue the interrupted callback.
 
 The host can opt into `RecoveryUi` and use `take_restart_request()` to consume its
-button request. `Shell::restart_with` installs a host-built replacement; producers
-must obtain its new handle because old queues are not transferred. The supplied
+button request. `Shell::restart_with` installs a host-built ordinary replacement;
+`ProtectedShell::restart_with` requires a protected replacement. A failed protected
+replacement leaves dispatch quarantined. Producers must obtain the new handle
+because old queues are not transferred. The supplied
 `run_shell_with_recovery` and `run_app_with_recovery` runners expose host recovery
 callbacks. No automatic restart or replay policy is installed.
 
@@ -421,7 +423,9 @@ minimum touch size.
 `prompt` draws the shell's prompt only when there is something to ask: PINs in
 `[access.pin_table]`, or an authenticator from `ShellBuilder::authenticator`.
 With neither it behaves as `routing` — the gated launch opens nothing and emits
-`AccessEvent::UnlockRequested`. A single-level table never prompts at all. Add a
+`AccessEvent::UnlockRequested`. A single-level table bypasses the prompt only in
+legacy mode. Token mode still requires issuer grants and can request authentication
+with one level; PIN tables alone do not issue tokens. For the legacy keypad, add a
 PIN table (or your authenticator) and the keypad comes up
 ([05 §5](05-access-control.md#5-the-shells-prompt-and-the-authenticator)).
 

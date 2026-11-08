@@ -6,11 +6,11 @@ Screens and chrome know nothing about hardware. The Wi-Fi screen sees a
 `WifiBackend` trait and cannot tell whether `nmcli`, D-Bus or a mock sits behind
 it. Four rules hold that up.
 
-1. **The UI only sees traits.** Concrete types are chosen once, when you assemble
-   `Services`.
-2. **Snapshot plus command.** Reads go through `snapshot()` — a cheap clone of a
-   cache. Writes are commands that return immediately; the result arrives in the
-   next snapshot, and the `Waker` tells the UI to look.
+1. **The UI only sees traits.** Concrete types are chosen when assembling
+   `Services`; ordinary host setters can replace them later without lending the live store.
+2. **Snapshot plus command.** Reads go through cached snapshots or the trait's
+   narrower accessors. Commands return acceptance/refusal promptly; asynchronous
+   completion is observed in subsequent snapshots, and `Waker` asks the host to update.
 3. **Keep transport waits off the UI thread.** A worker can exchange commands and
    updates through channels or another application-chosen transport. UI-side polling
    uses non-waiting operations; it must not wait for a worker, message or capacity.
@@ -32,7 +32,7 @@ They live in `fairing::services` and all have `Backend` as a supertrait.
 
 ```rust,ignore
 pub trait Backend {
-    fn attach(&mut self, waker: Waker) {}                 // once, at start-up
+    fn attach(&mut self, waker: Waker) {}                 // when installed or replaced
     fn poll(&mut self) {}                                // every state update, including logic-only
     fn poll_at(&mut self, now: Instant) { self.poll(); }  // what actually gets called
     fn next_wake(&self) -> Option<Instant> { None }       // when to be woken next

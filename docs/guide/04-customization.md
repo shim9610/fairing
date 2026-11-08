@@ -1,11 +1,13 @@
-# 04. Compile-time customization
+# 04. Customization
 
 ## 0. Principle
 
-The look of a fairing shell is **decided in code, at build time.** There is no runtime theme
-editor or drag-a-widget-here mode. A machine's screen has to look
-the way it looks when it ships, and the person who decides that is the integrator, not the end
-user.
+Drawing and layout implementations are Rust extension points selected by the
+application. Initial configuration is applied when the shell is built; palettes,
+motion and supported sizes can also change at runtime through host operations and
+settings. Ordinary hosts use APIs such as `set_theme_dark`, `set_palettes` and
+`set_metrics_spec`. Fairing supplies no visual theme editor or widget-placement
+editor; exposing product customization to end users is an application decision.
 
 The config file (`fairing.toml`) selects placement, gate assignments, palette,
 motion and supported sizes. Custom drawing implementations live in code and can be

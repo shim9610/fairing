@@ -1,0 +1,138 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1121pt" height="756pt" viewBox="0.00 0.00 1120.70 756.20" role="img" aria-labelledby="diagram-title diagram-description">
+<title id="diagram-title">Fairing session lifecycle</title><desc id="diagram-description">Live publication, busy reads, terminal issuer revocation and local detachment are distinct. A matching issuer callback handles other token readers; new login creates a new pair.</desc><g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(21.6 734.6)">
+<title>session_lifecycle</title>
+<polygon fill="white" stroke="transparent" points="-21.6,21.6 -21.6,-734.6 1099.1,-734.6 1099.1,21.6 -21.6,21.6" />
+<text text-anchor="middle" x="538.75" y="-689.8" font-family="DejaVu Sans, Arial, sans-serif" font-size="24.00">Session publication and local detachment</text>
+
+<g id="node1" class="node">
+<title>issue</title>
+<path fill="#fff9ed" stroke="#6986a8" d="M589,-679C589,-679 207,-679 207,-679 201,-679 195,-673 195,-667 195,-667 195,-635 195,-635 195,-629 201,-623 207,-623 207,-623 589,-623 589,-623 595,-623 601,-629 601,-635 601,-635 601,-667 601,-667 601,-673 595,-679 589,-679" />
+<text text-anchor="middle" x="398" y="-656.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Issuer verifies identity and issues a pair</text>
+<text text-anchor="middle" x="398" y="-638.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Immutable subject, SessionId and gate catalog</text>
+</g>
+
+<g id="node2" class="node">
+<title>live</title>
+<path fill="#f0f6ff" stroke="#6986a8" d="M614,-569C614,-569 182,-569 182,-569 176,-569 170,-563 170,-557 170,-557 170,-507 170,-507 170,-501 176,-495 182,-495 182,-495 614,-495 614,-495 620,-495 626,-501 626,-507 626,-507 626,-557 626,-557 626,-563 620,-569 614,-569" />
+<text text-anchor="middle" x="398" y="-546.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Attached live session</text>
+<text text-anchor="middle" x="398" y="-528.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Fresh snapshot(now) for each admission</text>
+<text text-anchor="middle" x="398" y="-510.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Base and temporary grants evaluated independently</text>
+</g>
+
+<g id="edge1" class="edge">
+<title>issue-&gt;live</title>
+<path fill="none" stroke="#315e9b" d="M398,-622.86C398,-609.92 398,-594.07 398,-579.3" />
+<polygon fill="#315e9b" stroke="#315e9b" points="401.5,-579.3 398,-569.3 394.5,-579.3 401.5,-579.3" />
+<text text-anchor="middle" x="497.5" y="-592.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">correlated response accepted</text>
+</g>
+
+<g id="edge2" class="edge">
+<title>live-&gt;live</title>
+<path fill="none" stroke="#315e9b" d="M626.18,-541.36C645.77,-539.37 658,-536.25 658,-532 658,-528.55 649.93,-525.84 636.39,-523.88" />
+<polygon fill="#315e9b" stroke="#315e9b" points="636.53,-520.37 626.18,-522.64 635.69,-527.32 636.53,-520.37" />
+<text text-anchor="middle" x="781.5" y="-535.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">replace_grants</text>
+<text text-anchor="middle" x="781.5" y="-521.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">validate full set, publish new revision</text>
+</g>
+
+<g id="node3" class="node">
+<title>busy</title>
+<path fill="#fff9ed" stroke="#6986a8" d="M240,-427C240,-427 12,-427 12,-427 6,-427 0,-421 0,-415 0,-415 0,-365 0,-365 0,-359 6,-353 12,-353 12,-353 240,-353 240,-353 246,-353 252,-359 252,-365 252,-365 252,-415 252,-415 252,-421 246,-427 240,-427" />
+<text text-anchor="middle" x="126" y="-404.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Publication overlaps a read</text>
+<text text-anchor="middle" x="126" y="-386.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Deny this read; retain token</text>
+<text text-anchor="middle" x="126" y="-368.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">No token-side wait or retry</text>
+</g>
+
+<g id="edge3" class="edge">
+<title>live-&gt;busy</title>
+<path fill="none" stroke="#315e9b" d="M169.97,-501.05C147.36,-494.06 129.58,-485.49 121,-475 112.45,-464.55 110.73,-450.69 112.01,-437.25" />
+<polygon fill="#315e9b" stroke="#315e9b" points="115.51,-437.53 113.52,-427.12 108.59,-436.5 115.51,-437.53" />
+<text text-anchor="middle" x="198" y="-457.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">incoherent observation</text>
+</g>
+
+<g id="node4" class="node">
+<title>local</title>
+<path fill="#fff0ef" stroke="#ae4242" d="M664.5,-427C664.5,-427 297.5,-427 297.5,-427 291.5,-427 285.5,-421 285.5,-415 285.5,-415 285.5,-365 285.5,-365 285.5,-359 291.5,-353 297.5,-353 297.5,-353 664.5,-353 664.5,-353 670.5,-353 676.5,-359 676.5,-365 676.5,-365 676.5,-415 676.5,-415 676.5,-421 670.5,-427 664.5,-427" />
+<text text-anchor="middle" x="481" y="-404.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Local authority detached</text>
+<text text-anchor="middle" x="481" y="-386.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Logout, lock, timeout, subject / authenticator</text>
+<text text-anchor="middle" x="481" y="-368.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">replacement or fault quarantine</text>
+</g>
+
+<g id="edge5" class="edge">
+<title>live-&gt;local</title>
+<path fill="none" stroke="#315e9b" d="M431.75,-494.91C436.88,-488.53 441.84,-481.76 446,-475 453.26,-463.21 459.65,-449.64 464.92,-436.9" />
+<polygon fill="#315e9b" stroke="#315e9b" points="468.27,-437.94 468.72,-427.36 461.77,-435.35 468.27,-437.94" />
+<text text-anchor="middle" x="511.5" y="-457.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">local end event</text>
+</g>
+
+<g id="node5" class="node">
+<title>ended</title>
+<path fill="#fff0ef" stroke="#ae4242" d="M1065.5,-427C1065.5,-427 720.5,-427 720.5,-427 714.5,-427 708.5,-421 708.5,-415 708.5,-415 708.5,-365 708.5,-365 708.5,-359 714.5,-353 720.5,-353 720.5,-353 1065.5,-353 1065.5,-353 1071.5,-353 1077.5,-359 1077.5,-365 1077.5,-365 1077.5,-415 1077.5,-415 1077.5,-421 1071.5,-427 1065.5,-427" />
+<text text-anchor="middle" x="893" y="-404.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Revoked / whole-session deadline reached</text>
+<text text-anchor="middle" x="893" y="-386.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Deny admission; shell drops reader</text>
+<text text-anchor="middle" x="893" y="-368.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">No renewal after expiry at issuer's clock</text>
+</g>
+
+<g id="edge6" class="edge">
+<title>live-&gt;ended</title>
+<path fill="none" stroke="#315e9b" d="M525.47,-494.95C595.92,-475.02 683.49,-450.26 755.48,-429.9" />
+<polygon fill="#315e9b" stroke="#315e9b" points="756.86,-433.14 765.53,-427.05 754.95,-426.41 756.86,-433.14" />
+<text text-anchor="middle" x="769" y="-464.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">controller revoke / Drop</text>
+<text text-anchor="middle" x="769" y="-450.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">or observed expiry</text>
+</g>
+
+<g id="edge4" class="edge">
+<title>busy-&gt;live</title>
+<path fill="none" stroke="#315e9b" d="M240.89,-427.03C254.13,-432.92 267.13,-439.57 279,-447 294.19,-456.51 293.87,-463.98 308,-475 314.12,-479.77 320.67,-484.49 327.34,-489.05" />
+<polygon fill="#315e9b" stroke="#315e9b" points="325.57,-492.08 335.83,-494.73 329.46,-486.26 325.57,-492.08" />
+<text text-anchor="middle" x="373" y="-457.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">later coherent read</text>
+</g>
+
+<g id="node6" class="node">
+<title>notify</title>
+<path fill="#fff9ed" stroke="#6986a8" d="M864,-299C864,-299 510,-299 510,-299 504,-299 498,-293 498,-287 498,-287 498,-237 498,-237 498,-231 504,-225 510,-225 510,-225 864,-225 864,-225 870,-225 876,-231 876,-237 876,-237 876,-287 876,-287 876,-293 870,-299 864,-299" />
+<text text-anchor="middle" x="687" y="-276.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Authenticator::session_ended(id, now)</text>
+<text text-anchor="middle" x="687" y="-258.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Issuer handles only the matching controller</text>
+<text text-anchor="middle" x="687" y="-240.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Other readers remain issuer-controlled</text>
+</g>
+
+<g id="edge7" class="edge">
+<title>local-&gt;notify</title>
+<path fill="none" stroke="#315e9b" d="M540.03,-352.89C564.81,-337.74 593.77,-320.02 619.41,-304.34" />
+<polygon fill="#315e9b" stroke="#315e9b" points="621.26,-307.32 627.96,-299.11 617.6,-301.34 621.26,-307.32" />
+<text text-anchor="middle" x="677.5" y="-322.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">detach before notification</text>
+</g>
+
+<g id="edge8" class="edge">
+<title>ended-&gt;notify</title>
+<path fill="none" stroke="#315e9b" d="M833.97,-352.89C809.19,-337.74 780.23,-320.02 754.59,-304.34" />
+<polygon fill="#315e9b" stroke="#315e9b" points="756.4,-301.34 746.04,-299.11 752.74,-307.32 756.4,-301.34" />
+<text text-anchor="middle" x="909.5" y="-322.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">invalidate pending authentication</text>
+</g>
+
+<g id="node7" class="node">
+<title>fresh</title>
+<path fill="#f0f6ff" stroke="#6986a8" d="M859,-171C859,-171 515,-171 515,-171 509,-171 503,-165 503,-159 503,-159 503,-127 503,-127 503,-121 509,-115 515,-115 515,-115 859,-115 859,-115 865,-115 871,-121 871,-127 871,-127 871,-159 871,-159 871,-165 865,-171 859,-171" />
+<text text-anchor="middle" x="687" y="-148.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">New login → new controller/token pair</text>
+<text text-anchor="middle" x="687" y="-130.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Revoked controllers cannot be reactivated</text>
+</g>
+
+<g id="edge9" class="edge">
+<title>notify-&gt;fresh</title>
+<path fill="none" stroke="#315e9b" stroke-dasharray="5,2" d="M687,-224.94C687,-211.14 687,-195.37 687,-181.44" />
+<polygon fill="#315e9b" stroke="#315e9b" points="690.5,-181.21 687,-171.21 683.5,-181.21 690.5,-181.21" />
+<text text-anchor="middle" x="798.5" y="-194.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">when authentication is requested</text>
+</g>
+
+<g id="node8" class="node">
+<title>note</title>
+<polygon fill="#f7f7fa" stroke="#6986a8" points="1026,-74 342,-74 342,0 1032,0 1032,-68 1026,-74" />
+<polyline fill="none" stroke="#6986a8" points="1026,-74 1026,-68 " />
+<polyline fill="none" stroke="#6986a8" points="1032,-68 1026,-68 " />
+<text text-anchor="middle" x="687" y="-51.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">A temporary grant expiry can remove one permission without ending the session.</text>
+<text text-anchor="middle" x="687" y="-33.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">A concurrent revocation does not undo an operation already admitted.</text>
+<text text-anchor="middle" x="687" y="-15.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Independent web and device login states require different pairs.</text>
+</g>
+
+</g>
+</svg>

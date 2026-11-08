@@ -3,6 +3,8 @@
 The proof unit is the common mediation kernel. The compiler checks that every
 library-managed protected payload entry uses it. Individual screens, permission
 values and tree leaves do not require individual proofs or verifier registrations.
+The [security architecture](security-architecture.md) places this contract in the
+issuer, host and application trust boundaries.
 
 ## One declaration, runtime adapter and coverage
 

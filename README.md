@@ -376,7 +376,8 @@ tree or right-to-left layout. See the [roadmap](docs/roadmap.md) for further lim
 |---|---|
 | [Integrator guide](docs/guide/README.md) | Installation, screens, chrome, access, backends and deployment |
 | [Migration](docs/guide/10-migration.md) | Source and behavior changes from the earlier checkout |
-| [Architecture](docs/architecture.md) | State ownership, frame order and module map |
+| [Architecture](docs/architecture.md) | Component ownership, host update flow and module map with SVG diagrams |
+| [Security architecture](docs/security-architecture.md) | Issuer/token ownership, protected admission, session lifecycle and trust boundaries |
 | [Session contract](docs/session-tokens.md) | Issuer/session lifecycle and typed UI integration |
 | [Protected mediation](docs/protected-contracts.md) | Shared kernel and automatic route verification |
 | [Application metadata checker](docs/permission-metadata-check.md) | Check your workspace's permission declarations |

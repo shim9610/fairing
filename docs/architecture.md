@@ -7,32 +7,37 @@ each part is in the [integrator guide](guide/README.md); what is planned is in t
 
 ## 1. Layers
 
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│ Your device binary                                              │
-│   your screens · your backends · fairing.toml · your theme      │
-├─────────────────────────────────────────────────────────────────┤
-│ fairing                 the shell                               │
-│   shell · chrome · overlay · osk · notify · desktop · workspace │
-│   screen · gesture · access · settings · services · i18n        │
-│   elements · layout · config · time · inbox · brand · testing   │
-├─────────────────────────────────────────────────────────────────┤
-│ fairing-widgets         the element layer                       │
-│   unit · theme · motion · icons · fonts · widgets · drag        │
-├─────────────────────────────────────────────────────────────────┤
-│ runner (optional)       an eframe window, glow, Wayland or X11  │
-├─────────────────────────────────────────────────────────────────┤
-│ egui / epaint                                                   │
-├─────────────────────────────────────────────────────────────────┤
-│ compositor · GL driver · kernel                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+Fairing is an in-process UI library. The application selects the host, supplies UI
+and backend implementations, owns business state and chooses authentication,
+persistence and recovery policy. The library owns its live shell state and the
+coordination of registered callbacks.
 
-The shell only sees **traits** for the device: Wi-Fi, Bluetooth, display, power, audio, network,
-device information and the clock. It ships no system code. A backend is yours, written against
-sysfs, a vendor SDK, D-Bus or whatever your device speaks. The crate gives each trait a `Null`
-implementation and, with the `mock` feature, a `Mock` simulator for development
-([guide 06](guide/06-services.md)).
+![System architecture: application integration, library-owned shell state and presentation](diagrams/system-architecture.svg)
+
+Solid arrows show construction, calls or rendering flow. Dashed arrows show
+commands and wake notifications. The boxes describe ownership and integration;
+they are not separate operating-system processes. `runner` is an optional host
+adapter inside `fairing`, not a required layer below the widgets. An existing egui
+application can host either shell mode directly.
+
+### State and implementation ownership
+
+| Object | Concrete ownership and access |
+|---|---|
+| Application state `S` | The host owns it; `run_app*` stores the factory's `(shell, S)`. `logic_with` and `frame_with` lend the same value through `Cx::app` / `app_mut` |
+| `Shell` | Owns registry, workspace, access state, backend trait objects, settings view and command receiver |
+| `ProtectedShell` | Owns a private `Shell` with mandatory mediation; exposes typed registration and `shell::ShellView`, with no mutable conversion |
+| Registered callbacks and elements | Supplied by the application; executable storage and guarded invocation are library-owned |
+| `Authenticator` / backend adapters | Supplied by the application and held as trait objects by the shell; credential verification, workers and external I/O remain application integrations |
+| Session writer / reader | The issuer owns `SessionController`; the shell holds an optional read-only `SessionToken`. See [security architecture](security-architecture.md) |
+| Device and persistent state | Supplied by the application, device or external service; Fairing does not implement a hardware driver, credential store or settings database |
+
+The device boundary is a set of traits for clock, power, Wi-Fi, Bluetooth,
+display, audio, network and device information, plus custom backends. A backend
+may adapt sysfs, a vendor SDK, D-Bus, network services or application workers.
+`Services::builder().build()` supplies `SystemClock` and Null device backends;
+`Services::null()` also uses a fixed Null clock. Optional Mock backends simulate
+devices for development ([guide 06](guide/06-services.md)).
 
 ## 2. The workspace
 
@@ -43,9 +48,10 @@ implementation and, with the `mock` feature, a `Mock` simulator for development
 | `fairing-fixed-heap` | Unpublished diagnostic | Isolated allocation-failure diagnostic; no product dependency; one scoped unsafe arena claim |
 | `xtask` | Unpublished tool | The audit gate, the icon compiler, the license report and the other maintenance commands |
 
-The first crates.io release has not been published yet.
+The first crates.io release has not been published yet. `verification/` is a
+separate unpublished Cargo workspace for assurance and is not a product dependency.
 
-`fairing` depends on `egui`, `serde`, `toml` and `log`, plus `eframe` behind `runner` and `chrono`
+`fairing` depends on `fairing-widgets`, `egui`, `serde`, `toml` and `log`, plus `eframe` behind `runner` and `chrono`
 behind `chrono`. Every other dependency, a new asset included, goes through an approval list
 that the audit checks (`deps.allow`, `deny.toml`).
 
@@ -123,35 +129,32 @@ they do not expose new application APIs.
 
 ### Protected execution
 
-Ordinary `build` permits untyped host customization. `build_protected` requires
-token mode, rejects untyped builder hooks before setup and returns a facade with
-no mutable legacy-shell conversion. User permission values map to issuer grant
-identifiers; `Protected` declarations and `PermissionBound` screens retain those
-requirements. `ElementTree` owns nested layout and omits denied children before
-measurement; it invalidates stale plans and checks live authority before paint.
+Construction selects either ordinary `Shell` registration or `ProtectedShell`.
+Both implement the sealed `HostedShell` operations used by runners and harnesses;
+this host interface does not expose registration, mutable components or conversion.
+A protected replacement factory must return another `ProtectedShell`.
 
-The authenticator owns the mutable `SessionController`; the shell reads its
-`SessionToken`. Revocation/publication wakes the host, and access is observed during
-logic-only updates as well as rendering and protected-operation admission. The
-[session guide](session-tokens.md) describes issuer and clock assumptions. Admitted
-application bodies retain raw UI/app/backend access.
+Protected registration binds application permission values to declarations and
+nested elements. The issuer owns session mutation; the library reads live token
+authority and mediates registered payload entries. Viewing a settings screen and
+writing a setting are separate requirements. Admitted application bodies retain
+raw UI/app/backend access.
 
-The [common contract](protected-contracts.md) generates opaque payload storage and
-operation adapters. Source-bound kernel proofs and compiler-MIR routing checks
-connect library-managed protected entries to one admission boundary. The
-[metadata checker](permission-metadata-check.md) separately checks supported
-workspace permission getters/mappers. These are distinct contracts.
-
-`runner::run_shell*`/`run_app*` and `testing::Harness::from_builder` accept ordinary
-or protected shells through the sealed `HostedShell` interface. It delegates
-frame/logic/event/fault operations without exposing registration or conversion.
-`ProtectedShell::restart_with` only accepts a protected replacement and uses the
-same close-before-build/fail-quarantined lifecycle as the ordinary shell.
-`settings::add_all_protected` maps each built-in screen ID to an application-owned
-permission value; backend writes retain their separate operation gates.
-`ShellView` exposes supported state and diagnostic queries without component loans.
+The [security architecture](security-architecture.md) gives the authority boundary,
+registration/admission path, session lifecycle and proof assumptions. Detailed
+contracts remain in [sessions](session-tokens.md),
+[common mediation](protected-contracts.md) and
+[application metadata checking](permission-metadata-check.md).
 
 ## 4. One frame
+
+![Logic-only and rendered updates share state processing but have separate completion paths](diagrams/runtime-flow.svg)
+
+This figure separates host callbacks from the state and rendering stages below.
+A logic callback can complete without a UI callback. A matching UI pass reuses its
+prepared state, while rechecking authority and recording fresh input; a frame-only
+host runs state processing inside the UI call instead.
+
 
 For a frame-only host, `Shell::frame(ui)` runs this sequence. Shell/state runners run
 state stages 1–4 in `Shell::logic*` first, including when no UI follows; the UI pass
@@ -171,6 +174,10 @@ Eviction and lifecycle requests can also finish during logic-only calls.
 | 14 | Outputs | Launches, back, home, actions from the shade and notifications, lifecycle events |
 | 15 | Repaint | A repaint while anything moves, otherwise one at the next moment something is due |
 | 16 | Events | You take them with `poll_events` |
+
+The deadline clock is the shell's monotonic `Instant`, distinct from the calendar
+`WallTime` returned by a backend's `ClockSource::now()`. Changing device wall time
+does not redefine the session's monotonic deadline timeline.
 
 The order is a contract. A screen sees a layout that is final for the frame, and what a screen
 asks for through `Cx` while it draws, such as opening another screen, is handled later
@@ -221,8 +228,8 @@ wakeups, retries and UI replacement. See [the boundary guide](guide/06-services.
 hands it, such as fonts. What should outlive a restart is yours to keep, wherever your device
 keeps such things:
 
-- A changed setting comes out as `ShellEvent::SettingChanged`. Hand it back at the next start
-  with `Shell::restore_settings`.
+- A changed setting comes out as `ShellEvent::SettingChanged`. The application stores it.
+  Ordinary hosts can restore values with `Shell::restore_settings` during trusted startup.
 - Credentials are your `Authenticator`'s to store.
 
 ## 7. Repaint and power
@@ -242,7 +249,8 @@ to inhibit its idle timer. How to confirm 0 fps at idle is in
   checked by the warning-denying audit. Dependencies, integrator
   callbacks and infallible allocation can still terminate a process; whole-renderer exhaustion is not universally recoverable. The diagnostic allocator
   is not selected by either product library.
-- A backend error comes back as a value, and the shell shows it as a toast or a notification.
+- Backend errors are values. Built-in UI routes can present them as notices;
+  `Shell::request_service` returns the backend error for trusted host code to handle.
 - Invalid configuration values fail at start with `Error::Config`; unreadable or
   invalid filesystem paths return `Error::Io`. An absent file deliberately selects
   defaults, including legacy access mode. A deployment requiring a provisioned
@@ -259,11 +267,29 @@ to inhibit its idle timer. How to confirm 0 fps at idle is in
 ## 9. Testing and the audit
 
 `testing::Harness` runs whole frames on `egui::Context` with virtual time, so a test taps and
-drags where the shell actually drew, with no window, no GPU and no sleeping. The library's tests,
-the examples and the guide's non-ignored Rust blocks run under `cargo xtask audit`, which also checks
-formatting, lints, docs, dependencies, licenses, locks and blocking calls. CI runs it with
+drags where the shell actually drew, with no window, no GPU and no sleeping. The library's tests
+and the guide's non-ignored Rust blocks run under `cargo xtask audit`. Its all-target
+Clippy pass also compiles the enabled examples; real-window tours run separately
+through `tools/tours.sh`. The audit checks formatting, API docs, dependencies,
+licenses, locks and blocking calls. CI runs it with
 `--strict` on pull requests and pushes to `main`, and on a weekly schedule
 ([guide 08 §9](guide/08-troubleshooting.md#9-passing-the-audit)).
+
+### Source map for the diagrams
+
+| Diagram relationship | Implementation |
+|---|---|
+| Host ownership and event delivery | [`runner.rs`](../crates/fairing/src/runner.rs), [`shell/host.rs`](../crates/fairing/src/shell/host.rs) |
+| State owner and protected facade | [`shell/mod.rs`](../crates/fairing/src/shell/mod.rs), [`shell/protected.rs`](../crates/fairing/src/shell/protected.rs) |
+| Shared state processing / prepared UI reuse | [`shell/background.rs`](../crates/fairing/src/shell/background.rs) |
+| Render stages and late output | [`shell/render.rs`](../crates/fairing/src/shell/render.rs) |
+| Detached configuration edits and backend replacement | [`shell/operations.rs`](../crates/fairing/src/shell/operations.rs) |
+| Backend contracts and builder defaults | [`services/mod.rs`](../crates/fairing/src/services/mod.rs) |
+| Application-state loans | [`screen/cx.rs`](../crates/fairing/src/screen/cx.rs) |
+
+SVGs and their editable DOT sources are kept together in
+[`diagrams/`](diagrams/README.md); regenerate them with
+`python3 tools/render_architecture.py` from the repository root.
 
 ## 10. Principles
 
@@ -276,11 +302,11 @@ These are the rules the design keeps coming back to.
    hand-held distance, the density of a phone or a tablet; a device worked with gloves says so,
    and every target grows with it.
 3. **Backends belong to the integrator.** The crate defines the traits and ships no system code.
-4. **Customization happens in code.** Every part can be turned on, turned off or redrawn without
-   forking the crate.
+4. **Customization uses configuration and declarations.** Ordinary hosts can install
+   untyped drawing hooks; protected custom UI uses permission-bound elements.
 5. **Non-waiting UI APIs.** Threads exchange messages; UI code does not wait for messages or capacity.
-6. **One general mechanism beats a one-off effect.** Implement a trait, and the library does the
-   rest.
+6. **Common mechanisms own coordination.** Backend and UI traits expose integration
+   points; protected contracts connect managed payloads to shared admission.
 7. **Review the public surface.** Reachability lints reject unreachable public items;
    compatibility also depends on public fields, exhaustive enums and exposed concrete
    types. See [API evolution](api-contracts.md#public-surface-and-evolution).

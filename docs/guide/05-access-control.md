@@ -1,7 +1,9 @@
 # 05. Access control
 
 For issuer-owned, continuously checked sessions with independent operation permissions,
-see [session tokens](../session-tokens.md). Enable `access.session_tokens` explicitly;
+see [session tokens](../session-tokens.md) and the
+[security architecture](../security-architecture.md) for ownership, admission and
+session-lifecycle diagrams. Enable `access.session_tokens` explicitly;
 the level/PIN behavior below describes the default legacy mode.
 
 For mandatory typed application declarations, use `build_protected` and

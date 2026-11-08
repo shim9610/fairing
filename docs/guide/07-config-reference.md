@@ -426,18 +426,27 @@ words are not.
 
 | Key | Type | Default | Meaning | Validation | Code |
 |---|---|---|---|---|---|
-| `mode` | `String` | `"prompt"` | `"prompt"`, `"routing"` or `"off"` | Anything else is an **error** | `AccessMode`. `prompt` draws the shell's prompt and lock screen through an authenticator; with none (no `[access.pin_table]` PINs or `[access.pattern_table]` patterns, no `ShellBuilder::authenticator`) it behaves as `routing` — the event only ([05 §0](05-access-control.md#0-the-principle-and-what-exists-today)) |
-| `levels` | `Vec<String>` | `["default"]` | Level names, low to high | **Empty is an error.** One level means no authentication at all — every gate passes | `LevelTable::from_names` |
+| `mode` | `String` | `"prompt"` | `"prompt"`, `"routing"` or `"off"` | Unknown values are an **error**; `"off"` is also rejected when `session_tokens = true` | `AccessMode`. `prompt` draws the shell's prompt and lock screen through an authenticator; with none (no `[access.pin_table]` PINs or `[access.pattern_table]` patterns, no `ShellBuilder::authenticator`) it behaves as `routing` — the event only ([05 §0](05-access-control.md#0-the-principle-and-what-exists-today)) |
+| `session_tokens` | `bool` | `false` | Require a live issuer-controlled session and explicit gate grants | Required by `build_protected`; cannot combine with `mode = "off"` | `SessionController` / `SessionToken`; [security architecture](../security-architecture.md) |
+| `levels` | `Vec<String>` | `["default"]` | Legacy level names, low to high; token-mode identity metadata does not imply grants | **Empty is an error.** Only legacy mode bypasses authentication with one level | `LevelTable::from_names` |
 | `initial` | `Option<String>` | `None` | Starting level | Error when not in `levels`. Omitted means the lowest | |
-| `default_gate` | `Option<String>` | `None` | Unassigned gates: `"top"`, `"bottom"` or a level name | **Error when `levels` has two or more entries and this is missing.** A level name not in `levels` is an error | `DefaultGate` |
+| `default_gate` | `Option<String>` | `None` | Unassigned gates: `"top"`, `"bottom"` or a level name | **Legacy mode:** missing with two or more levels is an error. Token mode does not require it. An explicitly named unknown level is an error | `DefaultGate` |
 | `gates` | `BTreeMap<String, String>` | `{}` | `[access.gates]` — §12.1 | | |
-| `unlock_mode` | `String` | `"temporary"` | What a granted unlock does: `"switch"` makes it the session; `"temporary"` holds it for `temporary_secs`, then puts the previous subject back | Anything else is an **error** | `UnlockMode` — [05 §7](05-access-control.md#7-the-session--temporary-unlocks-the-timeout-the-idle-lock) |
-| `temporary_secs` | `u64` | `300` | How long a temporary unlock lasts, counted **from the unlock** | **0 with `unlock_mode = "temporary"` is an error**; over a year is an error | |
-| `session_timeout_secs` | `u64` | `0` | No input this long → back to the starting subject; `0` is off | Over a year is an error | `ChangeReason::Timeout` |
+| `unlock_mode` | `String` | `"temporary"` | Legacy subject switching/restoration: `"switch"` keeps the subject; `"temporary"` restores it after `temporary_secs`. Token mode uses issuer deadlines instead | Unknown values are an error in legacy mode; ignored in token mode | `UnlockMode` — [05 §7](05-access-control.md#7-the-session--temporary-unlocks-the-timeout-the-idle-lock) |
+| `temporary_secs` | `u64` | `300` | Legacy temporary-unlock duration, counted **from the unlock** | Legacy `temporary` mode rejects 0; over a year is always an error | |
+| `session_timeout_secs` | `u64` | `0` | No input this long → local timeout (legacy subject restoration; token detachment in token mode); `0` is off | Over a year is an error | `ChangeReason::Timeout` |
 | `idle_lock_secs` | `u64` | `0` | No input this long → the panel locks (the lock screen, in `prompt` mode); `0` is off | Over a year is an error | `ShellEvent::LockRequested`, `ChangeReason::Lock` |
 | `lock_screen` | `LockScreenConfig` | below | `[access.lock_screen]` — §12.4 | | |
 | `pin_table` | `PinTableConfig` | below | `[access.pin_table]` — §12.2 | | |
 | `pattern_table` | `PatternTableConfig` | below | `[access.pattern_table]` — §12.3 | | |
+
+Token mode still validates the level-name metadata, but it does not use a numeric
+level or `[access.gates]` assignment to manufacture issuer grants. A single level
+never bypasses token admission. Typed `Protected` bindings determine their own
+operation identifiers; an installed local policy can only narrow issuer authority.
+Token mode needs `AuthOutcome::Session(token)` from the application authenticator;
+the legacy PIN/pattern tables do not issue such sessions. See
+[session ownership and deadlines](../session-tokens.md).
 
 ### 12.1 `[access.gates]`
 

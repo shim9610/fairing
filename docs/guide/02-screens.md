@@ -875,9 +875,15 @@ impl Kiosk {
         Ok(Self { shell, state: AppState::default() })
     }
 
+    // Connect this to the host's logic callback, even when no UI pass follows.
+    fn logic(&mut self, ctx: &egui::Context) {
+        self.shell.logic_with(ctx, &mut self.state);
+        let _ = self.shell.poll_events(); // dispatch these to your application
+    }
+
     fn frame(&mut self, ui: &mut egui::Ui) {
-        // The one line that lends it.
         self.shell.frame_with(ui, &mut self.state);
+        let _ = self.shell.poll_events(); // likewise after UI-driven work
     }
 
     /// Everything outside the frame — a poll loop, an engine reply — is just your own field.
@@ -887,12 +893,18 @@ impl Kiosk {
 }
 ```
 
-`runner::run_app` is the ready-made loop for this shape: `build` hands back `(Shell, S)` and the
-runner owns both and calls `frame_with` for you. `runner::run_shell` is the same thing for an app
-with no state of its own. Driving the loop yourself (`runner::run`, or eframe directly) works too —
-`frame_with` is one call.
+`runner::run_app` is the ready-made loop for this shape: the factory returns
+`(H, S)`, where `H` is `Shell` or `ProtectedShell`. The runner owns both and calls
+`logic_with` and `frame_with` with the same state, including logic-only updates
+while drawing is paused. `run_app_with` forwards the resulting events to your
+handler. `runner::run_shell` is the counterpart without application state.
 
-One value goes over per frame. Several things to share means one `struct` holding them.
+A custom host connects both methods above and handles events after either call.
+The closure-only `runner::run` does not tick shell logic automatically. A
+frame-only custom host remains supported but processes deadlines/backends only
+when it calls `frame_with`; see [host update flow](../architecture.md#4-one-frame).
+
+Each stateful logic/frame call lends one value. Put several shared values in one `struct`.
 
 `cx.app_mut::<T>()` borrows all of `cx`, so you cannot hold it and call `layout::title(ui, cx, ..)`
 in the same breath. When you need both, `cx.with_app` takes the reference out for the length of the
@@ -908,12 +920,12 @@ cx.with_app::<Order, _>(|order, cx| {
 # }
 ```
 
-`cx.app::<T>()` is `None` when the frame was driven by plain `Shell::frame`, or when `T` is not the
-type you lent.
+`cx.app::<T>()` is `None` when the host uses the non-stateful `frame` / `logic`
+methods, or when `T` is not the type lent to the current call.
 
-**Between frames the shell is not holding your state** — you are. So a call you make yourself
-outside the frame, which runs your code on the spot, runs it with `None`. There are three, and each
-has a pair that lends the state for its length:
+The host retains ownership between updates. Direct synchronous `launch`, `back`
+and `knock` calls do not implicitly borrow state stored in that host. Each has a
+stateful counterpart that lends it for the duration of the call:
 
 | Runs your code out of frame | With the state |
 |---|---|
@@ -921,9 +933,10 @@ has a pair that lends the state for its length:
 | `shell.back()` → the top screen's `on_back` | `shell.back_with(&mut self.state)` |
 | `shell.knock(id)` → the entry point's action | `shell.knock_with(id, &mut self.state)` |
 
-`shell.handle().launch(..)` works too — it queues, so it lands inside the next frame with the state
-in hand. `LaunchAction::Open` needs none of this: it puts a screen up and the screen's `ui` runs in
-the next frame, which has the state anyway.
+`shell.handle().launch(..)` queues work for a subsequent logic/frame update,
+subject to its command budget. It receives app state when that host update uses
+`logic_with` / `frame_with`. `LaunchAction::Open` schedules a screen whose UI
+callback receives the state of the later drawing pass.
 
 `Rc<T>` can share immutable data cheaply, such as a loaded image set. Use the
 state-lending APIs above when screens need mutable access to application state.

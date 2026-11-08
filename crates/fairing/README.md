@@ -181,6 +181,10 @@ the complete Windows runner and macOS are not validated by those checks.
 
 ## Documentation
 
+- [System architecture](https://github.com/shim9610/fairing/blob/HEAD/docs/architecture.md)
+  and [security architecture](https://github.com/shim9610/fairing/blob/HEAD/docs/security-architecture.md)
+  describe ownership, execution flow and authorization boundaries with SVG diagrams.
+
 - The [migration guide](https://github.com/shim9610/fairing/blob/HEAD/docs/guide/10-migration.md)
   covers source/API and default changes for applications using an earlier checkout.
 - The integrator guide is in the repository's

@@ -6,6 +6,9 @@ Fairing retains an `Option<SessionToken>`. Tokens contain no credentials and exp
 no mutation API. The controller is not cloneable. Token clones read one shared
 session, and controller disposal terminally revokes all of them.
 
+The [security architecture](security-architecture.md) diagrams ownership, runtime
+admission and the distinction between issuer revocation and local detachment.
+
 ## Issue after authentication
 
 The existing `Authenticator` trait handles credentials, request cancellation and
