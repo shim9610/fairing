@@ -1,9 +1,12 @@
-//! Touch widgets, theme tokens and a physical unit system for `egui` — the element layer
-//! behind the [fairing](https://docs.rs/fairing) touchscreen shell, usable on its own in any
-//! egui app.
+//! Touch widgets, theme tokens and size conversion for egui.
 //!
-//! Every control is sized for a finger on a real panel: sizes resolve through millimetres and
-//! the viewing distance ([`unit`](mod@unit)), not pixels.
+//! This crate is the widget layer used by the
+//! [fairing](https://github.com/shim9610/fairing) touchscreen shell and can also be
+//! used without that shell. [egui `Ui`](https://docs.rs/egui/0.37.0/egui/struct.Ui.html)
+//! supplies layout and interaction; [egui `Painter`](https://docs.rs/egui/0.37.0/egui/struct.Painter.html)
+//! supplies shape submission. Fairing adds widget appearance, theme conventions,
+//! animation state and configurable size conversion ([`unit`](mod@unit)).
+//! Physical size depends on panel metadata and host scale.
 //!
 //! # Using a widget
 //!
@@ -44,12 +47,9 @@
 //!
 //! # Why this is a crate of its own
 //!
-//! Everything here answers one question — *what does a control look like, and how big is it on
-//! this panel* — and nothing here knows the shell exists. Measured before the split, the widgets
-//! reached outside themselves for exactly three things (`theme`, `icons` and an animation call);
-//! every other reference to the shell was a doc link. Keeping that boundary as a crate boundary is
-//! what stops shell concepts leaking back into element code, and it lets the element design be
-//! worked on in its own cycle without touching the shell at all.
+//! The widget crate does not depend on the shell crate. Applications can use its
+//! controls, tokens and size conversion independently of shell registration,
+//! navigation, authentication and device backends.
 //!
 //! # What is in here
 //!

@@ -814,8 +814,8 @@ shell.add_hidden_entry(
 # }
 ```
 
-**You decide where to knock.** The shell does not know what was tapped — that is
-the point: every device puts it somewhere else, and that is the concealment.
+**You decide where to knock.** The screen calls `cx.knock` from its chosen UI
+location. The trigger controls discovery of the entry point; its gate controls access.
 
 ```rust
 # use fairing::{screen, Cx};
@@ -938,11 +938,12 @@ Three rules:
 3. If `remaining()` is `None`, so is `cx.knock_remaining` — a trigger that cannot
    be counted gets no hint.
 
-### It always leaves a record
+### Handling the entry event
 
 When a knock completes, `ShellEvent::HiddenEntry { id }` fires **whether or not**
 the gate passes. If the gate blocked it, `AccessEvent::UnlockRequested` follows.
-Entering a service menu is auditable, so it never happens quietly.
+This is an in-memory event, not a persistent audit log. The application must
+drain the events and record them through its logging or audit backend if needed.
 
 ```rust
 # use fairing::ShellEvent;

@@ -1,7 +1,7 @@
 # fairing user guide
 
-Working documentation for device integrators. It carries what you need to put `fairing` into your
-own device binary, declare your screens, and reshape the shell into your product — nothing else.
+Integration documentation for using `fairing` in a device application: registering
+screens, configuring the shell and connecting application-owned backends.
 Component ownership and execution flow are in [system architecture](../architecture.md).
 Authentication, token authority and protected admission are in
 [security architecture](../security-architecture.md). Both include SVG diagrams.
@@ -11,8 +11,9 @@ Rust blocks on these pages, except those marked `ignore`, are compiled — and r
 unless marked `no_run` — by stage 3
 of `cargo xtask audit`, which CI runs on pull requests and pushes to `main`, and on a
 weekly schedule: `crates/fairing/src/guide_probe.rs`
-turns each page into doctests, with every feature on. So when the source moves, a block that no
-longer matches it fails the audit instead of quietly becoming false. The blocks marked `ignore`
+turns each page into doctests with all features enabled. This catches compilation
+errors and failures of assertions actually executed by those examples; prose,
+visual results and unasserted behavior still require review. The blocks marked `ignore`
 are of two kinds: **API outlines** (signatures without bodies, kept in step with the source by
 hand) and code that needs something outside this repository (a crate such as `image` or
 `zeroize`, or a font file of your own). API outlines show the relevant public
@@ -21,16 +22,14 @@ device-configuration fragments are deserialized and range-validated through
 `ShellConfig::from_toml` / `validate`. Partial fragments still need the surrounding
 configuration for declaration, gate and startup cross-checks; validate the complete
 configuration when building the shell. Cargo manifests are not `ShellConfig` input.
-Where behavior is not implemented, the guide says so.
 
 The audit explicitly enables `fairing_repo_docs` in `RUSTDOCFLAGS` for this gate.
 An extracted release archive omits these repository-only pages and instead runs
 its public API doctests without that flag; [release checks](../release-checks.md)
 exercise both package tests and an external consumer.
 
-> **What this guide describes is the code in the repository today.** Where something is planned
-> but not in the code, the guide says so on the spot. Nothing has
-> been published yet. Applications using an earlier checkout should read
+> This guide targets the current checkout, before the first published release.
+> Applications using an earlier checkout should read
 > [10 Migration](10-migration.md) for the API and default changes.
 
 ## Reading order

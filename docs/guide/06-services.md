@@ -21,9 +21,9 @@ it. Four rules hold that up.
 This page covers the traits, the implementations and the assembly that exist in the crate
 today.
 
-**The implementations are yours.** fairing ships the traits, a `Null*` default for each
-and a `Mock*` simulator — no system code. Your device speaks sysfs, a
-vendor SDK, D-Bus or a PLC protocol; you write the backend against the trait, and
+**Device adapters are yours.** Fairing supplies the traits, `Null*` defaults,
+optional `Mock*` simulators and clock implementations, including `SystemClock`.
+For device I/O through sysfs, a vendor SDK, D-Bus or a PLC protocol, implement the trait;
 anything the shell has no slot for goes in as a custom backend (§5.1).
 
 ## 1. The traits

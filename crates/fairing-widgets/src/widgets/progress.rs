@@ -2,14 +2,10 @@
 //!
 //! # Why it is not a `TouchSlider` with `HandleStyle::None`
 //!
-//! That style exists, and its own doc offers it "for a value that is displayed rather than dragged:
-//! a level, a progress, a read-only gauge", so it is the first thing to try and it has to be killed
-//! explicitly. It loses four times over. It takes `&mut f32` and calls `follow_finger`, so a glove
-//! brushing the glass **rewrites the value it is meant to be reporting**. It senses `click()`
-//! unconditionally, so a bar inside a notification card steals the card's own tap. It swells on
-//! press, which is feedback for a grab that cannot happen. And it cannot be indeterminate at all.
-//!
-//! Read-only is not a style of slider. It is a different contract.
+//! Hiding a slider's handle does not make it read-only: the slider still receives
+//! pointer input and can change its value. `ProgressBar` displays a value without
+//! editing it, leaves card interaction to its parent and supports indeterminate
+//! progress.
 //!
 //! # Why the track is thinner than a slider's, by a ratio
 //!
@@ -23,8 +19,8 @@
 //!
 //! Both of the shell's own progress drawings used `Outline` as the track. `Outline` measures
 //! 1.15–1.65 against the grounds — the switch module already measured it and called it a ghost — so
-//! **an empty bar was invisible in all four shipped palettes**. That is the defect this element
-//! closes, and it is not a styling preference.
+//! the previous empty track had low contrast. This widget uses a distinct edge
+//! role so that the boundary can be checked against its background.
 //!
 //! `SurfaceVariant` alone does not fix it either: on a card the track would be `SurfaceVariant` on
 //! `SurfaceVariant`, which is 1.00. So the fill carries the value (`Primary` on the track: 3.20 /

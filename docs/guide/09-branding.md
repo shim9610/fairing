@@ -104,8 +104,9 @@ wallpaper_fit = "cover"     # cover (default) · contain · stretch
 ```
 
 It is read **once**, when the shell is built. On failure it logs the error and falls back to the
-`background` role colour — **one missing image never stops the machine from booting.** With no
-loader installed it logs a warning and takes the same fallback.
+`background` role colour. With no loader installed it logs a warning and uses the
+same fallback. This handles a reported wallpaper-load error; the application
+loader and the rest of device startup remain application responsibilities.
 
 Swapping at runtime (a shop owner picking a photo in a settings screen) is one line too:
 
@@ -258,8 +259,8 @@ label_legibility = "shadow"   # none (default) · shadow · veil
 | Value | What it does | When |
 |---|---|---|
 | `none` | Nothing | **Default.** Flat, gradient, or deliberately dark artwork |
-| `shadow` | One dark copy behind labels and icons | **Photo and artwork backgrounds.** Saves the text without flattening the picture |
-| `veil` | A translucent `scrim` sheet over the whole content | When the background is bright everywhere. Certain, but it lays the picture down |
+| `shadow` | One dark copy behind labels and icons | Photo and artwork backgrounds where a local dark outline improves contrast |
+| `veil` | A translucent `scrim` sheet over the whole content | Bright backgrounds where a full-content tint is preferable; check resulting contrast |
 
 Change it along with the background at runtime — `Shadow` when switching to a photo, `None` when
 going back to a flat colour:
@@ -517,8 +518,8 @@ The repository's manta was made this way, and **the procedure is written down in
 
 The procedure that extracts coordinates from those two (threshold → opening → sub-pixel contour
 tracing → PCA axis split → least-squares cubic Bézier fit) is in `assets/brand/README.md`, under
-the section on where the mark's coordinates came from. The repository's manta reaches an IoU of
-0.976 against the reference art, with 1.1 px of error at 96 px.
+the section on where the mark's coordinates came from. Check the resulting mesh
+against the reference images at the intended display sizes.
 
 **How the crate's manta is drawn**, for a mark of your own with concave edges and two tones —
 epaint fills only convex shapes, so a raw `egui::Mesh` is the way. The crate's own helpers live

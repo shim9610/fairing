@@ -1,10 +1,11 @@
 //! The basic touch widget set (A7).
 //!
-//! Every one of them draws a pressed state from the first frame, and every dimension any of them
-//! uses comes from [`ControlMetrics`](crate::theme::ControlMetrics) — the tokens they share, so
-//! that a switch, a slider and a button read as one family instead of three separate drawings.
-//! Animation values live in the shell's store through `WidgetCx::animate`, so a stateless closure
-//! screen gets them too.
+//! Controls share theme and [`ControlMetrics`](crate::theme::ControlMetrics) tokens,
+//! with widget-specific sizing and options. Interactive controls provide press
+//! feedback where applicable; indicators such as progress bars are read-only.
+//! Animation state is held in the `AnimationStore` supplied through [`crate::WidgetCx`].
+//! Layout, input responses and painting use
+//! [egui `Ui`](https://docs.rs/egui/0.37.0/egui/struct.Ui.html).
 //!
 //! | Widget | For |
 //! |---|---|
@@ -15,7 +16,7 @@
 //! | [`SegmentedControl`] | Two to four exclusive options sharing one track |
 //! | [`ListRow`] | A settings row (icon · title · subtitle · trailing) |
 //! | [`TouchSlider`] | A 1:1 finger slider with a selectable handle shape |
-//! | [`TextField`] | An input field — egui's default height comes from the text line and does not reach a finger |
+//! | [`TextField`] | An egui text editor wrapped with Fairing sizing and styling |
 //! | [`ProgressBar`] | A track that **reports** a value, determinate or not — read-only, so not a slider |
 //! | [`StatusLamp`] | A lit disc and its word — the instrument panel's "Laser ON · Lock · Interlock OK" |
 //! | [`CountBadge`] | A count or a dot, inline or laid over a corner |
@@ -23,9 +24,9 @@
 //! | [`Chip`] · [`ChipRow`] | An icon over a word, in a lane that scrolls — a **filter**, where a segmented control is a setting |
 //! | [`Stepper`] | `−  n  +` for a whole number — a scalar editor, like the switch and the slider |
 //! | [`NumberField`] | The same track with a typed figure and a unit — the instrument panel's setpoint |
-//! | [`Dropdown`] | A closed list — five closed forms (`Trigger`), four ways of opening (`Opener`), a hint at the right of a row — over the content and clipped to the caller's own pane |
-//! | [`MediaCard`] | A picture with a text block — the one structure six reference screens share |
-//! | [`ProgressRing`] | The bar bent round: a value read from across the bench, with its number in the hole |
+//! | [`Dropdown`] | An option list with configurable `Trigger` and `Opener` styles, clipped to its caller's pane |
+//! | [`MediaCard`] | An image and text block with a selectable layout |
+//! | [`ProgressRing`] | A circular progress indicator with optional centre content |
 //! | [`Meter`] | A measured value on a scale — normal band, limits, setpoint — that hands back a verdict |
 //! | [`FeatureCard`] | A tile with an icon, a title and a line, that opens something |
 //! | [`WheelPicker`] | A drum of **ordered** values — an hour, a quantity — where a dropdown is a list of names |
@@ -33,8 +34,8 @@
 //! | [`PinPad`] | The digits of a PIN with their dot row — the shell's unlock prompt uses it, and so can a login screen of your own |
 //! | [`PatternPad`] | A path drawn through a square of dots — the PIN's other way in, from the same prompt |
 //!
-//! Every one of them can be drawn your way: a [`WidgetPainters`] holds a painter per kind, told the
-//! widget's look, and the widget keeps its press, its value and its motion.
+//! [`WidgetPainters`] provides the supported per-kind drawing hooks. The widget
+//! retains its interaction and value updates; the hook draws its supplied look data.
 //!
 //! The tick and the dot are **drawn, not glyphs**: a typeface an integrator supplies may have no
 //! `✓`, and tofu in a checkbox is worse than no checkbox.

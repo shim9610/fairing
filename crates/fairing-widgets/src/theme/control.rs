@@ -21,8 +21,8 @@
 //!
 //! # The control rules
 //!
-//! Every built-in control keeps these (also listed in `docs/architecture.md`). The comments in
-//! the widget files cite them by number.
+//! These design conventions are also listed in `docs/architecture.md`; widget
+//! comments cite them by number. Custom painters and product UI need separate review.
 //!
 //! - **Rule 1.1.** The slot is a full touch target on both axes, whatever size the control is
 //!   drawn at: what you see is not what you press.
@@ -32,22 +32,21 @@
 //!   swallowing a tap it cannot act on.
 //! - **Rule 1.5.** A press only ever grows the painted shape. The allocated rect never moves, so
 //!   press geometry never shrinks and nothing beside it shifts.
-//! - **Rule 3.1.** A control's identifying boundary meets the 3.0 contrast floor of WCAG 1.4.11.
-//!   `Outline` is a divider, never a control's edge: against both grounds it is a ghost.
+//! - **Rule 3.1.** Use at least 3:1 contrast for identifying control boundaries,
+//!   following [WCAG 1.4.11](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html).
+//!   `Outline` is intended for dividers. This convention does not establish overall
+//!   accessibility conformance.
 //! - **Rule 4.1.** The pill shape is kept for movers that ride a track, such as a switch's knob,
 //!   so it stays the cue that something travels.
 //! - **Rule 7.1.** Colour alone is never the channel. A state also shows in shape or fill, so a
 //!   greyscale render still tells it apart.
 //!
-//! # Why the defaults are all `du` today
+//! # Default size inputs
 //!
-//! **This is adoption step 1 and it is deliberate.** Every `Span` below is written with its `du`
-//! base only, so the render is byte-identical to before the vocabulary existed. The point of the
-//! step is that the tokens come into being and every widget starts reading them, with nothing
-//! moving. The finger terms go on afterwards, as their own reviewable change, and only *after* the
-//! shell's hand-drawn rows are composed out of [`ListRow`](crate::widgets::ListRow) — done the
-//! other way round, the four-du gap between a `ListRow` label and a hand-drawn one widens to
-//! fifteen instead of closing.
+//! [`ControlSpec::default`] combines text-relative and finger-relative sizes with
+//! du floors, and millimetre strokes with pixel floors. [`Scale`] resolves those
+//! inputs into egui points. The configured size policy and host scale determine
+//! their on-screen size.
 
 use super::Metrics;
 use crate::unit::{Dim, Eye, Free, Hand, Scale, Span};

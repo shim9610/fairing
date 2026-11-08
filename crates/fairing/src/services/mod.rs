@@ -1,15 +1,15 @@
 //! The system backend traits and their implementations.
 //!
-//! The principle: the UI sees only the traits. Reads are `snapshot()` (a clone of the cache),
-//! writes are commands that return immediately, and the result arrives with the next snapshot
-//! and a [`Waker`]. **Never block the UI thread**, **no locks** — worker ↔ UI is an `mpsc`
-//! channel and the UI side only ever uses `try_recv`.
+//! UI code reads cached snapshots or narrower trait accessors and submits commands.
+//! Application adapters must return promptly and publish asynchronous results in
+//! subsequent snapshots. [`Waker`] forwards wake requests to egui's
+//! [`egui::Context::request_repaint`]; the host schedules the update.
 //!
-//! **The implementations are the integrator's**. The crate ships the traits, a `Null*`
-//! for each (the default for a backend you do not name) and a `Mock*` simulator for demos and
-//! tests — no system code. A device plugs in its own: sysfs, a vendor SDK, D-Bus, a PLC, whatever
-//! the hardware speaks. Anything the shell has no slot for goes in as a
-//! [custom backend](ServicesBuilder::custom) and takes part in the frame the same way.
+//! Device I/O belongs to application adapters. Fairing supplies the traits, `Null*`
+//! defaults, optional `Mock*` simulators and clock implementations. An adapter can
+//! use channels or another transport, but the traits do not enforce non-blocking
+//! execution or a time bound. Additional devices can use a
+//! [custom backend](ServicesBuilder::custom).
 
 pub mod clock;
 #[cfg(feature = "mock")]
@@ -26,8 +26,8 @@ use std::time::Instant;
 
 /// A thin wrapper around `egui::Context`. When a backend changes state, `wake()` →
 /// `request_repaint()`. It is `Clone + Send + Sync`, so it can go to a worker thread. egui's own
-/// locking inside `Context` is its thread-safe API and is the one exception to the rule against
-/// lock-based shared state.
+/// synchronization is part of that upstream API; this wrapper does not provide a
+/// lock-free or presentation-time guarantee.
 #[derive(Clone)]
 pub struct Waker(egui::Context);
 

@@ -30,28 +30,16 @@
 //!
 //! # Which handle suits which panel
 //!
-//! [`HandleStyle`] is a choice, not a taste. The default is [`HandleStyle::Bar`], and the
-//! vocabulary picks it: a value track is one where the mover sits on a two-colour boundary
-//! anywhere along the length and must be **found** there, so it stands proud.
+//! [`HandleStyle`] changes the visible mover, not the interaction contract:
 //!
-//! - [`HandleStyle::Bar`] — the default, and the right answer on every panel a gloved finger
-//!   drives. A narrow proud pill: it marks the boundary without covering much of the filled area,
-//!   and stacked sliders keep a calm rhythm because the mover is thin along the track.
-//! - [`HandleStyle::Knob`] — a circle of the same proud diameter. Take it on **a panel driven by a
-//!   pointer** (mouse, trackball, rotary encoder in a rack) — the objection at the top of this
-//!   module is an objection to a 13 mm contact patch, not to a circle, and with no finger on the
-//!   glass a circle is the grab affordance a pointer user already knows. Take it also on **a wide,
-//!   low-density panel** (the 289 mm-wide 800×1280 reference): there the track's length grows with
-//!   the panel while the bar's width does not, so the bar thins to a scratch across a very long
-//!   track, and a disc of the mover's full diameter is the mark that still reads at 600 mm.
-//! - [`HandleStyle::Inset`] — the shipped shape, a bar set **inside** the track. It is the right
-//!   answer where a proud mover would overhang into something else: a dense stack of tracks (a
-//!   mixer strip, a gauge list whose row pitch is near the mover's diameter), or a track read far
-//!   more often than it is dragged, where the mover is a tick on a bar chart rather than a grip.
-//!   It is a deliberate departure from the proud rule and it costs legibility under glare.
-//! - [`HandleStyle::None`] — no mover at all. For a value that is displayed rather than dragged: a
-//!   level, a progress, a read-only gauge. Nothing is being found by hand, so nothing has to stand
-//!   proud, and the filled boundary carries the value on its own.
+//! - [`HandleStyle::Bar`] is the default, a narrow bar extending beyond the track.
+//! - [`HandleStyle::Knob`] uses a circular mover.
+//! - [`HandleStyle::Inset`] keeps the mover inside the track.
+//! - [`HandleStyle::None`] hides the mover. The slider remains interactive; use
+//!   [`super::ProgressBar`] for a read-only progress indicator.
+//!
+//! Choose the shape after checking visibility, spacing and operation on the
+//! target panel, including the intended gloves or pointing device.
 //!
 //! The hit area is a whole `metrics.touch_target` row whichever style is chosen — what changes is
 //! what you see, not what you press (vocabulary Rule 1.1).

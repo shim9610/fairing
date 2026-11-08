@@ -69,8 +69,9 @@ or read the [migration guide](docs/guide/10-migration.md) when updating an exist
 | Host integration | Bounded command admission, application-owned command/update transports, caught-unwind quarantine and host-controlled shell replacement |
 
 [`fairing-widgets`](crates/fairing-widgets/README.md) can be used on its own in an
-egui application. Fairing re-exports it and egui, so a shell application needs
-only the `fairing` dependency.
+egui application. Fairing re-exports its widgets and egui, so those UI APIs need no
+separate dependency entry. Device adapters, asset decoding and other application
+integrations may need additional dependencies.
 
 ## Quick start
 

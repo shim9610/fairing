@@ -33,8 +33,8 @@ use std::sync::Arc;
 // **These coordinates were not placed by hand but drawn from the original art.**
 // `assets/brand/manta-mark-black.png` (a 1600×1000 flat silhouette) was traced sub-pixel and fitted by
 // least squares with a cubic Bézier chain, and the back/belly boundary was drawn the same way from the
-// two-colour boundary in `manta-mark-two-tone.png`. The fit error is **at most 0.36** grid units (1.1 px
-// on a 96 px mark), and the IoU between the result rasterised at 32 samples and the original is **0.976**.
+// two-colour boundary in `manta-mark-two-tone.png`. The mesh approximates the reference;
+// changes should be compared against the reference art at intended display sizes.
 //
 // Normalisation: the bbox of the **whole** mark (the wings plus the tail) is scaled uniformly into 32×20
 // and centred, with a 2 % margin. So even the tail's tip comes inside the target Rect.

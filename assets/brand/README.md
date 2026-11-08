@@ -33,13 +33,11 @@ each be changed, from a role colour to a custom painter; see
 `abyss-light-landscape.webp` is the same scene in a pale key, for the palette's light form. A
 texture wallpaper follows nothing on its own, so a shell that switches at dusk would otherwise keep
 the dark painting under a pale UI — `Wallpaper::themed(dark, light)` is what carries both. It is
-quality-92 WebP at 67 KB, half the dark one: the picture is mostly flat pale tone, and 92 rather
-than 85 because a smooth pale gradient is exactly where WebP bands (measured: max per-pixel error
-10 at q92 against 20 at q85).
+encoded as quality-92 WebP. When re-encoding, inspect pale gradients for banding
+and compare the result against the source artwork.
 
-The last five are lossless WebP, around 1 MB each. If repository size becomes a problem, they
-re-encode at quality 95 to about a seventh of that (recorded peak signal-to-noise
-ratio, or PSNR: 47–51 dB).
+The last five are lossless WebP. Lossy re-encoding can reduce file size; inspect
+the resulting gradients and edges at the intended display size before replacing them.
 
 ## None of this is compiled into the crate
 
@@ -79,9 +77,8 @@ were traced from `manta-mark-black.png`. To reproduce them:
    back/belly boundary uses the same method on the two-colour boundary in
    `manta-mark-two-tone.png`.
 
-The fit error is **at most 0.36** grid units (1.1 px on a 96 px mark), and rasterising the result
-at 32 samples gives an intersection over union (IoU) of **0.976** against the
-reference art. The two reference PNG silhouettes have a recorded IoU of 0.974.
+The mesh is an approximation of the reference art. Compare it with the reference
+at the product's intended mark sizes when changing the coordinates or renderer.
 
 ## Provenance and licence
 
