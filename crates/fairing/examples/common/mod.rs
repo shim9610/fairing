@@ -596,7 +596,7 @@ pub struct SyntheticInput;
 
 /// Fixed tour input clock.
 ///
-/// Each input frame advances by RECORD_STEP regardless of wall-clock rendering
+/// Each input frame advances by `RECORD_STEP` regardless of wall-clock rendering
 /// time. The clock starts from the current input time to avoid moving backward.
 #[derive(Debug, Default, Clone, Copy)]
 struct VirtualClock {

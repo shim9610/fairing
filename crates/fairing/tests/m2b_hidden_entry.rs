@@ -80,8 +80,8 @@ fn seven_taps_open_the_hidden_screen() -> fairing::Result<()> {
     Ok(())
 }
 
-/// A completed knock with a denied gate opens no screen and emits UnlockRequested.
-/// The HiddenEntry event is emitted for the attempt as well.
+/// A completed knock with a denied gate opens no screen and emits `UnlockRequested`.
+/// The `HiddenEntry` event is emitted for the attempt as well.
 #[test]
 fn a_gated_entry_asks_to_unlock_instead_of_opening() -> fairing::Result<()> {
     let mut config = access_config(&["viewer", "service"], Some("top"));

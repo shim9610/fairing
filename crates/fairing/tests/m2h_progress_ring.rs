@@ -1,4 +1,4 @@
-//! ProgressRing value-animation regressions.
+//! `ProgressRing` value-animation regressions.
 //!
 //! Tests inspect the painted mesh to check easing toward a reported value and the
 //! rewind policy. The visible fraction is derived from the filled band's vertices.

@@ -175,6 +175,12 @@ but not in the code yet is written in the guide as "not there", and the
 The documents, the README and the comments and doc comments in the source are written in
 English.
 
+Rust doc comments in examples and tests are also linted. After editing them, run
+`cargo clippy --locked --workspace --all-targets --all-features -- -D warnings`
+before pushing. A package-only Clippy run or a successful rustdoc build does not
+check the same set of targets. Put code identifiers in backticks to satisfy
+`clippy::doc_markdown`; keep the lint enabled.
+
 The audit enables repository-only guides with `RUSTDOCFLAGS="--cfg fairing_repo_docs"`.
 For a focused guide run, use that environment value with
 `cargo test --locked -p fairing --all-features --doc`. Without it, doctests cover

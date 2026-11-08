@@ -1,4 +1,4 @@
-//! ProgressBar rendering regressions: eased values, high-water mark, stop indicator,
+//! `ProgressBar` rendering regressions: eased values, high-water mark, stop indicator,
 //! steps and stale indication.
 //!
 //! The tests inspect the painted fill, track and stop-dot geometry.

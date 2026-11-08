@@ -1,6 +1,6 @@
 //! Password-field undo retention.
 //!
-//! The caller supplies the text buffer. These tests inspect egui's retained TextEdit
+//! The caller supplies the text buffer. These tests inspect egui's retained `TextEdit`
 //! state after input, checking that password-field undo snapshots are cleared. A
 //! plain field is the control, so absent typing or focus cannot make the password
 //! assertion pass by itself. This checks undo retention, not all credential storage

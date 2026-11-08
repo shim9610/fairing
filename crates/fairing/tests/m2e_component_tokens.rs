@@ -72,7 +72,7 @@ fn du(v: f32) -> Span {
     Span::fixed(Dim::du(v))
 }
 
-/// Changing MetricsSpec::content_inset changes button side padding.
+/// Changing `MetricsSpec::content_inset` changes button side padding.
 /// The test pins both values so the expected width delta is independent of defaults.
 #[test]
 fn the_button_padding_reaches_the_widget() -> fairing::Result<()> {

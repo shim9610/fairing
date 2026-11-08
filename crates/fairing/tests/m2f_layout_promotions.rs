@@ -4,7 +4,7 @@
 //! Normal-button boundary strokes, and vertical reach-band layout. Measurements
 //! come from the drawn geometry rather than a duplicate of its layout formula.
 //!
-//! The tests use fairing::Result<()> without panic! or unwrap.
+//! The tests use `fairing::Result<()>` without panic! or unwrap.
 
 #![cfg(feature = "mock")]
 
@@ -175,7 +175,7 @@ fn fit_size_picks_one_size_for_every_sibling() -> fairing::Result<()> {
     Ok(())
 }
 
-/// A Normal button draws a ControlEdge stroke when its face matches the card.
+/// A Normal button draws a `ControlEdge` stroke when its face matches the card.
 /// A Primary button has no corresponding border. The test inspects the painted
 /// stroke role; palette contrast is checked separately.
 #[test]
@@ -298,7 +298,7 @@ fn fill_height_grows_the_cell_but_stops_at_the_aspect_cap() -> fairing::Result<(
 /// bands, does it clamp the ratio, and does it measure the height it gives back from **the space left**.
 ///
 /// This fixture does not distinguish a decision based on Pane size from one based on
-/// remaining Ui space. It does not test that part of split_height's contract.
+/// remaining Ui space. It does not test that part of `split_height`'s contract.
 #[test]
 fn split_height_bands_a_standing_panel_but_not_a_lying_one() -> fairing::Result<()> {
     /// `(the judgement, the height left at that moment)`.

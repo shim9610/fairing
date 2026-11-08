@@ -14,7 +14,7 @@ use fairing::{screen, Cx, Shell, ShellEvent};
 use std::cell::Cell;
 use std::rc::Rc;
 
-/// A shell built from services::mock::services().
+/// A shell built from `services::mock::services()`.
 fn mock_shell(config: SettingsConfig) -> fairing::Result<Harness> {
     Harness::from_builder(move |ctx| {
         let services = fairing::services::mock::services();
@@ -26,7 +26,7 @@ fn mock_shell(config: SettingsConfig) -> fairing::Result<Harness> {
     })
 }
 
-/// A shell built with Null backends through Services::null().
+/// A shell built with Null backends through `Services::null()`.
 fn bare_shell(config: SettingsConfig) -> fairing::Result<Harness> {
     Harness::from_builder(move |ctx| {
         let mut shell = Shell::builder(single_level_access())
@@ -42,7 +42,7 @@ fn declared(h: &Harness) -> Vec<String> {
     h.shell.observe().screen_ids().map(str::to_owned).collect()
 }
 
-/// add_all registers the expected built-in screens for these mock services.
+/// `add_all` registers the expected built-in screens for these mock services.
 #[test]
 fn add_all_registers_the_built_in_screens() -> fairing::Result<()> {
     let h = mock_shell(SettingsConfig::default())?;
@@ -167,8 +167,8 @@ fn changing_a_setting_reaches_the_integrator() -> fairing::Result<()> {
     Ok(())
 }
 
-/// A settings-screen request emits one PowerRequest event.
-/// Explicit host commit_power is exercised in the following test.
+/// A settings-screen request emits one `PowerRequest` event.
+/// Explicit host `commit_power` is exercised in the following test.
 #[test]
 fn a_power_request_is_only_an_event() -> fairing::Result<()> {
     let requested = Rc::new(Cell::new(false));
@@ -518,7 +518,7 @@ fn visual_inset_shrinks_the_paint_not_the_hit() -> fairing::Result<()> {
 }
 
 /// A slider row uses one line at the wide test size and two at the narrow size.
-/// The track retains the configured touch_target height in both layouts.
+/// The track retains the configured `touch_target` height in both layouts.
 #[test]
 fn a_wide_slider_row_folds_onto_one_line() {
     use fairing::layout;
@@ -648,7 +648,7 @@ fn visual_inset_floats_the_card_and_the_bar() -> fairing::Result<()> {
     Ok(())
 }
 
-/// ListRow::height clamps requests below touch_target up to that floor
+/// `ListRow::height` clamps requests below `touch_target` up to that floor
 /// and permits a larger requested height.
 #[test]
 fn a_row_can_grow_but_never_below_the_touch_target() -> fairing::Result<()> {
@@ -765,7 +765,7 @@ fn the_grid_never_overflows_its_width() -> fairing::Result<()> {
     Ok(())
 }
 
-/// Tapping a Wi-Fi network emits WifiNetworkTapped without invoking connect.
+/// Tapping a Wi-Fi network emits `WifiNetworkTapped` without invoking connect.
 /// The fixtures include open, known and secured networks. Rows are located by
 /// probing the rendered list rather than duplicating the layout formula.
 #[test]

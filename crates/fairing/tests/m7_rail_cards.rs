@@ -78,7 +78,7 @@ fn a_card_on_a_screen_is_surface_variant() -> fairing::Result<()> {
     Ok(())
 }
 
-/// On a rail's SurfaceVariant page, a Filled card uses Surface so its fill differs
+/// On a rail's `SurfaceVariant` page, a Filled card uses Surface so its fill differs
 /// from the surrounding panel. The test inspects the fill role.
 #[test]
 fn a_card_on_a_rail_page_is_surface() -> fairing::Result<()> {

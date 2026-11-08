@@ -266,7 +266,7 @@ fn osk_show_curve_at_frame_five_and_debounce() -> fairing::Result<()> {
     Ok(())
 }
 
-/// OskMode::Off does not show on focus. In Manual mode, focus alone does not show
+/// `OskMode::Off` does not show on focus. In Manual mode, focus alone does not show
 /// the keyboard, while the nav item's Custom("osk") action toggles it.
 #[test]
 fn osk_mode_off_and_manual_toggle() -> fairing::Result<()> {

@@ -3,7 +3,7 @@
 //! The chain is specified with five steps and the code had three; `ScaleSource::Env` sat in the
 //! enum as the marker for a step that could not happen. The parsing is unit-tested beside the
 //! parser, against a lookup rather than the process environment. This integration test
-//! checks that a variable read in ShellBuilder::build changes the screen scale and that
+//! checks that a variable read in `ShellBuilder::build` changes the screen scale and that
 //! the explicit builder value and environment-disable policy take precedence.
 //!
 //! # Why this is one test and not four

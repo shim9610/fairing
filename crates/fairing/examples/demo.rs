@@ -2622,7 +2622,7 @@ fn panel_scale(builder: fairing::ShellBuilder) -> fairing::ShellBuilder {
 
 /// `--wallpaper=NAME` — the wallpaper (`abyss` · a role name · `#RRGGBB` · `file:<path>`).
 ///
-/// The example installs common::image_loader for `file:` paths:
+/// The example installs `common::image_loader` for `file:` paths:
 ///
 /// ```text
 /// cargo run -p fairing --example demo --features runner-x11,mock -- --wallpaper=file:$PWD/assets/brand/abyss-landscape.webp

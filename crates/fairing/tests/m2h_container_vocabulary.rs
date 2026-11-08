@@ -1,4 +1,4 @@
-//! Container rendering for layout::Container.
+//! Container rendering for `layout::Container`.
 //!
 //! Tests compare Filled, Outlined and Divided against the same row content.
 //! Divided is the baseline for the box-shape difference. Transparent rectangles

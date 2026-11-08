@@ -1,8 +1,8 @@
 //! Control-space reservations in card and action-bar layouts.
 //!
 //! A slot smaller than an embedded widget's minimum can let its drawing extend past
-//! the slot. These fixtures lower touch_target while retaining other control sizes
-//! to check that FeatureCard reserves space for its IconButton and that action-bar
+//! the slot. These fixtures lower `touch_target` while retaining other control sizes
+//! to check that `FeatureCard` reserves space for its `IconButton` and that action-bar
 //! rows apply the intended inset once.
 
 use fairing::layout::{self, Container, Deco};

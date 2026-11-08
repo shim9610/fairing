@@ -207,7 +207,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
 // The painters
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Draw the example status bar from BarCx data.
+/// Draw the example status bar from `BarCx` data.
 /// The clock uses a retained formatting buffer; other drawing and egui operations
 /// can still allocate.
 fn status_bar_painter() -> impl FnMut(&mut egui::Ui, &mut BarCx<'_>) {
