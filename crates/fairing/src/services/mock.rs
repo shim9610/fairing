@@ -540,8 +540,8 @@ impl Backend for MockWifi {
                 }
             }
         }
-        // The expiry check is done borrowed — cloning the `Pending` every frame while waiting would
-        // allocate one SSID `String` per frame (zero heap allocation on the render and poll paths).
+        // Borrow Pending for the expiry check rather than cloning its SSID on every waiting poll.
+        // Completing a scan or connection can still allocate strings or grow the known-network list.
         let due = self.pending.as_mut().map(|(due, _)| due.resolve(now));
         if due.is_some_and(|due| now >= due) {
             if let Some((_, pending)) = self.pending.take() {

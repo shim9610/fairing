@@ -169,9 +169,11 @@ first) · `.enabled(bool)`; `nav_item` takes `.gate` · `.enabled(bool)`; `tile`
 
 Gates and `Visibility` are [05 Access control](05-access-control.md).
 
-Queued badge updates run after changed declarations are rebuilt. Registering an icon
-and immediately calling `handle.set_badge` applies the badge on the next frame.
-The direct `shell.set_badge` call still reports `false` if the icon has not been placed yet.
+Accepted badge commands run after changed declarations are rebuilt, within the
+per-update command budget. A queued update can therefore run after a later logic
+or UI update rather than the next frame. The void `handle.set_badge` helper drops
+rejected commands; the direct `shell.set_badge` call reports `false` if the icon
+has not been placed yet.
 
 ## 3. Resident and factory screens
 
@@ -356,7 +358,9 @@ in order.
 `cx.shell` is the handle that does the same things from outside a frame: `launch` · `back` ·
 `home` · `close_screen` · `notify` · `toast` · `dismiss_notification` · `set_setting` ·
 `set_badge` · `set_subject` · `logout` · `request_unlock` · `toggle_overlay` · `set_motion` ·
-`waker()`. Those ride an mpsc channel and the shell drains it early in the next frame.
+`waker()`. Accepted commands are drained in order during subsequent logic/UI
+updates, within the configured command budget. Void helpers discard rejection;
+see [§9.2](#92-getting-results-back-from-background-work) for admission handling.
 
 ## 5. Lifecycle
 

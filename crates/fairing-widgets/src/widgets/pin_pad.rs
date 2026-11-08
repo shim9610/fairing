@@ -176,9 +176,9 @@ impl<'a> PinPad<'a> {
         self
     }
 
-    /// The digits in key order — top left to bottom middle, ten of them, each once.
-    /// [`PinPad::shuffled`] makes one; anything that is not a permutation of `0..=9` is ignored
-    /// for the telephone layout, since a pad missing a digit could lock someone out.
+    /// Set the digit order from top left to bottom middle, with each digit once.
+    /// [`PinPad::shuffled`] generates a permutation of `0..=9`. An invalid permutation
+    /// leaves the current order unchanged; a new pad starts with [`PHONE_ORDER`].
     #[must_use]
     pub fn order(mut self, order: [u8; 10]) -> Self {
         if is_permutation(order) {

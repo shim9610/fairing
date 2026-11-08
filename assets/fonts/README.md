@@ -25,5 +25,7 @@ U+2190-21FF,U+2200-22FF,U+25A0-25FF,U+3000-303F,U+1100-11FF,U+3131-318E,U+AC00-D
 U+FF01-FF5E,U+FFE6" --layout-features='*' --name-IDs='*' --notdef-outline
 ```
 
-The library crate does not carry a font: an integrator ships the face their panel needs
-(`FontSource::from_static` / `from_path`) — see `fairing::fonts`.
+Fairing adds no application-specific font asset to the library crates. Its egui
+dependency enables the upstream `default_fonts` feature. Integrators supply
+additional product faces through `FontSource::from_static` / `from_path`; see
+`fairing::fonts`.

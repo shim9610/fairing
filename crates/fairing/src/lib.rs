@@ -27,8 +27,9 @@
 //!
 //! Credential verification belongs to [`access::Authenticator`]. In opt-in token mode,
 //! the issuer retains a [`access::SessionController`] and Fairing reads its
-//! [`access::SessionToken`] for explicit operation grants. Independent web and device
-//! login states require separate controller/token pairs.
+//! [`access::SessionToken`] for explicit operation grants. When representing both web
+//! and device logins with Fairing sessions, use separate controller/token pairs to
+//! keep their authority and lifetime independent.
 //!
 //! [`ShellBuilder::build_protected`] requires token mode and returns [`ProtectedShell`].
 //! Define an application-owned [`access::Permission`] value and register

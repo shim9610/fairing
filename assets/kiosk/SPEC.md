@@ -1,8 +1,8 @@
 # Kiosk showcase asset spec
 
-The authoring requirements and generation prompts for the 33 image assets used by
-`examples/kiosk.rs`. Dimensions and composition below are authoring targets; exported
-file metadata records the delivered sizes. The final section preserves the original
+The authoring requirements and generation prompts for the 33 image assets in this
+directory, prepared for `examples/kiosk.rs`. Dimensions and composition below are
+authoring targets; exported file metadata records the delivered sizes. The final section preserves the original
 layout proposals rather than describing pending library work.
 
 **Provenance and licence.** The images in this folder were made for this project from these
@@ -17,8 +17,10 @@ under the MIT licence, the same as the repository's code (`LICENSE`).
 | Payment and receipt icons | 7 | Single-colour white, transparent |
 | State graphics | 4 | 1 photo · 2 icons · 1 background |
 
-The example uses product photos and state graphics where available, with drawn
-shapes as fallbacks.
+The current example embeds the referenced assets at compile time and decodes
+them during startup. Missing embedded files fail the build; decoding errors
+propagate from startup. Some drawing paths have fallbacks for absent item or
+payment-method lookup entries, not for failure to load the required asset set.
 
 ---
 
@@ -51,7 +53,7 @@ centered, full subject visible with margin
 ## 1. Backgrounds and brand (4)
 
 The attract background is designed as a full-bleed photo with a gradient scrim at
-the bottom. The example retains a drawn fallback when an asset is unavailable.
+the bottom. Its embedded background image is required by the current example.
 
 | # | File | Size | Background | Format | Where it is used |
 |---|---|---|---|---|---|
@@ -263,8 +265,9 @@ assets/kiosk/
 - [ ] Compare the 16 product photos for consistent light direction and colour temperature
 - [ ] Nothing touches the frame
 
-Partial deliveries are fine; whatever arrives gets wired in, and the current shapes stay as the
-fallback for the rest.
+The original authoring brief allowed partial deliveries. The current example
+expects the files referenced by `include_bytes!`; using a partial asset set
+requires changing that embedding and loading code.
 
 ---
 

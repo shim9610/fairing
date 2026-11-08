@@ -608,8 +608,8 @@ pub struct RowLook<'a> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub enum ProgressFill {
-    /// Determinate: from the start to this share, 0 to 1. Eased towards each reported value, and
-    /// never going back unless the caller allows it.
+    /// Determinate fill to the current animated share. Target clamping follows
+    /// the widget's rewind policy; intermediate values follow its easing curve.
     To(f32),
     /// Indeterminate: a segment between these two shares, moving along.
     Segment(f32, f32),

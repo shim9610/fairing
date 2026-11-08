@@ -200,21 +200,20 @@ impl Default for MetricsSpec {
 const TEXT_CEILING_DU: f32 = 128.0;
 
 impl MetricsSpec {
-    /// The spec that reproduces today's render exactly. Every term is `du`, so it is
-    /// scale-independent.
-    ///
-    /// It is the switch for telling "is this the dimensions or not" apart during the migration —
-    /// with it, the result has to be pixel-identical to before M2b.
+    /// Construct logical-unit terms from the default values for fields represented
+    /// by this specification. Fields outside the specification resolve to defaults.
     #[must_use]
     pub fn legacy_du() -> Self {
         Self::from_metrics(&Metrics::default())
     }
 
-    /// The spec that reproduces **these** metrics exactly, every term in `du`.
+    /// Copy fields represented by this specification into logical-unit terms.
+    /// Fields not represented by `MetricsSpec` are not copied; [`Self::resolve`]
+    /// fills those from [`Metrics::default`]. Numeric resolution still applies
+    /// the span rules, including non-finite-value fallback.
     ///
-    /// `fairing::Shell::metrics_spec` seeds itself with this where the
-    /// shell was built without a spec, so a run-time change has a source of truth to be written on
-    /// rather than being overwritten by the next frame's resolve.
+    /// `fairing::Shell::metrics_spec` uses this to seed an editable specification
+    /// when the shell was built without one.
     #[must_use]
     pub fn from_metrics(d: &Metrics) -> Self {
         // **Every one of these is `pinned`, and that is the point of the function.** It exists to

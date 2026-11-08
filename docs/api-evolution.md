@@ -17,8 +17,9 @@ The script uses rustdoc's unstable JSON output with `RUSTC_BOOTSTRAP=1` only for
 these documentation commands. It records the compiler identity, extractor hash,
 source/manifests/lockfile hashes and four package/feature profiles. It inventories
 exported paths, inherent public methods, public fields, variants, trait items and
-emitted hidden diagnostic APIs. Foreign glob reexports remain explicit references;
-their upstream bodies are not expanded into Fairing's owned surface.
+emitted hidden diagnostic APIs. Local and foreign glob reexports remain explicit
+references; the individual names they export are not expanded. Foreign item
+bodies are not expanded into Fairing's owned surface.
 
 Create a baseline checkout and compare using the **same extractor and compiler**:
 
@@ -79,7 +80,8 @@ serialization semantics and implemented public traits remain compatibility commi
 contract, including fields, variants and trait methods. Shared usage forms and
 rationales are stored once and referenced explicitly by each entry. Each entry records its
 retain/change/add/remove decision, current usage form, reason, replacement,
-compatibility impact, feature-dependent contract hashes and every exported alias.
+compatibility impact, feature-dependent contract hashes and the explicit exported
+aliases captured by the inventory.
 The baseline is `217373f`. The [host migration decisions](host-api-decisions.md)
 explain the individual component operations and their consumers.
 
@@ -95,7 +97,7 @@ After generating a fresh compiler inventory, run:
 python3 tools/api_decisions.py
 ```
 
-This fails on missing/changed decisions, missing exported aliases or any of the
+This fails on missing/changed decisions, missing explicit aliases from the inventory or any of the
 seven removed mutable Shell loans, even if a ledger entry tries to approve one.
 To review a deliberate API change, regenerate with `--write --baseline <inventory>`
 and inspect the ledger diff; CI never updates the decisions automatically.

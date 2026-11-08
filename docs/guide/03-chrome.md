@@ -44,7 +44,7 @@ and bar visibility.
 | `status.ethernet` | Wired network, dimmed while the cable is out | The network backend reports `Capabilities::ETHERNET` | none |
 | `status.volume` | Volume (four steps, muted) | The audio backend reports `Capabilities::VOLUME` | none |
 | `status.brightness` | Brightness | The display backend reports `Capabilities::BRIGHTNESS` | none |
-| `status.lock` | An open padlock | The session is unlocked — above `[access] initial` | A logout (`LaunchAction::Logout`) |
+| `status.lock` | An open padlock | `Access::is_unlocked()`: elevated/above the initial level in legacy mode, or a readable installed session token in token mode | A logout (`LaunchAction::Logout`) |
 
 An item whose backend does not report the capability takes no space either. With the null
 backends you are left with the clock, the notification bell and the user. Attaching backends is
@@ -518,7 +518,7 @@ fn mark_pending(shell: &mut Shell, count: u32) {
 }
 
 fn mark_from_worker(handle: &ShellHandle) {
-    // From another thread. Applied on the next frame.
+    // From another thread. If accepted, applied in a later budgeted shell update.
     handle.set_badge("inbox", Some(Badge::Dot));
 }
 ```
@@ -847,7 +847,9 @@ so that icons do not stand at four different sizes.
 | A drawing callback | `icons.register_painter(..)` → `IconRef::Custom(id)` | Draws directly into the rect the shell gives it. For icons whose shape depends on state |
 
 A vector icon's path is a list of `Seg::{M, L, Q, C, Z}`. Porting from SVG, set the `viewBox` to
-`0 0 24 24` and copy the coordinates across — coordinates outside it are caught by the tests.
+`0 0 24 24` and fit the coordinates to that design grid. Repository tests check
+the generated built-in set; `register_icon` does not validate the bounds of
+application-supplied definitions.
 
 ```rust
 # use fairing::overlay::{tile, TileKind};
@@ -1489,7 +1491,7 @@ fn add_widget_screen(shell: &mut Shell) {
 | `.enabled(bool)` | ○ | ○ | ○ | ○ |
 | `.icon(IconRef)` | ○ | | | ○ |
 | `.kind(ButtonKind)` | `Normal` · `Primary` · `Danger` | | | |
-| `.min_size(Vec2)` | 120×56 by default | | | |
+| `.min_size(Vec2)` | No fixed `Vec2` default; width uses `control.min_button_w` and available space, height uses the larger of `metrics.row_height` and `touch_target` | | | |
 | `.long_press(Duration)` | ○ | | | |
 | `.subtitle(text)` · `.trailing(text)` · `.chevron(bool)` | | | | ○ |
 

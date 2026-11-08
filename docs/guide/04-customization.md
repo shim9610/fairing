@@ -164,7 +164,7 @@ them are in §8.
 
 | Token | Type | What it moves |
 |---|---|---|
-| `reduce` | `bool` | When true every tween is 0 ms and springs settle instantly |
+| `reduce` | `bool` | Reduced-motion policy flag. `MotionTokens::from_config` makes configured tweens instant when enabled; directly supplied tokens retain their assigned field values |
 | `spring` | `Spring` | The default spring (`k`, `c`) |
 | `snap_ratio` · `fling_px_s` · `slop_px` | `f32` | Release distance and velocity thresholds, drag slop |
 | `tap` · `long_press` | `Duration` | Tap and long-press timing |
@@ -778,8 +778,10 @@ values.
 | `shade` · `push child` · `toast` · `notify` · `home` · `hold 2 s` | Each transition once |
 | Frame graph, top right | The last 180 frame intervals (ms) with p50 and p95. The gridline is the 33 ms budget |
 
-Moving a slider calls `ShellHandle::set_motion(tokens)` and takes effect from the next frame; an
-animation already in flight is left alone. A bar over the 33 ms line records an interval above that reference budget;
+Moving a slider calls `ShellHandle::set_motion(tokens)`. If admitted, the command
+takes effect when a later logic/UI update reaches it within the command budget;
+this void helper drops rejection. Use `try_send(Command::SetMotion(tokens))` when
+admission must be observed. An animation already in flight is left alone. A bar over the 33 ms line records an interval above that reference budget;
 profiling is needed to identify whether rendering, scheduling or other work caused it.
 
 The same thing from code:

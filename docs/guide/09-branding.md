@@ -785,9 +785,11 @@ add_all_with(shell, &SettingsConfig::default(), list);
 ```
 
 A row is drawn **only where a screen really is registered under its id and that screen's own gate
-passes**, so add a screen for each application row. `settings.credentials` is
-registered when the authenticator exposes administration support. A repeated row
-id keeps its first occurrence and logs a warning.
+passes**, so add a screen for each application row. Default `add_all` registration
+makes `settings.credentials` eligible when the authenticator exposes administration
+support; `ignoring_capabilities()` also forces eligibility. `only` / `without`
+filters can still exclude it. A repeated row id keeps its first occurrence and
+logs a warning.
 
 Capability-dependent screens are omitted when the backend does not report the
 needed capability. To register them during development regardless, use

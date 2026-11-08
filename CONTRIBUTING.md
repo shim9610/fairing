@@ -33,16 +33,20 @@ That runs stage 0 plus 13 more stages, listed in
 docs, duplicate versions, the `deps.allow` comparison, `cargo audit`, `cargo deny`, making
 updates visible, the notices file, generated files, the target build, and the blocking/lock scan.
 
-They do not run in the order the table numbers them. The gates that do not compile anything
-(0, 13, 5, 6, 10, 11, 7, 8) run first and the compiling stages come after — so that an
-unapproved crate's `build.rs` cannot run before the approval gate does. If stage 0
-(`cargo xtask integrity`) or any other prebuild gate fails, the compiling stages do not run.
+They do not run in the order the table numbers them. The gates that do not start
+product compilation (0, 13, 5, 6, 10, 11, 7, 8) precede the audit's compiling stages.
+`cargo run` first builds `xtask` itself, which currently has no external
+dependencies; that executable and the installed audit tools are trusted inputs.
+If stage 0 (`cargo xtask integrity`) or any other prebuild gate fails, the later
+compiling stages do not run.
 
-Stage 13 (`cargo xtask sync-check`) blocks lock-based shared state (`Mutex`, `RwLock`,
-`Condvar`, `Barrier`, `OnceLock`, `LazyLock`, `parking_lot`) and blocking calls on the UI thread
-(`crates/fairing/src` and `crates/fairing-widgets/src`: `.recv(`, `.recv_timeout(`, `.join(`,
-`thread::sleep`), so product UI sources use non-waiting queue operations
-([architecture §5](docs/architecture.md#5-threads)). A legitimate exception carries
+Stage 13 (`cargo xtask sync-check`) reports configured lock identifiers (`Mutex`,
+`RwLock`, `Condvar`, `Barrier`, `OnceLock`, `LazyLock`, `parking_lot`) in scanned
+crate sources. Its UI-source rule checks literal call spellings such as `.recv(`,
+`.recv_timeout(`, `.join()` and `thread::sleep` in `crates/fairing/src` and
+`crates/fairing-widgets/src`. Application adapters and indirect calls still need
+review; this source scan does not establish non-blocking execution. See
+[architecture §5](docs/architecture.md#5-threads). A legitimate exception carries
 `// sync-check: allow: <reason>` on the same line (the reason is required).
 
 CI runs `cargo run -p xtask --locked -- audit --strict`, not the alias. The `cargo xtask` alias

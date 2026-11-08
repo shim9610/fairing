@@ -541,7 +541,8 @@ impl NavBar {
         painter(ui, &mut bar);
     }
 
-    /// Fill a buffer with the item list to hand to the painter (gate decisions included). No allocation.
+    /// Fill a buffer with the item list to hand to the painter (gate decisions included).
+    /// Reuses row storage; new rows or longer IDs can allocate, as can application permission policies.
     pub(crate) fn collect_items(
         &self,
         custom: &[NavItemDecl],

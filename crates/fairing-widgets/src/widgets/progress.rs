@@ -3,8 +3,9 @@
 //! Hiding a `TouchSlider` handle does not make a slider read-only. Use this widget
 //! when pointer interaction must not change the reported value.
 //!
-//! Determinate values are eased over `motion.switch` and retain a high-water mark
-//! unless `allow_rewind` is enabled. `paint_bar`, which has no retained `Ui` state,
+//! With rewind disabled, a lower reported target is raised to the stored target
+//! before easing over `motion.switch`. The configured easing determines the
+//! intermediate displayed values. `paint_bar`, which has no retained `Ui` state,
 //! paints the supplied value directly. The caller supplies the display string and
 //! tone; the widget does not infer process completion or fault severity.
 //!
@@ -138,11 +139,9 @@ impl<'a> ProgressBar<'a> {
         self
     }
 
-    /// Let the shown value follow the reported one **down**.
-    ///
-    /// Off by default: the bar holds the highest value it has shown, so a worker that re-reports
-    /// a phase from zero cannot make it snap back. A new run is the case this is for — the bar is
-    /// meant to rewind to the new run's zero, and the caller says so.
+    /// Allow a lower reported target. Off by default: lower targets are raised to
+    /// the stored target before easing. Displayed values follow the configured
+    /// easing, including any overshoot and return.
     #[must_use]
     pub fn allow_rewind(mut self, allow: bool) -> Self {
         self.allow_rewind = allow;
@@ -314,8 +313,9 @@ pub(crate) fn pulse_alpha(phase: f32, floor: f32) -> f32 {
     floor + (1.0 - floor) * wave
 }
 
-/// The value to show this frame: the reported one eased over `motion.switch`, and never below
-/// the highest shown unless a rewind is meant. Shared by the bar and the ring.
+/// Clamp lower targets to the stored target when rewind is disabled, then ease
+/// using `motion.switch`. Shared by the bar and ring; the stored target is not
+/// the maximum of the intermediate displayed values.
 pub(crate) fn eased_value(
     ui: &egui::Ui,
     cx: &mut Cx<'_>,

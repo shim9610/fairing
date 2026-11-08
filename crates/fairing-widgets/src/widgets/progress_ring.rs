@@ -137,8 +137,8 @@ impl<'a> ProgressRing<'a> {
         self
     }
 
-    /// The outer diameter (du). `metrics.tile_size` by default, which is a ring that fills a
-    /// quick tile; a hero wants more.
+    /// Outer diameter in du, defaulting to `metrics.tile_size`.
+    /// Values below 1 du are drawn at 1 du.
     #[must_use]
     pub fn diameter(mut self, du: f32) -> Self {
         self.diameter = Some(du.max(0.0));
@@ -146,6 +146,8 @@ impl<'a> ProgressRing<'a> {
     }
 
     /// Override the band's thickness (du). `control.ring_stroke(diameter)` by default.
+    /// Thickness is capped at half the diameter; its 1 du floor is reduced for
+    /// diameters below 2 du.
     #[must_use]
     pub fn thickness(mut self, du: f32) -> Self {
         self.thickness = Some(du.max(0.0));
@@ -189,8 +191,9 @@ impl<'a> ProgressRing<'a> {
         self
     }
 
-    /// Allow the shown value to decrease. Off by default: a ring retains its
-    /// highest shown value. Enable this when restarting or intentionally decreasing it.
+    /// Allow a lower reported target. Off by default: lower targets are raised to
+    /// the stored target before easing. Displayed values follow the configured
+    /// easing, including any overshoot and return.
     #[must_use]
     pub fn allow_rewind(mut self, allow: bool) -> Self {
         self.allow_rewind = allow;
@@ -226,10 +229,11 @@ impl<'a> ProgressRing<'a> {
     pub fn show(self, ui: &mut egui::Ui, cx: &mut Cx<'_>) -> Response {
         let m = &cx.theme.metrics;
         let diameter = self.diameter.unwrap_or(m.tile_size).max(1.0);
+        let max_thickness = diameter * 0.5;
         let thickness = self
             .thickness
             .unwrap_or_else(|| cx.theme.control.ring_stroke(diameter))
-            .clamp(1.0, diameter * 0.5);
+            .clamp(1.0_f32.min(max_thickness), max_thickness);
         let (rect, response) = ui.allocate_exact_size(Vec2::splat(diameter), Sense::hover());
         // The auto id, so two rings in one `Ui` keep separate memories.
         let id = response.id.with(self.salt);

@@ -1,5 +1,5 @@
-//! The desktop — the page grid plus the dock. M1's composition is static (the horizontal
-//! swipe is M2 · A4; here the page changes **only by tapping the indicator**).
+//! The desktop: page grid and dock, with page changes through indicator taps,
+//! horizontal swipes or application requests.
 //!
 //! The desktop is not a `Screen` but the workspace's `Home` view. Icons come from code
 //! declarations (`.desktop()` / `.dock()`) and the config file overrides only the position, the
@@ -10,10 +10,9 @@
 //! filtering stay the shell's, and [`SlotCx`] hands over the cell Rect, the [`IconSlot`], the press
 //! scale and whether the gate passed.
 //!
-//! Separately from the layout results
-//! ([`Page`] · [`Dock`]), each icon has one `IconRecord` caching its label and badge galleys. The
-//! render path only overwrites values and never builds a fresh `String` or `Vec`. The regression is
-//! watched by the `idle desktop` scenario in `examples/bench.rs`.
+//! Per-icon records and selected geometry are reused between frames. Rendering can
+//! still allocate, including label-layout strings and translated icon paths.
+//! The `idle desktop` scenario in `examples/bench.rs` measures one reference workload.
 
 // UI geometry: small integer counts and pixel values crossing to f32. The loss is meaningless in this
 // range, so the cast lints are lifted for the whole file (the rest of pedantic stays).

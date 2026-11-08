@@ -211,7 +211,10 @@ impl fmt::Display for SessionReadError {
 }
 impl std::error::Error for SessionReadError {}
 
-/// Version-bound borrowed observation. A changed version makes further checks deny.
+/// Version-bound borrowed observation at the `now` supplied to [`SessionToken::snapshot`].
+/// Permission checks revalidate publication and revocation. Deadlines use the
+/// retained time; obtain another snapshot with a later `now` to advance deadline
+/// checks. A changed version makes further checks deny.
 pub struct SessionSnapshot<'a> {
     token: &'a SessionToken,
     revision: u64,
@@ -392,9 +395,10 @@ impl SessionToken {
         self.0.id
     }
     /// Read one publication without retrying, blocking, cloning a Subject or allocating.
+    /// The returned observation retains `now` for subsequent deadline checks.
     ///
     /// # Errors
-    /// Revoked/expired sessions and an overlapping publication never authorize work.
+    /// Revoked sessions, expiry at `now`, or an overlapping publication return an error.
     pub fn snapshot(&self, now: Instant) -> Result<SessionSnapshot<'_>, SessionReadError> {
         let elapsed = u64::try_from(now.saturating_duration_since(self.0.origin).as_nanos())
             .unwrap_or(u64::MAX);

@@ -113,9 +113,11 @@ Rust assurance also runs these tests through its integration test workspace.
 Three native semantic controls mutate production code in disposable checkouts:
 focus-isolation clears the currently focused field instead of only the retiring
 owner; popup-retirement leaves the retired area interactable; deadline-reply skips
-the pre-dispatch expiry check. Each baseline must
-pass and each mutation must fail its specific runtime assertion. Compilation
-failures do not count as detection.
+the pre-dispatch expiry check. Each baseline must pass. Each mutation must exit
+unsuccessfully and its log must contain both `test result: FAILED` and the
+control's expected diagnostic marker. The checker does not tie that marker to
+the failing assertion; the log must be inspected to establish that relationship.
+A compilation failure alone does not count as detection.
 
 No additional product dependency or public API is introduced.
 

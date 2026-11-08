@@ -18,8 +18,10 @@
 //! 3. **Find one already on the device** — [`find_system_font`], [`korean_font`]. Ubuntu Core
 //!    images often carry `fonts-noto-cjk`.
 //!
-//! Either way the file IO happens **once, at startup**. Reading a font in the frame loop, or
-//! calling `set_fonts` again, rebuilds the entire glyph atlas.
+//! File reads and system-font searches run when their helpers are called; perform
+//! them during setup and reuse the resulting sources. egui's
+//! [`Context::set_fonts`](egui::Context::set_fonts) updates changed definitions and
+//! leaves already-installed identical definitions unchanged.
 //!
 //! ```no_run
 //! # fn main() -> fairing_widgets::Result<()> {
@@ -160,7 +162,8 @@ impl FontSource {
         }
     }
 
-    /// Read from a file. Call it **once, at startup** — there is no file IO in the frame loop.
+    /// Read the file on each call. Load during setup and reuse the resulting source
+    /// to keep this file operation out of the frame loop.
     ///
     /// # Errors
     /// [`Error::Io`] if the file cannot be read, [`Error::Config`] if the contents do not look
@@ -300,8 +303,9 @@ impl FontSet {
     /// faces — the same render as before, with the weight and display axes in place for anyone who
     /// fills them.
     ///
-    /// `set_fonts` rebuilds the glyph atlas and is expensive, so call it **once, at startup**.
-    /// Pass it through `fairing::ShellBuilder::fonts` and the shell calls it once for you.
+    /// Pass through `fairing::ShellBuilder::fonts` for installation during shell
+    /// construction. egui applies changed definitions; identical installed
+    /// definitions are left unchanged by `Context::set_fonts`.
     ///
     /// egui 0.37 installs definitions immediately before text layout in the current pass,
     /// and otherwise defers them to the next pass. Ask [`families_are_live`] before drawing;

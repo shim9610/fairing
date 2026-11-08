@@ -471,7 +471,7 @@ fn won(amount: u32) -> String {
 
 // ── The payment domain's icons (not in the crate — harness result 2) ──────────
 
-/// The 33 **real assets** the example carries (`assets/kiosk/`; the specification is in `SPEC.md`).
+/// Embedded example artwork from `assets/kiosk/`; authoring notes are in `SPEC.md`.
 ///
 /// All of them are baked into the executable with `include_bytes!` — no assets need loading onto the
 /// device, and the pictures appear whichever directory the example is run from. The decoding is done

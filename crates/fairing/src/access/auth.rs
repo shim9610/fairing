@@ -1,14 +1,13 @@
 //! Authentication — the shell asks, the integrator answers.
 //!
-//! # The crate checks no credential of its own
+//! # Authentication adapters and reference implementation
 //!
-//! How a credential is stored, how it is compared and what a run of wrong guesses costs are the
-//! device's decisions, not the crate's. So the crate defines one [`Authenticator`] trait
-//! and draws whatever it asks for: a keypad for [`AuthMethod::Pin`], a square of dots for
-//! [`AuthMethod::Pattern`], a field and the on-screen keyboard for [`AuthMethod::Password`], a
-//! waiting card for [`AuthMethod::External`]. What the person entered goes to
-//! [`Authenticator::submit`] by value and the shell keeps no copy — not in a log, not in an event,
-//! not in its own state.
+//! [`Authenticator`] selects credential checking, storage and attempt accounting.
+//! The prompt draws the input declared by [`AuthMethod`]: PIN keypad, pattern grid,
+//! password field or external-method waiting card. Submission passes an owned
+//! [`Credential`] to [`Authenticator::submit`]. The built-in prompt moves PIN and
+//! password buffers; pattern submission copies the path while the prompt retains
+//! it for visual feedback.
 //!
 //! [`PinTable`] is the one implementation that ships: level name → PIN and level name → pattern
 //! tables read from `[access.pin_table]` and `[access.pattern_table]`, with an attempt limit kept
@@ -168,8 +167,9 @@ impl AuthMethod {
 
 /// A credential passed by value to [`Authenticator::submit`].
 ///
-/// The shell moves the submitted buffer into this value. Its `Debug` implementation
-/// prints the credential kind and redacts its contents.
+/// The built-in prompt moves PIN and password buffers into this value. Pattern
+/// submission copies the path while the prompt retains it for visual feedback.
+/// `Debug` prints the credential kind and redacts its contents.
 #[non_exhaustive]
 pub enum Credential {
     /// The digits from the keypad.

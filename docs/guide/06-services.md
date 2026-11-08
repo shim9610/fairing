@@ -65,9 +65,11 @@ Eight traits, one for each kind of hardware the built-in UI shows:
 | `NetworkBackend` | Interfaces, addresses, hostname | `interfaces() -> Vec<IfaceSnapshot>`, `ethernet_up() -> Option<bool>`, and optionally `configure(iface, IpConfig)`, `hostname()`, `set_hostname` |
 | `InfoBackend` | What the device says about itself | `device() -> DeviceInfo` — model, serial, firmware, OS, uptime, each optional |
 
-The default `enabled()`, `strength()` and `any_connected()` clone `snapshot()` and
-pick a field out of it — a heap allocation. The status bar asks for those **every
-frame**, so a real backend is better off implementing all three directly.
+The default `enabled()`, `strength()` and `any_connected()` accessors call
+`snapshot()` and select a field. A snapshot with owned strings or non-empty lists
+may allocate when cloned; an empty snapshot need not. Status items call these
+accessors when their eligible items are rendered, so direct cached-field
+implementations can avoid copying data that the item does not use.
 
 `DisplayBackend` drives `keep_awake` (idle inhibition, see
 `ChromePolicy::keep_awake` in [03 Chrome](03-chrome.md)), the `tile.brightness`
@@ -197,10 +199,11 @@ impl Capabilities {
 }
 ```
 
-Anything backed by `Capabilities::NONE` — every `Null*` backend except the clock —
-disappears from the UI. It is treated as absence, not as an error. So with the `Null`
-defaults `status.ethernet`, `status.volume` and `status.brightness` stay hidden
-whatever you put in `[status_bar]`, and they appear once your backend reports the bit.
+Eligibility is specific to each surface. For example, `status.ethernet`,
+`status.volume` and `status.brightness` require their capability bits and the
+corresponding available values. A `Capabilities::NONE` backend does not remove
+all related UI: default settings registration still includes Display, Sound,
+Date & time and About. The clock can also be shown with `NullClock`.
 
 ## 3. Assembling `Services`
 

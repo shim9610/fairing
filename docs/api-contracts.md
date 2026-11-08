@@ -5,8 +5,8 @@ covered by the resource-failure contracts below.
 
 The assurance suite checks the contracts below against the production sources
 and public APIs. The table distinguishes exhaustive decision proofs from
-generated or bounded executions. Production mutation controls must fail the
-relevant checks with their expected verification or runtime assertion failures.
+generated or bounded executions. Production mutation controls check verifier
+rejection or failed native tests with expected diagnostic markers, as described below.
 
 The stronger whole-application operability theorem is incomplete. Component proofs
 and finite witnesses must not be presented as complete concrete-state coverage or
@@ -160,8 +160,10 @@ the control instead of counting as a successful rejection.
 checks a passing baseline, then breaks production gate delegation,
 notification cap enforcement, bounded factory admission, Inbox delivery, input progress,
 modal priority, response correlation, the per-update command budget, deadline ordering, Back snapshot binding, Back handler execution, retained-owner expiration, numeric caller-value validation, active hold admission, wheel capture admission, restoration delegation, fresh-pointer projection, capture-result application and completion latching separately. The matching
-public API/Loom test must fail with its expected assertion. Working sources
-and published dependencies remain intact.
+public API/Loom test must exit unsuccessfully, with `test result: FAILED` and the
+control's expected diagnostic marker in its log. This check does not establish
+that the marker belongs to the failing assertion; that relationship requires log
+inspection. Working sources and published dependencies remain intact.
 
 `verification/coverage.py` reports product code executed by the contract suite.
 It fails if any of the declared production modules has no executed source

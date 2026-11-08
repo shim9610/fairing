@@ -740,7 +740,8 @@ impl Services {
 
     /// Name every backend whose `next_wake` is at or before `now` — a built-in one by its field,
     /// a custom one by its type — for the shell's warning about a backend that keeps it from
-    /// going idle. No allocation.
+    /// going idle. Visits backends without building a temporary list; backend deadline
+    /// methods and the supplied callback determine their own allocation behavior.
     pub(crate) fn for_each_stale(&self, now: Instant, mut name: impl FnMut(&str)) {
         let builtin: [(&str, &dyn Backend); 8] = [
             ("clock", &*self.clock),

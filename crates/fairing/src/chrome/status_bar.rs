@@ -470,7 +470,7 @@ pub struct StatusBar {
     /// The content width each integrator item last measured to, kept across frames (unlike
     /// `item_rects`, which a collapsed item leaves empty). The next frame's layout uses it.
     measured: Vec<(String, f32)>,
-    /// The layout buffer (`clear` + `push` each frame, no reallocation).
+    /// Reused layout buffer; adding more placements can grow its capacity.
     layout: Vec<Placed>,
     /// The text galley cache.
     texts: Vec<TextCache>,
@@ -833,7 +833,8 @@ impl StatusBar {
 
     /// Fill a buffer with the item list to hand to the painter (slots and gate decisions included).
     /// The order is the built-in rendering's layout order (left → centre → right, with the
-    /// declarations outside the list after the slot list). No allocation.
+    /// declarations outside the list after the slot list). Reuses row storage;
+    /// new rows or longer IDs can allocate, as can application permission policies.
     pub(crate) fn collect_items(
         &self,
         custom: &[StatusItemDecl],
@@ -1345,7 +1346,7 @@ fn text_galley(
             let changed = cache.key != key || cache.text.is_empty();
             if changed {
                 cache.key = key;
-                // Rewritten only when the displayed value changes (once a minute) — the buffer is reused, so there is no allocation either.
+                // Reformat when the displayed time or format changes, reusing text capacity where sufficient.
                 now.format_into_with(
                     &mut cache.text,
                     format,
@@ -1401,7 +1402,7 @@ fn badge_overhang(icon_size: f32, text_w: f32) -> f32 {
     (pill_w - pill_h * BADGE_OVERLAP).max(0.0)
 }
 
-/// Write the badge number into a buffer — `99+` past 99. No allocation (the buffer is reused).
+/// Write the badge number into a buffer — `99+` past 99. Reuses its allocation when capacity is sufficient.
 fn write_badge(buf: &mut String, unread: u32) {
     buf.clear();
     if unread > 99 {

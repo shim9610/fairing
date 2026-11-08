@@ -1,11 +1,10 @@
 //! The parametric icons — drawing functions that take their state as an argument.
 //!
 //! Wi-Fi strength, battery level, volume, Bluetooth, signal and the progress ring. Drawn in code
-//! rather than as static SVGs. Every function draws on the 24-grid into **the largest square
-//! inside `rect`** and stays within that square, stroke width included (the test
-//! `parametric_shapes_stay_inside_the_rect`). The one exception is [`battery`] — a battery is a
-//! wide shape by nature, so it stretches the 24-grid horizontally and vertically and uses the
-//! whole `rect` (filling the space the status bar allots it at `size × 1.4`).
+//! rather than as static SVGs. Grid coordinates map into the largest square inside
+//! `rect`; [`battery`] instead maps to the whole rectangle. The supplied stroke
+//! width can extend painted bounds beyond `rect`. The
+//! `parametric_shapes_stay_inside_the_rect` test checks its fixed 2 px stroke style.
 //!
 //! # The crossfade (A7)
 //!

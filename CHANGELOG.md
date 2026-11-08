@@ -138,6 +138,8 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Fixed
 
+- Avoid a `ProgressRing` thickness-clamp panic for requested diameters below 2 du.
+  The thickness floor now stays within half the resolved diameter.
 - Assurance acceptance checks remain active with optimized Python. Kernel receipts
   reject incomplete input manifests, and empty/invalid profile selections cannot
   certify protected coverage.
@@ -171,8 +173,9 @@ for source changes, queue/display defaults and recovery behavior.
 
 Nothing has been published to crates.io yet. This will be the first release, 0.1.0.
 
-The crates are licensed under MIT alone. The `fairing-widgets`
-package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geometry it is built from.
+Project-authored code is licensed under MIT. Imported Lucide/Feather icon geometry
+retains its ISC/MIT notices; the `fairing-widgets` package includes `LICENSE-lucide`
+next to the generated geometry. See [third-party notices](THIRD_PARTY.md).
 
 ### `fairing` — the shell
 
@@ -197,7 +200,7 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
   including after finger-size, type-scale or density changes.
   A missing label returns an error describing the available labels. The example tours press the
   same way (`Act::Tap(Spot::Text(..))`, with `Spot::Edge` and `Spot::Page` for the gestures
-  and `Act::MoveBy` for every drag) and have no coordinate form at all.
+  and `Act::DragTo` for drag destinations) rather than absolute window coordinates.
 - The built-in settings screens group their rows in filled cards. A title with no actions is as
   tall as its words, a section heading as tall as its text, an explanation wraps at about seventy
   characters, and the wide settings screen's two titles sit on one line.
@@ -416,9 +419,9 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
   8 du); set, the value is pinned in du. An integrator's `metrics_spec` or injected theme still
   wins, and `build` warns that the TOML was ignored. Before, the crate's metrics overwrote all
   three every frame.
-- The crate carries no font of its own, on purpose: the device gives its faces
-  (`ShellBuilder::fonts`), and the shell says at startup when there is no bold or no face for its
-  language.
+- Fairing adds no application-specific font asset; its egui dependency enables
+  upstream `default_fonts`. Additional product faces use `ShellBuilder::fonts`,
+  with startup diagnostics for missing bold or language coverage.
 - Warnings for what would otherwise fail without a word: a `nav_item` the nav bar will not
   draw — still missing from `[nav_bar] items` on the frame after its `add`, or on a bar that is
   off or in the gesture style — and a shell with no bold face, whose titles then draw in the
@@ -432,7 +435,7 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
   the theme and the language, with no gate checked and no `SettingChanged` sent. The theme comes
   back at once, without the crossfade, and airplane mode is applied last and only ever turns the
   radios off. `[shell] state_dir`, which nothing read, is gone; an old key is ignored.
-- `examples/hello.rs`: the smallest complete app — one screen, the built-in settings, a status
+- `examples/hello.rs`: a small standalone app — one screen, the built-in settings, a status
   bar item and a nav bar item — standing alone, so it can be copied into a new project.
 - Backends through traits only — clock, power, Wi-Fi, Bluetooth, display, audio, network and
   device info — with `Null` defaults and a `Mock` simulator, and custom backends for anything
@@ -479,10 +482,10 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
 - On docs.rs every item behind a feature carries the feature's name.
 - The shell's layout step and the egui area ids it uses are crate-internal; `Shell::layout`
   is how you read the result.
-- What only tests reach into — the shell's declaration registry, gesture engine, toast and
-  heads-up queues and policy driver, and state probes such as the shade's scrim alpha or a
-  screen's layer id — is `#[doc(hidden)]`. It stays callable from your own tests, but it is
-  not API and may change in any release.
+- The registry loan was removed; registration queries use `ShellView`. Remaining
+  `#[doc(hidden)]` diagnostics are still public Rust APIs despite being omitted
+  from normal documentation. See the
+  [API contract map](docs/api-contracts.md) for public-surface review.
 - The shade opens and closes only through the shell (`LaunchAction::OpenOverlay`,
   `ShellHandle::toggle_overlay`); those command paths evaluate the `overlay.open` gate.
 
