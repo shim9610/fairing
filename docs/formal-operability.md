@@ -211,7 +211,7 @@ compiler IDs or source positions are kept. Added/removed fields or variants fail
 CI until their state correspondence is reviewed; stripped or unresolved metadata
 fails extraction rather than silently omitting an entry.
 
-The current profiles contain 793 and 665 declarations respectively; 20 declarations
+The current profiles contain 814 and 686 declarations respectively; 20 declarations
 are direct inputs to the lifecycle/concrete-carrier/session decision proofs. These counts describe
 type declarations, not reachable states or verified application behavior. Other
 declarations remain explicitly unmapped. The inventory includes configuration,

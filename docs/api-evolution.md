@@ -63,6 +63,10 @@ Keep the report and build logs with the implementation PR's evidence.
 | Public free functions, widgets, layout helpers and standalone legacy controls | Preserve their existing public paths and documented behavior. They remain direct application APIs; adding a protected host does not sandbox calls made independently by application code |
 | egui/widget reexports | Preserve public paths; incompatible upstream type changes require an explicit dependency/API migration |
 
+Runner event/recovery callbacks are trusted host code, like credential issuers
+and backend implementations. They are not registered protected UI payloads;
+login/bootstrap and replacement must remain available without a live UI session.
+
 Sealing restricts implementors; object safety and auto traits remain observable
 contracts. Preserve object safety when extending `HostedShell`, for example by
 constraining generic convenience methods to `Self: Sized`. Non-exhaustive structs

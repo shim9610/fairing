@@ -57,7 +57,30 @@ impl fairing::elements::Element for ConsumerElement {
     }
 }
 
+// Unknown future read errors must remain refusals for downstream callers.
+fn read_error_kind(error: fairing::access::SessionReadError) -> &'static str {
+    use fairing::access::SessionReadError;
+    match error {
+        SessionReadError::Revoked => "revoked",
+        SessionReadError::Expired => "expired",
+        SessionReadError::Updating => "updating",
+        _ => "denied",
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    assert_eq!(
+        read_error_kind(fairing::access::SessionReadError::Revoked),
+        "revoked"
+    );
+    assert_eq!(
+        read_error_kind(fairing::access::SessionReadError::Expired),
+        "expired"
+    );
+    assert_eq!(
+        read_error_kind(fairing::access::SessionReadError::Updating),
+        "updating"
+    );
     let mut protected_host = Harness::from_builder(|ctx| {
         let protected_config =
             fairing::ShellConfig::default().configure(|c| c.access.session_tokens = true);
