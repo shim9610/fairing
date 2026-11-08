@@ -168,7 +168,7 @@ impl GestureEngine {
         self.screen = frame.screen;
         // `enabled = false`: no gesture (an edge swipe, a long press, a fling) is raised, but **the press
         // tracking is kept** — the emergency gesture, decided through [`GestureEngine::hold`], is
-        // a safety device and stays. Every edge is treated as blocked.
+        // retained as a shell shortcut. Every edge is treated as blocked.
         let disabled = GestureFrame {
             blocked: EdgeMask::ALL,
             regions: RegionZones::NONE,

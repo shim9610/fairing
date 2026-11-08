@@ -433,8 +433,8 @@ fn overflowing_notifications_cap_the_badge() -> fairing::Result<()> {
     Ok(())
 }
 
-/// The A6 stack: two toasts **do not look glued together**. The place narrows by exactly as much as the push-up
-/// (8 px), so the gap between the places is larger than that — once the entry and the push-up settle a gap is left between the two boxes.
+/// The settled toast boxes leave a vertical gap. The test compares their rectangles
+/// after entry and push-up animations complete.
 #[test]
 fn stacked_toasts_keep_a_visible_gap() -> fairing::Result<()> {
     let mut h = Harness::new(single_level_access(), Services::null())?;

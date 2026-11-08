@@ -1,22 +1,14 @@
-//! **One frame with every control on it, for looking at a palette.**
+//! Palette-review sheet containing samples of the control widgets.
 //!
-//! `cargo run -p fairing --release --example palette_sheet --features "runner-x11 mock" --
-//! --tour out/ --panel-mm=305x381 --preset=base --theme=dark`
+//! ```text
+//! cargo run -p fairing --release --example palette_sheet --features "runner-x11 mock" -- --tour out/ --panel-mm=305x381 --preset=base --theme=dark
+//! ```
 //!
-//! **`--panel-mm` matters here more than anywhere else.** Without it the shell runs the
-//! density-unaware fallback, which lands `du` roughly twice the size it takes on a real panel — and
-//! since `du` does not shrink, the controls then overrun a half-width column and the
-//! sheet stops being one frame.
-//!
-//! The other examples are each about something — a shell, an integrator's chrome, the motion
-//! tokens. None of them puts the whole control vocabulary in one shot, so comparing two palettes
-//! meant comparing two different screens and trusting memory for the rest. This does nothing but
-//! draw the vocabulary once, densely, at a fixed size: switch on and off, checkbox, radio,
-//! segmented, slider at three values, the three button kinds, rows with and without an icon, a
-//! disabled row, and the four severity colours side by side.
-//!
-//! It is a **review surface, not a demo** — nothing here is interactive beyond what egui gives a
-//! widget for free, and the values are fixed so two renders differ only by their colours.
+//! The sheet uses a fixed layout and initial values for screenshot comparison.
+//! `--panel-mm` supplies the physical metadata used for size conversion. Without
+//! it, the density fallback can change how many controls fit in the window.
+//! The tour checks that the final sample row is visible. This is a finite review
+//! surface, rather than coverage of every widget state or product layout.
 
 use fairing::layout::ExpandableRow;
 use fairing::runner::{self, Options};
@@ -90,11 +82,8 @@ const BOX_ON: usize = 2;
 /// The empty checkbox.
 const BOX_OFF: usize = 3;
 
-/// The values every control is frozen at, so two palettes differ only in colour.
-///
-/// The four flags are one specimen each — an on control and an off one of each kind, side by side —
-/// so they are a `[bool; 4]` rather than four fields; a control takes `&mut bool`, and a fixed array
-/// hands out four independent ones without four names that only differ by their state.
+/// Initial values for the palette-review controls.
+/// The flags provide separate on/off specimens for switch and checkbox samples.
 struct Fixed {
     /// `[switch on, switch off, checkbox on, checkbox off]`.
     flags: [bool; 4],
@@ -126,8 +115,8 @@ struct Fixed {
 }
 
 impl Fixed {
-    /// One flag by index, named at the call site. An out-of-range index lands on the first slot
-    /// rather than panicking — this is a review sheet, and a wrong specimen beats a dead window.
+    /// Borrow one sample flag by index. An out-of-range index uses the first slot,
+    /// with spare as the final fallback.
     fn flag(&mut self, i: usize) -> &mut bool {
         let i = if i < self.flags.len() { i } else { 0 };
         self.flags.get_mut(i).unwrap_or(&mut self.spare)
@@ -181,12 +170,8 @@ fn main() -> fairing::Result<()> {
     }
 }
 
-/// The config: `--config=<file.toml>` for a whole candidate palette, then `--preset=<name>` and
-/// `--theme=dark|light` on top of it.
-///
-/// The config route is what makes this useful for a palette that does not ship: `[theme.palette]`
-/// takes role → `"#RRGGBB"` for all fourteen roles, so a candidate can be tried, looked at and
-/// thrown away without touching [`Preset`](fairing::theme::Preset) or the palette gate.
+/// Load a candidate palette through --config, then apply --preset and --theme
+/// overrides. Palette role overrides are read from [theme.palette].
 fn config() -> fairing::Result<ShellConfig> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let path = args.iter().find_map(|a| a.strip_prefix("--config="));

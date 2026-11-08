@@ -87,6 +87,4 @@ They are recorded as project-generated assets rather than imported assets in
 [third-party notices](../../THIRD_PARTY.md). The imported Lucide subset in
 `assets/icons/` retains its separate ISC/MIT notices.
 
-They are distributed under the MIT licence, the same as the repository's code (`LICENSE`). Protecting the name and the logo as trademarks would mean excluding brand marks
-from the code licence, as is common; the repository owner has chosen to keep them under the code
-licence.
+The assets are distributed under the MIT licence; see the repository's `LICENSE`.

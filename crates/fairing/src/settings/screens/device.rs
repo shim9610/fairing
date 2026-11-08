@@ -7,10 +7,9 @@ use super::{
 
 /// The `settings.display` screen's body, **without** the scroll wrapper.
 ///
-/// Public so a built-in can be a starting point rather than a wall: drop it into a screen of
-/// your own, or call it and add rows around it. `page` is not applied here - hand it to
-/// [`layout::page`](crate::layout::page) as the built-in declaration does, or your screen
-/// will not scroll.
+/// Use this body inside an application-owned screen, optionally with additional
+/// rows. It supplies no scroll wrapper; use [`layout::page`](crate::layout::page)
+/// or another scrolling container when needed.
 pub fn display_body(ui: &mut Ui, cx: &mut Cx<'_>) {
     let s = cx.strings;
     let info = cx.services.display.info();
@@ -83,10 +82,9 @@ pub fn display_body(ui: &mut Ui, cx: &mut Cx<'_>) {
 }
 /// The `settings.sound` screen's body, **without** the scroll wrapper.
 ///
-/// Public so a built-in can be a starting point rather than a wall: drop it into a screen of
-/// your own, or call it and add rows around it. `page` is not applied here - hand it to
-/// [`layout::page`](crate::layout::page) as the built-in declaration does, or your screen
-/// will not scroll.
+/// Use this body inside an application-owned screen, optionally with additional
+/// rows. It supplies no scroll wrapper; use [`layout::page`](crate::layout::page)
+/// or another scrolling container when needed.
 pub fn sound_body(ui: &mut Ui, cx: &mut Cx<'_>) {
     let s = cx.strings;
     // The backend is the original where there is one. With the `Null` default the setting
@@ -155,10 +153,9 @@ pub fn sound_body(ui: &mut Ui, cx: &mut Cx<'_>) {
 }
 /// The `settings.locale` screen's body, **without** the scroll wrapper.
 ///
-/// Public so a built-in can be a starting point rather than a wall: drop it into a screen of
-/// your own, or call it and add rows around it. `page` is not applied here - hand it to
-/// [`layout::page`](crate::layout::page) as the built-in declaration does, or your screen
-/// will not scroll.
+/// Use this body inside an application-owned screen, optionally with additional
+/// rows. It supplies no scroll wrapper; use [`layout::page`](crate::layout::page)
+/// or another scrolling container when needed.
 pub fn locale_body(ui: &mut Ui, cx: &mut Cx<'_>) {
     // Every language there is a table for — the built-in ones and the integrator's — each named
     // in its own language, as a language list is. The choice is live: the next frame is in it.
@@ -182,10 +179,9 @@ pub fn locale_body(ui: &mut Ui, cx: &mut Cx<'_>) {
 }
 /// The `settings.datetime` screen's body, **without** the scroll wrapper.
 ///
-/// Public so a built-in can be a starting point rather than a wall: drop it into a screen of
-/// your own, or call it and add rows around it. `page` is not applied here - hand it to
-/// [`layout::page`](crate::layout::page) as the built-in declaration does, or your screen
-/// will not scroll.
+/// Use this body inside an application-owned screen, optionally with additional
+/// rows. It supplies no scroll wrapper; use [`layout::page`](crate::layout::page)
+/// or another scrolling container when needed.
 pub fn datetime_body(ui: &mut Ui, cx: &mut Cx<'_>) {
     let s = cx.strings;
     let now = cx.services.clock.now();
@@ -384,10 +380,9 @@ fn pairing_card(ui: &mut Ui, cx: &mut Cx<'_>, snapshot: &crate::services::BtSnap
 }
 /// The `settings.power` screen's body, **without** the scroll wrapper.
 ///
-/// Public so a built-in can be a starting point rather than a wall: drop it into a screen of
-/// your own, or call it and add rows around it. `page` is not applied here - hand it to
-/// [`layout::page`](crate::layout::page) as the built-in declaration does, or your screen
-/// will not scroll.
+/// Use this body inside an application-owned screen, optionally with additional
+/// rows. It supplies no scroll wrapper; use [`layout::page`](crate::layout::page)
+/// or another scrolling container when needed.
 pub fn power_body(ui: &mut Ui, cx: &mut Cx<'_>) {
     // The request awaiting confirmation. **It is kept in egui's memory** — the body has to be a plain
     // `fn` for `settings.home` to draw the same function into the right column on a wide screen —
@@ -505,10 +500,9 @@ fn power_rows(ui: &mut Ui, cx: &mut Cx<'_>, pending: &mut Option<PowerRequest>) 
 }
 /// The `settings.about` screen's body, **without** the scroll wrapper.
 ///
-/// Public so a built-in can be a starting point rather than a wall: drop it into a screen of
-/// your own, or call it and add rows around it. `page` is not applied here - hand it to
-/// [`layout::page`](crate::layout::page) as the built-in declaration does, or your screen
-/// will not scroll.
+/// Use this body inside an application-owned screen, optionally with additional
+/// rows. It supplies no scroll wrapper; use [`layout::page`](crate::layout::page)
+/// or another scrolling container when needed.
 pub fn about_body(ui: &mut Ui, cx: &mut Cx<'_>) {
     // Whatever the device's `InfoBackend` knows — with the `Null` default, none of it.
     let s = cx.strings;

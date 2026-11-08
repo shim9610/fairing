@@ -10,8 +10,8 @@ use super::{
 };
 
 impl Workspace {
-    /// Frame stage 9: draw the desktop or the Pane. Zero heap allocation per frame — it only works
-    /// out values and registers `Area`s (cloning a `Context` bumps an `Arc` refcount).
+    /// Frame stage 9: coordinate desktop or pane rendering through egui Areas.
+    /// egui rendering and application callbacks can allocate during this call.
     pub(crate) fn ui(
         &mut self,
         ui: &mut egui::Ui,

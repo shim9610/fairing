@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the committed architecture DOT sources as self-contained accessible SVGs."""
+"""Render architecture DOT sources as standalone SVGs with titles and descriptions."""
 from pathlib import Path
 import re
 import subprocess

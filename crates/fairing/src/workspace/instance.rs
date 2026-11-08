@@ -1,13 +1,11 @@
 //! An instance — one running screen.
 //!
 //! A resident screen stays with its declaration and the instance holds only the declaration id —
-//! the screen is taken from the registry for the length of a call and put straight back, so there
-//! is one owner, no shared cell and no way to reach it twice. A spawned one owns a
-//! `Box<dyn Screen>`. Each instance being drawn borrows a different `LayerId`, so a transition
-//! moves the layer whole. The layer ids are a **finite set** (the Pane slot = the stack
-//! depth) — egui 0.36's `Areas` never prunes a layer once registered (`memory/mod.rs`
-//! `Areas::set_state` only pushes into `order`, and `end_pass` only sorts), so a new id per
-//! instance would grow `areas` / `order` for ever on a device left running for days.
+//! the screen is taken from the registry for one call and returned afterward. A
+//! reentrant lookup through that registry finds an empty slot during the loan.
+//! A spawned instance owns its screen handle. Drawn instances borrow distinct
+//! layer slots so transitions can transform their screen layers independently.
+//! Reusing layer IDs avoids creating a new egui area identity for every instance.
 
 use crate::icons::IconRef;
 use crate::screen::{BackAction, ChromePolicy, Cx, Lifecycle, ScreenDecl, SplitSupport};

@@ -116,20 +116,11 @@ pub(super) fn tile_value_arc(
         value_ring(painter, puck.center(), r, value, egui::Stroke::new(w, ink));
     }
 }
-/// **Whether a tile's puck is filled with the accent.**
+/// Whether the tile uses its lit fill.
 ///
-/// A [`TileKind::Toggle`] that is on, and a tile **lit from [`QuickTile::lit_by`]** while its key
-/// holds `Bool(true)`. It used to be `TileState::On | TileState::Value(_)`, which
-/// made every slider tile permanently accent-filled — a brightness of 40 % is still a `Value`,
-/// never an `Off` — so Brightness and Volume sat in the shade looking exactly as "on" as Wi-Fi,
-/// and five of six tiles were a block of accent. Accent that is always on says nothing.
-///
-/// The kinds without an on/off (`Action`, `Status`, `Panel`, `Gauges`) do not fill **on their
-/// own**; they are buttons, and a button that looks latched is a lie. But when the declaration
-/// names a `lit_by` key, the device is saying the thing behind the tile is on (a cable is in, a
-/// heater is at temperature) — that is a real state, and `lit_by` promises the tile is drawn lit
-/// while it holds. An unfilled puck for it drew `On` and `Off` identically. A slider's readout is
-/// its value arc, which is a shape and reads at a glance; `lit_by` on a slider is ignored.
+/// Toggles follow their state. Action, status, panel and gauge tiles can use a
+/// `QuickTile::lit_by` Boolean setting. Sliders use their value arc and ignore
+/// `lit_by`.
 pub(super) fn tile_is_filled(tile: &QuickTile, state: TileState) -> bool {
     state == TileState::On
         && match tile.kind {
@@ -189,13 +180,7 @@ pub(super) fn paint_tile_with(
     };
     painter(ui.painter(), &mut tile);
 }
-/// The built-in tile: **a round toggle with a label below it**, on the panel's `ground`.
-///
-/// It used to paint the whole cell in the accent colour and put the label on top. That meant (1) an
-/// enabled tile stood out on screen as a block of accent colour, (2) the label sat on the fill and
-/// needed its contrast matched separately, and (3) the slider's value band fought the label for the
-/// same place. Making **only the icon a disc**, as One UI and iOS do, and leaving the label on the
-/// panel's ground, makes all three go away.
+/// Draw a built-in quick tile as an icon disc with its label below on the panel ground.
 pub(super) fn draw_builtin_tile(
     ui: &mut egui::Ui,
     parts: &mut CxParts<'_>,

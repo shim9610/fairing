@@ -50,9 +50,8 @@ impl Level {
         }
     }
 
-    /// The accent colour role (a toast's stripe, a heads-up icon). `Info` uses no accent and
-    /// keeps the body colour — colour on information notifications too would bury the warnings
-    /// and errors.
+    /// Severity colour role for toast stripes and heads-up icons.
+    /// `Info` uses the body-text role; other levels use their corresponding tone role.
     #[must_use]
     pub fn role(self) -> ColorRole {
         match self {

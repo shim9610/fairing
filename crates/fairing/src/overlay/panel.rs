@@ -2,7 +2,7 @@
 //! Slider expansion row), the notification list below (a `ScrollArea`), and the user / lock /
 //! settings footer at the bottom. Plus the panel's bottom handle.
 //!
-//! Zero heap allocation per frame: text is drawn from the galley cache
+//! Cached rendering inputs: text is drawn from the galley cache
 //! ([`PanelText`]) that [`Overlay`](super::Overlay) fills at the front of the frame, and names and
 //! labels are borrowed as `&str`. A `LaunchAction` or an id is cloned only on the frame a tap
 //! happens.
@@ -421,7 +421,7 @@ pub(super) fn show(
         list_offset = out.state.clamped_offset().y;
         // Where the list overflows, its top and bottom ends fade into the panel's colour. A card simply
         // cut at a scroll boundary reads as "broken", and a fade reads as "there is more" — iOS and One
-        // UI use the same device. Two triangles, so it costs nothing.
+        // UI use the same device. The fade adds two triangles.
         let overflow = out.content_size.y > list.height() + 0.5;
         if overflow {
             let fade = style.gap * 1.6;

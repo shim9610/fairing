@@ -1,21 +1,12 @@
-//! Secure input — **the shell does not keep what it was shown.**
+//! Password-field undo retention.
 //!
-//! The crate owns no secret. [`TextField::new`](fairing::widgets::TextField::new) borrows a
-//! `&mut String`, and [`WifiBackend::connect`](fairing::services::WifiBackend::connect) takes the
-//! PSK by `&str`, so an integrator can hold the buffer in whatever type they trust — a zeroizing
-//! wrapper, say — and hand it straight to the backend without it passing through the shell.
+//! The caller supplies the text buffer. These tests inspect egui's retained TextEdit
+//! state after input, checking that password-field undo snapshots are cleared. A
+//! plain field is the control, so absent typing or focus cannot make the password
+//! assertion pass by itself. This checks undo retention, not all credential storage
+//! or memory-erasure behavior.
 //!
-//! That leaves the crate exactly one obligation, and it is one the caller cannot discharge from
-//! outside: **the widget must not keep a copy of what it drew.** egui feeds the raw text into the
-//! `TextEdit` undoer every frame whatever `password` says (`text_edit/builder.rs` calls
-//! `feed_state` with `text.as_str().to_owned()` on both sides of input handling). The clipboard is
-//! guarded there by `copy_if_not_password` and the accessibility text by `mask_if_password`; the
-//! undoer is not. Those snapshots — up to `Undoer::max_undos`, a hundred of them — live in egui's
-//! memory under the widget's id and outlive the field, out of reach of anything the caller wraps
-//! its own buffer in.
-//!
-//! The rules are the other integration tests': written as `fairing::Result<()>` with no `panic!`
-//! and no `unwrap`.
+//! The tests use `fairing::Result<()>` without `panic!` or `unwrap`.
 
 #![cfg(feature = "mock")]
 

@@ -83,12 +83,7 @@ impl<'a> FeatureCard<'a> {
         self
     }
 
-    /// **Light this card up** — the one of a set the screen wants pressed first.
-    ///
-    /// It takes the accent at `fill_alpha` rather than a solid `Primary`, and its disc turns
-    /// primary with it. Solid was tried on the kiosk's tiles and flooded the card
-    /// (D-the quick-tile rule): once the whole card is the accent there is nothing left for the
-    /// action inside it to be, and a set of four becomes a wall.
+    /// Highlight this card using the accent at `fill_alpha`, with a primary action disc.
     #[must_use]
     pub fn lit(mut self, lit: bool) -> Self {
         self.lit = lit;
@@ -116,13 +111,9 @@ impl<'a> FeatureCard<'a> {
         self
     }
 
-    /// Draw it at the cursor, taking the width it is given.
-    ///
-    /// **The height comes from the content**, not from a number the caller guessed. Title, body and
-    /// disc are measured first and the card is made to hold them with an equal margin all round;
-    /// [`rows`](Self::rows) only sets a floor, so a row of cards with different amounts of text
-    /// still lines up. Sizing the frame independently of what goes in it is how the first version
-    /// put the title against the top edge and let the disc hang out of the bottom.
+    /// Draw at the current cursor, taking the available width.
+    /// Title, supporting text and action are measured before determining the height;
+    /// [`rows`](Self::rows) provides a minimum height.
     pub fn show(self, ui: &mut egui::Ui, cx: &mut Cx<'_>) -> FeatureCardPick {
         let m = &cx.theme.metrics;
         // **`content_inset`, on both axes.** That token is the crate's answer to this exact

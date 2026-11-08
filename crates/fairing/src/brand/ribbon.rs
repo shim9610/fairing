@@ -1,10 +1,8 @@
-//! The ribbon mesh. It fills the space between two boundary curves with a strip and
-//! puts an alpha-0 feather only on the edges that meet the background.
+//! Mesh helpers for authored paired boundary curves.
 //!
-//! **Why a strip.** `epaint`'s convex fill is a triangle fan from point 0, so it cannot draw a
-//! concave silhouette. Sampling both curves N times at the same `t` and making a quad out of
-//! each neighbouring pair keeps the triangles right however concave the outline gets. This is an
-//! authored strip, not runtime triangulation.
+//! Matching samples form a strip between the boundaries, with alpha-zero feathering
+//! on edges that meet the background. Callers must provide curves whose paired
+//! samples define the intended strip; arbitrary concave outlines are not triangulated.
 
 // This is procedural geometry. The names in this file use the brand design's formula notation as it stands —
 // `s` (the object unit) · `w`/`h` (the screen) · `t` (a curve parameter) · `u`/`v` (screen fractions) ·

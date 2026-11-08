@@ -1,19 +1,12 @@
-//! The Abyss procedural background. Seven layers plus the legibility veil, baked into **one
-//! mesh**.
+//! Abyss procedural background, combining seven layers and a veil into one mesh.
 //!
-//! `Mesh::colored_vertex` uses `WHITE_UV` and the default texture is the font atlas, so every
-//! colour-only triangle goes into the same mesh — **one draw call**.
+//! Object sizes use the content rectangle's short side; edge anchors use its width
+//! and height. Colours come from the selected palette or the configured art colours.
+//! The mesh uses egui/epaint colour vertices. Backend draw-call batching and final
+//! presentation are determined by the host renderer.
 //!
-//! **No fixed coordinates are used**. There are only two units:
-//! - `s = min(w, h)` — the object unit. The mantas, fish, bubbles and coral are proportional to it,
-//!   so however the screen stretches they are not squashed.
-//! - `w` · `h` — the band and anchor units. Only things pinned to a screen edge are proportional to
-//!   these.
-//!
-//! **Legibility beats composition.** A desktop label is stamped as an `on_surface` galley with
-//! neither a shadow nor a plate behind it, so the background is a step darker than the original art
-//! and the hero manta drops to the lower left at `t = 0.34` rather than sitting dead centre,
-//! leaving the middle of the icon grid clear. What is left over is the legibility veil's job.
+//! The composition and optional veil affect the background beneath desktop content;
+//! check label contrast after changing artwork, palette or display geometry.
 
 // This is procedural geometry. The names in this file use the formula notation as it stands —
 // `s` (the object unit) · `w`/`h` (the screen) · `t` (a curve parameter) · `u`/`v` (screen fractions) ·
@@ -35,21 +28,14 @@ use std::sync::Arc;
 /// **silently disappears**.
 pub(super) const MAX_VERTS: usize = 4096;
 
-/// How many stops the water column's gradient has. Raised from 10 to 24 to cut the
-/// banding — the cost is 28 vertices, no draw call and no texture. There is no dithering (a
-/// `Shape::Mesh` has no source of per-pixel noise).
+/// Number of vertical water-gradient stops. These add vertices to the existing mesh.
 const WATER_STOPS: usize = 24;
 
-/// The nine colours Abyss uses. By default derived from the palette.
-///
-/// **The values are measured from the original art.** The median per band was taken from the five
-/// backgrounds in `assets/brand/` and a piecewise-linear fit run over the water column's vertical
-/// profile.
+/// Colours used by the procedural background. Defaults are derived from the palette;
+/// [`AbyssColors::art`] supplies a fixed alternative based on the reference artwork.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AbyssColors {
-    /// The very top, where the surface caustics lie (`v = 0`). **Without this fourth stop in the
-    /// water column** the top 5 % alone is out by as much as 55 RGB — the original's surface shine
-    /// cannot be drawn in two segments.
+    /// Top colour stop of the water column (`v = 0`), used around the surface caustics.
     pub water_glow: Color32,
     /// Just below the surface (`v ≈ 0.06`).
     pub water_surface: Color32,
@@ -59,10 +45,7 @@ pub struct AbyssColors {
     pub water_deep: Color32,
     /// The reef and rock silhouettes.
     pub silhouette: Color32,
-    /// The floor. **Not sand** — the original art has no warm ground (only 0.001–0.7 % of all pixels
-    /// have `R > B`, and those are the highlights on a manta's belly) and what reads as the floor is
-    /// **backscattered haze** of the same family as the water. Which is why it is called `floor` and
-    /// not `sand`.
+    /// Floor haze colour, from the same colour family as the water column.
     pub floor: Color32,
     /// The god rays.
     pub light: Color32,
@@ -73,13 +56,8 @@ pub struct AbyssColors {
 }
 
 impl AbyssColors {
-    /// Derived from the palette. Override `[theme.palette] primary` alone and the water colour
-    /// follows — this is where following the palette is carried out rather than merely promised.
-    ///
-    /// **Not exactly the original art.** The original's mid-water is blue (`G/B = 0.54`) while the
-    /// palette's `primary` is cyan (`G/B = 0.85`), so that colour is nowhere on the line joining
-    /// `primary` and `background` (the per-channel `t` spreads over 0.33–0.96). Where the original
-    /// exactly is wanted, use [`AbyssColors::art`] — one line of `[desktop.abyss] colors = "art"`.
+    /// Derive background colours from the theme palette.
+    /// Use [`AbyssColors::art`] or `[desktop.abyss] colors = "art"` for fixed art colours.
     #[must_use]
     pub fn from_palette(p: &Palette) -> Self {
         Self {
@@ -100,7 +78,7 @@ impl AbyssColors {
         }
     }
 
-    /// Fixed colours matched to the original art (they do not follow the palette). All measured values.
+    /// Fixed art colours, independent of the active palette.
     #[must_use]
     pub fn art() -> Self {
         Self {
@@ -117,11 +95,8 @@ impl AbyssColors {
     }
 }
 
-/// The Abyss background's composition parameters.
-///
-/// **All of them are authored values or caps on a count**, and there is no colour here — the
-/// colours are derived from `&Theme` every frame. A plain `Copy` struct rather than a consuming
-/// builder: struct update syntax is enough, and there is no rule to learn.
+/// Composition parameters: authored geometry values and count caps.
+/// Colours are derived from the theme unless explicitly overridden.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AbyssParams {
     /// The quality tier.
@@ -144,7 +119,7 @@ pub struct AbyssParams {
     pub veil_field: f32,
     /// The bottom veil's alpha.
     pub veil_bottom: f32,
-    /// Move the mantas every frame. **It breaks idling at 0 fps.**
+    /// Animate the mantas, requesting continued updates while enabled.
     pub animate: bool,
     /// The bake budget (ms).
     pub bake_budget_ms: f32,
@@ -287,11 +262,9 @@ struct Baked {
     tier: AbyssTier,
 }
 
-/// The Abyss background. It caches the baked mesh within itself.
+/// Cached procedural-background mesh.
 ///
-/// `Wallpaper::ThemedPainter`'s callback is an `Fn`, so the cache is inside a **`RefCell`**.
-/// `OnceLock` / `LazyLock` are banned by `xtask sync-check` and `Mutex` / `RwLock` by the no-locks rule — a
-/// `RefCell` is a means the crate already uses.
+/// The `Fn` wallpaper callback accesses its mutable cache through a `RefCell`.
 pub struct Abyss {
     params: AbyssParams,
     cache: RefCell<Option<Baked>>,
@@ -310,8 +283,8 @@ impl std::fmt::Debug for Abyss {
 }
 
 impl Abyss {
-    /// Build one. With `animate = true` it logs a warning once at startup — it is a choice that
-    /// breaks idling at 0 fps, so it does not pass in silence.
+    /// Build the background. Enabling animation logs a warning because it requests
+    /// continued updates rather than remaining idle.
     #[must_use]
     pub fn new(params: AbyssParams) -> Self {
         if params.animate {
@@ -343,7 +316,7 @@ impl Abyss {
             .map_or(self.params.tier, |b| b.tier)
     }
 
-    /// Draw. On a cache hit, all the frame does is derive eight colours, compare the key and `Arc::clone`.
+    /// Draw. A cache hit reuses the mesh after deriving colours and comparing the key, using `Arc::clone`.
     pub fn paint(&self, painter: &egui::Painter, rect: Rect, theme: &Theme) {
         self.tick_freeze(theme);
         let ppp = painter.pixels_per_point();
@@ -546,11 +519,7 @@ fn bake_tier(
     mesh
 }
 
-/// 1. The water column — a 24-stop vertical gradient. The whole screen.
-///
-/// **There are three segments**. Two could not follow the surface shine in the top 5 %
-/// and were out by as much as 55 RGB. Adding the single knee at `v = 0.06` brings it down to 12 —
-/// at a cost of one `Color32` and no vertices (the mesh interpolates 24 stops either way).
+/// Paint the water-column gradient from the configured colour stops.
 fn water_column(mesh: &mut Mesh, g: Geo, c: AbyssColors) {
     /// Where the surface shine ends.
     const KNEE_GLOW: f32 = 0.06;
@@ -697,18 +666,7 @@ fn fish(mesh: &mut Mesh, g: Geo, c: AbyssColors, p: AbyssParams) {
     }
 }
 
-/// 7. The reef floor — dark silhouettes over the backscattered haze.
-///
-/// **There is no sand**. Only 0.001–0.7 % of the pixels across the original art have
-/// `R > B`, and even those are highlights on a manta's belly. What reads as the floor is haze of the
-/// same family as the water, so the first draft's bright sand band was painting a warm grey that is
-/// not in the art — the largest error of the eight colours (198 RGB).
-///
-/// The ridge is **a low floor with high crests**. The first draft was a uniform slab (a crest
-/// deviation of 0.055 h) and read as a wall rather than a horizon — the original swells over
-/// 0.23–0.35 h.
-///
-/// **In portrait it climbs the left and right walls into a canyon.**
+/// Paint the reef silhouettes and floor haze.
 fn reef(
     mesh: &mut Mesh,
     g: Geo,
@@ -920,18 +878,9 @@ fn hexagon(mesh: &mut Mesh, center: Pos2, r: f32, color: Color32) {
     ribbon::convex(mesh, &poly, color);
 }
 
-/// The legibility veil — one vertical 4-stop scrim. 8 vertices, 6 triangles.
-///
-/// **The top band is not the status bar's place.** The background is drawn into `content`, with the
-/// status bar and nav bar taken out, and the status bar lays down its own opaque `Surface`. What the
-/// top band covers is **the first row of icons**, and it uses `status_bar_height` only because that
-/// is the one token that follows the device's finger metrics (which is why it is read only inside
-/// the two clamps).
-///
-/// **The veil's colour is `background`** — not `scrim`. `scrim` is a separate token carrying an
-/// alpha of its own, and multiplying two alphas blurs the meaning; above all, **a black veil is
-/// wrong under a light preset**. Pushing the background towards `background` is exactly the
-/// direction `on_surface` is designed to contrast against.
+/// Paint a four-stop veil over the procedural background.
+/// Its RGB colour comes from `Background`, with the configured top, grid and bottom
+/// alpha values. Geometry uses the content rectangle and resolved metrics.
 fn veil(mesh: &mut Mesh, g: Geo, ground: Color32, p: AbyssParams, m: &Metrics) {
     let top_band = (1.6 * m.status_bar_height).clamp(0.10 * g.h, 0.28 * g.h);
     let bottom_band = (m.dock_height + m.page_indicator_height).clamp(0.10 * g.h, 0.30 * g.h);

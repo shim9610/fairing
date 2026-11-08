@@ -1,7 +1,7 @@
 //! The built-in settings screens. Feature `settings`.
 //!
 //! What it checks: whether an item stays away entirely where there is no backend, whether a manufacturer can
-//! override it **at any layer**, and whether the power **never goes off on its own**.
+//! override registrations and layout, and whether power requests wait for host commit.
 //!
 //! The rules are the other integration tests': written as `fairing::Result<()>` with no `panic!` and no `unwrap`.
 
@@ -67,7 +67,7 @@ fn add_all_registers_the_built_in_screens() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **With no backend the item stays away entirely.** Having to press it to be told "not supported" is the worst of it.
+/// Entries requiring an unavailable backend are omitted.
 #[test]
 fn screens_without_a_backend_are_not_registered() -> fairing::Result<()> {
     let h = bare_shell(SettingsConfig::default())?;
@@ -167,8 +167,8 @@ fn changing_a_setting_reaches_the_integrator() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **The power never goes off on its own.** A screen asking raises only the event, and it runs when the integrator has
-/// tidied up and calls `commit_power` — not calling it is the refusal.
+/// A settings-screen request emits one PowerRequest event.
+/// Explicit host commit_power is exercised in the following test.
 #[test]
 fn a_power_request_is_only_an_event() -> fairing::Result<()> {
     let requested = Rc::new(Cell::new(false));
@@ -198,7 +198,7 @@ fn a_power_request_is_only_an_event() -> fairing::Result<()> {
         .filter(|e| matches!(e, ShellEvent::PowerRequest(_)))
         .collect();
     assert_eq!(events.len(), 1, "{events:?}");
-    // The shell did not call the backend — running it is in the integrator's hands.
+    // Confirm that the screen submitted its request.
     assert!(requested.get());
     Ok(())
 }
@@ -311,7 +311,7 @@ fn folding_back_returns_to_one_column() -> fairing::Result<()> {
     Ok(())
 }
 
-/// A tall screen is one column however big it is — split in two, both halves feel cramped.
+/// A portrait-shaped screen retains the one-column settings layout.
 #[test]
 fn a_tall_pane_stays_one_column() -> fairing::Result<()> {
     let mut tall = mock_shell(SettingsConfig::default())?.with_size(800.0, 1280.0);
@@ -333,32 +333,8 @@ fn a_tall_pane_stays_one_column() -> fairing::Result<()> {
     Ok(())
 }
 
-/// A card has to **stand apart from the screen's background.** A screen Pane's default background is `Surface`, so a
-/// card is `SurfaceVariant` — with the two close together the whole group disappears (which really did happen).
-///
-/// # Why the floor is 1.12 and not WCAG 1.4.11's 3.0
-///
-/// It was proposed that the page/card separation be widened to 3.0 so a container is identified by
-/// its own body rather than by an edge. Measured, that is not reachable by any palette that stays
-/// recognisably dark or light:
-///
-/// | | card today | card at 3.0 |
-/// |---|---|---|
-/// | `base dark` | L 0.018 (1.19) | **`#626262`** — a mid grey card on a near-black page |
-/// | `base light` | L 1.000 (1.18) | **`#888888`** — a mid grey card on a white page |
-/// | `abyss dark` | L 0.027 (1.24) | `#676767` |
-/// | `abyss light` | L 0.780 (1.26) | `#959595` |
-///
-/// The target is wrong rather than unreachable. SC 1.4.11 asks for 3.0 on "visual information
-/// required to identify **user interface components** and states" — a thing you locate in order to
-/// operate it. A card is a grouping, and its boundary is decoration; the row inside it is what gets
-/// operated, and that row's own contrast is gated at 4.5 and 3.0 by
-/// `every_preset_meets_the_contrast_floor`. One UI and iOS separate a card by a *small* fill step
-/// plus a shadow, which is exactly the 1.19 plus `Elevation::Raised` here.
-///
-/// The complaint that started it — "big grey boxes repeating, so nothing tells you which element
-/// matters" — is answered by drawing **fewer** cards, not louder ones: `layout::Container`
-/// gives filled, outlined and divider-only, and the built-in settings screens now use the last.
+/// Check the built-in palette card/page pairs against the project's decorative
+/// contrast floor of 1.12. Control-boundary and text contrast have separate tests.
 #[test]
 fn cards_are_distinct_from_the_background() {
     use fairing::theme::{Palette, Preset};
@@ -587,7 +563,7 @@ fn a_wide_slider_row_folds_onto_one_line() {
 }
 
 /// `visual_inset` is **not the grid's alone** — a card and an action bar keep their place too and only draw inwards.
-/// A knob that does nothing is worse than no knob.
+/// The same visual-inset setting is exercised on both containers.
 #[test]
 fn visual_inset_floats_the_card_and_the_bar() -> fairing::Result<()> {
     use fairing::layout::{self, Deco};

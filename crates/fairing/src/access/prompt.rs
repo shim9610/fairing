@@ -30,9 +30,8 @@
 //! flag, and the title says "Checking…" while it is up. The keys are not held for it: the shell
 //! sets no time limit of its own, and a keypad held over an answer that never comes would be a
 //! lock screen nobody gets past. A new attempt takes the flag down with
-//! [`Authenticator::cancel`](super::Authenticator::cancel) and goes in fresh. The flag only goes
-//! down with an answer or with `cancel` — everything here runs on the UI thread, so there is
-//! nothing to race and nothing to time out.
+//! [`Authenticator::cancel`](super::Authenticator::cancel) and goes in fresh. The flag is cleared by a matching answer or by `cancel`; asynchronous outcomes
+//! remain subject to the shell's request-correlation checks.
 //!
 //! # Drawn your way
 //!

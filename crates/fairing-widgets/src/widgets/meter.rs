@@ -657,8 +657,8 @@ mod tests {
         assert!(near(fraction(f32::NAN, &scale), 0.0));
     }
 
-    /// **The pointer's inks clear the non-text floor on the track in every palette, and the
-    /// band is a visible step on it** — the two things the meter is read by.
+    /// Check pointer/track contrast and normal-band colour separation for the
+    /// built-in palette pairs.
     #[test]
     fn the_pointer_and_the_band_are_seen_in_every_palette() {
         for &preset in Preset::ALL {

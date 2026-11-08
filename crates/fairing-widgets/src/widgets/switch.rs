@@ -34,11 +34,8 @@ impl<'a> Switch<'a> {
         Self { on, enabled: true }
     }
 
-    /// Enabled.
-    ///
-    /// Disabled, it senses `hover()` rather than `click_and_drag()`, so the press **falls through**
-    /// to whatever is beneath it (Rule 1.4). Swallowing the tap is what made a disabled switch feel
-    /// broken rather than unavailable — the row under it stopped responding too.
+    /// Enabled state. A disabled control uses hover sensing rather than click/drag
+    /// sensing, allowing another eligible target to handle the press.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
@@ -111,17 +108,10 @@ impl<'a> Switch<'a> {
         response
     }
 
-    /// Draw it **into a rect somebody else owns**, sensing nothing (Rule 1.3).
-    ///
-    /// This is the composition path: a [`ListRow`](super::ListRow) carrying a trailing switch is one
-    /// target of `full width × row_height`, so the switch must not allocate, must not sense, and
-    /// must not grow under the press — a full-bleed row tints instead, and a list whose controls
-    /// grow wobbles. It draws no focus ring either: focus belongs to the row. The owner
-    /// flips the `bool` on its own tap and this call draws the result.
-    ///
-    /// `id` is the owner's, so the travel is remembered per row rather than restarted every frame.
-    /// The track is centred in `rect` on both axes at [`Switch::drawn_size`], whatever size `rect`
-    /// is.
+    /// Draw a switch into a caller-owned rectangle without allocating a separate UI
+    /// slot or sensing a separate press. The owner handles interaction and updates the
+    /// Boolean value. No independent focus ring or press growth is added.
+    /// The row ID keys retained travel animation.
     pub fn draw(self, painter: &egui::Painter, cx: &mut Cx<'_>, id: Id, rect: Rect) {
         let track = Rect::from_center_size(rect.center(), Self::drawn_size(cx.theme));
         self.paint(painter, cx, id, (rect, track), Drive::default());
@@ -382,17 +372,7 @@ mod tests {
     use crate::theme::contrast;
     use egui::{pos2, Rect};
 
-    /// **The knob is visible on whichever face it rests on, in every palette.**
-    ///
-    /// It used to be one flat `Surface` body inside an `OnSurface` ring — the container's own
-    /// ground, which is near-white in a light palette and near-black in a dark one, so a dark-mode
-    /// switch drew a hole rather than a knob. The rule is now the ink of the face: `OnPrimary` at
-    /// rest on, `Muted` at rest off.
-    ///
-    /// `Muted` and not `OnSurface`, which was the first answer and failed the other way round: the
-    /// full-strength ink is near-black in a light palette, so the off knob drew a blot on a white
-    /// track. The floor here is 3.0 either way, and this holds the widget to a role that stays a
-    /// mid-tone in both directions rather than one that only works on one side.
+    /// Check knob/track contrast for the built-in on/off palette combinations.
     #[test]
     fn the_knob_reads_on_both_faces_in_every_palette() {
         for &preset in crate::theme::Preset::ALL {

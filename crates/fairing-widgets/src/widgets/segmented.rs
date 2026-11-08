@@ -22,13 +22,8 @@ use crate::theme::ColorRole;
 use crate::unit::round_u8;
 use egui::{Color32, CornerRadius, FontId, Rect, Response, Sense, Stroke, StrokeKind, Vec2};
 
-/// A row of mutually exclusive options in one track.
-///
-/// It does **not** own the selection: the caller passes the index it holds and is handed back the
-/// index the user picked, the same arrangement [`Switch`](super::Switch) and
-/// `Checkbox` have with their `&mut bool`. A control that kept the index would
-/// force every screen to keep a second copy of state it already has, and a stateless closure
-/// screen has nowhere to put it.
+/// A row of mutually exclusive options. The caller supplies the selected index
+/// and receives a newly picked index in the result.
 #[derive(Debug)]
 pub struct SegmentedControl<'a> {
     labels: &'a [&'a str],
@@ -37,12 +32,8 @@ pub struct SegmentedControl<'a> {
 }
 
 impl<'a> SegmentedControl<'a> {
-    /// The options, and which of them is selected now.
-    ///
-    /// A `selected` past the end is clamped to the last option rather than rejected or drawn as
-    /// "nothing selected". A segmented control has no empty state — it stands for a choice that
-    /// has already been made — so the only two honest answers to a bad index are to panic or to
-    /// clamp, and a device UI does not panic while painting.
+    /// Construct from options and the caller's selected index.
+    /// For nonempty options, an index past the end is clamped to the last option.
     #[must_use]
     pub fn new(labels: &'a [&'a str], selected: usize) -> Self {
         Self {
@@ -52,29 +43,17 @@ impl<'a> SegmentedControl<'a> {
         }
     }
 
-    /// Enabled.
-    ///
-    /// Disabled it senses `hover()` rather than `click()`, so the press falls through to whatever
-    /// is beneath it (Rule 1.4) — a disabled control that swallows the tap makes the screen feel
-    /// broken rather than unavailable.
+    /// Enabled state. A disabled control uses hover sensing rather than click/drag
+    /// sensing, allowing another eligible target to handle the press.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
         self
     }
 
-    /// **Whether the strip form is available here** — `true` when [`Self::show`] would draw one
-    /// track of cells, `false` when it would stack the options into rows.
-    ///
-    /// For a caller that has a *different control* for the crowded case and must choose before it
-    /// draws: a console whose tab row would rather become a dropdown than a half-screen stack
-    /// cannot tell from the option count alone, because the strip is also given up when a label
-    /// does not fit its cell. The answer comes from the same measurement `show` makes, so the two
-    /// cannot drift apart, and it is a per-frame answer — it reads the width `ui` has right now.
-    ///
-    /// A caller that has nothing else to offer should not ask: the stacked form is the shape this
-    /// choice already has elsewhere in the shell (see the module docs), and it is drawn for
-    /// exactly the cases this returns `false` for.
+    /// Whether [`Self::show`] would use a strip at the current width.
+    /// Uses the same measurement as `show`; false selects stacked rows. A caller may
+    /// use this result to choose an alternative control.
     #[must_use]
     pub fn fits(&self, ui: &egui::Ui, cx: &Cx<'_>) -> bool {
         let font = egui::TextStyle::Button.resolve(ui.style());
@@ -385,16 +364,8 @@ impl Strip {
         }
     }
 
-    /// The labels, centred in their cells.
-    ///
-    /// A label's colour is interpolated by how much of the travelling face covers its cell, so
-    /// mid-travel the label being left and the label being arrived at are both legible against
-    /// whatever is actually under them. Switching the colour at the halfway point was the
-    /// alternative and it flashes one label as `OnPrimary` over a ground that is still
-    /// `SurfaceVariant`.
-    ///
-    /// The truncation is defensive only: [`SegmentedControl::cell_width`] has already refused the
-    /// strip form for any label that does not fit, so no label reaches this elided in practice.
+    /// Paint labels with colours interpolated by the selected face's cell coverage.
+    /// The strip measurement rejects labels that do not fit before this paint path.
     fn paint_labels(
         &self,
         painter: &egui::Painter,
@@ -483,14 +454,7 @@ impl Ink {
     }
 }
 
-/// The strip itself: **a recessed well**, at `control_radius`, with a hairline to seat it.
-///
-/// It used to be a box of the card's own colour inside a full `stroke_edge` border, so the only
-/// thing that said "strip" was that border - and a border loud enough to carry a whole control on
-/// its own is what made a card of them read as a handful of bright boxes. iOS and Material 3 both
-/// sink the track instead: `Surface` is the page's ground, one step back from a `SurfaceVariant`
-/// card, so the strip reads as a well the selected segment sits proud of. The boundary then only
-/// has to seat the well against its container, which is `stroke_hairline`'s job.
+/// Paint the strip ground and its hairline boundary using the resolved theme roles.
 fn paint_strip(painter: &egui::Painter, cx: &Cx<'_>, rect: Rect, ink: Ink) {
     let radius = CornerRadius::same(round_u8(cx.theme.metrics.control_radius));
     painter.rect_filled(rect, radius, ink.strip_face);

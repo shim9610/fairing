@@ -542,10 +542,8 @@ fn first_row_y(h: &Harness) -> f32 {
     h.shell.theme().metrics.notification_row_height / 2.0
 }
 
-/// Pushing it to the right opens **the screen that notification points at** — only for a notification carrying a
-/// destination. The direction is what tells them apart: the left throws it away, the right opens it. A notification
-/// with nowhere to go does not drag to the right at all — better than looking as though something will happen and
-/// then nothing does.
+/// Pushing right runs the notification destination when it has one.
+/// A notification without a destination does not drag right.
 #[test]
 fn swiping_a_routed_notification_right_opens_its_screen() -> fairing::Result<()> {
     let mut h = Harness::new(single_level_access(), Services::null())?;
@@ -1031,12 +1029,8 @@ fn shade_start_settles_a_running_screen_transition() -> fairing::Result<()> {
     Ok(())
 }
 
-/// With `[notify] dismiss_button = false` **there is no × at all.**
-///
-/// On a device used with a finger alone the swipe is enough and the card is tidier. On a device where the swipe
-/// does not take well — gloves, a resistive panel — the button has to be there, so this is **policy, not taste.**
-///
-/// Turning it off must not leave no way to clear one — the left swipe has to keep working.
+/// With `[notify] dismiss_button = false`, no close button is drawn.
+/// The left swipe remains available for dismissing a notification.
 #[test]
 fn turning_off_the_dismiss_button_hides_it_but_keeps_the_swipe() -> fairing::Result<()> {
     let mut config = single_level_access();

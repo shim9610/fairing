@@ -10,7 +10,7 @@
 //! filtering stay the shell's, and [`SlotCx`] hands over the cell Rect, the [`IconSlot`], the press
 //! scale and whether the gate passed.
 //!
-//! **Zero heap allocation per frame** is the goal. So, separately from the layout results
+//! Separately from the layout results
 //! ([`Page`] · [`Dock`]), each icon has one `IconRecord` caching its label and badge galleys. The
 //! render path only overwrites values and never builds a fresh `String` or `Vec`. The regression is
 //! watched by the `idle desktop` scenario in `examples/bench.rs`.
@@ -224,11 +224,8 @@ pub struct Dock {
     placement: DockPlacement,
 }
 
-/// Where the row of fixed icons goes.
-///
-/// A band along the bottom is a phone convention, not a device requirement. A portrait panel is
-/// better with a rail down one side, and a wide instrument screen takes naturally to **a row across**
-/// the desktop. All three come out of the same mechanism.
+/// Dock placement: attach the fixed icon row to an edge or place it as a band.
+/// The placement determines its orientation and occupied desktop region.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DockPlacement {
     /// A band against one edge of the screen. `Bottom` is today's dock. The grid shrinks by that much.
@@ -446,11 +443,9 @@ fn uv_for(fit: Fit, src: egui::Vec2, dst: egui::Vec2) -> Rect {
     )
 }
 
-/// The wallpaper. There is no image decoder in the core — the integrator uploads the
-/// texture.
-///
-/// It is `#[non_exhaustive]`: this move from five variants to seven is the moment to attach it, and
-/// the next addition will not be a breaking change. A `match` **outside** the crate needs a `_` arm.
+/// Desktop wallpaper source. Raster textures are decoded and uploaded by the
+/// application. This enum is `#[non_exhaustive]`; downstream matches need a wildcard
+/// arm for future variants.
 #[non_exhaustive]
 pub enum Wallpaper {
     /// **A pair that follows the palette** — the dark form and the light one.
@@ -520,9 +515,8 @@ pub enum Wallpaper {
     /// the texture is not released for as long as the wallpaper lives, with no separate keeping by the
     /// integrator. This variant removes the trap of `TextureHandle`'s `Drop` letting the texture go.
     ///
-    /// `source_size` is read and cached **once, at construction**. `TextureHandle::size()` takes the
-    /// texture manager's lock, so calling it from the paint loop breaks the rule that the UI thread
-    /// never blocks — [`Wallpaper::owned`] does that one call for you.
+    /// `source_size` is read and cached once during construction by [`Wallpaper::owned`],
+    /// avoiding a repeated texture-manager metadata query while painting.
     ///
     /// ```no_run
     /// use fairing::desktop::{Fit, Wallpaper};
@@ -618,20 +612,17 @@ impl std::fmt::Debug for Wallpaper {
     }
 }
 
-/// Legibility correction for the desktop labels (guide 09 §2.2).
-///
-/// **The default is [`Self::None`].** The shell lays no veil over the wallpaper and the picture itself
-/// answers for legibility — there is no reason to fog a well-authored background. Turn it on only
-/// where a photo or an art background puts a bright area over the icon grid.
+/// Desktop-label treatment: no correction (default), text shadow or content veil.
+/// Choose a treatment after checking rendered labels against the actual wallpaper.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum LabelLegibility {
     /// Do nothing. **The default.**
     #[default]
     None,
-    /// One dark shadow behind the label's text. It saves the text without killing the picture.
+    /// A dark shadow behind the label text.
     Shadow,
-    /// A translucent [`ColorRole::Scrim`] plate over the whole content. Certain, but it flattens the picture.
+    /// A translucent tinted plate over the content. Check the composited label contrast.
     Veil,
 }
 
@@ -674,8 +665,8 @@ impl LabelLegibility {
 /// ```
 ///
 /// This path is what makes it possible to put a different background in each shop **without
-/// rebuilding the device**. With no loader given, `file:` warns and falls back to `background` — a
-/// device does not fail to start over one wallpaper.
+/// rebuilding the device**. With no loader given, `file:` logs a warning and uses the
+/// `background` role for this wallpaper request.
 ///
 /// The [`egui::TextureHandle`] handed back is **held** by the shell inside a [`Wallpaper::Owned`].
 /// There is no need for the loader to keep it separately.
@@ -940,12 +931,8 @@ impl std::fmt::Debug for DesktopView {
     }
 }
 
-/// `[desktop] wallpaper` → a [`Wallpaper`].
-///
-/// It looks at three kinds of name in order: `"abyss"` (the procedural deep sea) → a palette role
-/// name → `#RRGGBB`. None of them warns and gives the `background` role — unlike `[theme.palette]`,
-/// this is **fail-open** (a shell failing to come up because a wallpaper could not be read would be
-/// awkward).
+/// Parse the named wallpaper: procedural `"abyss"`, palette role or `#RRGGBB`.
+/// An unrecognized name logs a warning and returns the background role.
 fn wallpaper_from_config(cfg: &DesktopConfig) -> Wallpaper {
     if cfg.wallpaper.starts_with("file:") {
         // There is no `egui::Context` here, so no texture can be uploaded. Only the slot is taken and
@@ -1317,7 +1304,7 @@ fn scale_about(rect: Rect, center: egui::Pos2, scale: f32) -> Rect {
 const SHADOW_DROP: f32 = 0.07;
 /// The icon shadow's offset (relative to the icon's width). Being a larger shape than the label, a smaller ratio is enough.
 const ICON_SHADOW_DROP: f32 = 0.045;
-/// The label shadow's alpha. Enough to save the text on a bright background without showing on a dark one.
+/// Opacity used when painting the label shadow.
 const SHADOW_ALPHA: u8 = 170;
 
 /// The vertical gap between rail entries (relative to the row height).

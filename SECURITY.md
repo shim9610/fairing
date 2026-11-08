@@ -13,7 +13,8 @@ The first crates.io release has not been published yet.
 
 Please report it privately, not in a public issue: open the repository's **Security** tab and
 choose **Report a vulnerability**. Say what you found, which version, and how to reproduce it.
-You will get an answer within a week, and a fix or a plan before anything is made public.
+The maintainer aims to acknowledge reports within a week and coordinate public
+disclosure after assessing the report and possible remediation.
 
 ## Repository security checks
 
@@ -32,8 +33,9 @@ for configuration and analysis triggers.
   job; for anything stronger, implement `Authenticator` yourself (guide 05).
   Configuration diagnostics omit PIN/pattern values; malformed TOML is reported by
   location without echoing its source or invalid values.
-- **The crate writes no files and makes no network connections.** Backends, storage and
-  networking are the integrator's code, so their security is too.
+- **Device storage and networking use application adapters.** Fairing supplies no
+  credential database or device-network client. Adapter implementations and their
+  security belong to the integrating application.
 - **Authentication request tokens correlate trusted results.** Custom authenticators
   must retain the original `AuthRequestId` with asynchronous work. Tokens reject stale
   replies inside the shell; they do not authenticate network peers.
@@ -49,7 +51,8 @@ for configuration and analysis triggers.
   Trait conformance alone does not establish declaration/mapping purity. The
   [extension checker](docs/permission-metadata-check.md) checks a restricted subset
   of workspace metadata implementations; imported implementations need separate checks.
-  Admitted callbacks retain raw UI/app/backend access. Requirement selection, arbitrary
+  Admitted callbacks retain the UI, app-state and backend access exposed by their
+  signatures. Requirement selection, arbitrary
   effects, host hooks, destructors and prior disclosures remain trusted. The
   [common mediation contract](docs/protected-contracts.md) proves the shared admission
   kernel and checks compiler-discovered library-managed protected entry routes.

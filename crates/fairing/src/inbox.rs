@@ -1,18 +1,10 @@
-//! [`Inbox`] — the receiving end of a channel with **the blocking half taken away**.
+//! Channel receiving APIs without capacity- or message-waiting methods.
 //!
-//! The UI thread may not block. `try_recv` is the whole of the contract, and everything else
-//! `std::sync::mpsc::Receiver` offers — `recv`, `recv_timeout`, `recv_deadline`, `iter`, and being
-//! iterated as `for msg in rx` — waits for a message to arrive.
-//!
-//! Five of those six are named in `clippy.toml`'s `disallowed-methods`, which resolves the receiver
-//! **by type** and so cannot be walked past with an alias. The sixth cannot be: `for msg in rx`
-//! desugars to `IntoIterator::into_iter`, and banning that would ban every `for` loop in the
-//! workspace. `xtask sync-check`'s text scan cannot see it either — `for msg in rx` and
-//! `for msg in slice` are the same shape.
-//!
-//! So the last one is closed by **construction** instead of by a lint. `Inbox` owns the receiver,
-//! hands out `try_recv` and a non-blocking [`Inbox::drain`], and never lends the receiver out. There
-//! is no expression you can write that blocks.
+//! [`Inbox`] owns its receiver and exposes `try_recv` and draining iterators. It
+//! provides no receiver loan or `IntoIterator` implementation that would expose
+//! `Receiver`'s waiting iterator. Individual receives use `try_recv`; an unlimited
+//! `drain` can still continue while producers keep adding messages. Use a finite
+//! batch at UI/service boundaries. Standard-channel synchronization is upstream.
 
 #[cfg(fairing_loom)]
 use loom::sync::mpsc;
@@ -46,7 +38,7 @@ impl<T> Inbox<T> {
     }
 }
 
-/// The receiving end of an mpsc channel that **cannot block**.
+/// The receiving end of an mpsc channel without a message-waiting receive API.
 ///
 /// ```
 /// use fairing::inbox::Inbox;

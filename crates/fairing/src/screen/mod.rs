@@ -246,7 +246,7 @@ impl std::fmt::Debug for ScreenDecl {
     }
 }
 
-/// A resident screen declaration. The shortest form — this alone registers and runs.
+/// A resident screen declaration backed by a closure.
 pub fn screen(
     id: impl Into<String>,
     ui: impl FnMut(&mut egui::Ui, &mut Cx<'_>) + 'static,
@@ -261,12 +261,10 @@ pub fn screen(
 /// **A resident screen declaration from a value of your own** — a `struct` implementing
 /// [`Screen`], not a closure.
 ///
-/// [`screen`] takes a closure, which is the whole of the trait's `ui` and nothing else. A screen
-/// that wants [`Screen::on_back`] — "back cancels the edit I am in the middle of" — has to be a
-/// type, and until now the only way to register a type was [`screen_with`], which is a **factory**:
-/// a fresh value per open, its state dropped on close, and no screen owned between opens for
-/// [`Cx::draw_screen`] to embed. This is the missing third: the declaration owns your value for its
-/// whole life, exactly as it owns a closure.
+/// Use this for a `Screen` implementation with hooks such as `on_back`. The
+/// declaration retains the supplied value across close/reopen and supports
+/// embedding with [`Cx::draw_screen`]. A factory declaration instead creates
+/// instance-owned state at first dispatch.
 ///
 /// ```no_run
 /// # fn main() {
@@ -537,10 +535,8 @@ impl ScreenDecl {
     /// # }
     /// ```
     ///
-    /// Before this the id was fixed at construction and only readable, so the one way to reuse a
-    /// built-in was to write its body again from `layout` - against a body the crate keeps private.
-    /// Replacing a built-in in place never needed it ([`Shell::add`](crate::Shell::add) replaces
-    /// by id); having a copy *beside* the original did.
+    /// This changes the registration ID while retaining the other declaration fields.
+    /// [`Shell::add`](crate::Shell::add) replaces an existing declaration with the same ID.
     #[must_use]
     pub fn with_id(mut self, id: impl Into<String>) -> Self {
         self.id = id.into();

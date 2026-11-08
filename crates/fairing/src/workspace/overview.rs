@@ -2,8 +2,7 @@
 //!
 //! # A card is a title and an icon
 //!
-//! v1 draws no thumbnails (a shell that does not know its render backend has no snapshot
-//! to give), so a card is the task's icon, its title, when it was last used and the level its
+//! Cards show no thumbnails. They contain the task's icon, title, last-used time and the level its
 //! screen needs. Coming in, the screen on show shrinks into its card — the real content, scaled
 //! whole by its layer's transform (A10) — and the card takes over from it at the end.
 //!
@@ -23,7 +22,7 @@
 //! # Above the panes, below the chrome
 //!
 //! The cards are an `Area` at `Order::Middle`, over every screen layer and under the shade and the
-//! prompt, so no screen raising its own layer can come up through them. The backdrop under the
+//! prompt. Registered screen Areas use the lower Background order. The backdrop under the
 //! shrinking screen is the desktop's layer, painted plain while the overview is up over a task.
 
 use crate::i18n::Strings;

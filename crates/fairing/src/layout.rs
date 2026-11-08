@@ -95,36 +95,12 @@ use crate::unit::{round_i8, round_u8};
 use crate::widgets::{unroll, ColorSpec, ListRow, TouchSlider, Unrolled};
 use egui::{Response, Ui};
 
-/// **The three ways a container is set apart from the page**, and what each of them says.
+/// Container presentation style.
 ///
-/// The crate drew one kind — a filled card — and a screen made of nothing but filled cards is the
-/// "big grey boxes repeating, so nothing tells you which element matters" the design review named.
-/// The three reference screens use all three and pick by purpose, which is the point: the choice
-/// carries meaning, so it has one word each rather than four independent knobs set the same way by
-/// hand at every call site.
-///
-/// | | draws | says |
-/// |---|---|---|
-/// | [`Filled`](Self::Filled) | `SurfaceVariant` — or `Surface` on a panel that is already `SurfaceVariant` — `card_radius`, raised | **a thing you act on** — a group of settings rows, a stat strip, a media tile, a bar you press |
-/// | [`Outlined`](Self::Outlined) | a hairline, no fill, `corner_radius`, flat | **a thing you read** — a chart, a reading, a result |
-/// | [`Divided`](Self::Divided) | nothing, and a full-width rule under it | **a plain list** — rows that run edge to edge with no box |
-///
-/// The built-in settings screens group their rows in `Filled` cards, as One UI and iOS do. They
-/// were `Divided` once, and at a one-finger row a page of edge-to-edge rows read as one long list
-/// with the sections lost in it.
-///
-/// `Outlined` takes the smaller `corner_radius` rather than `card_radius` deliberately: a box with
-/// no fill has only its edge, and a big radius on a hairline reads as a bubble. Part of why the
-/// card radius looks generous is that until now everything was filled.
-///
-/// `Divided` is full-bleed — no side margin — because a rule that stops short of the screen's edge
-/// reads as the bottom of a card that forgot to draw the rest of itself.
-///
-/// **A `Filled` card contrasts with whatever it is on.** Its fill is `SurfaceVariant`, one step
-/// in from the `Surface` a screen is drawn on; on a panel that is itself `SurfaceVariant` — the
-/// page inside a [`Rail`]'s elbow — the same card would be the panel's own colour and vanish, so
-/// there it takes `Surface`, the step the other way. The panel says what it is through the
-/// `Ui`'s `panel_fill`, which the rail sets for its page; a card never has to be told.
+/// `Filled` uses a surface fill and elevation. `Outlined` uses an unfilled boundary;
+/// `Divided` uses a full-width closing rule. `Tinted` uses the accent role.
+/// A filled card uses the alternate surface role when its panel already has the
+/// normal card fill. Custom palettes still determine the resulting contrast.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Container {
     /// A filled card. The default, and what every container in the crate was.
@@ -253,20 +229,9 @@ impl Deco {
         self
     }
 
-    /// The inner padding **at the sides** (du). **Zero by default, and that is not an oversight.**
-    ///
-    /// A card full of rows must have none: a [`ListRow`] insets its own content by
-    /// `metrics.content_inset`, so a card that also insets would push every label twice as far in
-    /// and the rows would no longer line up with the heading above them.
-    ///
-    /// A card holding anything else — a label, a figure, a body an integrator drew — has the
-    /// opposite problem, and until this method existed there was no way to fix it: the card's
-    /// `inner_margin` was a hard zero on the horizontal axis and [`Deco::padding`] reached only the
-    /// vertical one, so that content sat flush against the corner. Which of the two a card is, the
-    /// crate cannot know; the caller can.
-    ///
-    /// `cx.theme.metrics.content_inset` is the value that lines such content up with the rows on
-    /// neighbouring cards.
+    /// Horizontal inner padding in du, default zero.
+    /// Rows already inset their content; free content may need [`Deco::pad_content`] or
+    /// an explicit padding value to align with neighboring rows.
     #[must_use]
     pub fn pad_x(mut self, du: f32) -> Self {
         self.pad_x = Some(du.max(0.0));
@@ -327,18 +292,12 @@ impl Deco {
         self.visual_inset.unwrap_or(0.0)
     }
 
-    /// **How high this container sits.**
-    ///
-    /// [`theme.elevation.card`](fairing_widgets::theme::ElevationMetrics::card) by default, which
-    /// is [`Elevation::Raised`] — a card is a sheet lying on the page.
-    /// [`action_bar_with`] defaults to [`Elevation::Floating`] instead, because a bar pinned over
-    /// content that scrolls under it is by definition above that content; the deepest shadow on
-    /// every reference screen measured for this is on exactly that bar.
-    ///
-    /// [`Elevation::None`] turns it off for one container. To turn it off for the whole shell —
-    /// an e-ink or 16-level panel cannot reproduce a soft ramp and dithers it into rings — hand
-    /// [`ElevationSpec::flat`](fairing_widgets::theme::ElevationSpec::flat) to
-    /// [`ShellBuilder::elevation_spec`](crate::shell::ShellBuilder::elevation_spec).
+    /// Container elevation. Cards default to the theme's card elevation;
+    /// [`action_bar_with`] uses `Elevation::Floating` by default.
+    /// Use `Elevation::None` for this container or provide
+    /// [`ElevationSpec::flat`](fairing_widgets::theme::ElevationSpec::flat) through
+    /// [`ShellBuilder::elevation_spec`](crate::shell::ShellBuilder::elevation_spec)
+    /// for a flat elevation configuration.
     #[must_use]
     pub fn elevation(mut self, level: Elevation) -> Self {
         self.elevation = Some(level);
@@ -496,9 +455,8 @@ const BAND_MIN_ROWS: f32 = 12.0;
 const BAND_TOP_MIN: f32 = 0.15;
 /// The upper bound on the top band's share. Give it 0.7 and the control band is pushed below where the hand reaches.
 const BAND_TOP_MAX: f32 = 0.60;
-/// The minimum track width for putting a slider row on **one line** (du). Shorter than this and one
-/// finger's width is worth several percent of the value, so fine adjustment is impossible — the
-/// track then goes on a line below the title.
+/// Minimum track width in du for a one-line slider row.
+/// Narrower layouts place the track below the title.
 const SLIDER_INLINE_TRACK: f32 = 240.0;
 /// The share of the width the title takes on a one-line layout (relative to the width left).
 const SLIDER_LABEL_FRACTION: f32 = 0.26;
@@ -559,15 +517,9 @@ pub enum Fold {
     Away,
 }
 
-/// **Where the fold gesture is read** — [`Rail::fold_gesture`].
-///
-/// [`Anywhere`](Self::Anywhere) is the default. It began as the opt-in, and the one
-/// integrator with a collapsible rail in the field never opted in: their rail folded from the arm
-/// and from nowhere else, which was reported three times as the page swipe not working. A rail
-/// that is collapsible at all is one the hand is meant to put away, and a hand on a touch panel
-/// lands where it lands; reading the gesture on a strip a finger wide is the surprise, not the
-/// safe choice. [`Arm`](Self::Arm) is there for a page whose own horizontal drags are
-/// not controls that say so.
+/// Where the rail's fold gesture is recognized.
+/// `Anywhere` is the default; `Arm` limits it to the rail arm. Page drags claimed by
+/// controls or kept by custom pointer regions are excluded from folding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum FoldGesture {
@@ -642,23 +594,13 @@ impl Rail {
         self
     }
 
-    /// **Let a swipe fold it and back.** Off by default; on, the swipe is read anywhere — across
-    /// the arm or across the page — unless [`Self::fold_gesture`] narrows it to the arm.
+    /// Enable swipe folding, off by default.
     ///
-    /// Off by default because folding is a *choice about the product*, not an improvement. On a
-    /// console bolted to a bench the rail is the map of the machine and it should not be possible
-    /// to lose it by brushing the glass; on a cart display where the page is a plate map and every
-    /// millimetre counts, folding it is the point. The crate cannot tell which one it is in, and
-    /// the failure modes are not symmetric — a rail that folds when nobody meant it to is a
-    /// support call, a rail that does not fold is a preference.
-    ///
-    /// How far it folds is [`Self::fold_to`]; where the gesture is read is
-    /// [`Self::fold_gesture`]. A screen that should have no rail at all is a different thing —
-    /// the app puts the rail away with [`Self::hidden`], and the hand cannot bring it back.
-    /// The fold is one motion: the words fade first, the icons slide to
-    /// the middle of the narrowing arm, and the bar beside the live entry melts into a tinted disc
-    /// behind its icon — a bar with nothing beside it read as a stray line. [`list_item`] does all
-    /// of that by reading the fold itself, so a rail built out of rows needs no branch for it.
+    /// When enabled, recognition covers the arm and page unless `fold_gesture` narrows
+    /// it to the arm. `fold_to` chooses icons-only or fully-away folding. During the
+    /// fold, labels fade, icons move and the active mark changes shape. `list_item`
+    /// reads the rail's retained fold state. Application-controlled `hidden` removes
+    /// the rail independently of gesture folding.
     #[must_use]
     pub const fn collapsible(mut self, collapsible: bool) -> Self {
         self.collapsible = collapsible;
@@ -828,35 +770,13 @@ impl Rail {
         }
     }
 
-    /// **Read the pointer, do not claim it.**
+    /// Read the pointer to recognize rail folding without registering a full-arm
+    /// interactive widget over the row controls.
     ///
-    /// An `interact` over the whole arm is the obvious way to catch the swipe and it does not
-    /// work: registered before the rows it never sees a drag, because the rows are over it and a
-    /// later widget wins egui's hit test; registered after, it wins, and then a tap on an entry
-    /// folds the rail instead of opening the entry. There is no order that gives both. So the
-    /// gesture is read straight off the pointer, which takes part in no hit test at all and leaves
-    /// every row's tap exactly as it was.
-    ///
-    /// One rule, wherever the press began: a drag past the edge zone with horizontal intent
-    /// — `|dx| > |dy|`, so a finger scrolling a long rail or page does not fold it on the way
-    /// past — folds or opens **at once**, as the drag crosses the threshold. On the arm (or in
-    /// the grip strip a folded-away arm leaves behind) that is all; on the page, with
-    /// [`FoldGesture::Anywhere`], two things are left alone: a press in the shell's edge zones,
-    /// which are the shell's own gestures, and a drag a control owns — a control that follows
-    /// the finger says so ([`crate::drag::claim`]), frame by frame, and its drag is its own. That
-    /// ownership is kept by hand from there to the release, because no claim is made on the
-    /// release frame; so is the press point, which egui forgets on that frame.
-    ///
-    /// It used to be egui's word and a height: the widget holding the drag, and whether it was
-    /// no taller than two rows. A button senses drags too, for its long-press ring, and is one
-    /// row tall — so a swipe that began on a button never folded the rail.
-    ///
-    /// The first build decided the page swipe on release, by speed or by a long distance, so the
-    /// page would never reflow under a finger still down. It did not register for a mouse that
-    /// stops before it lets go and drags less than the distance asked (user report, twice). A
-    /// drag past a couple of dozen du is decidedly a drag to egui, so nothing under the finger is
-    /// clicked when it lifts — the reflow costs nothing — and the rule the arm has always had
-    /// is the one a hand expects everywhere.
+    /// A horizontally dominant drag past the edge threshold folds or opens the rail.
+    /// With `FoldGesture::Anywhere`, page presses in shell edge zones and drags claimed
+    /// or kept by controls are excluded. The recognized ownership is retained through
+    /// release, including the press point needed after egui drops its current press.
     fn read_fold_gesture(
         self,
         ui: &Ui,
@@ -1006,17 +926,9 @@ impl<T> std::fmt::Debug for Grid<'_, T> {
 }
 
 impl<'a, T> Grid<'a, T> {
-    /// **Let the cell's height be answered from its realised width.**
-    ///
-    /// A grid picks its column count from the width it is given, so a caller writing
-    /// `Grid::new(_, rows)` is guessing a height for a width it cannot see yet. Where the thing in
-    /// the cell has a shape of its own — a [`MediaCard`](crate::widgets::MediaCard) with an aspect,
-    /// most of all — the guess is wrong and the widget pays for it out of its drawing. Measured on
-    /// the kiosk's menu grid: a tile asking for a square picture was handed 282.7 du where it
-    /// needed 636.4, and cropped 71 % off every photograph rather than overrun the cell.
-    ///
-    /// The function is given the cell's width in du and answers the height in du. It replaces
-    /// `cell_rows` as the floor; `fill_aspect` still caps it.
+    /// Set cell height from its realized width in du.
+    /// The callback returns height in du and replaces `cell_rows` as the lower bound;
+    /// `fill_aspect` still supplies the upper ratio cap.
     ///
     /// ```no_run
     /// # fn f(ui: &mut egui::Ui, cx: &mut fairing::Cx<'_>, items: &[u8]) {
@@ -1049,17 +961,11 @@ impl<'a, T> Grid<'a, T> {
         }
     }
 
-    /// **The column cap.** However much width is left, it makes no more columns than this.
+    /// Set an upper bound on column count. The default has no explicit cap.
     ///
-    /// There is no cap by default, and that principle ("as many as the width allows") is right for a
-    /// product grid — on a wide panel it is better to see more in a row. But **a strip with a fixed
-    /// count** is different: five category chips, three payment methods, two of eat-in/take-away —
-    /// the requirement is "all on one row" and the width comes second.
-    ///
-    /// Without this, an integrator ends up **working the minimum cell width back from the width** —
-    /// five lines like `(avail / wanted_columns) / row_height * 0.86` turn up wherever the grid is
-    /// used, and nobody knows why that `0.86` is 0.86. It was duplicated in six places in the kiosk
-    /// example.
+    /// This does not clamp to item count: `max_columns(6)` with three items retains
+    /// six-column widths. Use `max_columns(items.len())` to cap by the current count.
+    /// Zero is ignored.
     ///
     /// ```no_run
     /// # fn draw(ui: &mut egui::Ui, cx: &mut fairing::Cx<'_>) {
@@ -1072,35 +978,18 @@ impl<'a, T> Grid<'a, T> {
     ///     .show(ui, cx, &methods, |_ui, _cx, _cell| {});
     /// # }
     /// ```
-    ///
-    /// **It does not clamp to the item count** — `max_columns(6)` on a list of three puts three cells
-    /// in a 6-column grid. That is so a tile's width does not change midway on a screen items flow
-    /// into; where "only as many as the items" is wanted, write `max_columns(items.len())`.
-    ///
-    /// 0 is ignored (the same as no cap).
     #[must_use]
     pub const fn max_columns(mut self, cols: usize) -> Self {
         self.max_cols = if cols == 0 { None } else { Some(cols) };
         self
     }
 
-    /// **Give the height left over back to the cells** — [`max_columns`](Self::max_columns)'s
-    /// vertical counterpart.
+    /// Expand cell height into available vertical space, with an aspect-ratio cap.
     ///
-    /// A grid fills from the top and does not use the height left over. On a wide screen it does not
-    /// show, but **on an upright panel three tiles cling to the top and the bottom half is entirely
-    /// empty.** The kiosk example measured `remaining_height / rows / row_height` itself in four
-    /// places and sat it down once more with `add_space`.
-    ///
-    /// The `cell_rows` given to [`new`](Self::new) becomes the **lower bound** and the value given
-    /// here is the upper — and the upper bound is a **height-to-tile-width ratio**. It is a ratio
-    /// rather than a row multiple because that is what an integrator actually wants to stop: three
-    /// cells stretching tall leave the icons floating in space. Written as a row multiple, nobody
-    /// would know why that number is `6.4`.
-    ///
-    /// Where the cap leaves height over, **the grid is sat in the middle vertically.** Pile the space
-    /// left at the top and the control band droops; pile it at the bottom and the tiles cling to the
-    /// ceiling.
+    /// `cell_rows` remains the lower bound. The supplied ratio caps height relative to
+    /// cell width. If space remains beyond the cap, the grid is centred vertically.
+    /// Values at or below zero disable this option. The ratio cap also bounds cells
+    /// when the parent reports an unbounded available height.
     ///
     /// ```no_run
     /// # fn draw(ui: &mut egui::Ui, cx: &mut fairing::Cx<'_>) {
@@ -1114,9 +1003,6 @@ impl<'a, T> Grid<'a, T> {
     ///     .show(ui, cx, &methods, |_ui, _cx, _cell| {});
     /// # }
     /// ```
-    ///
-    /// It is safe even where the parent's height is undecided and the height left is infinite — the
-    /// ratio cap catches it first. Anything at or below 0 is ignored (the same as not filling).
     #[must_use]
     pub fn fill_height(mut self, max_aspect: f32) -> Self {
         self.fill_aspect = (max_aspect > 0.0).then_some(max_aspect);
@@ -1246,32 +1132,13 @@ pub struct Tab<'a> {
     pub icon: IconRef,
 }
 
-/// **A row that opens in place**: a settings row for a header and, under it, a body
-/// that unrolls when the row is tapped and rolls back when it is tapped again. The body is the
-/// caller's — rows, a slider, a note — laid out one icon column in from the header's edge, so
-/// its titles line up under the header's own. What is under the row moves down; nothing floats.
+/// Expandable row with an application-owned open state.
 ///
-/// # The rules it keeps
-///
-/// - **The whole row opens it.** The chevron at the far right is the sign, not the target; it
-///   points down while closed and up while open, and it is `⌄`, never `›`: `›` is a
-///   [`nav_row`] that goes to another screen, `⌄` opens here.
-/// - **A control in the header keeps its own patch.** With [`ExpandableRow::switch`] the row
-///   carries a switch that a tap on *it* toggles, without opening the row — the one place the
-///   crate's "anywhere on the row toggles" rule ([`switch_row`]) is turned round, because here
-///   the row already means something else. The patch is the switch's drawn size, widened to a
-///   finger.
-/// - **The summary is for the closed row.** [`ExpandableRow::summary`] is shown at the right
-///   while the row is closed, so it answers without being opened, and goes when it is open.
-/// - **Open is the caller's state**, a `&mut bool` like a switch's: a body is content, not a
-///   popup, and a screen wants to open one from code, remember it, or open only one at a time
-///   ([`accordion`]). Closed by default — never the first one open on its own.
-/// - **The body is revealed.** When the row opens near the bottom of the page, the page scrolls
-///   just enough for the body's end to show; when the body is taller than the pane, the header
-///   is put at the top instead, so it never leaves the screen. Off with
-///   [`ExpandableRow::reveal`]`(false)`.
-/// - **Two levels at most.** A body may hold another expandable row; past that the thing wanted
-///   is a screen of its own, with a [`nav_row`] to it.
+/// Tapping the header toggles the revealed body. An optional header switch handles
+/// its own hit region without opening the row. The summary is shown while closed.
+/// The body is indented to align with header text, and following content moves as
+/// its height animates. `reveal(false)` disables the default scroll-to-body behavior.
+/// Use [`accordion`] to coordinate one-open-at-a-time state across several rows.
 ///
 /// ```no_run
 /// # fn body(ui: &mut egui::Ui, cx: &mut fairing::Cx<'_>, open: &mut bool, night: &mut bool) {
@@ -1476,16 +1343,9 @@ const BAR_SHARE: f32 = 0.72;
 /// before the pill starts.
 const BAR_GUTTER: f32 = 2.0;
 
-/// **How a list marks the entry that is open.**
-///
-/// A rail's selection is the one thing on the screen that says *where you are*, and which mark
-/// reads best is a property of the panel rather than of the crate. A console under bench lighting
-/// wants the pill and the bar together; a dense desktop list wants the bar alone, because a pill
-/// behind every second row turns the column into stripes; a screen whose rail is already an accent
-/// colour wants neither and lets the label carry it.
-///
-/// [`Self::PillAndBar`] is the default because it is the only one of the four that survives being
-/// looked at from two metres away and at an angle, which is the instrument case the crate is for.
+/// Selection-mark style for a rail or list entry.
+/// `PillAndBar` is the default. Choose a style after checking the intended palette,
+/// background, display size and viewing conditions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum SelectMark {
@@ -1521,7 +1381,7 @@ struct MarkGeometry {
     inset: f32,
 }
 
-/// Shrunk below this it cannot be read — it shrinks no further (and overflows instead).
+/// Minimum scale used by this fitting path; smaller available space overflows instead.
 const FIT_MIN_SIZE: f32 = 8.0;
 
 #[cfg(test)]

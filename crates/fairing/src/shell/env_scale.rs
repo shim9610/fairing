@@ -1,17 +1,9 @@
 //! **Step 2 of the density chain** — the environment.
 //!
-//! The chain has five steps and the code implemented three: the integrator's pin, the backend's
-//! `DisplayInfo`, and the fallback. The environment step was specified in full — four variables in
-//! priority order, a policy lock, and a warning whenever it wins — and never built, so
-//! [`ScaleSource::Env`](crate::unit::ScaleSource::Env) sat in the enum as the marker for something
-//! that could not happen.
-//!
-//! # Why it exists at all
-//!
-//! The reason is a person rather than a feature: a maintenance engineer standing at
-//! the device, with no permission to edit its files, who needs the UI bigger to read it. That is
-//! also why the environment beats the config file but never the integrator's code pin — the
-//! engineer is working around the file, and the integrator is stating a fact about their hardware.
+//! Environment values can override backend/configuration density inputs when
+//! policy permits them. An explicit code pin takes precedence. Values are read
+//! during construction, so subsequent process-environment changes do not rescale
+//! a running shell.
 //!
 //! # The variables
 //!
@@ -22,10 +14,8 @@
 //! | `FAIRING_PHYSICAL_MM` | the panel's size, `"152.4x91.4"` | density comes from it and `size_px` |
 //! | `FAIRING_UI_SCALE` | [`ScalePolicy::ui_scale`] | knows no density, just makes it bigger |
 //!
-//! Those four are **one chain**: the first that parses wins and the rest are ignored, in this order
-//! (`FAIRING_PPP > FAIRING_PPI > FAIRING_PHYSICAL_MM > FAIRING_UI_SCALE`). Mixing
-//! them would mean guessing whether `FAIRING_UI_SCALE` beside `FAIRING_PPP` means "and also scale"
-//! or "instead", and a knob read at a device in a hurry should not need that guess.
+//! The first valid value wins; the remaining density/scale overrides are ignored:
+//! `FAIRING_PPP > FAIRING_PPI > FAIRING_PHYSICAL_MM > FAIRING_UI_SCALE`.
 //!
 //! `FAIRING_FINGER_MM` is **not** in the chain and applies on its own. It says who is touching the
 //! panel — a glove, a bare finger — which is a different question from how dense the panel is, and
@@ -90,8 +80,8 @@ impl EnvScale {
     /// **The whole of the parsing**, against any lookup — see the module docs on why.
     ///
     /// A variable that is set but does not parse, or parses to something that is not finite and
-    /// positive, is passed over as though it were not set at all. A typo should leave the device
-    /// working, and the next step of the chain is the one that was going to be used anyway.
+    /// positive, is skipped. The next valid value or the ordinary scale fallback
+    /// is used instead.
     pub(crate) fn from_lookup(look: impl Fn(&str) -> Option<String>) -> Self {
         let num = |name: &str| look(name).and_then(|v| positive(v.trim()));
         let win = num("FAIRING_PPP")
@@ -190,7 +180,7 @@ mod tests {
         );
     }
 
-    /// A variable that does not parse is passed over — the device goes on working.
+    /// An invalid value falls through to the next valid environment override.
     #[test]
     fn a_typo_falls_through_to_the_next_step() {
         let e = EnvScale::from_lookup(table(&[

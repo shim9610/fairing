@@ -26,9 +26,8 @@ pub enum ShellEvent {
     },
     /// Went home.
     WentHome,
-    /// **A hidden entry point opened**. It fires the moment the knock completes,
-    /// whether or not the gate passes — entering a service menu is auditable and must not go by
-    /// quietly.
+    /// A hidden-entry trigger completed, whether or not its gate passes.
+    /// Applications can record this event through their own audit/logging path.
     ///
     /// If there is a gate and it fails,
     /// [`AccessEvent::UnlockRequested`](crate::access::AccessEvent::UnlockRequested) follows
@@ -89,9 +88,10 @@ pub enum ShellEvent {
     /// on a tap at all are policy for the device, and the shell is a drawing layer. It draws the
     /// list and reports the tap; nothing else happens.
     ///
-    /// Everything needed to decide comes with the event, and
-    /// [`WifiBackend::connect`](crate::services::WifiBackend::connect) takes the PSK by `&str`, so
-    /// **the shell never holds the secret**: keep the buffer yourself and hand it straight over.
+    /// The event supplies SSID, security and saved-profile indicators.
+    /// [`WifiBackend::connect`](crate::services::WifiBackend::connect) borrows a PSK
+    /// from the application; any credential retention by the backend remains its
+    /// responsibility.
     ///
     /// ```no_run
     /// # use fairing::{Shell, ShellEvent};
@@ -140,10 +140,10 @@ pub enum ShellEvent {
     /// **In `prompt` mode with an authenticator the shell carries it out**: the session goes back
     /// to the starting subject and its own lock screen comes up — then
     /// [`AccessEvent::LockScreenToggled`](crate::access::AccessEvent::LockScreenToggled) follows.
-    /// Everywhere else the shell does not lock anything: what locking means is the device's — a
-    /// lock screen of your own, a drop to a lower access level, a screensaver, a relay cut. The
-    /// shell draws the control, closes the shade so whatever you do is visible, and reports. (The
-    /// idle lock still takes the session back to its start; that is the timer's job.)
+    /// Token mode detaches local session authority even without a built-in prompt.
+    /// In legacy mode without a prompt, the host handles explicit lock requests;
+    /// idle lock still resets the legacy subject. Device locking, screensavers
+    /// and physical interlocks remain application/backend operations.
     ///
     /// [`ShellHandle::set_subject`](crate::ShellHandle::set_subject) is the lever if it means an
     /// access level.
@@ -168,10 +168,9 @@ pub enum ShellEvent {
     ///
     /// [`LaunchAction::Logout`](crate::LaunchAction::Logout),
     /// [`ShellHandle::logout`](crate::ShellHandle::logout) and a tap on the `status.lock` padlock
-    /// arrive here. In `prompt` mode with an authenticator the shell also takes the session back to
-    /// the starting subject (`[access] initial`). Elsewhere it does not act: which subject "logged
-    /// out" is, is the device's, and [`ShellHandle::set_subject`](crate::ShellHandle::set_subject)
-    /// puts it there.
+    /// arrive here. Token mode detaches local authority. Legacy prompt mode with an
+    /// authenticator resets to `[access] initial`; legacy routing mode leaves the
+    /// host to apply its logout policy.
     LogoutRequested,
     /// **The recent-screens control was used**.
     ///

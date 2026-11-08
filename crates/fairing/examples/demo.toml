@@ -51,7 +51,7 @@ notify = "viewer"
 icons2 = "viewer"
 "scan-wifi" = "viewer"
 # The screen the hidden entry point opens. **The gate is separate** — a successful knock still does not open
-# it at too low a level. The demo leaves it at viewer to show it off; on a real device this is locked.
+# it at too low a level. The demo assigns viewer here; choose the product gate explicitly.
 service = "viewer"
 # The built-in settings screens. Mostly viewer, but **power and accounts stay maintainer** — a mis-touched
 # shutdown and editing accounts are not for anyone on a device: the levels are the integrator's to settle.
@@ -63,8 +63,8 @@ service = "viewer"
 "settings.datetime" = "viewer"
 "settings.locale" = "viewer"
 "settings.about" = "viewer"
-# viewer **because it is a demo**. On a real device these two stay locked — a mis-touched shutdown and editing
-# accounts are not for anyone (guide 09 §8.3). The `admin` icon has been left locked.
+# viewer for this demonstration. Choose product permissions for shutdown and account changes
+# explicitly (guide 09 §8.3). The `admin` icon remains gated.
 "settings.power" = "viewer"
 "settings.about.details" = "viewer"
 "status.clock" = "bottom"

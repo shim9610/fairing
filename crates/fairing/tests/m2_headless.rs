@@ -2,7 +2,7 @@
 //!
 //! The cases: the `LaunchAction::OpenOverlay` gate, a status bar tap → the shade toggling plus
 //! `nav_item("osk")`, a `tile()` declaration added and removed → `overlay().tile_rect` plus `DeclRemoved`,
-//! idling at 0 fps (3 frames after a toast and a peek expire), `reduce` settling at once plus the drag
+//! no idle repaint request (3 frames after a toast and a peek expire), `reduce` settling at once plus the drag
 //! following, the back priority (the overlay → the OSK → `on_back` → pop),
 //! `Command::{Notify, Toast, ToggleOverlay, SetMotion}`, the emergency progress ring, the gesture back's
 //! progress when it is grabbed again and the release spring's settle scaling, `Toggle(wifi.enabled)` judging
@@ -270,9 +270,9 @@ fn tile_decl_add_remove_and_events() -> fairing::Result<()> {
     Ok(())
 }
 
-// ---------------------------------------------------------- idle at 0 fps
+// ---------------------------------------------------------- idle repaint requests
 
-/// Idle at 0 fps: 3 frames after a toast expires, and after a hidden screen's peek expires,
+/// Three frames after a toast expires, and after a hidden screen's peek expires,
 /// `repaint_requested == false` (the two-frame delay rule from the harness's comment).
 #[test]
 fn idle_after_toast_and_peek() -> fairing::Result<()> {

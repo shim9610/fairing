@@ -23,7 +23,7 @@ use crate::Result;
 ///     egui::vec2(800.0, 480.0),
 /// );
 /// let m = MetricsSpec::default().resolve(&scale);
-/// // The default is a bare finger (9 mm), so the touch target is a physical 9 mm.
+/// // Resolve the default 9 mm finger parameter using the declared panel dimensions.
 /// assert!((scale.du_to_mm(m.touch_target) - 9.0).abs() < 0.5);
 /// ```
 // No `Copy` is attached — it is 14 `Span`s, so 1,180 bytes. Passed by value, clippy's
@@ -80,11 +80,7 @@ pub struct MetricsSpec {
     pub desktop_label_size: Span<Rigid>,
     /// The quick-settings tile size.
     pub tile_size: Span<Hand>,
-    /// The slider thumb's diameter.
-    ///
-    /// It is dragged with a finger, so it belongs with the touch dimensions and not with the
-    /// visual ones. Fixed at 28 du it was 4.4 mm — right for the Material-sized hand these numbers
-    /// were drawn for, and visibly under-scale beside a gloved 13 mm target.
+    /// Slider-thumb diameter, configured through the touch-size specification.
     pub slider_thumb: Span<Hand>,
     /// The notification row height.
     pub notification_row_height: Span<Hand>,
@@ -97,25 +93,11 @@ pub struct MetricsSpec {
     /// **`None` lifts the cap**: the keyboard is the `height_ratio` share alone again, above its
     /// floor. It resolves to `f32::INFINITY` in [`Metrics::osk_max_key`].
     pub osk_max_key: Option<Span<Hand>>,
-    /// The five text sizes (`small` · `body` · `button` · `heading` · `monospace`).
+    /// Five text sizes (`small`, `body`, `button`, `heading`, `monospace`).
     ///
-    /// # Why these track the viewing distance
-    ///
-    /// Written as multiples of [`Dim::text`](crate::unit::Dim::text), so one body em is `text(1.0)`
-    /// by definition and the other four say their ratio to it out loud. The em itself comes from
-    /// [`ScalePolicy::viewing_distance_mm`](crate::unit::ScalePolicy::viewing_distance_mm): text is
-    /// read, and how big a thing has to be to be read is a fact about **distance**, not about hands.
-    /// At the default hand-held distance the body em is 3.13 mm, a phone's.
-    ///
-    /// They used to be `Dim::finger` fractions, with the finger standing in for the viewing distance
-    /// because there was no knob for the eye. Like every proxy it broke the first time the two came
-    /// apart: a panel read standing at a metre had to state its type scale directly, and every
-    /// length still written in finger terms stopped following it. The hand and the eye are separate
-    /// knobs now: a gloved policy grows the targets and leaves the text alone, and a standing kiosk
-    /// raises the distance and the text grows with everything sized in `text` beside it.
-    ///
-    /// The ratios 0.811 / 1 / 1.063 / 1.374 / 1 are the shipped scale's shape. Each keeps a `du`
-    /// floor so a panel of unknown density still reads.
+    /// Defaults use `Dim::text` multiples derived from viewing distance, independently
+    /// of finger-size policy, with du floors when density is unknown. Ratios are
+    /// 0.811 / 1 / 1.063 / 1.374 / 1. Check readability on the target product.
     pub type_scale: [Span<Eye>; 5],
 }
 
@@ -209,17 +191,12 @@ impl Default for MetricsSpec {
     }
 }
 
-/// **The largest a text token may resolve to**, in du at the base scale.
+/// Maximum text-token size accepted at the base scale, in du.
 ///
-/// Derived rather than chosen. epaint refuses an atlas narrower than 1024 px
-/// (`TextureAtlas::new`'s own assert), so 1024 is the narrowest atlas that can exist, and
-/// `TextureAtlas::allocate` asserts every glyph fits the atlas's width. This crate clamps
-/// `pixels_per_point` to `ScalePolicy::ppp_range`, 8.0 at the top by default, and a glyph is at
-/// most about its font size wide. 1024 / 8 = 128 du is therefore the size that is still safe at the
-/// worst permitted density — and 128 du is around 20 mm of type, far past any real interface.
-///
-/// Raising `ppp_range` past 8.0 lowers the real ceiling proportionally; the check here stays at the
-/// default policy's, which is the one a spec is written against.
+/// The default limit is 128 du, based on a 1024 px minimum atlas width and the
+/// default maximum scale of eight pixels per point. This numeric validation limit
+/// does not parse fonts or bound every glyph. A higher `ppp_range` can require
+/// a lower product-specific text limit.
 const TEXT_CEILING_DU: f32 = 128.0;
 
 impl MetricsSpec {

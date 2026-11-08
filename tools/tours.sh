@@ -7,8 +7,8 @@
 # A tour presses what its script names (`Act::Tap(Spot::Text(..))`, `Act::Pin`, …) and says what it expects to
 # see (`Act::Expect`) before each picture. A step that cannot find its target, or an expectation
 # that does not hold, is logged as an error and the example exits non-zero at the end — so a
-# change that moves a row, renames a label or breaks a flow fails here rather than leaving a wrong
-# picture under the right file name. tools/readme-gifs.sh runs the same scripts with `--record`
+# change that causes one of those checks to fail stops this run.
+# tools/readme-gifs.sh runs the same scripts with `--record`
 # to rebuild the README's images; this one is the quick pass CI runs. Both modes use
 # the same fixed 60 Hz input clock so scripted gesture velocity is renderer-independent.
 #
@@ -63,4 +63,4 @@ if [ "$failed" -ne 0 ]; then
     echo "some tours failed - the logs are under $out/" >&2
     exit 1
 fi
-echo "every tour passed"
+echo "selected tour checks passed"

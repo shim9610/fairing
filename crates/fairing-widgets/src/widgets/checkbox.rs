@@ -10,11 +10,7 @@ use crate::theme::ColorRole;
 use crate::unit::round_u8;
 use egui::{Color32, CornerRadius, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Vec2};
 
-/// A checkbox.
-///
-/// It edits a `&mut bool` and hands back the [`Response`], the same shape as
-/// [`Switch`](super::Switch) — a control that owns its value would force the screen to keep a
-/// second copy of state it already has.
+/// Checkbox editing a caller-owned `&mut bool` and returning its [`Response`].
 #[derive(Debug)]
 pub struct Checkbox<'a> {
     on: &'a mut bool,
@@ -32,25 +28,16 @@ impl<'a> Checkbox<'a> {
         }
     }
 
-    /// Enabled.
-    ///
-    /// Disabled, it senses `hover()` rather than `click()`, so the tap **falls through** to
-    /// whatever is beneath it — a disabled control that swallows the press makes the row it sits
-    /// in feel broken rather than unavailable.
+    /// Enabled state. A disabled control uses hover sensing rather than click/drag
+    /// sensing, allowing another eligible target to handle the press.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
         self
     }
 
-    /// Draw the **mixed** mark — a bar rather than a tick — for a box that stands for a set of
-    /// values that are not all the same ("some of these are on").
-    ///
-    /// It is a flag beside `on` rather than a third value of `on`, because the caller already owns
-    /// the bool and a tri-state enum would make every ordinary call site match on a case it never
-    /// has. A tap on a mixed box reports `changed()` with `on = true` (the convention iOS, GTK and
-    /// Windows share: the mixed state is the caller's to clear, and a tap leaves it by committing
-    /// to "all on", never by going back to it).
+    /// Draw an indeterminate bar instead of a tick.
+    /// A tap reports `changed()` with `on = true`; the caller clears indeterminate state.
     #[must_use]
     pub fn indeterminate(mut self, indeterminate: bool) -> Self {
         self.indeterminate = indeterminate;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Discover protected contracts from rustc and certify the common admission cut.
+"""Check compiler-discovered protected payload forwarding through the common admission cut.
 
 The single runtime declaration macro emits carrier/declaration markers. No
 per-element type/protocol lists are maintained by this checker.

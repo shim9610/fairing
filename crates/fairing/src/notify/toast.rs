@@ -6,10 +6,9 @@
 //! `components.toast.lift_step` over 120 ms. A tap leaves immediately.
 //! The slot spacing (16 px) is larger than that lift, so the boxes do not touch as they rise.
 //!
-//! **Zero heap allocations per frame**: [`ActiveToast`] holds the text galley
+//! The rendering caches reuse text and geometry: [`ActiveToast`] holds the text galley
 //! and re-lays it out only when the content or the width changes, and the icon polylines are
-//! flattened once per size by the queue's [`IconCache`]. A drawing frame only stamps the galley
-//! and the polylines down.
+//! flattened once per size by the queue's [`IconCache`]. Cache rebuilds, egui and custom painters can still allocate.
 
 use super::hooks::{kept, ToastCx, ToastLayout, ToastLayoutCx, ToastPainter};
 use super::model::{Level, Toast};

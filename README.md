@@ -246,8 +246,8 @@ procedural wallpapers; put custom protected UI in typed declarations or elements
 
 The [common mediation contract](docs/protected-contracts.md) proves the shared
 admission kernel and automatically checks compiler-discovered protected entry
-routes. An admitted callback retains raw egui, app and backend access; credential
-verification, permission classification and arbitrary callback effects remain
+routes. An admitted callback retains the UI, app-state and backend access exposed
+by its signature; credential verification, permission classification and arbitrary callback effects remain
 integration responsibilities. This is a UI execution boundary within one process.
 
 ## Configuration, host operations and backends
@@ -344,7 +344,7 @@ explains screenshot and GIF regeneration.
 ## Verification
 
 `fairing::testing::Harness` drives actual egui frames without a window or GPU and
-reports rendered geometry for pointer-driven tests. The repository also checks:
+reports layout and shape geometry for pointer-driven tests. The repository also checks:
 
 | Check | Evidence |
 |---|---|
@@ -373,8 +373,8 @@ runtime-fault checks also run on Windows. The complete Windows runner and macOS
 are not validated. The declared minimum Rust version is 1.95; repository development uses 1.99.
 
 Built-in text is English/Korean; supply translations and fonts for your product.
-The keyboard has numeric, QWERTY and two-set Hangul layouts. There is no accessibility
-tree or right-to-left layout. See the [roadmap](docs/roadmap.md) for further limits.
+The keyboard has numeric, QWERTY and two-set Hangul layouts. Fairing has no dedicated
+screen-reader integration or right-to-left layout support. See the [roadmap](docs/roadmap.md) for further limits.
 
 ## Documentation and workspace
 

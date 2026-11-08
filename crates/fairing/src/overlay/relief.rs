@@ -1,23 +1,9 @@
-//! **A card's relief** — what makes the frosted card read as a slab of glass standing
-//! off the page, not a sheet of tracing paper lying on it.
+//! Card edge highlights, lower-edge shading and upper-face sheen.
 //!
-//! The light is taken to come from above, as the elevation's shadow already assumes, and a raised
-//! slab lit from above shows three things a flat sheet does not:
-//!
-//! - its **top edge catches the light**: a hairline brighter than the face, strongest along the
-//!   top and round the top corners, fading out a little way down the sides;
-//! - its **bottom edge is in shade**: a hairline darker than the face, fading out the same way up;
-//! - its **face has a sheen**: a faint brightening at the top, gone a third of the way down.
-//!
-//! None of it separates the card from the page. That is still the elevation's own ink — a cast
-//! shadow on a light palette, a rim on a dark one ([`fairing_widgets::theme::paint_elevation`]) —
-//! and the relief starts inside the rim rather than over it. The opacities differ by palette
-//! because the face does: white on a near-white face shows only near opaque, and black on a
-//! near-black one hardly at all.
-//!
-//! All of it is one mesh, built here as plain geometry so it can be tested without a shell, and
-//! cached against what it was built from: a card at rest redraws it for nothing, and a
-//! card in motion rebuilds it into the buffers it already has.
+//! These shapes are drawn inside the elevation boundary using a cached mesh.
+//! Unchanged geometry reuses the mesh; changed geometry rebuilds into reusable
+//! buffers when ownership allows. The actual renderer and cache rebuilds still
+//! contribute work.
 
 use egui::epaint::{CornerRadius, Mesh};
 use egui::{pos2, vec2, Color32, Pos2, Rect, Vec2};

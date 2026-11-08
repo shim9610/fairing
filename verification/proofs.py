@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the production kernel, then require both verifiers to reject a broken acknowledgement check."""
+"""Run source-bound component proofs and require both verifiers to reject a broken acknowledgement check."""
 import hashlib
 import json
 import os

@@ -14,7 +14,7 @@ the links beside each table for that.
 | Bad syntax or a wrong type | `Error::Config` (`ShellConfig::from_toml` → `toml::from_str` fails) |
 | A value out of range | `Error::Config` from `ShellConfig::validate` — the "Validation" column below |
 | Non-finite floating-point input | `nan` and `inf` are valid TOML floats. Active bar sizes and the motion/desktop/overlay/keyboard/gesture values checked by `validate_finite` are rejected; a disabled bar's unused `height` is not checked |
-| An unknown section or key | Silently ignored (`#[serde(default)]` plus serde's default behaviour). A typo still boots; only range and cross-reference errors stop start-up |
+| An unknown section or key | Silently ignored (`#[serde(default)]` plus serde's default behaviour). Unknown fields do not cause a deserialization error; range and cross-reference validation still applies |
 | A section behind a feature you turned off (`overlay`, `osk`) | **Still parsed.** A config file with `[overlay]` reads fine with the feature off, so two builds with different feature sets can share one file |
 
 Whether an id in a `Vec<String>` that was never declared warns or silently becomes
@@ -88,7 +88,7 @@ Built-in slot ids and your own declarations are in [03 Chrome](03-chrome.md).
 | `style` | `String` | `"buttons"` | `"buttons"` or `"gesture"` — the home indicator, and the bottom edge's swipes in place of the buttons ([03 §2.6](03-chrome.md#26-the-gesture-style)). `items` means nothing with gestures | Anything else **warns and falls back to buttons** | `NavStyle` |
 | `items` | `Vec<String>` | `["back", "home", "recents"]` | `"back"`, `"home"`, `"recents"`, `"split"`, or the id of a `nav_item` you declared | An undeclared id is neither an error nor a warning ([08 §2](08-troubleshooting.md#2-referring-to-an-id-that-was-never-declared)) | `NavItem::parse` |
 | `height` | `Option<f32>` | unset | The bar height in du, pinned. Unset, it is one finger plus 8 du, at least 56 du | Error when `enabled` and `height <= 0.0`, `nan` or `inf`. The same precedence as `[status_bar] height` | `metrics.nav_bar_height` (08 D245) |
-| `back_edges` | `Vec<String>` | `["left"]` | Which edges accept the back swipe | Each entry must be `"left"` or `"right"`, or it is an **error** with no fallback. An empty array means no gesture back — but combined with `style = "gesture"` that is also an error, since it leaves no way back | `gesture::Edge::parse` plus `EdgeMask` |
+| `back_edges` | `Vec<String>` | `["left"]` | Which edges accept the back swipe | Each entry must be `"left"` or `"right"`, or it is an **error** with no fallback. An empty array means no gesture back — but combined with `style = "gesture"` that is also an error, since it removes both built-in back mechanisms in gesture style | `gesture::Edge::parse` plus `EdgeMask` |
 
 ---
 
@@ -99,22 +99,21 @@ Built-in slot ids and your own declarations are in [03 Chrome](03-chrome.md).
 | `columns` | `u8` | `4` | Column count; `0` means auto, from `icon_cell` | Error above `MAX_COLUMNS` (12) unless it is `0` | `DesktopView::from_config` |
 | `rows` | `u8` | `3` | Row count; `0` means auto | Error above `MAX_ROWS` (8) unless it is `0` | Same |
 | `dock` | `Vec<String>` | `[]` | Dock order | **No count limit.** An undeclared id **warns and is skipped** — unlike the bar slot lists, this one does warn | `apply_dock_order` |
-| `dock_edge` | `String` | `"bottom"` | Which edge the dock clings to: `"bottom"`, `"top"`, `"left"`, `"right"` | Anything else warns and uses `bottom` | A bottom band is the phone convention; a portrait panel often wants a side rail and a wide instrument screen a top row |
+| `dock_edge` | `String` | `"bottom"` | Which edge the dock clings to: `"bottom"`, `"top"`, `"left"`, `"right"` | Anything else warns and uses `bottom` | Choose the dock edge for the product's layout and reachable area |
 | `dock_band` | `Option<f32>` | `None` | Set it and the dock stops clinging to an edge and becomes **a row across the desktop**, at this fraction (0..=1) of the content. The band paints no background, so only the icons sit over the wallpaper | None | |
 | `pages` | `Vec<PageConfig>` | `[]` | The `[[desktop.pages]]` list | §5.1 | |
 | `label_lines` | `u8` | `2` | Icon label lines | None (`0` becomes 1 internally) | |
 | `wallpaper` | `String` | `"background"` | A palette role, `"#RRGGBB"`, `"abyss"` (the procedural deep-sea background) or `"file:<path>"` | **None** — a bad value warns and falls back to the `background` role. Note this is the opposite of `[theme.palette]`, which errors | `Wallpaper::Solid` / `Fixed` |
 | `wallpaper_fit` | `String` | `"cover"` | For `file:` only: `"cover"`, `"contain"` or `"stretch"` | Anything else warns and uses `cover` | Same image on a different aspect ratio: `cover` crops, `contain` letterboxes, `stretch` distorts |
-| `rail` | `String` | `"none"` | **Icon rail** — pin the icons down one side and open screens beside them: `"none"`, `"left"`, `"right"` | Anything else warns and uses `none` | In the default layout the icon grid owns the middle and an opening screen **covers** it. A shop kiosk wants the opposite: the menu always visible, only the content changing |
+| `rail` | `String` | `"none"` | **Icon rail** — pin the icons down one side and open screens beside them: `"none"`, `"left"`, `"right"` | Anything else warns and uses `none` | In the default layout the icon grid owns the middle and an opening screen **covers** it. An icon rail keeps the menu beside the changing content |
 | `rail_width` | `f32` | `0.0` | Rail width as a fraction of the content width; `0` means the default 0.26 | None | A fraction on purpose — an absolute width means different things on a 480 px and a 1920 px panel. It never goes narrower than one icon cell |
 | `label_legibility` | `String` | `"none"` | Label legibility over a busy wallpaper: `"none"`, `"shadow"`, `"veil"` | Anything else warns and uses `none` | See below |
 | `abyss` | `AbyssConfig` | defaults | `[desktop.abyss]`, only read when `wallpaper = "abyss"` | §5.2 | |
 | `long_press` | `String` | `"info"` | What holding an icon does: `"info"` brings up its info popover — the title, the level it needs, the description ([03 §3.8](03-chrome.md#38-holding-an-icon-the-info-popover)); `"none"` only reports `ShellEvent::IconLongPressed` | Anything else warns and uses `info` | `"none"` is for a device with a menu of its own on the event, so the two do not come up together |
 
-**`label_legibility` defaults to `none` on purpose.** The shell does not lay a veil
-over your background; **the picture itself is responsible for legibility.** Author
-a dark background and no correction is needed, and turning correction on by
-default would fog a good one.
+`label_legibility` defaults to `none`, without a shadow or full-content veil.
+Choose the background and label colours together, then assess their composited
+contrast in each supported theme.
 
 | Value | What it does | Cost |
 |---|---|---|
@@ -122,7 +121,8 @@ default would fog a good one.
 | `"shadow"` | A dark shadow behind the label glyphs | Text draw calls ×2 |
 | `"veil"` | A translucent `scrim` panel over the whole content area | One rectangle |
 
-`shadow` is usually the answer — it keeps the picture and saves the label.
+`shadow` adds a local dark outline. Its effect depends on the label and background
+colours; `veil` changes the full-content background instead.
 
 ### 5.1 `IconOverride` in `[[desktop.pages]]`
 
@@ -162,7 +162,7 @@ treatment in [09 Branding](09-branding.md).
 | `rays` · `bubbles` · `fish` · `mantas` | `u8` | per tier | How many of each element |
 | `light_x` | `f32` | — | Where the light comes from, across the width |
 | `veil_top` · `veil_field` · `veil_bottom` | `f32` | — | Depth-veil density at the top, in the field, and at the bottom |
-| `animate` | `bool` | `false` | Move the manta every frame. **This breaks idle 0 fps** and the shell warns when you set it |
+| `animate` | `bool` | `false` | Animate the manta and request updates; the shell warns when enabled |
 | `bake_budget_ms` | `f32` | — | Time budget for baking the mesh. Overrunning drops a tier |
 | `colors` | `String` | `"palette"` | `"palette"` (follow the theme) or `"art"` (the original artwork's colours) |
 
@@ -187,7 +187,7 @@ treatment in [09 Branding](09-branding.md).
 | `card_anchor` | `String` | `"press"` | Which side of a wide screen a card rests on: `"press"` (the side the pull started from, the middle when opened without a finger), `"left"`, `"right"` or `"center"` | An unknown name **warns and behaves as `"press"`** |
 | `split_ratio` | `f32` | `0.5` | Where a split shade's two panels divide the top edge, as a share of the width from the left. One UI's phone layout is `0.7` | Outside `(0.0, 1.0)` is an error |
 | `card_glass` | `f32` | `0.7` | How opaque a card is over its frosted backdrop: `0` is clear glass, `1` turns the glass off. Where the runner sends no screenshot back, the card stays solid. With a `shade_panel_painter` there is no frost: the painter draws the ground ([04 §10.4](04-customization.md#104-the-shades-tiles-and-panel)) | Outside `0.0..=1.0` is an error |
-| `card_relief` | `f32` | `1.0` | How raised a card looks: `0` flat, `1` as designed, `2` twice it. An e-ink or 16-level panel wants `0` here and `card_glass = 1` | Outside `0.0..=2.0` is an error |
+| `card_relief` | `f32` | `1.0` | How raised a card looks: `0` flat, `1` as designed, `2` twice it. For a flat, opaque card use `0` here and `card_glass = 1` | Outside `0.0..=2.0` is an error |
 
 A built-in tile left out of `tiles` simply does not appear — that is how you
 remove one. See [03 §4.4a](03-chrome.md#44a-removing-reordering-adding).
@@ -401,7 +401,7 @@ after `slop_px`.
 
 | Key | Type | Default | Meaning | Validation |
 |---|---|---|---|---|
-| `preset` | `String` | `"base"` | Palette preset: `"base"` (neutral), `"abyss"` (pulled from the manta artwork) or `"linen"` (warm neutrals and a sage accent, built light-first for an appliance in a room). **Orthogonal** to `[shell] theme` — the preset picks the colours, `theme` picks which side | An unknown name is an **error**. Swallowing a typo would leave you hunting for why the brand never turned on |
+| `preset` | `String` | `"base"` | Palette preset: `"base"` (neutral), `"abyss"` (pulled from the manta artwork) or `"linen"` (warm neutrals and a sage accent, built light-first for an appliance in a room). **Orthogonal** to `[shell] theme` — the preset picks the colours, `theme` picks which side | An unknown name is an **error** |
 | `palette` | `BTreeMap<String, String>` | `{}` | Role name → `"#RRGGBB"` or `"#RRGGBBAA"`. Overrides land on **both** the dark and light palettes the preset built | A name that is not a role ([04 §1.1](04-customization.md#11-the-palette-roles)) is an **error**. A value that is not `"#RRGGBB"` or `"#RRGGBBAA"` is an **error** — no short form, no colour names |
 
 Injecting `.theme(Theme)` in code makes this whole section irrelevant, with a
@@ -411,14 +411,10 @@ warning ([04 §2](04-customization.md#2-changing-only-the-colours-with-themepale
 `[theme.palette] primary = "#ff7a00"` makes primary orange in dark *and* light, so
 the theme tile no longer wipes it out.
 
-**`Palette::dark().on_primary` is white again.** It was `#0C1626` while the dark
-accent was a light `#57A9FF` — a light fill needs dark text, and a light fill with
-dark text on it is a pastel, which is exactly how the dark buttons came to look like
-toy plastic. The accent moved instead: `#2878A9` carries white at 4.83:1, clearing the
-4.5 text floor outright. The consequence is worth knowing — `Primary` measures 3.81
-against `surface`, which clears the 3.0 a drawn shape needs and not the 4.5 text needs,
-so **the accent is never a text colour**. An accent tick, fill or icon is fine; accent
-words are not.
+The Base dark palette uses white `on_primary` on its blue `primary` fill.
+Its `primary` colour has lower contrast against the page than against white text,
+so choosing it for body text requires a separate contrast check. Palette-role
+overrides can change these relationships; review the colour pairs actually used.
 
 ---
 

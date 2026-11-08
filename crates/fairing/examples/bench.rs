@@ -1,37 +1,17 @@
-//! The headless frame-time bench. `cargo run -p fairing --release --example bench`.
+//! Headless frame-time benchmark using Mock services and synthetic input.
+//! Run with `cargo run -p fairing --release --example bench`.
 //!
-//! It runs the Mock services plus synthetic input scenarios and prints the p50/p95 frame times. The
-//! scenarios are the M1 scope: idle desktop · the icon zoom (A2 open/close
-//! repeated over 240 frames) · push/pop (A3) repeated · a 200-widget screen (idle plus a touch drag
-//! scroll) · home (an A2 close), plus M2's shade drag over 200 frames (A1) · the page swipe (A4, 12
-//! icons = 4 × 2 over two pages) · the OSK appearing plus key taps (A5, feature `osk`) — and
-//! **`layout` with the built-in settings screens**. On CI (x86) it is not the absolute figures that
-//! matter but a regression against the baseline — and the baseline is `--release`.
+//! Scenarios include idle desktop, icon zoom, push/pop, home, a primitive-widget
+//! screen, shade drag, page swipe, OSK input, a layout-helper screen and built-in
+//! settings screens. It reports p50/p95 times for those scenarios in the current
+//! environment; compare release builds under the same setup.
 //!
-//! # Why the `layout` and settings scenarios were added
+//! The primitive-widget screen exercises egui labels/buttons. The layout scenario
+//! adds five card groups, twenty rows and a twelve-cell grid, with idle and drag
+//! measurements. Settings scenarios include home, Wi-Fi and scrolling About.
 //!
-//! `200-widget screen` is 200 rows of `ui.label` plus `ui.button` stacked up, so it measures the cost
-//! of **egui's primitive widgets**. But a screen written with this crate does not look like that —
-//! neither the eleven built-in settings screens nor the rewritten `demo` display screen; they are all
-//! [`fairing::layout`]'s cards, rows and grids. None of that path was in the bench, so fixing `Grid`
-//! or `group` moved no numbers.
-//!
-//! So two were added.
-//!
-//! - **A `layout` screen** — `page` + `section` × 5 + `group` (20 rows) + `Grid` (12 cells). Idle and
-//!   a drag scroll are measured separately. The per-frame cost of `Grid`'s column arithmetic and the
-//!   card backgrounds shows up here.
-//! - **The built-in settings screens** — `settings.home` (the left/right split) · `settings.wifi` (a
-//!   switch plus a list) · scrolling `settings.about` (the open-source notices — the longest of the
-//!   built-in screens). They are screens an integrator attaches in one line, so the cost here is the
-//!   cost the integrator pays.
-//!
-//! **Heap allocations per frame** are not counted here: a counting allocator needs `unsafe impl
-//! GlobalAlloc`, and the workspace lint is `unsafe_code = "forbid"`, which the examples inherit.
-//! Instead, idle desktop's p50 is the proxy for an allocation regression (more allocations move the
-//! p50 first). The known allocations on the render path: one `Vec<Pos2>` per icon subpath of three
-//! or more points (epaint's `PathShape` wants an owned `Vec`), and one each for the parametric
-//! bluetooth and volume icons.
+//! This executable does not count heap allocations. A timing change may motivate
+//! profiling, but does not identify an allocation regression by itself.
 
 #![allow(clippy::print_stdout)] // stdout is right for bench results (a library only logs).
 #![allow(
@@ -91,11 +71,8 @@ fn measure(
     );
 }
 
-/// The `layout` display screen — **the representative shape** of a screen written with this crate.
-///
-/// Five card groups (20 rows) plus a 12-cell grid. Unlike the 200-widget screen, the backgrounds,
-/// corners, role colours and touch targets all go through tokens, so fixing a token moves these
-/// numbers first.
+/// Layout-helper scenario: five card groups, twenty rows and twelve grid cells.
+/// Its timing includes the configured layout helpers, backgrounds and tokens.
 fn layout_screen(ui: &mut egui::Ui, cx: &mut Cx<'_>, state: &std::cell::Cell<(bool, f32)>) {
     let (mut on, mut value) = state.get();
     fairing::layout::page(ui, cx, "bench.layout", |ui, cx| {
@@ -169,8 +146,7 @@ fn run_layout(harness: &mut Harness) {
     harness.frames(20);
 }
 
-/// The built-in settings screens (feature `settings`). They are screens an integrator attaches
-/// with one line of `add_all`, so the cost here is the cost the integrator pays.
+/// Built-in settings-screen scenarios, enabled by the settings feature.
 #[cfg(feature = "settings")]
 fn run_settings(harness: &mut Harness) {
     // `settings.home` splits left and right at a width of 1024 (`split_width`) — the list and the body
@@ -207,7 +183,7 @@ fn run_settings(_harness: &mut Harness) {}
 /// The M2 scenarios: the shade drag over 200 frames (A1) · the page swipe (A4).
 fn run_m2(harness: &mut Harness) {
     // M2: the shade drag over 200 frames — pulled down from the top edge over 100 frames, released
-    // (the spring), then pushed back up to close. A per-frame allocation regression shows in the p50.
+    // (the spring), then pushed back up to close.
     measure(
         "shade drag (A1, 200 frames)",
         harness,
@@ -265,8 +241,7 @@ fn run_osk(harness: &mut Harness) {
 #[cfg(not(feature = "osk"))]
 fn run_osk(_harness: &mut Harness) {}
 
-/// Register every screen the bench uses. It is split out of `main` partly for clippy's function-length
-/// cap, but mostly because **separating the scenarios from the stage reads better**.
+/// Register the screens used by the benchmark scenarios.
 fn add_bench_screens(harness: &mut Harness) {
     let mut text = String::new();
     harness.shell.add(

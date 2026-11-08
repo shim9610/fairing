@@ -30,7 +30,8 @@ This page covers the first two. Painter hooks and theme injection are in
 ### 1.1 Built-in items
 
 Built-in ids all start with `status.`. In code, `fairing::chrome::BUILTIN_IDS` gives you the
-list.
+list. The eligibility conditions below also depend on item gates, layout space
+and bar visibility.
 
 | id | What it draws | When it is drawn | Tap |
 |---|---|---|---|
@@ -193,7 +194,7 @@ Item widths are distributed evenly between one `touch_target` (a 9 mm finger by 
 
 > `style = "gesture"` has no back button — back is a `back_edges` swipe — so combined with an
 > empty `back_edges` it is an **`Error::Config`** that stops the shell from starting: that
-> combination leaves a machine with no way back at all.
+> combination removes both built-in back mechanisms in the gesture style.
 
 ### 2.2 The disabled rule
 
@@ -560,7 +561,7 @@ There are nine `Wallpaper` variants.
 It is `#[non_exhaustive]`, so a `match` outside the crate needs a `_` arm.
 
 **The crate has no image decoder.** To use a PNG, JPEG or WebP as the background, plug a decoder
-into `ShellBuilder::image_loader` — ten lines, and with it installed `wallpaper = "file:<path>"`
+into `ShellBuilder::image_loader`; with it installed, `wallpaper = "file:<path>"`
 in the config file starts working ([09 Branding §1](09-branding.md#1-the-crate-does-not-decode-images--you-plug-in-a-loader)).
 
 ```rust
@@ -669,8 +670,8 @@ it takes the unread notification count to zero and absorbs any heads-up banner i
 
 | id | Kind | Setting key · action | Notes |
 |---|---|---|---|
-| `tile.wifi` | `Toggle` | `wifi.enabled` | The backend is the truth |
-| `tile.bluetooth` | `Toggle` | `bluetooth.enabled` | The backend is the truth |
+| `tile.wifi` | `Toggle` | `wifi.enabled` | State comes from the backend snapshot |
+| `tile.bluetooth` | `Toggle` | `bluetooth.enabled` | State comes from the backend snapshot |
 | `tile.brightness` | `Slider` | `display.brightness` | Dimmed when the backend returns `None` |
 | `tile.volume` | `Slider` | `audio.volume` | An in-memory value in M2 (0.5 by default) |
 | `tile.lock` | `Action` | `LaunchAction::Lock` | |
@@ -773,8 +774,7 @@ A tile that opens a screen is not a switch, so `Action`, `Status`, `Gauges` and 
 on/off of their own and the crate draws them unlit. Your device often does know: a conveyor is
 running, a heater is at temperature, a door is open. `.lit_by(key)` names the setting that answer
 lives in, and the tile is lit while it holds `Bool(true)` — its puck is filled with the accent, the
-same as a toggle that is on. Without `.lit_by` these kinds are never filled: a button that looks
-latched is a lie.
+same as a toggle that is on. Without `.lit_by`, these kinds use the unlit appearance.
 
 ```rust
 # fn f(shell: &mut fairing::Shell) {
@@ -867,8 +867,8 @@ shell.add(tile("tile.hopper", kind).icon(IconRef::Custom(id)));
 ### 4.4c Tiles the crate has no kind for
 
 For something that fits none of the built-in kinds (toggle, slider, action, status) there are two
-routes. **Look at the declarative one first** — letting the crate draw keeps the finger height,
-the press feedback and the colours in line with every other tile.
+routes. `Gauges` uses the shell's gauge-row layout and theme tokens; `tile_panel`
+lets the application draw the expanded row.
 
 #### Declarative: `TileKind::Gauges`
 
@@ -1017,14 +1017,12 @@ The commit threshold is a third of the list's width, or a fling in the same dire
 
 **Dismissal is two steps.** Once the card is fully out sideways, its **slot** collapses to zero
 height over `[motion.toast] out_ms`, and the notification leaves the list on the frame the
-collapse finishes. While it collapses the rows below rise into the gap, so you can see what left
-— removing it immediately makes the rows below jump and you cannot tell a dismissal from a
-glitch. A row that is collapsing does not take taps.
+collapse finishes. While it collapses, the rows below rise into the gap. A row
+that is collapsing does not take taps.
 
-The `×` can be turned off. On a finger-only machine one swipe is enough and the card is cleaner.
-On a machine where swipes register poorly — gloves, a resistive panel — the button has to be
-there, so it is **policy, not taste**. Turning it off never removes the way to dismiss (the
-swipe and "clear all" stay).
+The `×` can be turned off. Choose whether to show it based on the supported input
+devices and the product's dismissal flow. The swipe and "Clear all" paths remain
+when it is hidden.
 
 With `motion.reduce = true`, all three disappear instantly as they used to.
 
@@ -1269,8 +1267,8 @@ fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
 
 To change it at runtime, use `shell.set_osk_layout(..)`.
 
-**A field can ask for its own keys.** One layout per device is wrong for some field whatever it
-is — a PIN on a qwerty, a password on a number pad — so a field says what it takes with
+**A field can ask for its own keys.** For example, a PIN field may request digits
+while a password field requests Latin input. A field declares its input layout with
 [`widgets::Keys`](#65-text-fields--widgetstextfield), and the keyboard shows those keys while the
 field has the focus and goes back to the layout above when a field that asks for nothing takes
 it. A `Latin` field on a Hangul device opens on the English side and keeps the `한/영` key.
@@ -1317,8 +1315,7 @@ fn use_custom_pad(shell: &mut Shell) {
 ```
 
 The `span` in `KeyDef::special(action, label, span)` is a multiple of one default key, held to
-`0.5..=6` and rounded to a tenth: narrower than half a key is no target for a finger, and one key
-wider than six squeezes the rest of its face. Every row
+`0.5..=6` and rounded to a tenth. Every row
 in a face divides up the width of the longest row, so keys stay the same size even when rows
 have different key counts.
 
@@ -1401,10 +1398,9 @@ do.
 
 ### 6.5 Text fields — `widgets::TextField`
 
-Use `egui::TextEdit` as-is and its height comes from the font size, which does not reach a gloved
-hand. It also only follows the theme as far as `Theme::egui_style` pushed, and its padding is
-egui's default, so it does not line up with the other rows. `TextField` fixes both — the height
-is `touch_target` and the text is centred vertically inside it.
+`TextField` wraps [egui `TextEdit`](https://docs.rs/egui/0.37.0/egui/widgets/text_edit/struct.TextEdit.html)
+with Fairing sizing and styling. Its height has a `touch_target` floor, and its text
+is centred vertically. Applications can also configure an egui editor directly.
 
 | Handle | What it does |
 |---|---|
@@ -1433,13 +1429,14 @@ work. Raising and lowering the OSK is the shell's job, from focus.
 
 ## 7. Touch widgets
 
-Every widget in `fairing::widgets` draws its pressed state from the first frame. The tint is
-immediate, the scale goes `1 → 0.97` over 80 ms and returns over 120 ms on release. egui's own
-widgets work too, but then touch targets and press feedback are yours to handle.
+Interactive controls in `fairing::widgets` use theme and motion tokens for press
+feedback; their geometry and feedback differ by widget. Read-only indicators do
+not have a pressed state. egui provides the underlying interaction responses and
+also offers widgets that can be used directly.
 
 | Widget | Construction | `show` returns | When to use it |
 |---|---|---|---|
-| `BigButton` | `BigButton::new(label)` | `LongPressResponse { response, completed, progress }` | A large button for gloved hands. Dangerous actions get `.long_press(d)` |
+| `BigButton` | `BigButton::new(label)` | `LongPressResponse { response, completed, progress }` | A button with configurable touch sizing and optional `.long_press(d)` confirmation |
 | `Switch` | `Switch::new(&mut bool)` | `egui::Response` | On/off that applies immediately |
 | `TouchSlider` | `TouchSlider::new(&mut f32, range)` | `egui::Response` | Continuous values like brightness or speed. Tracks the finger 1:1 |
 | `ListRow` | `ListRow::new(title)` | `egui::Response` | One row of a settings screen |
@@ -1793,7 +1790,7 @@ shell.add_gesture_handle(
   screens, not on a screen with `edge_guard`, and not with `[gesture] enabled = false`. There the
   strip is not there at all, and a press at the edge reaches the screen: a screen that needs its
   very edge sets `edge_guard`.
-- **It never goes by quietly.** `ShellEvent::Gesture { handle, gesture }` comes out when one
+- **Completion emits an event.** `ShellEvent::Gesture { handle, gesture }` comes out when one
   completes, gate or no gate. With a gate the session does not pass, `AccessEvent::UnlockRequested`
   follows, the unlock prompt comes up, and the action runs once the gate is passed.
 - **Nothing follows the finger but an arrow** that says which gesture the swipe is. The built-in
@@ -1801,8 +1798,8 @@ shell.add_gesture_handle(
   ringed while a rest makes it long. `ShellBuilder::gesture_handle_painter` draws it your way
   ([04](04-customization.md)): a `HandleLook` carries the strip, and a `HandleSwipe` while it is
   swiped, with the gesture it would be, its reach and rest, and whether it has run.
-- **Give every gesture another way in too**, such as an icon, a nav bar item or a button, as every
-  gesture of the shell's has.
+- **Provide another entry point where needed**, such as an icon, nav item or button,
+  for operations that must remain available without the gesture.
 
 `remove_gesture_handle(id)` takes one off; `gesture_handles()` lists them. A handle is a gesture
 region the shell places itself (§9.3).

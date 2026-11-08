@@ -114,10 +114,9 @@ impl<'a> ProgressRing<'a> {
         }
     }
 
-    /// **Repaint an indeterminate ring at most this often**, rather than every frame — for a
-    /// ring that may go round for hours (a badge reader's wait on a lock screen), where sixty
-    /// frames a second all night is heat and power spent on nothing. The arc keeps its pace; it
-    /// only moves in coarser steps. Nothing for a determinate ring, which repaints on change.
+    /// Request indeterminate-ring updates at this interval instead of every frame.
+    /// Other UI work or host input may cause more frequent frames. Arc position still
+    /// uses elapsed time. This setting does not affect determinate-ring updates.
     #[must_use]
     pub fn repaint_every(mut self, interval: Duration) -> Self {
         self.repaint_every = Some(interval);
@@ -190,9 +189,8 @@ impl<'a> ProgressRing<'a> {
         self
     }
 
-    /// **Let the shown value go down.** Off by default: a ring holds the highest value it has
-    /// shown, because a reading that goes backwards is a reading the operator stops trusting. A
-    /// new run is the case this is for — say so, and the ring follows the value down.
+    /// Allow the shown value to decrease. Off by default: a ring retains its
+    /// highest shown value. Enable this when restarting or intentionally decreasing it.
     #[must_use]
     pub fn allow_rewind(mut self, allow: bool) -> Self {
         self.allow_rewind = allow;
@@ -453,12 +451,8 @@ impl<'a> ProgressRing<'a> {
     }
 }
 
-/// **Where the arc starts.** A ring starts at twelve o'clock, which is where every clock and every
-/// progress ring since has started. A gauge — a ring with a gap — starts at the gap's clockwise
-/// edge, so the arc runs up one side, over the top and down the other, with the opening at the
-/// bottom: the dashboard convention. The two are different rules, and a formula that slid from one
-/// to the other as the gap closed would put a plain ring's start at six o'clock, which is what the
-/// first render of this did.
+/// Start a full ring at twelve o'clock. A ring with a gap starts at the gap's
+/// clockwise edge so the opening remains at the bottom.
 fn start_angle(gap_degrees: f32) -> f32 {
     if gap_degrees > 0.0 {
         FRAC_PI_2 + gap_degrees.to_radians() * 0.5

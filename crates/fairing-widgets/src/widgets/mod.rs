@@ -38,7 +38,7 @@
 //! retains its interaction and value updates; the hook draws its supplied look data.
 //!
 //! The tick and the dot are **drawn, not glyphs**: a typeface an integrator supplies may have no
-//! `✓`, and tofu in a checkbox is worse than no checkbox.
+//! `✓`; line geometry avoids depending on that glyph.
 
 mod badge;
 mod button;

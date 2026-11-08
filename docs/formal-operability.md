@@ -92,7 +92,7 @@ classifier/dispatcher in `shell/back_route.rs`. It retains the original priority
 These are **nine groups of the Back projection**, not nine groups covering the
 entire application's interaction semantics. The raw projection has eight independent
 Boolean predicates. Kani covers all 256 valuations, including inconsistent/dominated
-combinations, rather than assuming away inconvenient overlaps. It proves:
+combinations. It proves:
 
 - Exactly one independent specification predicate holds and the classifier returns it.
 - Every specification-permitted Back selects the specified handler, never Ignore.
@@ -117,7 +117,8 @@ consume Back by design; its own promised outcome requires a separate contract.
 
 `fairing-widgets/src/interaction/rules.rs` is the production lifecycle kernel.
 Its four raw predicates are independent: `present`, `enabled`, `continuous` and
-`active`. No reachable-state assumption removes an inconvenient valuation.
+`active`. The proof includes all sixteen valuations without a reachable-state
+precondition.
 
 | Group | Independent membership predicate | Promised operations |
 | --- | --- | --- |
@@ -217,7 +218,7 @@ type declarations, not reachable states or verified application behavior. Other
 declarations remain explicitly unmapped. The inventory includes configuration,
 rendering and builder types as well as retained state and does not enumerate
 function-local types and anonymous callback environments, arbitrary integrator types or upstream internals.
-It is an omission guard and a worklist for further refinement, not the requested
+It is an omission guard and a worklist for further refinement, not a
 whole-state completeness theorem. Compiler runs record the exact source inputs;
 a local `--skip-build` report is explicitly marked as not freshly compiled.
 
@@ -248,9 +249,10 @@ Adapter unit tests check that consumers cannot renew absent owners, expired payl
 are not cloned, and fresh press/mount lifetimes differ as specified.
 
 Native mutation controls separately bypass the actual lease, remove numeric
-caller-value validation, treat an idle hold entry as active, and bypass wheel capture admission. Passing abstract proofs cannot hide disconnected product
-wiring: these broken adapters must fail their concrete contract tests. Generated
-protocol histories, Miri and the shell fuzzer also check the production kernel.
+caller-value validation, treat an idle hold entry as active, and bypass wheel
+capture admission. These adapter mutations must fail their concrete contract tests
+independently of the abstract proof results. Generated protocol histories, Miri
+and the shell fuzzer also check the production kernel.
 
 ## Evidence gates and remaining boundaries
 
@@ -261,7 +263,7 @@ backend inventory. A stale receipt or changed inventory fails CI. The status rep
 records the discharged Back/protocol obligations separately from concrete carrier
 partition/refinement, unbounded capture-product partition and payload noninterference.
 
-The requested whole-application theorem still needs:
+The whole-application theorem still needs:
 
 - A proved joint abstraction for shell/workspace/gesture state, widget geometry and
   animation, caller state, and upstream egui memory. The two component projections

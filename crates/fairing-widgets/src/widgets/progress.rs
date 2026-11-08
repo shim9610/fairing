@@ -117,12 +117,8 @@ impl<'a> ProgressBar<'a> {
         self
     }
 
-    /// The Material 2024 look: a gap of one thickness between the fill's head and the track, and
-    /// a dot of one thickness at the track's far end that hides once the head reaches it.
-    ///
-    /// For a bar whose fill and track are close in colour, and for one read from a distance: the
-    /// end of the track is marked whatever the palette, so "how far is left" is never a guess.
-    /// Off by default — the classic bar, fill over track, is the quieter one in a list.
+    /// Add a gap at the fill head and a dot at the track end. Off by default.
+    /// Both dimensions use one track thickness; the dot hides when the head reaches it.
     #[must_use]
     pub fn stop_indicator(mut self, on: bool) -> Self {
         self.stop_indicator = on;
@@ -338,8 +334,9 @@ pub(crate) fn eased_value(
     cx.animate(id.with("t"), target, cx.theme.motion.switch)
 }
 
-/// What counts as a word from the worker: its heartbeat when it sends one, else the reported
-/// value's bits — a value that has not changed is a value that has not been reported.
+/// Use the caller's heartbeat when supplied, otherwise the reported value bits.
+/// Repeated updates with an unchanged value need a changing heartbeat to be
+/// distinguished from no updates.
 pub(crate) fn beat_of(value: Option<f32>, heartbeat: Option<u64>) -> u64 {
     heartbeat.unwrap_or_else(|| u64::from(value.unwrap_or(0.0).to_bits()))
 }
@@ -347,10 +344,9 @@ pub(crate) fn beat_of(value: Option<f32>, heartbeat: Option<u64>) -> u64 {
 /// The heartbeat as last remembered: the beat and the clock when it changed.
 type LastBeat = (u64, f64);
 
-/// **When the silence passed `after`**, if it has — remembering the last beat under `id`.
-///
-/// Arms a repaint for the moment the limit passes, so a bar nobody else is redrawing still goes
-/// stale on time and not on the next unrelated frame.
+/// Remember a heartbeat under `id` and report whether `after` has elapsed.
+/// A repaint is requested for that deadline; the host determines when another
+/// update is supplied.
 pub(crate) fn stalled(ui: &egui::Ui, id: egui::Id, beat: u64, after: Duration) -> Option<f64> {
     let now = ui.input(|i| i.time);
     let prev = ui.data(|d| d.get_temp::<LastBeat>(id));
@@ -651,8 +647,8 @@ mod tests {
         }
     }
 
-    /// **The track carries a boundary you can measure, in every palette** — and the role it stopped
-    /// using cannot come back, because an empty bar drawn in `Outline` is not there at all.
+    /// Check track-boundary contrast for the built-in palette/background pairs,
+    /// and keep the lower-contrast decorative Outline role out of that boundary.
     #[test]
     fn the_track_is_identified_in_every_palette_and_outline_would_not_be() {
         for &preset in Preset::ALL {

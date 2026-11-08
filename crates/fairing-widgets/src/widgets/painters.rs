@@ -65,8 +65,7 @@ pub struct IconButtonLook<'a> {
     pub disc: Rect,
     /// The glyph.
     pub icon: &'a IconRef,
-    /// What it does, in words — the button has none on the glass, so this is for a screen reader
-    /// or a painter that wants a label.
+    /// Action name available to a custom painter or host metadata consumer.
     pub name: &'a str,
     /// What the button is for.
     pub kind: ButtonKind,

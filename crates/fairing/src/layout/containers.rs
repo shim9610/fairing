@@ -21,51 +21,15 @@ pub fn split_width(cx: &Cx<'_>) -> Option<f32> {
     let (w, h) = (rect.width(), rect.height().max(1.0));
     (w >= SPLIT_MIN_WIDTH && w / h >= SPLIT_MIN_ASPECT).then(|| (w * LIST_FRACTION).min(LIST_MAX))
 }
-/// **A screen whose navigation rail is part of the chrome** — the top bar and the rail read as one
-/// surface, an L lying on its side, with the page as a lighter panel inside its elbow.
+/// Lay out a navigation rail beside a page panel.
 ///
-/// # Why this is a layout and not two calls
+/// The rail uses the chrome surface role; `deco` styles the page panel. When
+/// [`split_width`] determines that the pane is too narrow or upright, the rail
+/// callback is not called and the page uses the available area.
 ///
-/// The crate's other screen anatomies divide a screen into bands and *draw a line* between them,
-/// because with an arbitrary palette `Surface` and `Background` can be near enough to each other
-/// that colour alone does not separate anything — that is written on `Desktop::rail_ui`, and it is
-/// true for a rail that is a region of the page. It stops being true when the rail is **chrome**:
-/// the top bar already paints `Surface`, so a rail arm painting the same role continues it, and a
-/// line drawn between the two would cut the shape in half rather than divide anything. What
-/// separates the page from the chrome is then the page's own panel, one step lighter, with its
-/// inner corner rounded where it meets the elbow.
-///
-/// So the two decisions — *no line between the arms*, and *the page is a panel rather than a
-/// background* — only hold together if one thing makes both. Made separately by a caller, the first
-/// one alone is a rail that has merged into the bar and lost its edge.
-///
-/// # Folding
-///
-/// On a panel too narrow or too upright to divide, [`split_width`]'s judgement, the rail is not
-/// drawn at all and the page takes the whole screen. `rail` is not called, so a caller does not
-/// need to test for it. Where the entries still have to be reachable, put them on the page's
-/// header or in a nav bar — a rail folded onto a narrow panel is a drawer, and a drawer that opens
-/// itself over the page is the thing device UIs get wrong.
-///
-/// # Colours
-///
-/// `deco` paints the **page panel**, not the chrome: the chrome is the bar's own colour by
-/// definition, and a rail that did not match it would not be an L. The default fill is
-/// [`ColorRole::SurfaceVariant`], a step in from `Surface` in every palette the crate ships,
-/// light and dark. The page `Ui` carries that fill as its `panel_fill`, so a
-/// [`Container::Filled`] card on it — a [`group`], a [`Grid`]'s tiles, an [`action_bar`] —
-/// takes `Surface` and stands off the panel, where it would otherwise have been the panel's
-/// own colour and vanished.
-///
-/// # What the rail hands back
-///
-/// The rail closure **returns** what was picked rather than writing it, and `rail_split` hands it
-/// back beside the page's own result, `None` where the rail was folded away. That is not
-/// ceremony: the rail writes the selection and the page reads it in the same frame, so a rail that
-/// mutated the caller's state directly would need a second mutable borrow of it while the page
-/// closure still held one, and no caller can hand out both. Returning the pick moves the write
-/// after both closures have finished, where it is one line and it compiles. It is the same shape
-/// [`action_bar`] uses, which returns the bar's result and not the body's.
+/// The rail and page callbacks return separate results. The selected rail value is
+/// returned after both callbacks, allowing the caller to update shared state once
+/// their borrows have ended. [`Rail`] adds folding and other rail options.
 ///
 /// ```no_run
 /// # fn draw(ui: &mut egui::Ui, cx: &mut fairing::Cx<'_>) {
@@ -191,15 +155,10 @@ pub fn split_height(ui: &Ui, cx: &Cx<'_>, top: f32) -> Option<f32> {
     (pane.height() > pane.width() && tall_enough)
         .then(|| avail.height() * top.clamp(BAND_TOP_MIN, BAND_TOP_MAX))
 }
-/// Wrap one settings screen. **The vertical scroll and the side padding are given here, once.**
+/// Wrap a page in an egui scroll area with Fairing side padding.
 ///
-/// A device screen is short — eight rows of 56 do not fit on a 480 px panel. Left to each screen to
-/// remember, one would be missed and only that screen would be cut off at the bottom.
-///
-/// **One id per page.** The id is the scroll position's identity, and nothing else tells two
-/// pages apart: three tabs drawn through one call with one id share one offset, so a tab
-/// scrolled halfway opens the next tab halfway (the console example's three boards did). Anything
-/// that hashes will do — `("board", tab)` gives each tab its own.
+/// Use a stable, distinct ID for each page whose scroll position should be retained
+/// independently. Reusing an ID across tabs shares their retained scroll position.
 pub fn page(
     ui: &mut Ui,
     cx: &mut Cx<'_>,
@@ -302,12 +261,9 @@ pub(super) fn keep_focus_clear(
     };
     ctx.data_mut(|d| d.insert_temp(expect_key, next));
 }
-/// **A settings-shaped screen, declared in one call.** The body is wrapped in [`page`], so it
-/// scrolls, and the id is written once.
-///
-/// This is the shape every built-in settings screen has, and the shape an integrator's own screen
-/// usually wants: a scrolling column of sections and cards. Written out it is two closures and the
-/// id twice —
+/// Declare a screen whose body is wrapped in [`page`] for scrolling and padding.
+/// The resulting [`ScreenDecl`] accepts the usual title, icon, gate and chrome
+/// configuration.
 ///
 /// ```no_run
 /// # fn main() {
@@ -321,10 +277,6 @@ pub(super) fn keep_focus_clear(
 /// # }
 /// ```
 ///
-/// — and the `page` is easy to forget, which costs nothing until that one screen is the only one
-/// cut off at the bottom. The crate had this helper from the start and kept it private to the
-/// settings module, so every integrator wrote the long form:
-///
 /// ```no_run
 /// # fn main() {
 /// # let shell: &mut fairing::Shell = todo!();
@@ -334,9 +286,6 @@ pub(super) fn keep_focus_clear(
 /// shell.add(layout::page_screen("app.heater", body).title("Heater"));
 /// # }
 /// ```
-///
-/// Everything [`ScreenDecl`] carries is still yours to set afterwards — the title, the icon, the
-/// gate, `desktop()`, the chrome policy.
 pub fn page_screen(
     id: impl Into<String>,
     mut body: impl FnMut(&mut Ui, &mut Cx<'_>) + 'static,
@@ -347,8 +296,8 @@ pub fn page_screen(
         page(ui, cx, &salt, |ui, cx| body(ui, cx));
     })
 }
-/// **A section heading and the card under it**, which is how they nearly always come: 25 of the
-/// crate's 32 `section` calls are immediately followed by a `group`.
+/// A section heading paired with a card. Use [`group`] for a card alone or
+/// [`section`] for a heading without a card.
 ///
 /// ```no_run
 /// # fn draw(ui: &mut egui::Ui, cx: &mut fairing::Cx<'_>) {
@@ -360,9 +309,6 @@ pub fn page_screen(
 /// });
 /// # }
 /// ```
-///
-/// A card with no heading over it is [`group`]; a heading with something other than a card under
-/// it is [`section`]. This is only the pair.
 pub fn section_card(
     ui: &mut Ui,
     cx: &mut Cx<'_>,
@@ -371,11 +317,7 @@ pub fn section_card(
 ) {
     section_card_with(ui, cx, title, Deco::new(), body);
 }
-/// [`section_card`] with the container said out loud — see [`Container`].
-///
-/// A screen that groups its rows one way has to group **all** of them that way: a settings page
-/// with a divider-only group above a filled one reads as two screens stitched together, which is
-/// what the built-ins looked like the first time this was tried with only `group_with` converted.
+/// [`section_card`] with explicit container decoration; see [`Container`].
 pub fn section_card_with(
     ui: &mut Ui,
     cx: &mut Cx<'_>,
@@ -441,15 +383,11 @@ pub fn chip_row<R>(
     ui.add_space(cx.theme.metrics.row_height * CARD_GAP);
     out.inner
 }
-/// **A scrolling body with a bar pinned at the bottom** — the basic form of a payment or
-/// confirmation screen.
+/// A scrolling body with a bar pinned at the bottom.
 ///
-/// A confirm button tacked onto the end of a list has to be scrolled to when the list is long. On a
-/// device that is another way of saying "payment does not work". The action has to be **always in
-/// the same place**.
-///
-/// `bar` is pinned to the bottom and `body` scrolls within the height left. The return value is
-/// whatever `bar` handed back, so a button click can be passed straight out.
+/// The body scrolls within the remaining height. The return value is the bar
+/// callback's result. `bar_rows` expresses bar height in multiples of
+/// `metrics.row_height`, so it follows the configured size policy.
 ///
 /// ```no_run
 /// # fn draw(ui: &mut egui::Ui, cx: &mut fairing::Cx<'_>) {
@@ -476,9 +414,6 @@ pub fn chip_row<R>(
 /// # let _ = pay;
 /// # }
 /// ```
-///
-/// `bar_rows` gives the bar's height as a multiple of `metrics.row_height` — leave it in absolute du
-/// and it does not follow the glove policy.
 pub fn action_bar<R>(
     ui: &mut Ui,
     cx: &mut Cx<'_>,
@@ -617,34 +552,13 @@ pub(super) fn f32_from(value: usize) -> f32 {
 pub fn title(ui: &mut Ui, cx: &mut Cx<'_>, text: &str) {
     header(ui, cx, text, None, |_, _| ());
 }
-/// **A screen's opening: a title, a muted line under it, and a place for the screen's own actions.**
+/// Page header with title, optional subtitle and a trailing action slot.
 ///
-/// The three reference screens open the same way and it is most of why they read as one product —
-/// "Appearance" over "Display and interface" with *Restore defaults* on the right, "Dashboard" over
-/// "Device overview" with a picker and a *Pause*, "Quick settings" with a close. Before this the
-/// crate had a title and nothing else, so a screen needing an action in its header hand-rolled a
-/// `ui.horizontal` and no two lined up — and the built-in settings screens simply went without.
-///
-/// # What is settled here
-///
-/// The left edge is `metrics.content_inset`, the same one the rows below start at (a heading that
-/// does not reads as a different column). The subtitle is `type_scale.small` in
-/// [`ColorRole::Muted`], one `control.line_gap` under the title. The trailing slot is laid out
-/// **right to left** and centred on the *title's* line rather than on the whole block, which is
-/// where the references put it: with a subtitle present, centring on the block would drop a button
-/// half a line below the name it belongs to.
-///
-/// The title takes the display face ([`Theme::display`](crate::theme::Theme::display)), seeded from
-/// the strong faces, so with no display font registered this is the bold draw it always was. A
-/// title is the **only** place the crate reaches for that face — a headline font may be missing
-/// glyphs a value row cannot do without.
-///
-/// # It does not fight the chrome
-///
-/// The title the shell knows (`ScreenDecl::title`) names the screen in the task switcher and in the
-/// back button's label; this one is the page's own heading. They are the same words on purpose and
-/// in two different places, the way a browser tab and an `<h1>` are. `Cx::set_subject` is unrelated
-/// — that is the access level, not a name.
+/// The left edge follows `metrics.content_inset`. The subtitle uses
+/// `type_scale.small` and `ColorRole::Muted`; trailing actions are laid out
+/// right-to-left and centred on the title line. The title uses the configured
+/// display face. This page heading is separate from `ScreenDecl::title`, which the
+/// shell uses in navigation and recent-screen views.
 ///
 /// ```no_run
 /// # fn draw(ui: &mut egui::Ui, cx: &mut fairing::Cx<'_>) {
@@ -748,17 +662,7 @@ pub fn header<R>(
     ui.add_space(gap);
     out
 }
-/// A subheading above a card. Distinguished by **a muted colour, small text and letter-spacing**
-/// rather than by weight — so that the hierarchy does not collapse when a manufacturer changing the
-/// typeface (guide 09 §3) puts in a font with no weight axis.
-///
-/// # Why it is not the accent colour
-///
-/// It used to be [`ColorRole::Primary`], which meant every subheading on every settings page was
-/// painted in the accent. An accent that marks all the furniture marks nothing: with "Networks",
-/// "Display" and "About" all in the same blue, the one thing on the page that *is* selected had no
-/// colour left to say so. The accent now belongs to state — selection, press, focus — and a
-/// subheading is quiet furniture, set apart by tracking instead.
+/// A subheading above a card, using muted colour, small text and letter spacing.
 pub fn section(ui: &mut Ui, cx: &Cx<'_>, text: &str) {
     let m = &cx.theme.metrics;
     // `content_inset` — see `title`. A subheading belongs to the card below it and has to line up
@@ -813,26 +717,9 @@ pub fn note(ui: &mut Ui, cx: &Cx<'_>, text: &str) {
     // explanation's last line.
     ui.add_space(m.row_height * CARD_GAP);
 }
-/// The hairline between two rows **inside** a card.
-///
-/// # Why the card's edge is not enough
-///
-/// The rule used to be that the card's own boundary expresses the group and a line inside it makes
-/// one card look divided again. Measured against the shells this one stands beside, that is wrong:
-/// iOS, One UI and Windows 11 all rule between the rows of a grouped list, because three rows with
-/// nothing between them read as one block of text rather than as three things you can press.
-///
-/// # Why it is geometric and holds no state
-///
-/// It is drawn **above** each row but the first, which is what keeps the last row from leaving a
-/// stray line inside the card's bottom padding — the reason the old `ListRow` separator had to rely
-/// on the container clipping it. "But the first" is read off the cursor: the first thing placed in
-/// a container sits exactly on that container's content top, so a row whose cursor is still there
-/// is the first one. A counter in the `Ui`'s temp data was tried first and drew a line above the
-/// first row anyway; a rule that needs no bookkeeping cannot get the bookkeeping wrong.
-///
-/// It starts where the row's text does ([`crate::theme::ListRowMetrics::pad`]) and runs to the
-/// card's edge, which is how iOS insets it — the icon column stays open.
+/// Draw a hairline before each row except the first in a container.
+/// The cursor position identifies the first row. The line starts at the row's text
+/// inset and ends at the card edge.
 pub(super) fn card_divider(ui: &mut Ui, cx: &Cx<'_>) {
     let y = ui.cursor().min.y;
     if y <= ui.max_rect().min.y + 0.5 {
@@ -849,10 +736,8 @@ pub(super) fn card_divider(ui: &mut Ui, cx: &Cx<'_>) {
         ),
     );
 }
-/// Group a few rows into a **rounded card**. The space between cards divides the groups.
-///
-/// No separators are drawn on the rows inside — the card's boundary already expresses the group, and
-/// a line on top of that makes one card look divided again.
+/// Group related content into a rounded card, with spacing between groups.
+/// Row helpers determine any internal dividers.
 pub fn group(ui: &mut Ui, cx: &mut Cx<'_>, body: impl FnOnce(&mut Ui, &mut Cx<'_>)) {
     group_with(ui, cx, Deco::new(), body);
 }

@@ -6,8 +6,8 @@
 
 The examples look for a Korean font on the system first (`fairing::fonts::korean_font()`,
 `strong_font()`) and fall back to these, **built into the example binaries** with
-`include_bytes!`, so an example draws Hangul and `₩` wherever it is run from — the Latin faces
-have no won sign, and the kiosk is priced in won.
+`include_bytes!`. The bundled subsets provide the examples' Hangul and currency
+glyphs when a suitable system font is unavailable.
 
 The subset keeps: basic Latin and Latin-1 (`U+0020–007E`, `U+00A0–00FF`), general punctuation
 (`U+2010–2027`, `U+2030–203A`), currency (`U+20A0–20BF`), letterlike, arrows and mathematical

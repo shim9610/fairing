@@ -29,8 +29,7 @@
 //!   where the two cross. Either way it is never taller than the room above the nav bar.
 //! - **Key taps**: the hit area is the drawn key Rect plus half the gap, so there is no dead band
 //!   between keys. A pressed key is tinted immediately (A7) and shrinks by `press_scale`. Label
-//!   galleys are not laid out again while the face and the text size are unchanged — zero heap
-//!   allocation on the render path.
+//!   galleys are not laid out again while the face and the text size are unchanged — the buffers can be reused when capacity is sufficient.
 //! - **Focus**: egui takes the focus off a widget **when a click completes outside it** —
 //!   `InputOptions::surrender_focus_on` defaults to [`egui::SurrenderFocusOn::Clicks`] (`Presses`
 //!   is the non-default alternative and the shell does not touch the value), and the decision is
@@ -499,8 +498,7 @@ impl Osk {
 
     /// The OSK height at this screen height: the `height_ratio` share, cut to `max_key` per row
     /// (gap included) and then raised so no key is shorter than `min_key_px` (the gaps come on
-    /// top) — so where the cap and the floor cross, the floor wins and the keys stay big enough to
-    /// hit. Last, it is cut to the screen and to the room above the nav bar: a keyboard whose top
+    /// top) — so where the cap and the floor cross, the configured floor takes precedence. Last, it is cut to the screen and to the room above the nav bar: a keyboard whose top
     /// row is off the glass cannot be typed on at all.
     #[must_use]
     pub(crate) fn height_for(&self, screen_height: f32) -> f32 {

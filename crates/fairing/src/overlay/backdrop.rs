@@ -1,26 +1,13 @@
-//! **The frosted backdrop behind a card** — the page as it was when the card began to
-//! arrive, shrunk and blurred once, laid under the card's plate so the card reads as glass.
+//! Optional frosted backdrop for a card shade.
 //!
-//! egui's painter draws triangles and cannot read back what is already on the screen, so a live
-//! blur would need the GPU — the framebuffer copied, a two-pass shader, drawn back — which is a
-//! runner-only feature, invisible to the headless tests and a real cost on a software-rendered
-//! kiosk. A card does not need a live one. What is behind it barely changes while it is open, and
-//! blurred to a frost it would not show if it did; so the overlay asks the runner for **one
-//! screenshot** as a card first shows (`ViewportCommand::Screenshot`), frosts it here on the CPU,
-//! uploads it once, and draws it under the plate. Admitted readbacks and processing buffers are
-//! bounded. A failed optional frost leaves a solid plate; no blur is recomputed on idle frames.
+//! When a card first opens, the host is asked for one screenshot through
+//! `ViewportCommand::Screenshot`. The CPU processing path downsamples it and applies
+//! separable box blurs, then uploads a texture for reuse until invalidated.
+//! Readback and processing buffers have explicit bounds. If an optional backdrop
+//! cannot be obtained or processed, the card uses a solid plate.
 //!
-//! The frost is a block-sum shrink by [`SHRINK`] and then [`PASSES`] separable box blurs of
-//! radius [`RADIUS`] — three box passes are within a few per cent of a Gaussian, here one of
-//! σ ≈ 28 screen pixels, and at an eighth of the size they cost a sixty-fourth. Linear filtering
-//! scales it back up and adds its own softness. The arithmetic is on the premultiplied colours as
-//! they come, which is what a frost wants: it averages what was drawn, not what was meant.
-//!
-//! **No pass divides.** Every texel carries the sum of the screen pixels that went into it and how
-//! many there were, the passes only add and take away, and the one division is at the end. That is
-//! exact — no light is rounded away pass by pass — and it is what made the first build slow: four
-//! integer divisions per texel per pass were most of its time. A window shortened at an edge sums
-//! fewer pixels and says so in its count, so the edge needs no padding rule.
+//! Texels retain accumulated colour sums and sample counts during filtering, with
+//! normalization at the end. No blur is recomputed for an unchanged idle backdrop.
 
 use egui::{Color32, ColorImage};
 
@@ -30,7 +17,7 @@ pub(super) const SHRINK: usize = 8;
 /// The box blur's radius, in backdrop texels — 24 screen pixels.
 pub(super) const RADIUS: usize = 3;
 
-/// How many box passes: three are within a few per cent of a Gaussian.
+/// Number of separable box-blur passes.
 const PASSES: usize = 3;
 
 /// One texel: its channels summed over the screen pixels that went into it, and how many there

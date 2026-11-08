@@ -11,10 +11,7 @@ use crate::theme::ColorRole;
 use crate::unit::round_u8;
 use egui::{Color32, CornerRadius, Rect, Response, Sense, Stroke, StrokeKind, Vec2};
 
-/// One chip.
-///
-/// It edits a `&mut bool`, the arrangement [`Checkbox`](super::Checkbox) has: a chip that owned its
-/// bit would force the screen to keep a second copy of state it already has.
+/// Chip editing a caller-owned Boolean selected state.
 #[derive(Debug)]
 pub struct Chip<'a> {
     label: &'a str,
@@ -67,10 +64,8 @@ impl<'a> Chip<'a> {
         self
     }
 
-    /// Force the height, so a hand-laid row of mixed chips does not stagger.
-    ///
-    /// [`ChipRow`] sets it for you. Like the other height overrides in this crate it can only push
-    /// **up** — a chip shorter than a touch target is not a chip.
+    /// Override height. Values below the configured touch-target minimum are raised
+    /// to that minimum; `ChipRow` coordinates the height of its items.
     #[must_use]
     pub fn height(mut self, du: f32) -> Self {
         self.height = Some(du.max(0.0));
@@ -192,10 +187,8 @@ impl<'a> Chip<'a> {
     }
 }
 
-/// A horizontally scrolling row of chips with **one** of them selected.
-///
-/// It owns the index the way [`RadioGroup`](super::RadioGroup) does, so the "exactly one"
-/// invariant lives in exactly one place.
+/// Horizontally scrolling chips sharing a caller-owned selected index.
+/// Each selection update is written through that mutable borrow.
 #[derive(Debug)]
 pub struct ChipRow<'a> {
     id_salt: &'a str,
@@ -339,14 +332,8 @@ fn stack_height(t: &Tokens, has_icon: bool) -> f32 {
     t.target.max(stack)
 }
 
-/// **The signal that a lane has more in it**, painted over each end that has something past it.
-///
-/// A row with the scrollbar hidden and nothing else to say gives a chip cut in half at the edge,
-/// which reads as a clipping bug rather than as "there is more". The reference kiosks all ramp
-/// their category strips out at the edge instead. The ramp is the page's own colour going to
-/// transparent, so it works on any ground without a new token, and it is drawn **only** on the side
-/// that has content past it — a lane that fits gets nothing, and a lane scrolled to its end stops
-/// advertising the direction it cannot go.
+/// Paint a fade at lane edges with additional off-screen content, using the
+/// page colour. The fade is omitted at an end with no further content.
 pub fn paint_lane_fade(ui: &egui::Ui, cx: &Cx<'_>, lane: Rect, content: f32, offset: f32) {
     // Half a chip: enough to say "cut off on purpose", not enough to hide one.
     let ramp = cx.theme.metrics.touch_target * 0.5;

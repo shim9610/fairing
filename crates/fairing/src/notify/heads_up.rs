@@ -7,7 +7,7 @@
 //! away, otherwise it returns. A tap runs the action and then leaves. Opening the shade absorbs
 //! it immediately (it disappears with no exit).
 //!
-//! **Zero heap allocations per frame**: the banner holds the title and body
+//! The rendering caches reuse text and geometry: the banner holds the title and body
 //! galleys and re-lays them out only when the content or the width changes (the string buffers
 //! are reused too), and the icon is flattened once per size by the banner's [`IconCache`].
 

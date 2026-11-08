@@ -649,7 +649,7 @@ fn a_result_goes_to_the_parent_in_its_own_pane() -> fairing::Result<()> {
     Ok(())
 }
 
-/// A screen on show that keeps the display awake keeps it awake whichever pane has the focus.
+/// A keep_awake screen in either visible pane requests idle inhibition, independent of focus.
 #[test]
 fn keep_awake_holds_from_either_pane() -> fairing::Result<()> {
     let seen: Seen = Rc::default();

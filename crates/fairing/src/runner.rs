@@ -1,11 +1,11 @@
 //! The `runner` feature: a minimal bootstrap on `eframe`.
 //!
-//! For an integrator who does not own their own event loop and backends, this module opens a
-//! fullscreen kiosk window with `eframe` and calls a callback every frame.
+//! This module opens an `eframe` window and connects its UI callbacks to application
+//! code. Fullscreen mode is configurable. Applications still supply device backends.
 //!
 //! `eframe` 0.37 has the shape
-//! `eframe::App::ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame)` (confirmed against
-//! the registry source; not `update()`). The panel receives a `Ui`, so [`run`]'s callback and
+//! `eframe::App::ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame)`.
+//! The panel receives a `Ui`, so [`run`]'s callback and
 //! [`crate::Shell::frame`] take a root `Ui` too.
 //!
 //! The shell/state adapters call [`Shell::logic`] / [`Shell::logic_with`] from
@@ -22,7 +22,7 @@ use crate::shell::{HostedShell, Shell};
 pub struct Options {
     /// Whether to open the window fullscreen. Usually `true` for a device build.
     pub fullscreen: bool,
-    /// The window title (shown by a window manager during desktop development). It barely matters for a fullscreen device deployment.
+    /// The window title, used by the window manager where titles are displayed.
     pub title: String,
     /// The window size (windowed mode, `--size`). Without it, the runner's default.
     pub size: Option<(f32, f32)>,
@@ -87,14 +87,9 @@ pub fn run_shell<H: HostedShell + 'static>(
     })
 }
 
-/// [`run_shell`], but it **hands you the [`ShellEvent`](crate::ShellEvent)s**.
+/// [`run_shell`] with an application event handler.
 ///
-/// `run_shell` only logs the events. With the runner, that left no way at all to receive
-/// `Access(UnlockRequested)` (the moment an authentication prompt has to go up),
-/// `SettingChanged` or `ScreenClosed` — and for that one thing you had to drop to
-/// `runner::run` and write the frame loop yourself. Every device with a lock screen is in that
-/// position.
-///
+/// Unlike `run_shell`, which logs events, this forwards them to `on_event`.
 /// `on_event` is called in the UI or logic callback that emitted the event, including
 /// when the window has no UI pass.
 ///
@@ -188,9 +183,8 @@ pub fn run_shell_with_recovery<H: HostedShell + 'static>(
 ///
 /// [`run_shell`] is for an app that has no state of its own beyond the shell. Where it has —
 /// a machine console, an order, a session — `build` hands back both, this owns both, and every
-/// frame lends the state to the screens through
-/// [`Shell::frame_with`](crate::Shell::frame_with). No screen captures it and the shell does not
-/// store it.
+/// update lends the state to callbacks through the shell logic/frame methods.
+/// The runner owns the state; the shell borrows it for each call.
 ///
 /// ```no_run
 /// # fn main() -> fairing::Result<()> {

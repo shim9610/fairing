@@ -1,6 +1,6 @@
 //! The backend traits the built-in UI leans on, and the custom backend slot.
 //!
-//! fairing ships no system code: the integrator plugs in backends. These tests stand in for an
+//! Device I/O adapters are application-supplied; clock implementations are included. These tests stand in for an
 //! integrator — the `Mock*` backends play the device — and check that what the shell draws and
 //! asks for follows them: the status items appear with the capability, the setting table reaches
 //! the audio backend, a new notification asks for a cue, the shade's volume tile reads the

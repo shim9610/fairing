@@ -83,16 +83,13 @@ impl LampState {
 #[derive(Debug)]
 pub struct StatusLamp<'a> {
     state: LampState,
-    /// Borrowed: a bar of lamps repaints every frame and must not allocate to be drawn.
+    /// Borrowed label text.
     label: &'a str,
     enabled: bool,
 }
 
 impl<'a> StatusLamp<'a> {
-    /// A lamp in `state`, labelled.
-    ///
-    /// There is no label-less constructor. A bare coloured disc on a machine panel is a puzzle, and
-    /// the one thing the reference screens agree on is that every lamp has its word.
+    /// Construct a labelled lamp in `state`.
     #[must_use]
     pub fn new(state: LampState, label: &'a str) -> Self {
         Self {
@@ -322,10 +319,7 @@ mod tests {
         }
     }
 
-    /// **A lit lamp reads on both grounds, and its mark reads on the lamp**, in every palette.
-    ///
-    /// The mark is `Surface` and not `OnPrimary`, which is the opposite of the switch's answer;
-    /// this is the measurement that makes the difference legitimate rather than inconsistent.
+    /// Check lit-fill/background and mark/fill contrast in the tested palette pairs.
     #[test]
     fn a_lit_lamp_and_its_mark_clear_the_floor_in_every_palette() {
         for &preset in Preset::ALL {

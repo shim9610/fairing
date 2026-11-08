@@ -33,10 +33,10 @@ pub struct Harness<H: HostedShell = Shell> {
     /// `begin_pass`, so the value read after frame N is what frame N−1 requested. And one
     /// immediate request stays `true` for **two frames** by egui's rule ("each request results in
     /// two repaints", `outstanding = 1`) — so even on the frame E where a transition ends and
-    /// `is_animating()` is `false`, this stays `true` through E+1. So "0 fps at rest" is asserted
-    /// **three frames after** the last animated frame, and "reacts on the first frame" is
-    /// asserted from shell state like `shell.desktop().is_pressed()` rather than from this
-    /// (A7).
+    /// `is_animating()` is `false`, this stays `true` through E+1. Idle repaint tests
+    /// inspect it three passes after the last animated pass. First-pass interaction
+    /// checks use shell state such as `shell.desktop().is_pressed()` instead. This
+    /// field measures repaint requests, not physical frame delivery.
     pub repaint_requested: bool,
     /// The app's own state, lent to the screens each frame. `()` unless
     /// [`Harness::with_app`] put something there.
@@ -188,10 +188,9 @@ impl<H: HostedShell> Harness<H> {
         }
     }
 
-    /// Let `seconds` pass **without drawing** — a panel asleep between repaints, as a reactive
-    /// one is whenever nothing moves. The next frame sees the whole gap in `RawInput::time`, the
-    /// way a real wake does; the shell's deadlines (a temporary unlock, the session timeout, the
-    /// idle lock) are measured against it.
+    /// Advance virtual input time by `seconds` without drawing. The next pass sees
+    /// that gap in `RawInput::time`, allowing frame-only deadline tests without
+    /// waiting for wall-clock time.
     pub fn sleep(&mut self, seconds: f64) {
         self.time += seconds.max(0.0);
     }

@@ -17,9 +17,10 @@ permission getters/mappers in an integrator's workspace.
 
 ## 0. The principle, and what exists today
 
-fairing keeps no role names like "guest" and "admin", and no hash function, inside
-the crate. How many levels there are, what they are called, which feature sits at
-which level, and how credentials are stored and checked — all of that is yours.
+Applications define level names, feature-to-level assignments and credential
+verification/storage. Fairing supplies level/gate coordination and the reference
+clear-text PIN/pattern table; production credential handling can be supplied through
+an application `Authenticator`.
 What the crate does is **enforce** the gate decision, and — if you let it — draw
 the prompt that asks for a credential. This page is about what the crate does for
 you.
@@ -66,8 +67,7 @@ caught at start-up.
 | `default_gate`, `initial` or an `[access.gates]` value is not in `levels` | Typo protection. `"top"` and `"bottom"` are reserved inside `default_gate`. Gate assignments resolve an actual level name first; without one, those two names are aliases for the highest/lowest level |
 
 All three make `Shell::new` / `Shell::builder(..).build(ctx)` return
-`Err(Error::Config(..))`. The device refuses to start rather than come up with the
-wrong level table.
+`Err(Error::Config(..))`, so shell construction stops with a configuration error.
 
 ```rust
 use fairing::ShellConfig;
@@ -238,8 +238,8 @@ inside the policy — the shell delegates the whole decision, so whether
 Open screen gates are revalidated every frame, before commands and again after backend
 polling. Replacing a policy or changing a dynamic policy can close a screen without
 re-announcing the subject or restarting its session timers. The shade and overview obey
-their opening gates too and disappear immediately on revocation, including during a
-closing animation. A policy that changes while the app is asleep still needs the
+their opening gates too and are removed at that revalidation when authority is
+revoked, including during a closing animation. A policy that changes while the app is asleep still needs the
 integrator to wake the UI when the change takes effect.
 
 ## 5. The shell's prompt and the `Authenticator`
@@ -276,7 +276,7 @@ it. Behind it, no new edge swipe starts.
 
 A few rules hold whatever the authenticator does:
 
-- **A grant has to be worth something.** A `Granted` level the table does not
+- **Granted levels are validated.** A `Granted` level the table does not
   have, one no higher than the session already holds on the unlock prompt, or
   one below the session's start on the lock screen (which takes the start
   itself), is answered as a refusal ("That is not enough for this"). A valid but
@@ -454,7 +454,7 @@ old one is told to `cancel` first.
 | `Pin { len, max_len, shuffle }` | The [`PinPad`](#55-a-keypad-or-a-pattern-in-a-login-screen-of-your-own) with its dot row; the bottom row is ⌫ · 0 · ✓, and ⌫ and ✓ dim while there is nothing to take off or submit. `len > 0` submits on the last digit (✓ submits early); with `0` the dots count what went in, ✓ submits, and the pad takes at most `max_len` digits (`0` is 16). A hardware keypad's digits, Backspace and Enter work too |
 | `Pattern { grid, min_points, show_path }` | The [`PatternPad`](#55-a-keypad-or-a-pattern-in-a-login-screen-of-your-own): `grid` × `grid` dots. A path under `min_points` is answered on the spot ("Connect at least 4 dots") and never reaches `submit`; a refused one stays on the dots in red until the next stroke. `show_path: false` keeps the path off the glass. It arrives as `Credential::Pattern(dots)`, the dots counted row by row **from 0** |
 | `Password { needs_user, keys }` | A user field (where asked for), a secret field and Unlock; Enter in the secret submits. The on-screen keyboard comes up **above** the prompt, on `keys` (`Keys::Latin` for a password, `Keys::Digits` for a numeric one) whatever the device's layout is, and `settings.credentials` sets the secret on the same keys. A refusal gives the secret field the focus back with the keyboard up, so the next try is typed straight in. The secret field has the eye that shows what was typed, as every `TextField::password` does |
-| `External { label }` | `label` and a ring going round (redrawn four times a second, not every frame), until `poll` answers. A reader that types like a keyboard — most badge readers do — needs nothing more: what it types is submitted on Enter or Tab as `Credential::External(bytes)`, and a pause of more than 0.8 s between characters starts a new read, so half a swipe does not spoil the next one |
+| `External { label }` | `label` and a ring going round (redrawn four times a second, not every frame), until `poll` answers. A keyboard-emulating reader submits its input on Enter or Tab as `Credential::External(bytes)`, and a pause of more than 0.8 s between characters starts a new read, so half a swipe does not spoil the next one |
 
 Several methods show as tabs, labelled `PIN`, `Pattern`, `Password` and the
 external method's `label`; the card keeps one size whichever tab is on show. The
@@ -535,7 +535,7 @@ pub trait CredentialAdmin {
 }
 ```
 
-**Nobody changes more than they have.** The level picker offers the levels up to
+**The credentials UI applies level checks.** The level picker offers the levels up to
 the session's own; an entry above it is listed but cannot be opened; and the shell
 refuses, before your code sees it, a change that gives a higher level or touches a
 higher entry — so a maintainer cannot add an administrator, or set the
@@ -603,9 +603,8 @@ if pad.submitted {
 # }
 ```
 
-A stroke across a dot takes it on the way, and the stroke is followed through every
-pointer position a frame carried, so a quick one on a slow frame takes what it
-crossed. `PatternPad::as_drawn(dots, grid)` gives the path a finger drawing through
+The pad checks recorded pointer positions and the segments between them for
+crossed dots. `PatternPad::as_drawn(dots, grid)` gives the path a finger drawing through
 `dots` would record — what a stored pattern can be checked against — and
 `.mark(Some(ColorRole::Danger))` draws a refused path in red.
 
@@ -778,10 +777,9 @@ once it runs out — `Unlocked` and `SessionChanged { reason: Unlock }`.
 
 ## Hidden entry points — the service menu
 
-Some screens cannot have a desktop icon: the service menu, factory mode,
-diagnostics. Android's "tap the build number seven times" is the conventional
-answer; industrial HMIs more often use corners in sequence; devices with physical
-keys use a key combination.
+For screens omitted from the desktop, such as a service menu or diagnostics,
+register an entry trigger. Examples include repeated taps, corner sequences or
+a key combination. The trigger is separate from authorization.
 
 > **A knock is concealment; the gate is what blocks.** It makes the door hard to
 > find, not hard to open. **Always put a gate on anything irreversible.**

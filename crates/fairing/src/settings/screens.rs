@@ -4,7 +4,7 @@
 //!
 //! | Depth | How | What changes |
 //! |---|---|---|
-//! | Shallow | `[theme.palette]` · [`ShellBuilder::palettes`](crate::shell::ShellBuilder::palettes) | **The colours of all of them.** There is no colour literal in this file |
+//! | Shallow | `[theme.palette]` · [`ShellBuilder::palettes`](crate::shell::ShellBuilder::palettes) | Theme colour roles used by built-in screens |
 //! | Middle | Individual exclusions via [`SettingsConfig`](super::SettingsConfig) | Which screens exist |
 //! | Deep | `shell.add(screen("settings.wifi", ..))` under the same id | That screen **whole** |
 //!
@@ -12,12 +12,13 @@
 //! column draws whatever the registry has under the selected id, so a replaced built-in
 //! and a screen of the integrator's own reach it by the same road.
 //!
-//! The dimensions are all `theme.metrics` tokens too, so they grow with a change of glove policy.
+//! Built-in geometry uses theme metrics. Metrics expressed in finger units change
+//! with the finger-size policy; text and fixed-size content have separate inputs.
 //!
 //! # Without the backend, it is not registered
 //!
-//! They are filtered on [`Capabilities`] — the worst outcome is a Wi-Fi entry showing
-//! on a device with no Wi-Fi and saying "not supported" once it is pressed.
+//! Registration filters screens using [`Capabilities`] unless that filter is
+//! explicitly disabled in `SettingsConfig`.
 //!
 //! The list follows: a row is drawn only where the screen behind it **is really registered**
 //! ([`Cx::has_screen`]). `settings.network` is registered where the network backend reports
@@ -230,7 +231,7 @@ pub fn datetime() -> ScreenDecl {
 ///
 /// A tap on a network is reported as
 /// [`ShellEvent::WifiNetworkTapped`](crate::ShellEvent::WifiNetworkTapped) and connecting is the
-/// integrator's — asking for a password included, so the crate never holds one.
+/// application's, including credential prompting and profile handling.
 #[must_use]
 pub fn wifi() -> ScreenDecl {
     ui::page_screen("settings.wifi", wifi_body)
@@ -267,9 +268,8 @@ pub fn power() -> ScreenDecl {
 
 /// Device information · the crate version · **the open-source notices**.
 ///
-/// The notices are `include_str!`d straight from `THIRD_PARTY.md` — this is where the MIT /
-/// Apache / OFL notice obligations are met inside the device's own UI. Audit stage 10
-/// catches the file going stale.
+/// The notices table is included from `THIRD_PARTY.md`. Audit stage 10 checks
+/// that file against the repository's dependency inventory.
 #[must_use]
 pub fn about() -> ScreenDecl {
     ui::page_screen("settings.about", about_body)
@@ -455,14 +455,8 @@ fn two_pane(ui: &mut Ui, cx: &mut Cx<'_>, list_width: f32, entries: &[SettingsEn
 /// Whether a list row is drawn at all: **the screen is registered and its own gate passes**
 /// ([`Cx::screen_allowed`]).
 ///
-/// Both halves were wrong before. The entry table is a fixed list of every built-in settings id, but
-/// `add_all` registers fewer than that — `settings.credentials` has no screen yet, and Wi-Fi,
-/// Network, Bluetooth and Power drop out on a device whose backend does not support them — so rows
-/// were drawn that a press could not open. And the gate was checked as
-/// `cx.allows(id)`, the **entry id** taken as a gate name; a declaration's gate defaults to its id
-/// but `.gate("service")` names another, so a screen locked to a higher level was listed to
-/// everyone. Combined with the right column, which draws the selected row with no further asking,
-/// that listed screen's contents were painted for a session that could not open it.
+/// The lookup uses the registered declaration's gate, including an explicit
+/// `.gate(...)` override, rather than treating the entry ID as the grant ID.
 fn shows(cx: &Cx<'_>, id: &str) -> bool {
     cx.screen_allowed(id)
 }
@@ -491,10 +485,9 @@ struct Held<T> {
     subject: crate::access::Subject,
 }
 
-/// Run `body` with a value kept in egui's memory for the drawing screen instance, and dropped the
-/// first frame the body is not drawn (closed, covered, another entry on the settings home's
-/// right) or is drawn for another subject. A plain-`fn` body uses this for what a screen struct
-/// would keep in a field, so nothing carries over to the next person or the next visit.
+/// Run `body` with a value kept in egui's memory for the drawing screen instance.
+/// Discard the saved value on the next body call after a gap in drawing or a changed subject. A plain-`fn` body
+/// uses this retained value for form state between consecutive eligible calls.
 fn held<T: Clone + Send + Sync + 'static>(
     ui: &mut Ui,
     cx: &mut Cx<'_>,

@@ -4,8 +4,8 @@
 //!
 //! The status bar holds one [`ParamFade`] per item, and `set` records the start time on the
 //! frame the value changed. Rendering hands a drawing closure to [`ParamFade::paint`] — the
-//! closure receives a style with the value and the alpha already applied and draws once. Zero
-//! heap allocations per frame.
+//! closure receives a style with the value and alpha applied. Crossfade state is
+//! stored inline; allocation during drawing depends on the supplied closure and egui.
 //!
 //! **The curve**: the time progress ([`ParamFade::progress`]) is linear and only the alpha goes
 //! through `CubicOut` ("tweens are `CubicOut`"). The incoming value gets

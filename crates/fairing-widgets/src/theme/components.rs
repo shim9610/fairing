@@ -121,20 +121,8 @@ pub struct PopoverMetrics {
     pub icon_gap: f32,
 }
 
-/// The shade dimensions (9) — **all of them ratios**.
-///
-/// The shade does not carry lengths; it **derives them from two axes**, so that the rhythm
-/// follows on its own when the density changes — no case of the icons growing on a 7-inch panel
-/// while the padding stays at 12 du.
-///
-/// * **The visual axis** — multiples of `metrics.corner_radius`. Padding and corners have
-///   nothing to do with fingers.
-/// * **The finger axis** — multiples of `metrics.touch_target`. What gets pressed follows the
-///   finger.
-///
-/// The four on the finger axis are **drawing sizes**. The hit rect is a full `touch_target`, so
-/// shrinking these does not shrink what a finger can land on — what made `switch.height`
-/// dangerous was that the hit shrank with it.
+/// Shade dimensions, expressed as ratios of `metrics.corner_radius` or
+/// `metrics.touch_target`. Drawn control sizes and interactive targets are separate.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ShadeMetrics {
     /// The panel's edge padding (× `corner_radius`).
@@ -155,25 +143,11 @@ pub struct ShadeMetrics {
     pub close: f32,
     /// The footer button's height (× `touch_target`).
     pub footer_button: f32,
-    /// **The card's corner radius** (× `corner_radius`) — `[overlay] reveal = "card"`.
-    ///
-    /// Measured off One UI 8's quick panel: a radius of 9 % of the card's width, which at the
-    /// default width is four `corner_radius`. A curtain rounds its two bottom corners with
-    /// `metrics.shade_corner`; a card rounds all four with this, and larger, because it is a plate
-    /// floating on the page rather than a sheet hanging from its top edge.
+    /// Card corner radius as a multiple of `corner_radius`, used by card reveal.
     pub card_corner: f32,
-    /// **The card's inner padding** (× `corner_radius`), on top of `pad`.
-    ///
-    /// One UI pads its card at 6 % of the card's width where the curtain pads at 3 %; the content
-    /// has to sit clear of a corner that large, and a card reads as a card by the air around what
-    /// it holds.
+    /// Additional card inner padding as a multiple of `corner_radius`.
     pub card_inset: f32,
-    /// **How far above its rest a card arrives from** (× `corner_radius`).
-    ///
-    /// One UI's panel comes down 4–6 % of the screen while it fades in — enough to give the arrival
-    /// a direction, not enough to be a journey; four `corner_radius` is 5.6 % of the console
-    /// example's 800 px. The drop is what makes a fade read as "came from above" rather than
-    /// "appeared". Under a visible status bar the card comes out from beneath it.
+    /// Card entry offset above its resting position, as a multiple of `corner_radius`.
     pub card_drop: f32,
 }
 
@@ -262,9 +236,8 @@ const fn du(v: f32) -> Span<Rigid> {
 }
 
 impl Default for ComponentSpec {
-    /// The default values. **Pixel-identical to today's render** — they are all
-    /// `du`, so scale-independent, and only `switch.height` has a finger term (see the comment
-    /// below).
+    /// Default component specification. Most fields use du lengths; switch height
+    /// uses its configured finger-relative term.
     fn default() -> Self {
         Self {
             toast: [du(24.0), du(8.0), du(16.0), du(16.0), du(12.0), du(3.0)],

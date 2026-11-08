@@ -394,9 +394,8 @@ fn a_temporary_unlock_runs_out_and_takes_its_screen_with_it() -> fairing::Result
     Ok(())
 }
 
-/// The deadlines run on the wall clock, not on drawn frames. A reactive panel draws nothing while
-/// nothing moves — it sleeps until the next deadline or touch — and a temporary unlock still has
-/// to end when its time is up, even if not one frame was drawn in between.
+/// After virtual time advances without drawing, the next supplied frame expires
+/// the temporary unlock and closes the screen it no longer admits.
 #[test]
 fn a_temporary_unlock_runs_out_on_a_panel_that_sleeps() -> fairing::Result<()> {
     let mut config = pins();
@@ -1241,7 +1240,7 @@ fn an_absurd_timer_is_a_config_error() {
     assert!(shell(config).is_err());
 }
 
-// ── The second review: rules that hold whatever the authenticator does ─────────────
+// ── Scripted authenticator response and cancellation cases ─────────────────────────
 
 /// What a [`Scripted`] authenticator was asked.
 #[derive(Default)]
@@ -1515,8 +1514,7 @@ fn half_a_badge_read_does_not_survive_a_tab_switch() -> fairing::Result<()> {
     Ok(())
 }
 
-/// A badge wait can last all night on a lock screen: its ring asks for a frame a few times a
-/// second, not sixty.
+/// A pending badge wait requests delayed repaints rather than continuous immediate updates.
 #[test]
 fn the_badge_ring_does_not_ask_for_every_frame() -> fairing::Result<()> {
     let (mut h, _) = scripted(vec![badge()], &[])?;

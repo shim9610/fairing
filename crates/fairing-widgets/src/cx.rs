@@ -5,24 +5,12 @@ use crate::motion::{AnimationStore, Tween};
 use crate::theme::Theme;
 use crate::widgets::WidgetPainters;
 
-/// The context a widget is drawn with.
+/// Context supplied to a widget.
 ///
-/// # Why it is a struct of fields and not a trait
-///
-/// A trait with `theme()` and `icons()` methods will not compile against this crate's own code:
-/// [`ListRow`](crate::widgets::ListRow) does
-/// `cx.icons.paint(painter, rect, icon, &style, cx.theme)`, borrowing `icons` mutably and `theme`
-/// shared at the same moment. That is legal only because they are **disjoint fields**; behind
-/// methods each call borrows the whole context and the second one is rejected. So the shape is
-/// forced: plain public fields, and `animate` reaches its state through a field of its own.
-///
-/// # Why it is not the shell's `Cx`
-///
-/// Measured before the element layer was split out, every widget in this crate reached
-/// outside itself for exactly three things — the theme, the icons, and one animation call. It
-/// never needed the screen registry, the services, the access gate or the pane. Taking only these
-/// three is what keeps a control from growing a dependency on the shell by accident; the shell's
-/// own `Cx` lends one of these with `Cx::widgets()`.
+/// Public fields allow simultaneous borrows of separate resources, such as mutable
+/// icons and a shared theme. The context contains widget resources rather than the
+/// shell registry, device services or application access state. The shell supplies
+/// one through `Cx::widgets()`.
 pub struct WidgetCx<'a> {
     /// The resolved theme — palette, metrics, component tokens, motion.
     pub theme: &'a Theme,

@@ -237,10 +237,10 @@ the list, replacing one screen and adding your own are in
 
 ### 4.2 Fonts
 
-The library carries no font, on purpose: which faces a device shows, and under what licence, is
-the device's call. Until you give it faces, it draws with egui's built-in face: **one weight,
-Latin letters only** — screen and row titles come out in the regular weight, and Hangul or `₩`
-come out as boxes. The shell logs a warning at startup when there is no bold, and when its own
+The library carries no additional font files: which faces a device shows, and under what licence, is
+the device's call. Until you give it faces, it uses egui's bundled fallback fonts.
+Fairing titles use the regular weight when no strong face is installed, and the
+fallback fonts do not cover the Hangul text needed by a Korean UI. The shell logs a warning at startup when there is no bold, and when its own
 language's letters are missing. A device image usually has the faces already; the crate finds
 them, and you decide what to load:
 
@@ -287,8 +287,8 @@ let shell = fairing::Shell::builder(fairing::ShellConfig::default())
 
 A display backend that reports `DisplayInfo::physical_mm` does the same, and the builder's value
 wins over it. With neither, the shell assumes about 6.3 pixels per millimetre and logs a warning:
-a touch target is then 57 px on every panel — oversized on a coarse one, under a fingertip on a
-dense one.
+the default 9 mm target then resolves to about 57 px, which can be physically too
+large or too small when that assumed density differs from the panel.
 
 The defaults use a 9 mm finger diameter and 360 mm viewing distance. Controls
 that use these metrics scale with the policy; fixed-size or custom content may
@@ -384,8 +384,8 @@ None of them needs real hardware: `hello` and `protected` run on the null backen
 | `hello` | `cargo run -p fairing --features runner-x11 --example hello` | §4 as a file: one screen on the desktop, the built-in settings, a status bar item and a nav bar item, in a 1024×600 window. It shares nothing with the other examples, so it is the one to copy into a new project |
 | `protected` | `cargo run -p fairing --features runner-x11 --example protected -- --tour target/protected` | ProtectedShell login with a public development marker, an admitted operation, logout with protected content hidden and a stale button click blocked, then reauthentication. The smoke tour is included in `tools/tours.sh`; this marker is not production authentication |
 | `demo` | `cargo run -p fairing --features runner-x11 --example demo -- --size=1024x600` | The whole shell: twelve icons over two pages, the status bar, the shade, a `Form` screen that raises the OSK, the `Widgets` and `Notify` galleries, edge-swipe back, and a scenario thread waking the UI through the `Waker` |
-| `console` | `cargo run -p fairing --features runner-x11,mock --example console -- --size=1280x800` | A bench instrument rather than a phone: a rail down the left joined to the status bar, five pages with their own transitions, and the shade split into two floating cards |
-| `kiosk` | `cargo run -p fairing --features runner-x11,mock --example kiosk -- --size=1080x2560 --panel-mm=380x900` | A café-ordering example using Fairing layouts, widgets and application-specific drawing. `--layout=portrait\|counter\|compact` puts the same code on three devices, and a switch on its attract screen changes the language of every screen at run time (`--lang=ko` starts it in Korean) |
+| `console` | `cargo run -p fairing --features runner-x11,mock --example console -- --size=1280x800` | A bench-instrument example: a rail down the left joined to the status bar, five pages with their own transitions, and the shade split into two floating cards |
+| `kiosk` | `cargo run -p fairing --features runner-x11,mock --example kiosk -- --size=1080x2560 --panel-mm=380x900` | A café-ordering example using Fairing layouts, widgets and application-specific drawing. `--layout=portrait\|counter\|compact` selects three example layouts, and a switch on its attract screen changes the language of every screen at run time (`--lang=ko` starts it in Korean) |
 | `custom_chrome` | `cargo run -p fairing --features runner-x11 --example custom_chrome -- --size=1024x600` | Replacing the chrome without touching the crate: a `Theme` built in code, a hand-drawn status bar, circular desktop badges, a procedural wallpaper, no nav bar, a gauges tile the crate draws from a declaration, and a jog-pad tile it knows nothing about |
 | `motion_lab` | `cargo run -p fairing --features runner-x11 --example motion_lab -- --size=1024x600` | Every `[motion]` token on a slider, replaying the shade, page swipes, push/pop and icon zoom. A frame-time graph sits top right (p50, p95, a 33 ms rule) and the tuned values export as TOML |
 | `palette_sheet` | `cargo run -p fairing --release --features runner-x11,mock --example palette_sheet -- --tour out/ --panel-mm=305x381` | One frame with every control on it, for comparing palettes (`--preset=base\|abyss\|linen`, `--theme=dark\|light`) |
@@ -400,8 +400,8 @@ to pass beyond the runner.
 
 `demo`, `console`, `kiosk`, `custom_chrome`, `palette_sheet` and `protected` drive themselves,
 write PNGs and close the window. They put the shell into each state through its own API (`launch`, `back`,
-`home`) plus a synthetic finger, then send `egui::ViewportCommand::Screenshot` —
-nobody has to sit and watch.
+`home`) plus synthetic input, then request captures through
+`egui::ViewportCommand::Screenshot`.
 
 ```sh
 xvfb-run -a -s "-screen 0 1024x600x24" env LIBGL_ALWAYS_SOFTWARE=1 \
@@ -483,7 +483,7 @@ passes as it is.
 |---|---|
 | `Harness::new(config, services)` | Your own config and backends. Use it when you want the animations to actually run |
 | `Harness::from_builder(\|ctx\| ..)` | Wraps a shell built through `Shell::builder`, so theme injection and painter hooks are in play |
-| `testing::test_shell(config, setup)` | Null backends with `motion.reduce = true` forced, so "two frames and it has landed" holds |
+| `testing::test_shell(config, setup)` | Null backends with `motion.reduce = true` forced, disabling the shell's timed transitions for frame-stepped tests |
 | `.with_size(w, h)` | Screen size (default `DEFAULT_SIZE`, 1024×600) |
 
 | Frames | Meaning |
@@ -533,15 +533,16 @@ hardware of its own, so how fast it draws on yours is yours to measure.
 cargo run -p fairing --release --example bench
 ```
 
-`--release` is the baseline. Debug numbers are a different order of magnitude — do
-not mix them. The scenarios are: idle desktop, icon zoom (A2), push/pop (A3), a
+Use `--release` as the comparison baseline; debug and release builds use different
+optimization settings and should be measured separately. The scenarios are: idle desktop, icon zoom (A2), push/pop (A3), a
 200-widget screen (idle and drag-scrolling), home, shade drag (A1), page swipe (A4)
 and OSK reveal (A5).
 
 Keep each run with your device's notes: the hardware, the commit hash, the command, the
 conditions (resolution, icon count, `motion.reduce`) and the table of numbers `bench` prints. Compare
-runs on the same device: a p50 more than 30 % above an earlier one counts as a regression. p95
-wobbles run to run on shared machines, so re-run two or three times before calling it.
+runs on the same device. Investigate a p50 increase of 30 % or more as a comparison
+heuristic, then repeat under comparable conditions before attributing it to the
+change. Shared-machine load can also affect p95.
 
 The bench table does not count per-frame allocations. The separate diagnostic
 allocator example measures process-wide counters and injects actual failures;

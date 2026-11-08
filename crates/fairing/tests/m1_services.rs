@@ -73,8 +73,8 @@ fn routing_mode_never_prompts_but_emits_event() -> fairing::Result<()> {
 fn mock_wifi_scan_completes_via_next_wake() -> fairing::Result<()> {
     use fairing::services::{mock::MockWifi, WifiState};
     use std::time::Duration;
-    // The scan returns at once and completion comes on the next snapshot plus next_wake. It does not block the
-    // UI thread (the test finishing is itself the proof). The 50 ms delay is 3 frames of virtual time.
+    // The mock scan publishes completion after its configured 50 ms delay.
+    // Inspect Scanning before the delay, then advance virtual time and check completion.
     let mut wifi = MockWifi::new();
     wifi.scan_delay = Duration::from_millis(50);
     let services = Services::builder()

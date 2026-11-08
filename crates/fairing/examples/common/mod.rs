@@ -41,23 +41,11 @@ pub fn init_logger() {
     let _ = log::set_logger(&LOGGER).map(|()| log::set_max_level(log::LevelFilter::Info));
 }
 
-/// Find a Hangul font installed on the device and load it.
+/// Bundled Noto Sans KR regular subset for the examples.
 ///
-/// The crate goes as far as finding the path ([`fairing::fonts::korean_font`]) — which font to load
-/// under which name is the app's, and rightly so. But **those ten lines of loading came out identical
-/// in every example** (`demo.rs` and `kiosk.rs`), so they were brought down here. It is not a hole in
-/// the crate's API but a share common to the examples.
-///
-/// Where none is found, or it cannot be read, the set is empty, egui's default fonts are used as they
-/// are and Hangul comes out as □ — **it warns and carries on.** The old `kiosk.rs` version swallowed
-/// that failure whole, so an unreadable font left nothing but □ for no stated reason.
-///
-/// It takes no arguments and reads `std::env::args()` directly — all three callers are in the middle
-/// of a shell builder, and there is no reason to carry `args` that far.
-/// The Korean face the examples carry — Noto Sans KR, cut to Hangul, Latin and the symbols a
-/// panel uses (`assets/fonts/README.md`), **built into the example binaries** so an example
-/// cannot draw tofu wherever it is run from: not the source tree, not a machine with a font of
-/// its own. 2.8 MB a weight is the price of a demo that cannot break.
+/// `korean_fonts` prefers a readable system Korean font and otherwise loads this
+/// embedded fallback. The subset coverage is documented in `assets/fonts/README.md`;
+/// `--no-font` selects egui defaults for diagnostic comparison.
 const BUNDLED_KO: &[u8] = include_bytes!("../../../../assets/fonts/NotoSansKR-Regular.ttf");
 /// Its bold, for [`fairing::fonts::FontFamilies::Strong`].
 const BUNDLED_KO_BOLD: &[u8] = include_bytes!("../../../../assets/fonts/NotoSansKR-Bold.ttf");
@@ -171,15 +159,9 @@ pub fn frame_shots(ctx: &egui::Context) -> Vec<(PathBuf, Arc<egui::ColorImage>)>
     })
 }
 
-/// Take **one frame** with no tour — for an example with a frame loop of its own.
-///
-/// [`run_tour`] asks for a "closure that builds the shell", and an example that holds the shell itself
-/// and does something different every frame — recording frame times, the replay loop, the graph, as
-/// `motion_lab` does — does not fit into it. So those examples sat there **with nobody able to see
-/// them**.
-///
-/// eframe's screenshot is N → N+2 (see `Tour`'s docs). Here there is only the one, so it is requested
-/// on frame `after` and written when the callback answers, then the window closes.
+/// Capture one frame from an example with its own frame loop.
+/// The screenshot is requested at frame `after`, written when the callback returns,
+/// and followed by a window-close request.
 pub struct OneShot {
     dir: PathBuf,
     name: &'static str,
@@ -418,18 +400,9 @@ pub enum Act {
     Until(Expect, u32),
 }
 
-/// **Where a finger goes** — named by what is there, never by a number on the window.
-///
-/// # Why there is no `(x, y)` form
-///
-/// There was one. A `Tap(90, 210)` on a rail entry was right for one row height; when the rows
-/// shrank it landed on the entry below, the screenshot showed the wrong page under the right
-/// file name, and nothing said so — a tap on nothing is silent, and a tour only took pictures.
-/// Four scripts carried some fifty such numbers, each right for the day it was written. So the
-/// vocabulary has no way to write one: a thing with a label is found by its label this frame
-/// ([`Spot::Text`], [`Spot::Near`]), a gesture starts at an edge of the glass ([`Spot::Edge`]) or
-/// at a share of the content area ([`Spot::Page`]), and every drag is a distance
-/// ([`Act::DragTo`]), never a distance. What cannot be found fails the tour.
+/// A tour target expressed as text, an edge location or a content-relative point.
+/// Drag steps resolve their destination at the beginning of the drag. A missing
+/// or ambiguous named target fails the tour step.
 #[derive(Debug, Clone, Copy)]
 pub enum Spot {
     /// The centre of the one text on the glass reading this. The label is matched whole against
@@ -623,11 +596,10 @@ const PATTERN_STROKE: usize = 3;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SyntheticInput;
 
-/// **The tour clock.** Each frame is exactly [`RECORD_STEP`] after the one before, however long
-/// it took to draw, so every animation advances by the same step on every frame and a recording of
-/// it comes out smooth. The shell's time is the sum of egui's `stable_dt`, which follows
-/// `RawInput.time` while repaints are requested, so setting that time is all it takes. The clock
-/// starts from the real time it takes over at, so time never runs backwards.
+/// Fixed tour input clock.
+///
+/// Each input frame advances by RECORD_STEP regardless of wall-clock rendering
+/// time. The clock starts from the current input time to avoid moving backward.
 #[derive(Debug, Default, Clone, Copy)]
 struct VirtualClock {
     on: bool,
@@ -1869,10 +1841,7 @@ pub fn decode_texture(
     Ok(ctx.load_texture(name, image, egui::TextureOptions::LINEAR))
 }
 
-/// **The crate's own wallpaper**, picked for the panel's aspect — shared by `demo` and `console`.
-///
-/// It lived in `demo` and the console example needed the same five plates and the same light/dark
-/// pairing, which is the point at which a copy stops being cheaper than a move.
+/// Example wallpaper selection by panel aspect, shared by demo and console.
 type WallpaperPlate = (f32, &'static [u8], Option<&'static [u8]>);
 
 const WALLPAPERS: &[WallpaperPlate] = &[
@@ -1908,7 +1877,7 @@ const WALLPAPERS: &[WallpaperPlate] = &[
 /// The wallpaper for a screen's aspect ratio. The table is in ascending order of the aspect ratio's **upper bound**.
 fn wallpaper_for(aspect: f32) -> (&'static [u8], Option<&'static [u8]>) {
     // The last row is `INFINITY`, so `find` always matches, but in case the table is ever edited it
-    // falls back to the portrait plate — better than choosing none.
+    // falls back to the portrait plate.
     let fallback = WALLPAPERS
         .first()
         .map_or((&[][..], None), |(_, dark, light)| (*dark, *light));
@@ -1918,11 +1887,9 @@ fn wallpaper_for(aspect: f32) -> (&'static [u8], Option<&'static [u8]>) {
         .map_or(fallback, |(_, dark, light)| (*dark, *light))
 }
 
-/// Upload the default wallpaper as a texture. The shell comes up even on a failure — a demo failing
-/// to start over one wallpaper would be awkward (the same rule as guide 09 §1.2).
-///
-/// Given `--wallpaper=`, this is skipped — not because the config is stronger than the code, but
-/// because that argument exists **to try a different wallpaper**.
+/// Upload the default wallpaper texture. On a reported decode/upload error this
+/// helper logs the failure and leaves the existing wallpaper in place.
+/// `--wallpaper=` skips this helper so the supplied selection can be used.
 pub fn brand_wallpaper(ctx: &egui::Context) -> Option<fairing::desktop::Wallpaper> {
     // A tour given `--size=WxH` goes by that size; a run without it, by the window's. Where there is
     // no window yet (before the first frame) it assumes landscape — the first repaint sets it right.
@@ -1943,9 +1910,8 @@ pub fn brand_wallpaper(ctx: &egui::Context) -> Option<fairing::desktop::Wallpape
             return None;
         }
     };
-    // **The light half.** Without it the shell would keep this dark painting under its light
-    // palette. A plate with no light twin pairs with the flat background instead, which
-    // is honest: better a plain page than a night picture at noon.
+    // Pair a dark asset with its light version when available. Otherwise use the
+    // flat background for the light palette.
     let light = light_bytes
         .and_then(
             |bytes| match decode_texture(ctx, bytes, "fairing.brand.wallpaper.light") {

@@ -58,8 +58,8 @@ impl BarItem<'_> {
     }
 }
 
-/// The shell-side storage form of a [`BarItem`]. A reusable buffer whose values are overwritten
-/// each frame, so the render path does not grow its heap use.
+/// Reusable shell-side [`BarItem`] storage. Values are overwritten each frame;
+/// capacity can grow when more item entries are required.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct BarItemRow {
     pub(crate) id: String,

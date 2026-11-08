@@ -84,23 +84,16 @@ const LINES: usize = 3;
 /// constants are kept in step here, once.
 const LINES_F: f32 = 3.0;
 
-/// An input field that follows the theme.
+/// An input field following the theme.
 ///
 /// # The reveal button
 ///
-/// A single-line [`password`](TextField::password) field carries an eye at its right end: a tap
-/// shows what was typed, another hides it. On a touch panel every key is a guess at a small target,
-/// and a person who cannot see a masked password cannot tell a typo from a wrong password.
+/// The single-line password field includes a reveal button unless disabled with
+/// [`TextField::reveal`]. Tapping toggles masking. The reveal area is part of the
+/// text-edit rectangle so tapping it retains edit focus.
 ///
-/// The eye is **part of the field, not a widget beside it.** egui hands a press to the topmost
-/// widget and takes the focus off a text edit that is not under the press, so a separate button
-/// would drop the focus — and the on-screen keyboard with it — on every tap. Inside the field it is
-/// a stretch of the edit's own margin: the tap lands on the edit, which keeps (or takes) the focus,
-/// and the field reads where the tap fell.
-///
-/// What it shows lasts while the field is on screen: a field left undrawn for a frame (the prompt
-/// closed, the screen changed) comes back masked, so the next person does not find the last
-/// person's password in the clear. [`TextField::reveal`] turns the eye off.
+/// Reveal state expires after a gap in drawing the field; its next appearance is
+/// masked. This does not erase the caller-owned text buffer.
 #[allow(clippy::struct_excessive_bools)] // Independent builder options, not a state machine.
 pub struct TextField<'a> {
     text: &'a mut String,
@@ -386,18 +379,11 @@ impl<'a> TextField<'a> {
         cx.icons.paint(ui.painter(), glyph, &icon, &style, cx.theme);
     }
 
-    /// **A password field keeps no undo history.**
+    /// Clear egui undo history after drawing a password field.
     ///
-    /// egui feeds the raw text into the undoer every frame whatever `password` says
-    /// (`text_edit/builder.rs` calls `feed_state` with `text.as_str().to_owned()` before and after
-    /// handling input). The clipboard is guarded by `copy_if_not_password` and the accessibility
-    /// text by `mask_if_password` — the undoer is not. So up to `Undoer::max_undos` (100) plaintext
-    /// snapshots would sit in egui's memory under this widget's id and **outlive the field**, where
-    /// no wrapper the caller puts round its own buffer can reach them.
-    ///
-    /// It is cleared every frame rather than when the field closes: there is then no path where a
-    /// caller forgets, or where the field goes away with the last snapshots still in memory. The
-    /// only thing lost is undo and redo inside a password field, which is the usual behaviour.
+    /// egui text editing may place plaintext snapshots in its undoer even with password
+    /// masking. Clearing removes the retained undo/redo entries; it is not secure
+    /// zeroization of previously allocated memory. The application owns its text buffer.
     fn forget_undo_history(ui: &egui::Ui, id: egui::Id) {
         if let Some(mut state) = egui::text_edit::TextEditState::load(ui.ctx(), id) {
             state.clear_undoer();

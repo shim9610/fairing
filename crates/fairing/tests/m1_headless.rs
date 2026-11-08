@@ -385,11 +385,11 @@ fn a_resident_screen_keeps_its_state_and_a_factory_one_starts_over() -> fairing:
 }
 
 /// **A screen can draw another declaration's screen inside itself**, and a cycle stops
-/// instead of blowing up.
+/// without re-entering the active screen.
 ///
 /// While a resident screen is being drawn it is *out* of its declaration, so a screen that asks for
 /// itself — directly, or round a longer ring — is told no and draws nothing. That is the whole
-/// reason the loan is a move rather than a `&mut`: a shared cell would have panicked here.
+/// reason the implementation moves the active screen out of the declaration for the call.
 ///
 /// A factory declaration (`screen_with`) owns no screen between opens, so there is nothing to lend
 /// and it answers `false` too; the caller opens it instead.
@@ -456,15 +456,8 @@ fn draw_screen_embeds_a_registered_screen_and_a_cycle_stops() -> fairing::Result
     Ok(())
 }
 
-/// **The embedded screen gets a `Cx` of its own, not a borrowed lie**.
-///
-/// Handing the guest the host's `Cx` unchanged looked harmless and was not:
-///
-/// - `cx.pane.rect` was the host's whole pane, so `layout::page` built a scroll viewport taller
-///   than the column it was drawn in and the overrun could never be scrolled into view.
-/// - `cx.pane.instance` was the host's, so a guest calling `cx.finish()` closed **the host**.
-/// - `cx.event` still carried the host's lifecycle, and `cx.event` is the only route a closure
-///   screen has to one — so every guest saw `Created` and re-ran its initialisation.
+/// An embedded screen receives its own pane rectangle, instance identity and lifecycle events.
+/// These differ from the host screen so layout, finish and initialization use the guest context.
 #[test]
 fn an_embedded_screen_gets_its_own_pane_and_no_lifecycle() -> fairing::Result<()> {
     #[derive(Clone, Copy)]
@@ -582,13 +575,8 @@ fn an_embedded_screen_still_obeys_its_own_gate() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **The app owns its state and lends it to the screens**.
-///
-/// Until now the only way for three screens and the code outside the frame to reach one machine
-/// console was for each closure to capture an `Rc<RefCell<Console>>` — the guide said so in as many
-/// words and every one of this crate's examples did it. Then the first attempt at a fix had the
-/// **shell** own the value, which is the ownership upside down: the app's domain state living
-/// inside a UI library. The app owns both, and lends the state a frame at a time.
+/// The application owns its domain state and lends it to screen callbacks.
+/// This fixture shares one state value across three screens and out-of-frame host code.
 #[test]
 fn the_app_owns_its_state_and_lends_it_to_the_screens() -> fairing::Result<()> {
     #[derive(Default)]

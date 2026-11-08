@@ -199,15 +199,8 @@ pub(super) fn arrival(p: f32) -> Arrival {
     }
 }
 
-/// **How long a card takes to catch the pull up** (s) — the time constant of its arrival on the
-/// way in.
-///
-/// Tied 1:1 to the finger, a flick covers the stop in a frame or two and the whole arrival —
-/// the fade, the drop, the edge sharpening — happens where nobody can see it (the first real
-/// capture showed exactly that). One UI plays it over about 0.34 s however fast the hand was;
-/// three time constants of 0.1 s is the same. On a slow pull the card is never more than a tenth
-/// of a second behind the finger, which is not felt. On the way out it does not trail at all: a
-/// card leaving is gone at the speed it is sent.
+/// Arrival time constant in seconds. Rising progress follows an exponential lag;
+/// falling progress follows the target directly. Reduced motion skips the lag.
 pub(super) const LAG_S: f32 = 0.1;
 
 /// Closer than this the card is where the pull says — under one step of an 8-bit opacity.

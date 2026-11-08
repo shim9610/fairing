@@ -1,8 +1,7 @@
-//! **A bar is trusted only while it behaves like a clock, and says so when it stops** —
-//! `ProgressBar`'s eased value, high-water mark, stop indicator, steps and stall.
+//! ProgressBar rendering regressions: eased values, high-water mark, stop indicator,
+//! steps and stale indication.
 //!
-//! Everything is read off the frame: the fill is the accent-coloured rect at the bar's
-//! thickness, the track is the `SurfaceVariant` one, the stop dot is the accent circle.
+//! The tests inspect the painted fill, track and stop-dot geometry.
 
 use fairing::testing::{single_level_access, Harness};
 use fairing::widgets::ProgressBar;
@@ -262,7 +261,7 @@ fn steps_cut_the_track_into_countable_cells() -> fairing::Result<()> {
 }
 
 /// **Silence past the limit is reported, and the next beat clears it.** The value never moves
-/// here; only the heartbeat says whether the worker is alive.
+/// here; an explicit heartbeat refreshes the widget's stale timer.
 #[test]
 fn a_bar_reports_a_stall_and_the_next_beat_clears_it() -> fairing::Result<()> {
     let mut h = bench(Bench {

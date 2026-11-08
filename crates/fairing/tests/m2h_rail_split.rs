@@ -211,10 +211,7 @@ fn filled(h: &mut Harness) -> Vec<egui::epaint::RectShape> {
         .collect()
 }
 
-/// **A swipe folds a collapsible rail, and does nothing to one that is not.**
-///
-/// The second half is the point of the flag: folding is a choice about the product, and a rail
-/// that folds when nobody asked for it is a support call rather than a preference.
+/// A swipe folds a collapsible rail and leaves a non-collapsible rail unchanged.
 #[test]
 fn a_swipe_folds_the_arm_only_where_the_rail_says_it_may() -> fairing::Result<()> {
     let folds = folded_arm_width(true)?;

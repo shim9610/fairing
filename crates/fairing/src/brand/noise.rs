@@ -38,12 +38,10 @@ pub(super) fn rand01(seed: u32, index: u32, channel: u32) -> f32 {
     out
 }
 
-/// Stratified sampling: one jittered point per cell of a `cols × rows` grid. No clumping and no
-/// rejection-sampling loop.
+/// Stratified sampling: one jittered point per cell in a `cols × rows` grid.
 ///
-/// It hands back `(index, u, v)` with `u` and `v` as `[0, 1)` screen fractions. Scattering 24
-/// bubbles does not draw 24 random numbers; it divides the screen into a grid and jitters one
-/// point inside each cell — which gives a blue-noise-like distribution at constant bake cost.
+/// Returns `(index, u, v)` with normalized screen fractions. The number of generated
+/// samples is determined by the grid; no rejection-sampling loop is used.
 pub(super) fn stratified(seed: u32, cols: u32, rows: u32) -> impl Iterator<Item = (u32, f32, f32)> {
     let cols = cols.max(1);
     let rows = rows.max(1);

@@ -31,11 +31,8 @@ impl Radio {
         }
     }
 
-    /// Enabled.
-    ///
-    /// Disabled, it senses `hover()` rather than `click()`, so the tap **falls through** to
-    /// whatever is beneath it — a disabled control that swallows the press makes the row it sits in
-    /// feel broken rather than unavailable (rule 1.4).
+    /// Enabled state. A disabled control uses hover sensing rather than click/drag
+    /// sensing, allowing another eligible target to handle the press.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
@@ -170,10 +167,8 @@ impl Radio {
         }
     }
 
-    /// Disabled is **one** `gamma_multiply` over every colour the control paints, at one call
-    /// site. Not a role swap, which loses the live state — a disabled *selected* radio must still
-    /// read as selected — and not a per-element alpha, which is the four-mechanism, seven-number
-    /// mess this replaces.
+    /// Apply the configured disabled alpha to all resolved colours without changing
+    /// the selected-state role mapping.
     fn fade(self, cx: &Cx<'_>, color: Color32) -> Color32 {
         if self.enabled {
             color
@@ -254,19 +249,9 @@ fn paint_focus_ring(
     painter.circle_stroke(center, radius, Stroke::new(width, color));
 }
 
-/// An exclusive choice among **two or three** options, laid out inline as a stack of rows.
-///
-/// It owns the `&mut usize` and is the only thing here that writes it, so "exactly one is selected"
-/// is enforced in one place. Each row is one target of the full width (rule 1.3) and the radio drawn
-/// inside it senses nothing.
-///
-/// # Why the options are bare labels
-///
-/// No subtitles, no icons, no per-option enable. The moment a choice needs a second line to explain
-/// itself it has outgrown the inline form and belongs in a list of [`ListRow`](super::ListRow)
-/// choice rows, where a subtitle has room and each option gets a whole row. Keeping the option type
-/// as `&str` makes that boundary something the compiler shows you rather than something a doc asks
-/// you to remember.
+/// A group of labelled radio rows editing a caller-owned `&mut usize`.
+/// Each row handles its full-width interaction; the radio mark is drawing-only.
+/// Options are bare labels. An out-of-range index selects no row until changed.
 #[derive(Debug)]
 pub struct RadioGroup<'a> {
     selected: &'a mut usize,

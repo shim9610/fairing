@@ -4,7 +4,7 @@
 //! cargo's `=1.2` (= `>=1.2.0, <1.3.0`), so an `=` short of a place is a parse error.
 //! With no prefix it is read as a caret. A caret follows cargo's rule: it pins the first non-zero
 //! place from the left (= `0.x` pins the minor, everything else the major).
-//! Only `0.0.z` follows cargo in pinning the patch as well (for an allowlist, the narrower is safer than the looser).
+//! Only `0.0.z` follows cargo in pinning the patch as well.
 
 use crate::util::{Error, Result};
 use std::fmt;

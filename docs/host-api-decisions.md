@@ -5,9 +5,9 @@ the host, while user-driven setting writes still use `set_setting` and protected
 payloads still enter the common mediation kernel. `ProtectedShell` has no
 conversion to `Shell`, mutable component loan or `request_service` method.
 
-The compiler-indexed [decision ledger](api-decisions.json) covers the complete
-exported surface and its feature profiles. This document supplies the concrete
-usage and replacement decisions for the seven removed component loans.
+The compiler-indexed [decision ledger](api-decisions.json) records the exported
+contracts in the minimal/all-feature inventories. This document supplies the
+concrete usage and replacement decisions for the seven removed component loans.
 
 | Previous API and observed use | Decision and replacement | Reason and compatibility impact |
 | --- | --- | --- |

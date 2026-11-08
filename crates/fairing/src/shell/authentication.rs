@@ -390,9 +390,8 @@ impl Shell {
                 .push(ShellEvent::Access(AccessEvent::LockScreenToggled(true)));
         }
     }
-    /// Log out: [`LaunchAction::Logout`] and [`ShellHandle::logout`]. Always reported as
-    /// [`ShellEvent::LogoutRequested`]; with a prompt to draw, the shell also takes the
-    /// session back to the starting subject.
+    /// Handle logout and emit [`ShellEvent::LogoutRequested`]. Token mode detaches
+    /// local authority; legacy mode resets the subject when a prompt is available.
     pub(super) fn end_session(&mut self) {
         self.events.push(ShellEvent::LogoutRequested);
         if self.access.uses_session_tokens() {
@@ -428,11 +427,9 @@ impl Shell {
             reason: ChangeReason::Logout,
         });
     }
-    /// Hand what was entered to the authenticator, by value — it is not seen again.
-    ///
-    /// A new attempt calls off the check still under way: a wait ends with an answer or with
-    /// `cancel`, so a slow answer never holds the keys — and the lock screen, which has no
-    /// Cancel, always has a way past an answer that never comes.
+    /// Transfer the entered credential to the authenticator. A new attempt
+    /// cancels the pending request before submitting its replacement. The prompt
+    /// can accept new input while the previous authentication result is pending.
     pub(super) fn submit_credential(&mut self, credential: Credential, app: &mut AppRef<'_>) {
         let now = self.mono;
         let Some(request) = self.new_auth_request() else {

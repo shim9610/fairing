@@ -1,13 +1,14 @@
 //! The blocking/sync scan — a gate that **does not compile**.
 //!
-//! It enforces the no-locks and no-blocking principles by scanning the source:
+//! It rejects configured lock identifiers and blocking-call spellings in source:
 //!
 //! - No lock-based shared state (`Mutex` · `RwLock` · `Condvar` · `Barrier` · `OnceLock` ·
-//!   `LazyLock` · `parking_lot`) **in any crate**. Between threads, only `std::sync::mpsc`
+//!   `LazyLock` · `parking_lot`) in scanned crate sources, subject to reasoned exceptions.
+//!   The permitted transport primitives include `std::sync::mpsc`
 //!   channels and `std::sync::atomic`. egui's `Context::tex_manager()` hands out an
 //!   `Arc<RwLock<..>>` as it stands, so it is blocked by name (the calling side has no `RwLock`
 //!   in its text).
-//! - The UI thread makes no blocking call such as `.recv(` · `.recv_timeout(` · `.join()` ·
+//! - The UI-source rule rejects spellings such as `.recv(` · `.recv_timeout(` · `.join()` ·
 //!   `thread::sleep`. Its code is `crates/fairing` and `crates/fairing-widgets` (the controls draw
 //!   on it too — the crate split had left them outside this rule). A backend's worker, which may
 //!   wait on its own queue, lives in the integrator's crate, not here.
@@ -26,14 +27,14 @@
 use crate::util::{self, Error, Result};
 use std::path::{Path, PathBuf};
 
-/// The identifiers that must appear in no crate. **The allow list turned inside out**: what
+/// The rejected identifiers, derived from the permitted subset of what
 /// `std::sync` and `std::cell` offer, minus what the no-locks rule permits.
 ///
 /// Permitted, so absent here: `Arc` · `Weak` · `atomic::*` (the rule names atomics as the answer),
 /// `mpsc::{channel, Sender, Receiver}` (the shell's own command queue), and `Cell` · `RefCell` ·
 /// `OnceCell` (single-threaded; the rule allows `RefCell` by name).
 ///
-/// Everything else in those two modules is here, the pieces the original six missed included:
+/// Additional configured entries include:
 ///
 /// - `Once` — the initialisation race `OnceLock` was banned for, without the value attached.
 /// - `ReentrantLock` — a lock.
@@ -48,7 +49,7 @@ use std::path::{Path, PathBuf};
 /// `tex_manager` is not a type of ours but egui's accessor — `Context::tex_manager()` hands an
 /// `Arc<RwLock<TextureManager>>` back as it stands (`egui-0.36.1/src/context.rs`), so the calling
 /// side's source has no `RwLock` in it and clippy's type-based `disallowed-types` cannot catch it
-/// either. Blocking it by name is the only defence, so it lives here.
+/// either. This scanner therefore rejects the accessor by name.
 const LOCK_TOKENS: [&str; 20] = [
     "Mutex",
     "MutexGuard",
@@ -72,33 +73,14 @@ const LOCK_TOKENS: [&str; 20] = [
     "tex_manager",
 ];
 
-/// The blocking calls banned on the UI thread. They are found by their literal spelling rather than
-/// as identifiers. `std::thread::sleep` is covered by `thread::sleep`, so it is not listed
-/// separately, and `thread::park` covers `park_timeout` the same way.
+/// Configured UI-source blocking-call spellings.
 ///
-/// `thread::scope` is here because it **joins at the end of the scope** — a wait with no `.join()`
-/// anywhere in the source to catch.
+/// The text scan does not resolve receiver types or distinguish iteration over a
+/// channel from other iteration. Clippy checks the listed Receiver methods by type;
+/// Inbox keeps its Receiver private and exposes non-waiting reads. These mechanisms
+/// do not analyze arbitrary external implementations or establish lock freedom.
 ///
-/// `.join()` is looked for **in its argument-less form only**. `JoinHandle::join` takes no
-/// arguments, and a `.join(..)` with one is something unrelated to blocking, such as `Path::join`,
-/// `PathBuf::join` or `slice::join` — catching broadly on `.join(` would mean an exception marker on
-/// every path assembly.
-///
-/// **What a text scan cannot reach — and who holds it instead**. Iterating a `Receiver`
-/// blocks, and neither `rx.iter()` nor `for msg in rx` can be told from a slice's spelling here. So
-/// that hole is closed twice over, above this scan:
-///
-/// - `clippy.toml` names `Receiver::{recv, recv_timeout, recv_deadline, iter}` in
-///   `disallowed-methods` and `Receiver` itself in `disallowed-types`. Clippy resolves them **by
-///   type**, so an alias or a re-export cannot slip past the way it can past a text match.
-/// - `for msg in rx` is the one form no lint reaches: it desugars to `IntoIterator::into_iter`, and
-///   banning that would ban every `for` loop. `fairing::inbox::Inbox` owns the receiver, hands out
-///   `try_recv` and a non-blocking `drain`, and never lends it out — so in this workspace there is
-///   no receiver left to write that loop over.
-///
-/// The list below still earns its place: it is crate-scoped, so it can ban `thread::sleep` and
-/// `.join()` on the UI thread while leaving a backend on its own thread alone, which a
-/// workspace-wide `clippy.toml` cannot.
+/// The scan remains crate-scoped so worker-side waits can have a different policy.
 const BLOCKING_PATTERNS: [&str; 7] = [
     ".recv(",
     ".recv_timeout(",
@@ -143,7 +125,7 @@ pub(crate) fn check(root: &Path) -> Result<bool> {
         report.files, report.allows
     );
     if report.violations.is_empty() {
-        println!("No lock types. No blocking calls on the UI thread.");
+        println!("Configured synchronization and blocking-call source checks passed.");
         return Ok(true);
     }
     for violation in &report.violations {
@@ -678,7 +660,7 @@ mod tests {
     }
 
     /// egui's `tex_manager()` hands an `Arc<RwLock<..>>` out as it stands — the calling side's source
-    /// has no `RwLock` in it, so it can only be blocked by name.
+    /// has no `RwLock` in it, so this scan rejects it by name.
     #[test]
     fn the_egui_texture_manager_accessor_is_a_lock() -> Result<()> {
         let tree = Tree::new("texman")?;

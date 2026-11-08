@@ -1,5 +1,5 @@
-//! `ListRow` — a settings row (icon · title · subtitle · trailing text or chevron). 56 high,
-//! with the A7 press tint.
+//! `ListRow` displays an icon, title, optional subtitle and trailing content.
+//! Height uses theme metrics and measured text; press feedback uses the A7 tint.
 //!
 //! The title, subtitle and trailing text are elided with `…` within the width left to them. A
 //! thin separator runs under the row, so stacking them still shows the boundaries. A disabled
@@ -23,8 +23,7 @@ use egui::{Response, Sense, Vec2};
 // `SEPARATOR_PX` is a hairline and stays a global.
 /// The separator's thickness (px).
 const SEPARATOR_PX: f32 = 1.0;
-/// What [`ListRow::paint_trailing`] needs. A struct rather than seven parameters, which is over
-/// clippy's arity limit and past what a reader can hold anyway.
+/// Arguments for [`ListRow::paint_trailing`].
 struct Trailing<'a> {
     /// The row's whole rect.
     rect: egui::Rect,
@@ -53,13 +52,8 @@ struct Emphasis {
 /// The badge's diameter as a multiple of the icon it holds (see [`ListRow::icon_badge`]).
 const BADGE_RATIO: f32 = 1.75;
 
-/// **The least a row can be and still hold its own text**, from the live `Ui`'s resolved styles.
-///
-/// `row_height` and `type_scale` both derive from the viewing distance in the default spec, so at
-/// every panel size they move together and this floor never binds. It binds when an integrator
-/// raises the text on its own - rung 2 of the override ladder, which is what a low-vision setting
-/// is - and without it a two-line row kept its height while its title and subtitle grew straight
-/// through the bottom of the card.
+/// Minimum row height needed by the resolved live-Ui text styles.
+/// The row grows to fit its title/subtitle when text sizing exceeds the metric floor.
 fn text_floor(ui: &egui::Ui, cx: &Cx<'_>, two_line: bool) -> f32 {
     let body = ui.text_style_height(&egui::TextStyle::Body);
     let block = if two_line {
@@ -70,8 +64,7 @@ fn text_floor(ui: &egui::Ui, cx: &Cx<'_>, two_line: bool) -> f32 {
     block + cx.theme.control.gap * 2.0
 }
 
-/// Where [`ListRow::paint_text`] puts the title and the subtitle. A struct rather than eight
-/// parameters, which is past clippy's arity limit and past what a reader can hold.
+/// Text-positioning arguments for [`ListRow::paint_text`].
 struct TextPlace {
     /// The text column's left edge.
     x: f32,
@@ -138,15 +131,8 @@ impl ListRow {
         }
     }
 
-    /// The row height (du). The default is `max(row_height, widget_height)`.
-    ///
-    /// **It can only go up.** A value below `touch_target` is raised to it — that is the floor
-    /// the gloved-hand policy sets, not something to break for one pretty
-    /// screen. To tighten the spacing, the thing to touch is the card (`Deco::padding`), not
-    /// this.
-    ///
-    /// Going up is free — a row with a two-line subtitle, or a large produce list, is a place
-    /// where one row has to be bigger.
+    /// Override row height in du. Values below `touch_target` are raised to that floor.
+    /// The default is `max(row_height, widget_height)`.
     #[must_use]
     pub fn height(mut self, du: f32) -> Self {
         self.height = Some(du);
@@ -174,36 +160,17 @@ impl ListRow {
         self
     }
 
-    /// Put a [`Switch`](super::Switch) in the trailing position, showing `on`.
-    ///
-    /// # Why a typed slot and not a widget slot
-    ///
-    /// Opening an arbitrary trailing-widget slot was refused on the grounds that one slot
-    /// becomes the doorway to a combinatorial explosion. That reasoning holds, and the cost of the
-    /// refusal was paid anyway: `layout::switch_row` hand-drew the whole row instead, so its label
-    /// sat four du off a `ListRow`'s in the same card, and a fix to either reached only one of
-    /// them. A slot per control the crate itself ships is neither of those things — it is a closed
-    /// set, and it is the only way a widget-level fix reaches the built-in screens.
-    ///
-    /// **The row owns the tap.** The switch is drawn, not shown: it allocates nothing, senses
-    /// nothing, and does not grow under the press (Rule 1.3). Pressing anywhere on the row is the
-    /// toggle — with only the switch live, a gloved hand cannot hit it — so the caller flips its own
-    /// `bool` when the returned [`Response`] reports a click.
+    /// Draw a trailing switch whose interaction belongs to the whole row.
+    /// The switch does not allocate a separate UI slot or sense an independent press.
+    /// The caller toggles its value when the row response reports a click.
     #[must_use]
     pub fn trailing_switch(mut self, on: bool) -> Self {
         self.trailing_switch = Some(on);
         self
     }
 
-    /// A trailing [`Radio`](crate::widgets::Radio) — one row of a pick-one list.
-    ///
-    /// The second member of the closed set [`Self::trailing_switch`] opened, and for the same
-    /// reason: a list of mutually exclusive choices is exactly a radio group, and drawing a bare
-    /// tick on the chosen row leaves every other row with **no affordance at all** — nothing says
-    /// the row can be chosen until it already has been.
-    ///
-    /// **The row owns the tap**, as with the switch: the radio is drawn, not shown. It allocates
-    /// nothing and senses nothing, so a gloved hand lands on the row rather than on a 3 mm circle.
+    /// Draw a trailing radio mark. The whole row handles interaction; the mark
+    /// does not allocate a separate UI slot or sense an independent press.
     #[must_use]
     pub fn trailing_radio(mut self, selected: bool) -> Self {
         self.trailing_radio = Some(selected);
@@ -249,23 +216,14 @@ impl ListRow {
         self
     }
 
-    /// Set the leading icon in a **tinted round badge**.
-    ///
-    /// Off by default, and deliberately narrow. One UI badges the icons in its settings *sidebar*
-    /// and leaves the icons inside a content card as bare glyphs; iOS does the same thing with a
-    /// rounded square. A badge on every icon on every row turns a list into a sticker sheet, so
-    /// this is for a navigation list — `fairing_widgets::layout::list_item` switches it on.
+    /// Place the leading icon in a tinted round badge. Off by default.
     #[must_use]
     pub fn icon_badge(mut self, icon_badge: bool) -> Self {
         self.emphasis.badge = icon_badge;
         self
     }
 
-    /// Draw the title in the **bold** face ([`crate::theme::Theme::strong`]).
-    ///
-    /// Off by default, and it should stay off for an ordinary row: iOS and One UI both set list-row
-    /// labels in the regular weight and spend bold on the one row that is *selected*, plus the
-    /// screen title. Bold on every row is the same flatness as bold on none.
+    /// Draw the title with [`crate::theme::Theme::strong`]. Off by default.
     #[must_use]
     pub fn strong(mut self, strong: bool) -> Self {
         self.emphasis.strong = strong;

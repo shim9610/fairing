@@ -122,15 +122,14 @@ at a time as you need it.
 | [05 Access control](05-access-control.md) | Legacy levels, gates and prompts · `Authenticator` and routing · session/lock behavior · issuer-controlled sessions and typed UI links |
 | [06 Services](06-services.md) | The backend traits · `Capabilities` · assembling `Services` · mocks · writing a real backend · setting values · clocks |
 | [07 Config reference](07-config-reference.md) | Every section and key of `fairing.toml`, with defaults, validation rules and a complete example |
-| [08 Troubleshooting](08-troubleshooting.md) | Error messages · silent failures · confirming 0 fps at idle · fonts · performance · the 14 audit stages · deployment · FAQ |
+| [08 Troubleshooting](08-troubleshooting.md) | Error messages · silent failures · idle repaint behavior · fonts · performance · the 14 audit stages · deployment · FAQ |
 | [09 Product branding](09-branding.md) | Image loaders · background, type, icon and mark requirements · the override table · the pre-ship review |
 | [10 Migration](10-migration.md) | Request/session tokens · permission values and protected hooks · deferred factories/opaque screen ownership · command/display admission · transport and recovery |
 
 ## What exists and what does not
 
 Milestones M0 to M5 are done, and M6 is down to the 0.1.0 release. The milestone table, what
-comes after 0.1 and the known limits are in the [roadmap](../roadmap.md). The guide writes down
-what is not there as "it cannot" and shows the workaround that exists today.
+comes after 0.1 and the known limits are in the [roadmap](../roadmap.md).
 
 ## Coming from before 0.1
 

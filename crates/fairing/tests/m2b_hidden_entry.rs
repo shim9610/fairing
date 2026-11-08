@@ -1,10 +1,9 @@
-//! The hidden entry points — the invisible door into a device's service menu.
+//! Hidden-entry regressions for tap, corner-sequence and application-defined triggers.
 //!
-//! What it checks: the Android-style tap knock, the corner sequence knock, **whether the gate really does refuse**,
-//! and **whether the audit event always fires**. A hidden entry point is concealment, not authentication, so there
-//! must not be a single path that opens without the gate.
+//! Tests check the configured gate and the in-memory `HiddenEntry` event on allowed
+//! and denied entry attempts. Trigger recognition and authorization are separate.
 //!
-//! The rules are the other integration tests': written as `fairing::Result<()>` with no `panic!` and no `unwrap`.
+//! The tests use `fairing::Result<()>` without `panic!` or `unwrap`.
 
 use fairing::access::{
     AccessEvent, Corner, HiddenEntry, KnockInput, KnockStep, KnockTrigger, TapKnock, Zone,
@@ -81,8 +80,8 @@ fn seven_taps_open_the_hidden_screen() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **The gate is the security.** Even with the knock complete, failing the gate opens no screen and raises only
-/// `UnlockRequested` — and the audit event fires **anyway**.
+/// A completed knock with a denied gate opens no screen and emits UnlockRequested.
+/// The HiddenEntry event is emitted for the attempt as well.
 #[test]
 fn a_gated_entry_asks_to_unlock_instead_of_opening() -> fairing::Result<()> {
     let mut config = access_config(&["viewer", "service"], Some("top"));

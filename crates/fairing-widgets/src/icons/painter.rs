@@ -3,10 +3,10 @@
 //!
 //! # The per-frame cost
 //!
-//! The expensive part (flattening the curves) is done once by [`IconCache`], keyed on
-//! the icon's path and its rounded pixel size. The drawing path only translates the cached polylines into the
-//! target `Rect`. A two-point subpath goes out as an [`egui::Shape::LineSegment`] with **no heap
-//! allocation** (about 47 % of the subpaths across the 51 built-ins). With three or more points,
+//! [`IconCache`] stores flattened curves by path and rounded pixel size; a cache
+//! miss builds the path again. Drawing translates cached points into the target
+//! `Rect`. A two-point subpath uses [`egui::Shape::LineSegment`] without creating
+//! a point vector. With three or more points,
 //! `epaint` wants an owned `Vec<Pos2>` (`PathShape`), so one `Vec` appears per subpath — that is
 //! the representation the icon design specifies, and it handles round joins and feathering in a
 //! single stroke so seams do not overlap and darken. Drawing it as separate pieces would remove
@@ -46,9 +46,9 @@ pub struct Flattened {
 
 /// Choose the curve subdivision count from the size (4–16).
 ///
-/// Splitting a 24 px icon's quarter circle (radius 12 px) into 4 gives a maximum chord error
-/// (sagitta) of `12·(1 − cos 11.25°) ≈ 0.23 px`. At 96 px it is 12 pieces, so
-/// `48·(1 − cos 3.75°) ≈ 0.10 px` — under half a pixel at any size.
+/// For a quarter-circle example, four segments at radius 12 px give approximately
+/// 0.23 px chord error; twelve segments at radius 48 px give approximately 0.10 px.
+/// These examples are not an error bound for arbitrary paths or sizes.
 fn subdivisions(size_px: f32) -> usize {
     ((size_px / 8.0).round() as usize).clamp(4, 16)
 }
@@ -554,7 +554,7 @@ mod tests {
         assert_eq!(points.len(), 2);
     }
 
-    /// Draw all 51 through the real `paint` path and check they stay within `rect` plus half a stroke.
+    /// Draw the built-in set through `paint` and check bounds plus half a stroke.
     #[test]
     fn every_builtin_icon_keeps_the_optical_size_band() {
         use crate::icons::{Seg, ICONS};

@@ -187,7 +187,7 @@ pub(crate) fn write_file(path: &Path, contents: &str) -> Result<()> {
         .map_err(|err| Error::new(format!("cannot write to {}: {err}", path.display())))
 }
 
-/// The grid precision icon coordinates are folded to. On the 24-grid, 1e-4 is invisible.
+/// The grid precision used when rounding icon coordinates on the 24-unit grid.
 const COORD_STEP: f64 = 10_000.0;
 
 /// Narrow an `f64` coordinate to an `f32`.

@@ -279,9 +279,8 @@ struct PendingShot {
     surface: egui::Color32,
 }
 
-/// How many frames a card waits for the runner to answer its screenshot before it gives up and
-/// stays solid — a runner without the command never answers, and a frame late is all a real one
-/// is.
+/// Maximum frames to wait for a backdrop screenshot before retaining a solid card.
+/// Response timing depends on the integrating host.
 const SHOT_PATIENCE: u8 = 12;
 
 /// Shade / `ControlCenter`.

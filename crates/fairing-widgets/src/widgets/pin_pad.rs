@@ -202,11 +202,9 @@ impl<'a> PinPad<'a> {
         self
     }
 
-    /// A digit order from `seed`, every digit once (Fisher–Yates over xorshift64*).
-    ///
-    /// The seed is the caller's: what this protects against is a smudge pattern and a glance
-    /// over the shoulder, not someone predicting a random number, so any per-opening value will
-    /// do — `std::collections::hash_map::RandomState` hashing a counter is what the shell uses.
+    /// Generate a digit permutation from the seed using Fisher–Yates and xorshift64*.
+    /// The result is deterministic, not cryptographically unpredictable. The caller
+    /// chooses when to generate and install a new order.
     #[must_use]
     pub fn shuffled(seed: u64) -> [u8; 10] {
         let mut state = seed | 1;

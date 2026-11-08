@@ -1,11 +1,10 @@
 //! The motion tuning tool: it replays the shade, the pages, push/pop and the
 //! icon zoom on a loop while the `[motion]` tokens are adjusted live on sliders. Run it on the board,
-//! and save the values you like into `[motion]` — "feel" cannot be settled in a document; it is
-//! settled on the real thing.
+//! and export the selected values to `[motion]` after checking the target device.
 //!
 //! - **The frame graph, top right**: the last [`SAMPLES`] frames' intervals (ms) plus the p50 and
-//!   p95. The frame cap of 33 ms is drawn as a gridline. A bar over the line means that motion is
-//!   eating the budget.
+//!   p95. A 33 ms reference is drawn as a gridline. A bar above it is a long frame;
+//!   profiling is needed to determine its cause.
 //! - **The replay loop**: home → the pages there and back → the icon zoom → the shade opening and
 //!   closing → push/pop, round and round without end. It exists to repeat the same transition
 //!   hands-off and compare the numbers.
@@ -680,18 +679,14 @@ fn knob(
     value: &mut f32,
     range: (f32, f32),
 ) -> bool {
-    // It uses **the crate's `slider_row`** — the title, the track and the value on one line, folding
-    // to two by itself when the track gets short. It used to stack a `ui.label` and a
-    // `TouchSlider` separately, which made one knob two rows tall and turned scanning thirty of them
-    // into pure scrolling.
+    // Use slider_row to place the label, track and value together, with its
+    // narrow-width fallback.
     fairing::layout::slider_row(ui, cx, label, value, range.0..=range.1, "", true)
 }
 
 fn lab_ui(ui: &mut egui::Ui, cx: &mut Cx<'_>, state: &mut Shared) {
-    // **The graph's place is reserved on the title row.** Left as a floating layer it overlaps
-    // whatever is there — the status bar at first, and the `home` button once the buttons moved up.
-    // Taking the place from the layout means it cannot overlap, and the "press here to stop" hit is
-    // this Rect too.
+    // Reserve the graph rectangle in the title-row layout and use the same
+    // rectangle for its stop-replay hit test.
     ui.horizontal(|ui| {
         ui.heading("motion lab");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -699,13 +694,8 @@ fn lab_ui(ui: &mut egui::Ui, cx: &mut Cx<'_>, state: &mut Shared) {
             state.graph_rect = Some(rect);
         });
     });
-    // **The buttons go on top, with no space reserved.**
-    //
-    // As a bar pinned at the bottom, the bar's height would have to be settled in advance — and how
-    // many rows eight of them fold into depends on the width and the label lengths. In practice both
-    // `80.0` and `2.6 rows` were wrong and the last button was cut off. On top, they use only as much
-    // as they fold into and the knob list takes the rest — there is no number to get right. Always
-    // being in view during a replay is a bonus (stop used to be off-screen).
+    // Place the wrapping button row above the scrollable controls, using the
+    // height required by its labels at the current width.
     lab_buttons(ui, cx, state);
     ui.separator();
     lab_knobs(ui, cx, state);

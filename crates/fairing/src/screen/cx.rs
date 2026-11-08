@@ -305,8 +305,8 @@ impl<'a> Cx<'a> {
     /// [`Shell::frame_with`](crate::Shell::frame_with) this frame.
     ///
     /// The app owns its state and owns the shell; the shell borrows the state for the length of a
-    /// frame and lends it on to the screens. Nothing is captured, nothing is shared, and there is no
-    /// cell:
+    /// frame and lends it on to callbacks. This API does not require shared ownership
+    /// or an interior-mutability wrapper:
     ///
     /// ```no_run
     /// # struct Console;
@@ -429,9 +429,9 @@ impl<'a> Cx<'a> {
         })
     }
 
-    /// **Whether [`Cx::draw_screen`] would draw this one here** — everything it needs, checked
-    /// before the press rather than after: registered, its gate passes, it is a **resident**
-    /// declaration, and its screen is not already out on loan.
+    /// Whether current registration, gate and loan state permit embedded drawing:
+    /// the declaration is a resident screen, its gate passes and its body is available.
+    /// [`Cx::draw_screen`] checks these conditions again when invoked.
     ///
     /// A factory declaration (`screen_with`) owns no screen between opens, so it can only be
     /// opened, never embedded — a list offering both has to know which a row is before it is
@@ -462,7 +462,7 @@ impl<'a> Cx<'a> {
     ///
     /// # What the guest gets
     ///
-    /// A `Cx` of its own in every way that would otherwise be a lie:
+    /// An embedded screen receives a `Cx` describing its own drawing context:
     ///
     /// - **`cx.pane.rect` is the space it was actually given** (`ui`'s), not the host's pane. A
     ///   scroll built on the host's height would run past the bottom of the column and the overrun
@@ -749,7 +749,8 @@ impl<'a> Cx<'a> {
         self.requests.push(CxRequest::Launch(action));
     }
 
-    /// For hiding a section inside a screen (delegates to `policy.allows`).
+    /// Observe the current access decision for conditional content. Token mode checks
+    /// issuer authority and any narrowing policy; this observation does not dispatch work.
     #[must_use]
     pub fn allows(&self, gate: impl Into<Gate>) -> bool {
         self.access.allows(&gate.into())
@@ -773,11 +774,8 @@ impl<'a> Cx<'a> {
 
     /// The level table (`[access] levels`).
     ///
-    /// The [`Level`](crate::access::Level) from [`Cx::session`] is **a number**. Writing
-    /// "Service level" on screen needs the name, and that table is built from the config and
-    /// held by the shell — this is the only way to it. Without it the integrator writes
-    /// `[access] levels` a second time in code, and when the two drift the screen shows the
-    /// wrong level name. The demo actually did.
+    /// Look up the configured label for the subject's numeric level rather than
+    /// duplicating `[access] levels` in application code.
     ///
     /// ```no_run
     /// # fn draw(cx: &fairing::Cx<'_>) -> String {
@@ -816,12 +814,11 @@ impl<'a> Cx<'a> {
         self.animations.keep_animating();
     }
 
-    /// Lend a [`WidgetCx`](fairing_widgets::WidgetCx) — what a control needs, and nothing else.
+    /// Lend a [`WidgetCx`](fairing_widgets::WidgetCx) for a widget call.
     ///
-    /// The widgets live in [`fairing_widgets`] and take only the theme, the icons and one
-    /// animation call. This hands those three over for the length of a widget call, so
-    /// a control cannot reach the registry, the services or the access gate even by accident —
-    /// which is the whole reason the element layer is a crate of its own.
+    /// It supplies theme, icon, animation and painting context without exposing the
+    /// shell registry or backends through that value. Application widget code can
+    /// still use references it obtains independently.
     pub fn widgets(&mut self) -> fairing_widgets::WidgetCx<'_> {
         fairing_widgets::WidgetCx {
             theme: self.theme,

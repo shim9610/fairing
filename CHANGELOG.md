@@ -193,9 +193,9 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
   `TextFieldLook::reveal` tells a painter; the built-in icons gain `eye` and `eye-off` (80).
 
 - `testing::Harness` finds a place by its label: `tap_text(label)`, `text_rect(label)` and
-  `texts()` look through what the frame drew, so a test written for today's row height is
-  still right when the finger, the type scale or the density changes — and a label that is not
-  on the glass is an error naming what is, never a tap on nothing. The example tours press the
+  `texts()` look through the current frame geometry rather than a fixed row height,
+  including after finger-size, type-scale or density changes.
+  A missing label returns an error describing the available labels. The example tours press the
   same way (`Act::Tap(Spot::Text(..))`, with `Spot::Edge` and `Spot::Page` for the gestures
   and `Act::MoveBy` for every drag) and have no coordinate form at all.
 - The built-in settings screens group their rows in filled cards. A title with no actions is as
@@ -218,8 +218,8 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
 - The headless tests ask the shell where things are and how long motions take instead of
   assuming: a field is found by its hint, a row's switch by its knob, a gap between status
   items by the rects the bar laid out; waits are the motion tokens' lengths; a pull short of
-  the snap is a share of the card's height. A test written for one finger or one token value
-  no longer passes by coincidence.
+  the snap is a share of the card's height. These tests use the configured geometry
+  and timing instead of duplicating selected default values.
 - The example tours have no pixel distance and no frame count standing for a time: a drag goes
   to a `Spot` (`Act::DragTo`, with `Spot::Across` for a drag that keeps its line), a finger
   held still is `Act::Hold`, and a long press or a toast's lifetime is waited on the input clock
@@ -287,10 +287,10 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
 - The session: temporary unlocks (`unlock_mode`, `temporary_secs`), the session timeout, the
   idle lock (`[access.lock_screen] allow_continue`), the `status.lock` padlock, and events for
   every request, grant, refusal, lockout and change of subject — with the reason. Every
-  deadline runs on the wall clock, including the time an idle panel sleeps. A slow answer never
-  holds the keys: while one is awaited the prompt says "Checking…", and a new attempt calls off
-  the check still under way (`Authenticator::cancel`), so an answer that never comes cannot hold
-  the lock screen.
+  deadline is checked against the shell timeline: monotonic elapsed time for logic-driven
+  hosts, egui input time for frame-only hosts. While an asynchronous answer is awaited,
+  the prompt says "Checking…" and accepts a new attempt, which calls
+  `Authenticator::cancel` for the old request.
 - `settings.credentials`, for an authenticator that manages its own entries
   (`Authenticator::admin`). Nobody gives a level above their own or changes an entry above
   it, and `CredentialAdmin::set_actor` says who is asking. A form stays up until it is
@@ -470,13 +470,12 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
   `SettingKey`, `SettingValue` and `InstanceId` are at the crate root too.
 - Internal submodules are private and their items are reached through their parent module
   (`overlay::Shade`, not `overlay::shade::Shade`); the shell's internal methods are
-  crate-visible. `unreachable_pub` keeps it that way.
+  crate-visible. The `unreachable_pub` lint flags public items without a reachable public path.
 - Enums whose set grows with the crate are `#[non_exhaustive]` — `ShellEvent`,
   `LaunchAction`, `AccessEvent`, `SettingValue`, `TileKind`, `Wallpaper`, `ColorRole`,
   `IconRef`, `ButtonKind`, the error type, the overlay's layout, reveal and panel, and the
-  authentication and network enums among them. Everything else is matched exhaustively on
-  purpose: a new variant or field there breaks your `match` or struct literal, so the compiler
-  shows you where to handle it.
+  authentication and network enums among them. Exhaustive enums and public struct
+  literals have separate compatibility constraints; see the API evolution guide.
 - On docs.rs every item behind a feature carries the feature's name.
 - The shell's layout step and the egui area ids it uses are crate-internal; `Shell::layout`
   is how you read the result.
@@ -485,7 +484,7 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
   screen's layer id — is `#[doc(hidden)]`. It stays callable from your own tests, but it is
   not API and may change in any release.
 - The shade opens and closes only through the shell (`LaunchAction::OpenOverlay`,
-  `ShellHandle::toggle_overlay`), so the `overlay.open` gate always applies.
+  `ShellHandle::toggle_overlay`); those command paths evaluate the `overlay.open` gate.
 
 ### Known gaps
 

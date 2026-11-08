@@ -22,13 +22,8 @@
 use std::marker::PhantomData;
 use std::ops::{Add, AddAssign, Mul};
 
-/// du → `epaint::CornerRadius` (a `u8`). Rounded and clamped to the range.
-///
-/// It sits on the `1 du = 1 egui point` anchor, so a du value goes straight in. Two lines, but
-/// `theme`, `layout` and `widgets` all use it, so it lives here — copied into each, one copy
-/// gets fixed and the corners differ from screen to screen. **Public** since the split:
-/// `layout` is on the shell side of the crate boundary and needs the same rounding, and anyone
-/// drawing their own control in du needs it for the same reason.
+/// Convert du to `epaint::CornerRadius` (`u8`), rounded and clamped.
+/// The shared helper keeps conversion behavior consistent across callers.
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
@@ -88,18 +83,9 @@ fn finite_or(v: f32, fallback: f32) -> f32 {
 
 /// **What a length grows with**, carried in the type so a token cannot quietly change families.
 ///
-/// Two of [`Dim`]'s seven terms are proportional to something about the person at the panel:
-/// `finger` to the hand ([`ScalePolicy::finger_mm`]) and `text` to the eye
-/// ([`ScalePolicy::viewing_distance_mm`]). The other five are absolute. A design holds together
-/// because tokens that must stay in proportion are all driven by the *same* one of those two, and
-/// it comes apart when they are not — not loudly, which is the problem: each token still resolves
-/// to a perfectly good number, and the drawing is only right at the one panel size it was tuned
-/// at.
-///
-/// So the anchor is a type parameter, `MetricsSpec`'s fields name the family each token belongs
-/// to, and handing `row_height` a length built from `Dim::du` does not compile. Where a departure
-/// is deliberate — a bench console whose status bar really is hand-sized rather than physical —
-/// [`Span::reanchored`] spells it, and the spelling is the point.
+/// `Hand` permits the `finger` term and `Eye` permits `text`; other terms can be
+/// used as rigid offsets or bounds. `MetricsSpec` fields name the expected family.
+/// Use [`Span::reanchored`] for an explicit change of family.
 ///
 /// # What stops compiling
 ///
@@ -144,9 +130,9 @@ fn finite_or(v: f32, fallback: f32) -> f32 {
 /// let spec = MetricsSpec {
 ///     // A body-relative inset with a flat trim, and a floor under it.
 ///     content_inset: Span::fixed(Dim::text(0.6) + Dim::du(6.0)).min(Dim::du(12.0)),
-///     // "56 du, and I do mean 56 du."
+///     // Keep this value fixed at 56 du.
 ///     status_bar_height: Span::fixed(Dim::du(56.0)).pinned(),
-///     // "Hand-sized, in a field the crate sizes in millimetres."
+///     // Explicitly use a hand-anchored value in this field.
 ///     nav_bar_height: Span::fixed(Dim::finger(1.2)).reanchored(),
 ///     ..MetricsSpec::default()
 /// };
@@ -188,10 +174,8 @@ impl Anchor for Free {
     const NAME: &'static str = "free";
 }
 
-/// A length. **The sum** of seven terms that mean different things.
-///
-/// It is a sum rather than an enum because a combination like `mm(8) + du(4)` has to be
-/// expressible without boxing, and because resolution is then a single dot product.
+/// A length represented as the sum of independent scaling terms.
+/// Resolution combines the terms with the supplied scale coefficients.
 ///
 /// ```
 /// use fairing_widgets::unit::{Dim, Scale};
@@ -392,14 +376,10 @@ impl<A: Anchor> Dim<A> {
     }
 }
 
-/// **Addition, but only within a family.** `text(3.0) + du(8.0)` is a body-relative height with a
-/// flat trim on it and stays eye-anchored; `finger(1.0) + du(10.0)` is the same shape for the hand.
-/// `text(3.0) + finger(1.0)` is the one that does not compile, because the result would move with
-/// the viewing distance *and* the fingertip and there is no honest name for that — it is two
-/// designs added together, and it is how a spec ends up right at exactly one panel size.
+/// Add dimensions within a compatible anchor family.
 ///
-/// A rigid term takes the other side's family, which is why the trims above work and why a length
-/// built only from `du`/`mm`/`px` can still be added to anything.
+/// A rigid offset takes the other operand's family. Combining `text` and `finger`
+/// terms directly is rejected; use an explicit anchor conversion when needed.
 macro_rules! sum {
     ($lhs:ty, $rhs:ty => $out:ty) => {
         impl Add<Dim<$rhs>> for Dim<$lhs> {
@@ -461,16 +441,13 @@ impl<A: Anchor> Mul<f32> for Dim<A> {
 /// **The floor beats the cap, and non-finite values fold onto the fallback.** `f32::clamp` is
 /// not used because it panics on `min > max` and on NaN, and **the defaults actually reach that
 /// condition** — on a 3.2-inch 240×320 panel, `touch_target`'s cap of `frac_min(0.14)` is
-/// 33.6 du while its floor `du(40)` is 40 du. A device panicking during boot is not justifiable.
+/// 33.6 du while its floor `du(40)` is 40 du. The fold handles inverted bounds.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Span<A = Rigid> {
     /// The base length. Folded between the floor and the cap. **Its family is the span's.**
     pub base: Dim<A>,
-    /// The floor. Where it contradicts the cap, this wins.
-    ///
-    /// Rigid, and not by omission: a floor is the point below which a length stops being usable at
-    /// all — a 48 du touch target, a 1 px hairline — and that is an absolute claim about the panel,
-    /// not a proportion of anything. Every floor and cap in the crate is one.
+    /// The floor. It takes precedence when larger than the cap.
+    /// It uses a rigid dimension rather than text- or finger-relative scaling.
     pub min: Dim<Rigid>,
     /// The cap. Non-finite folds to infinity. Rigid for the same reason as [`Self::min`].
     pub max: Dim<Rigid>,
@@ -553,19 +530,13 @@ impl<A: Anchor> Span<A> {
         Ok(())
     }
 
-    /// **Put this length in another family on purpose.**
-    ///
-    /// The anchors exist so a spec cannot drift out of proportion by accident, not to
-    /// claim the crate's choice of family is right for every panel. A console driven by a mouse
-    /// under a bench lamp may genuinely want its status bar sized by the hand rather than in
-    /// millimetres; a kiosk behind glass may want the opposite. Both are legitimate, and both are
-    /// decisions somebody should be able to find later — which is the whole reason this is a word
-    /// at the call site and not an implicit conversion.
+    /// Explicitly assign this span to another anchor family while keeping its terms.
+    /// The caller selects the resulting family at the conversion site.
     ///
     /// ```
     /// use fairing_widgets::unit::{Dim, Eye, Span};
     ///
-    /// // `finger` is hand-anchored, so this needs saying out loud to sit in an eye-anchored field.
+    /// // Convert the hand anchor explicitly for this eye-anchored field.
     /// let bar: Span<Eye> = Span::fixed(Dim::finger(0.95)).reanchored();
     /// # let _ = bar;
     /// ```
@@ -578,12 +549,9 @@ impl<A: Anchor> Span<A> {
         }
     }
 
-    /// **Drop the family**, for code that treats every token alike.
-    ///
-    /// Validation walks a whole spec and asks the same three questions of each length; it has no
-    /// business knowing what any of them is anchored to. Erasing is safe in that direction and
-    /// only that one — a [`Span<Free>`] cannot be put back into a typed field without
-    /// [`Self::reanchored`] saying which family it is rejoining.
+    /// Erase the anchor family while keeping the terms, for generic processing such
+    /// as validation. Returning to a typed field requires an explicit
+    /// [`Self::reanchored`] conversion.
     #[must_use]
     pub const fn erased(self) -> Span<Free> {
         Span {
@@ -595,22 +563,13 @@ impl<A: Anchor> Span<A> {
 }
 
 impl Span<Rigid> {
-    /// **Hold this token constant** in a field whose family scales.
-    ///
-    /// Mechanically the same as [`Self::reanchored`] — a rigid length claims neither anchor, so it
-    /// is admissible anywhere — but it is a different statement and deserves a different word. A
-    /// rigid length in an anchored field is not a neutral choice: it is a token that will *not*
-    /// move when the rest of the design does, so at any panel but the one it was measured on it
-    /// sits out of proportion with its neighbours. That is drift, and it is the failure carrying
-    /// the anchor in the type exists to stop, so it has to be typed out rather than fallen into.
-    ///
-    /// It is still often right — a hairline, a knob's inset, an optical nudge somebody measured
-    /// once. `pinned()` says that was meant.
+    /// Keep a rigid length in an anchored field.
+    /// The resulting value does not acquire text- or finger-relative scaling.
     ///
     /// ```
     /// use fairing_widgets::unit::{Dim, Eye, Span};
     ///
-    /// // "46 du, and I do mean 46 du, whatever the panel" - not "46 du because I forgot".
+    /// // Keep the field fixed at 46 du rather than scaling it with the finger parameter.
     /// let row: Span<Eye> = Span::fixed(Dim::du(46.0)).pinned();
     /// # let _ = row;
     /// ```
@@ -663,33 +622,21 @@ pub enum ScaleConfidence {
     Assumed,
 }
 
-/// **The policy** for how density is used. Separate from "what is known" (`DisplayInfo`).
-///
-/// **It carries no `#[non_exhaustive]`.** This is a struct the integrator **builds**. With the
-/// attribute, struct expressions outside the defining crate are blocked entirely — not even
-/// `..Default::default()` works (a Rust rule) — and changing one field would mean memorising
-/// every setter. Instead it provides [`Default`] so FRU works, and FRU keeps compiling as fields
-/// are added. The value the shell returns ([`Scale`]) carries none either.
+/// Policy for using display density, independent of the reported display facts.
+/// Public fields and [`Default`] permit construction with struct-update syntax.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ScalePolicy {
-    /// The finger diameter (mm). This one value moves every `Dim::finger` term and the audit
-    /// thresholds together.
-    ///
-    /// The default is a **bare finger** ([`FINGER_BARE_MM`]), the size phones and tablets are
-    /// built for: a row is one finger tall, as on a phone. A device worked with gloves or a stylus
-    /// says so with [`ScalePolicy::gloved`] or `with_finger_mm(13.0)`, and every touch target,
-    /// row and bar grows with it.
+    /// Finger-size parameter in millimetres. It scales `Dim::finger` terms.
+    /// The default is [`FINGER_BARE_MM`]; [`ScalePolicy::gloved`] selects a larger
+    /// parameter. Other terms and fixed-size content do not automatically follow it.
     pub finger_mm: f32,
     /// The "below this it is unusable" floor (mm). `None` means `finger_mm × 7/9`.
     pub finger_hard_mm: Option<f32>,
     /// The field-of-view scale. Proportional to the `du` term only.
     pub ui_scale: f32,
-    /// The density to assume when the physical size stays unknown (physical px per mm).
-    ///
-    /// The default is the anchor itself ([`DU_PER_MM`]). That gains two things at once: `ppp`
-    /// comes out at exactly 1.0 so the render is bit-identical to today's, and on an industrial
-    /// panel at 5–6 px/mm the `mm` term comes out **larger** than life, which is the safe
-    /// direction to be wrong in for touch.
+    /// Density to assume when physical size is unknown, in physical pixels per mm.
+    /// The default is [`DU_PER_MM`], producing `pixels_per_point = 1.0` with the
+    /// default policy. An assumed density does not calibrate physical dimensions.
     pub assume_px_per_mm: f32,
     /// **How far the operator's eye is from the glass** (mm). This one value moves every
     /// [`Dim::text`] term — the type scale and everything sized beside it.

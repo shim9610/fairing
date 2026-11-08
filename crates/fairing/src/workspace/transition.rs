@@ -1,5 +1,5 @@
 //! The transition driver — the state machines and render mappings for home ↔ task (the A2 icon
-//! zoom) and screen push/pop (A3). Pure functions, so headless unit testing is easy.
+//! zoom) and screen push/pop (A3). Render mappings are tested without a window.
 //!
 //! The two mappings take their arguments differently: [`a2_open`] / `a2_close`
 //! take a **raw `t`** and ease it inside (the windows are reckoned on the raw `t`), while

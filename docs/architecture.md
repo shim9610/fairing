@@ -99,8 +99,8 @@ A large part comes out whole behind its feature. Turned off, it is not compiled 
 
 ## 3. Modules
 
-The public module paths below are stable facades. Private implementation files
-separate coordination from subsystem work:
+The public module paths below provide the API entry points. Private implementation
+files separate coordination from subsystem work:
 
 - `shell`: authentication/session handling, setting dispatch, navigation, state
   updates and rendering; `mod.rs` retains the shell's state and public facade.
@@ -185,22 +185,22 @@ Eviction and lifecycle requests can also finish during logic-only calls.
 | 2 | Commands | Receive and execute at most `max_commands_per_update` queued commands (default 256); request continuation for remaining work |
 | 3 | Services | Pin snapshots, confirm outstanding Bool commands and send queued targets, gather backend wake-ups |
 | 4 | Access | Revalidate policy after backend updates, record input and poll the authenticator |
-| 5 | Input | The gesture engine, the guard, the shade, the back gesture, the keyboard, every animation |
+| 5 | Input | Advance shell gesture, guard, shade, Back, keyboard and animation state |
 | 6 | Layout | The rects for this frame from the focused screen's chrome policy and the keyboard |
 | 7–9 | Draw | The status bar, the nav bar, then the desktop or the screens |
 | 10–13 | Layers | The keyboard, the shade, the unlock prompt or lock screen, then toasts and banners |
 | 14 | Outputs | Launches, back, home, actions from the shade and notifications, lifecycle events |
-| 15 | Repaint | A repaint while anything moves, otherwise one at the next moment something is due |
+| 15 | Repaint | Request an immediate update for active work or a delayed update for the next scheduled wake |
 | 16 | Events | You take them with `poll_events` |
 
 The deadline clock is the shell's monotonic `Instant`, distinct from the calendar
 `WallTime` returned by a backend's `ClockSource::now()`. Changing device wall time
 does not redefine the session's monotonic deadline timeline.
 
-The order is a contract. A screen sees a layout that is final for the frame, and what a screen
-asks for through `Cx` while it draws, such as opening another screen, is handled later
-in the same frame. `Cx::shell` sends through `ShellHandle` and waits for a subsequent
-state update and its command budget.
+For each `Shell::frame` pass, shell layout is computed before screen drawing.
+Requests made through `Cx` while drawing, such as opening another screen, are
+handled later in that pass. `Cx::shell` sends through `ShellHandle` and waits for
+a subsequent state update and its command budget.
 
 ## 5. Threads
 
@@ -254,10 +254,10 @@ keeps such things:
 
 In reactive mode, the shell requests updates for input, backend wakeups, animations,
 queued work and scheduled deadlines. With none pending it requests no continuous
-redraws; this is the idle **0 fps** condition. A visible clock still schedules updates
-according to its minute/second format. Continuous mode and application repaint requests
-can keep drawing independently. A screen with `keep_awake` asks the display backend
-to inhibit its idle timer. How to confirm 0 fps at idle is in
+redraws. A visible clock still schedules updates according to its minute/second
+format. Host input and application repaint requests can produce other updates;
+continuous mode requests updates on an ongoing basis. A screen with `keep_awake`
+asks the display backend to inhibit its idle timer. Idle repaint checks are in
 [guide 08](guide/08-troubleshooting.md).
 
 ## 8. Errors

@@ -62,8 +62,7 @@ impl<'a> NumberField<'a> {
         self
     }
 
-    /// How many decimal places are shown, and typed back. Capped at six — past that the figure is
-    /// wider than the panel and the operator is reading noise.
+    /// Decimal places shown and parsed back, capped at six.
     #[must_use]
     pub fn decimals(mut self, decimals: usize) -> Self {
         self.decimals = decimals.min(6);

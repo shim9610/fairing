@@ -1,10 +1,9 @@
 //! Wall-clock values and date conversion with no dependencies (`time.rs`).
 //!
-//! The default clock is "UTC seconds plus a local offset in minutes". The offset is **a
-//! configured value**, so it does not know about summer time — somewhere with DST it is an hour
-//! out twice a year. A device where that matters turns on the `chrono` feature and uses
-//! `services::clock::ChronoClock`. It produces the same [`WallTime`], so
-//! screen code does not change by a line.
+//! The default clock uses UTC seconds plus a configured local offset in minutes.
+//! That offset does not update for daylight-saving transitions. The optional
+//! `services::clock::ChronoClock` uses system local time and returns the same
+//! [`WallTime`] representation.
 
 use crate::i18n::Strings;
 
@@ -143,9 +142,8 @@ impl WallTime {
         out
     }
 
-    /// The same as [`WallTime::format`] but it clears `out` and writes there — a caller that
-    /// runs whenever the displayed value changes, like the status bar clock, reuses one buffer
-    /// and allocates nothing.
+    /// Format into `out`, clearing its previous contents and reusing its capacity.
+    /// The buffer can allocate if the result exceeds that capacity.
     pub fn format_into(&self, out: &mut String, format: ClockFormat) {
         self.format_into_with(out, format, Meridiem::ENGLISH);
     }

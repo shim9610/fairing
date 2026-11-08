@@ -373,13 +373,8 @@ impl NavBar {
         self.rects.get(index).copied().filter(Rect::is_positive)
     }
 
-    /// The same question by **id string**.
-    ///
-    /// "Give me last frame's Rect" is one question, and the three took different arguments — only
-    /// the nav bar took a `&NavItem`, while
-    /// [`StatusBar::item_rect`](crate::chrome::StatusBar::item_rect) and
-    /// [`DesktopView::icon_rect`](crate::desktop::DesktopView::icon_rect) take a `&str`. There is
-    /// no reason for tests and integrators to memorise different arguments for the same thing.
+    /// The last drawn rectangle identified by its string ID.
+    /// This accepts the same ID form as status-bar and desktop placement queries.
     #[must_use]
     pub fn item_rect_by_id(&self, id: &str) -> Option<Rect> {
         self.item_rect(&NavItem::parse(id))
@@ -404,8 +399,8 @@ impl NavBar {
     ///
     /// The item slots (their widths and order) are decided by `[nav_bar] items` — and by `layout`
     /// where it moves them — and where a slot's id has an integrator declaration, **that closure
-    /// draws the item** (in place of the built-in icon). There is no per-frame allocation beyond the
-    /// one child `Ui` handed to the closure — the same cost as an integrator item on the top bar.
+    /// draws the item** (in place of the built-in icon). The custom declaration receives a child `Ui`; its drawing and allocation behavior
+    /// depend on the callback and egui.
     pub(crate) fn ui(
         &mut self,
         ui: &mut egui::Ui,

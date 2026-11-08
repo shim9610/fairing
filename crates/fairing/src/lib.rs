@@ -147,12 +147,8 @@ pub mod overlay;
 #[cfg(feature = "runner")]
 pub mod runner;
 
-/// **egui, re-exported verbatim**.
-///
-/// Screen closures receive an `&mut egui::Ui`, so the integrator has to get hold of egui one way
-/// or another. Left to take a direct dependency, a version mismatch links **two copies and the
-/// types stop matching** — and that failure is hard to diagnose, because the compiler says `Ui`
-/// is not `Ui`. Going through this re-export (`fairing::egui::Ui`) makes a mismatch impossible.
+/// Re-export the egui dependency selected by Fairing.
+/// Use `fairing::egui` for UI types that match Fairing callback signatures.
 pub use egui;
 
 /// **The element layer, re-exported verbatim.**

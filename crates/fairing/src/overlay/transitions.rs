@@ -171,13 +171,9 @@ impl Overlay {
             .find(|(t, _, _)| t.id == id)
             .map(|(_, state, _)| *state)
     }
-    /// **Where the tile block ended last frame**, as a height from the shade's own top — the stop
-    /// a two-step shade rests on.
-    ///
-    /// `None` until the panel has drawn once, which makes the shade one-step on its first pull and
-    /// two-step from then on. That is the safe way round: a stop guessed at the wrong height is a
-    /// shade that sticks somewhere meaningless, and there is nothing to guess from before the
-    /// tiles have been laid out.
+    /// Last measured tile-block bottom, relative to the shade top.
+    /// `None` until layout has supplied the geometry; the first pull then has no
+    /// intermediate stop. Later pulls can use the measured stop.
     pub(super) fn tiles_bottom(&self) -> Option<f32> {
         let top = self.frame.panel?.min.y;
         // An expanded row (a slider, a panel body) is part of the tile block: the stop moves

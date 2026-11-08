@@ -20,7 +20,7 @@ straight to stderr or the log — it names the key.
 | Bar height rejected | `[status_bar] height must be greater than 0` / `[nav_bar] height must be greater than 0` | An enabled bar needs a positive height | Fix the value, or set `enabled = false` |
 | `[motion]` value out of range | e.g. `[motion] snap_ratio must be within 0..=1`, `[motion.spring] k must be greater than 0 and c at least 0` | Springs, ratios and pixel values that make no physical sense stop the start-up | Check the table in [07 §10](07-config-reference.md#10-motion) |
 | Odd value in `[nav_bar] back_edges` | ``[nav_bar] back_edges: `top` must be "left" or "right"`` | Only `"left"` and `"right"`; an empty array is fine and means "none" | Fix the typo |
-| `style = "gesture"` with no back edges | `[nav_bar] style = "gesture" has no back button, so an empty back_edges leaves no way back…` | A gesture bar has no back button, so with no back edge the screen is a dead end | Give it an edge, or set `style = "buttons"` |
+| `style = "gesture"` with no back edges | `[nav_bar] style = "gesture" has no back button, so an empty back_edges leaves no way back…` | A gesture bar has no back button, so this disables both built-in back mechanisms | Give it an edge, or set `style = "buttons"` |
 
 ## 2. Referring to an id that was never declared
 
@@ -78,11 +78,10 @@ With an `hms` clock (seconds shown), waking on a 500 ms cadence around each seco
 boundary is normal. Idle 0 fps does not mean "never repaints" — it means "nothing
 scheduled, nothing requested".
 
-An indeterminate `ProgressRing` on screen asks for every frame while it is there. That is
-right for a few seconds of loading and wrong for a wait with no end in sight: give such a
-ring `.repaint_every(Duration::from_millis(250))` and it moves in coarser steps at a few
-frames a second. The unlock prompt's badge wait does this — a lock screen waiting for a
-badge can stand all night.
+An indeterminate `ProgressRing` requests continuous updates by default. Set
+`.repaint_every(Duration::from_millis(250))` when a lower update rate suits the
+interaction and rendering budget. The unlock prompt's badge wait uses that
+interval; the host still determines when frames are delivered.
 
 ## 4. Using an API without its feature
 
@@ -155,7 +154,7 @@ let mut shell = Shell::builder(config)
 name contains `NotoSansKR`, `NotoSansCJK`, `NanumGothic` or `Pretendard`. For any
 other name, call `find_system_font(&["my-font"])` yourself.
 
-### 6.2 Embed it in the binary (the version that cannot go missing)
+### 6.2 Embed it in the binary
 
 ```rust,ignore
 let fonts = FontSet::new().with(FontSource::from_static(
@@ -173,11 +172,11 @@ let fonts = FontSet::new().with(FontSource::from_static(
 | One face out of a `.ttc` / `.otc` collection | `.index(1)` |
 | Several fonts | Call `FontSet::push` more than once; they install in order |
 
-Installation happens **once**, in `build`. `set_fonts` rebuilds the whole glyph
-atlas, so never call it from the frame loop.
+Installation happens once in `build`. Changing the font definitions can rebuild
+egui's glyph atlas and layout caches, so avoid reinstalling fonts each frame.
 
-Hand `from_path` something that is not a font and it stops with `Error::Config`
-(it checks the sfnt signature) before egui can panic.
+`from_path` rejects an unrecognized sfnt signature with `Error::Config`. These
+header checks do not parse every glyph or validate the complete font file.
 
 Shipping a freely licensed CJK font with the device image — Noto Sans KR is
 OFL-1.1, for instance — is the integrator's job; see "Bundling fonts and assets"
@@ -207,7 +206,7 @@ following examples record earlier corrections found through screenshot tours
 
 Earlier API workarounds are no longer needed: `fairing::egui` is
 re-exported, `runner::run_shell_with` exists, so does
-`services::clock::ChronoClock`, `Shell::remove` reaches built-in tiles, and
+`services::clock::ChronoClock`, `Shell::remove` reaches built-in status items, and
 `Lifecycle::Resized` is emitted. Changes affecting older checkouts are listed in
 [10 Migration](10-migration.md).
 
@@ -254,8 +253,8 @@ cargo run -p fairing --release --example bench
 push/pop (A3), a 200-widget screen (idle and drag-scrolling), home, shade drag
 (A1), page swipe (A4) and OSK reveal (A5, feature `osk`). Run it on your device and keep the
 table it prints with the hardware, the commit and the conditions; compare runs on the same
-device. A p50 more than **30 %** above an earlier run is a
-regression.
+device. Treat a p50 increase of 30 % or more as a comparison heuristic to
+investigate and repeat under comparable conditions.
 
 ### 8.3 When it is slow
 
@@ -264,7 +263,7 @@ regression.
 | **Idle desktop p50 and heap counters** | Compare render time separately from allocation. The separate diagnostic allocator measures Rust allocation counts/live bytes; timing alone does not identify allocation. See [memory limits](../memory-limits.md) |
 | **How many fonts you loaded** | Every font added through `egui::Context::set_fonts` adds first-rasterisation and atlas-rebuild cost. If one Korean font is enough, do not stack several |
 | **Known render allocations** | `icons::paint` allocates one `Vec<Pos2>` per sub-path with three or more points (epaint's `PathShape` wants an owned Vec), plus one each for the parametric bluetooth and volume icons. On the M1 baseline (51 icons then), 69 of 146 sub-paths were allocation-free `LineSegment`s — worth knowing when you add custom icons |
-| **Debug versus release** | Debug numbers are a different order of magnitude (x86 baseline idle p95: 0.042 ms release, 0.75 ms debug). Always bench and compare with `--release` |
+| **Debug versus release** | Debug and release builds use different optimization settings. Use `--release` for comparable device measurements |
 
 ## 9. Passing the audit
 
@@ -298,9 +297,9 @@ Adding a dependency:
    and licence fill themselves in; the reason column gets `TODO approve`.
 3. Write the reason yourself as `explanation (approver, YYYY-MM-DD)`. A `TODO`
    with no date keeps `deps-check` failing.
-4. A PR touching `Cargo.toml`, `Cargo.lock` or `deps.allow` needs the repository
-   owner's review under `CODEOWNERS`. The reviewer decides from the tree delta in
-   the `deps-check` output — how many new crates, how many duplicate versions.
+4. `CODEOWNERS` assigns the repository owner to `Cargo.toml`, `Cargo.lock` and
+   `deps.allow`; required review enforcement depends on repository rules. Review the tree delta in
+   the `deps-check` output — new crates and duplicate versions.
 5. Confirm `cargo xtask audit --strict` passes locally before pushing.
 
 ## 10. Deployment
@@ -416,11 +415,9 @@ a whole `Theme` while running; that is decided once, at start-up, through
 
 **Q6. What are the limits on desktop icons, rows, columns and the dock?**
 The grid caps at `columns` 12 and `rows` 8 (`0` means auto,
-[07 §5](07-config-reference.md#5-desktop)). **The dock has no count limit.** Five
-is a phone convention, not a device requirement — twelve along the bottom of a
-1920 bar panel is fine, and so is eight down the left rail of a 480×800. What the
-shell does instead is shrink the cells, and it stops shrinking at the physical
-minimum touch size.
+[07 §5](07-config-reference.md#5-desktop)). Dock configuration has no icon-count cap.
+Its layout shares the available band between icons; check fit and touch sizing
+with the intended icon count and panel dimensions.
 
 **Q7. I set `[access] mode = "prompt"` and a locked icon opens no PIN pad.**
 `prompt` draws the shell's prompt only when there is something to ask: PINs in

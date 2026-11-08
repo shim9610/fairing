@@ -1,4 +1,4 @@
-//! An example of **an integrator redrawing the whole shell without touching the crate**
+//! Ordinary-shell customization using status-bar, desktop-cell and wallpaper hooks
 //! (M2a). `cargo run -p fairing --features runner-x11 --example custom_chrome -- --size=1024x600`.
 //!
 //! What is changed here, and the hook for it:
@@ -14,8 +14,9 @@
 //! | A quick-settings tile (declared) | [`TileKind::Gauges`](fairing::overlay::TileKind::Gauges) — three hopper level gauges. **Only the row count, the names, the colours and whether they can be operated are written down; the crate does the drawing** |
 //! | A quick-settings tile (drawn) | [`overlay::tile_panel`](fairing::overlay::tile_panel) — an axis jog pad that fits no standard shape. The inside of the row is ours whole |
 //!
-//! What the shell goes on doing: the layout Rects, the gate decisions, the hit testing and press
-//! decisions, the A2/A3 transitions, the repaint policy. A painter **only draws**.
+//! The shell coordinates layout regions, gate decisions, dispatch, transitions and
+//! repaint requests. Input and painting use egui. The application supplies these
+//! drawing callbacks through ordinary-shell hooks.
 //!
 //! # Tour mode (`--tour <dir>`)
 //!
@@ -123,11 +124,8 @@ fn theme() -> Theme {
     theme
 }
 
-/// The chrome's sizes, **in the hand's units**: a bar three quarters of a finger, icons a finger
-/// across in cells of two and a third, a screen inset of three millimetres. Resolved against the
-/// panel's density and the finger policy by the shell, so a gloved finger or a denser panel
-/// gets the same chrome at the same physical size — where a block of `Metrics` literals (44,
-/// 132, 56, 20 du) gave one panel's sizes to every panel.
+/// Chrome dimensions in physical/finger units, resolved with the supplied panel
+/// metadata and size policy. Check the resulting geometry on the target panel.
 fn metrics() -> MetricsSpec {
     MetricsSpec {
         status_bar_height: Span::fixed(Dim::finger(0.75)).reanchored(),
@@ -209,13 +207,9 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
 // The painters
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Draw the whole status bar. All the shell hands over is `bar.rect` (the layout), `bar.items()` (the
-/// item list with the gate decisions made) and `bar.cx` (the backend snapshots, the theme, the
-/// handle).
-///
-/// The clock string is overwritten in a buffer the closure holds, through
-/// [`WallTime::format_into`](fairing::services::WallTime::format_into), so no heap allocation is made
-/// per frame (the same method as the built-in status bar).
+/// Draw the example status bar from BarCx data.
+/// The clock uses a retained formatting buffer; other drawing and egui operations
+/// can still allocate.
 fn status_bar_painter() -> impl FnMut(&mut egui::Ui, &mut BarCx<'_>) {
     let mut clock = String::new();
     move |ui: &mut egui::Ui, bar: &mut BarCx<'_>| {

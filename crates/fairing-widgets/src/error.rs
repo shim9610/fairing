@@ -1,7 +1,8 @@
 //! The crate's error type.
 //!
-//! Library code does not panic. A configuration error fails at startup as
-//! [`Error::Config`], and backend errors come back separately as `fairing::services::ServiceError`.
+//! Configuration parsing and validation return [`Error::Config`]. File and image
+//! operations use the variants below. Device backend errors are reported separately
+//! through `fairing::services::ServiceError`.
 
 use std::fmt;
 

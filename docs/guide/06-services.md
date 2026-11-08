@@ -88,8 +88,8 @@ pub struct WifiSnapshot { pub enabled: bool, pub state: WifiState, pub networks:
 pub struct BtSnapshot { pub enabled: bool, pub discovering: bool, pub devices: Vec<BtDevice>, pub pending: Option<PairingRequest> }
 ```
 
-A PSK handed to `connect` is the backend's business and ends there — neither the
-shell nor any UI state keeps a copy.
+`connect` borrows the application-supplied PSK. Application UI and the backend
+control their own buffers and any copies needed for asynchronous work.
 
 ### Connecting is yours
 
@@ -165,8 +165,8 @@ and the password in your own screen and call
 
 ### Pairing a Bluetooth device
 
-Here the crate does draw the interaction, because there is no secret in it. The
-backend raises the request and picks the passkey; the screen shows the number so
+The crate provides a confirmation interaction for a backend-supplied passkey. The
+backend raises the request and supplies the number; the screen shows the number so
 it can be checked against the other device, and Confirm answers with
 `respond_pairing(true, None)`:
 
@@ -176,9 +176,9 @@ pub struct PairingRequest { pub addr: String, pub passkey: Option<u32> }
 fn respond_pairing(&mut self, accept: bool, passkey: Option<u32>) -> ServiceResult;
 ```
 
-Showing a number and taking "yes, that matches" collects nothing. A PIN the user
-has to **type** is the other case, and that one is yours the same way a Wi-Fi
-PSK is — collect it in your own sheet and pass it as the `passkey` argument.
+Passkey confirmation reports acceptance or rejection. For a PIN the user has to
+type, provide an application-owned input sheet and pass the result as the
+`passkey` argument.
 
 ## 2. `Capabilities` — declaring what works
 
@@ -216,9 +216,8 @@ fn defaults() -> fairing::Services {
 ```
 
 The builder swaps in only what you name; everything else stays `Null*` — **except
-the clock**, which defaults to `clock::SystemClock`, because a device booting
-without a clock is the stranger outcome. For a deterministic fixed time, either
-say `.clock(NullClock)` or use `Services::null()`.
+the clock**, which defaults to `clock::SystemClock`. For a deterministic fixed
+time, either say `.clock(NullClock)` or use `Services::null()`.
 
 ```rust
 use fairing::services::clock::SystemClock;
@@ -457,12 +456,12 @@ impl WifiBackend for RealWifi {
 Three rules to keep:
 
 1. **`RealWifi` itself, on the UI thread, has no lock.** `latest` changes only in
-   `poll_at()`, and only the shell calls that, only on the UI thread.
+   `poll_at()` in this example; the shell calls it on the UI thread.
 2. **Command methods post to the channel and return.** `connect()` does not wait
    for the connection; completion shows up as a changed `snapshot()` after the
    next `poll_at()`.
 3. **When the worker changes state, call `Waker::wake()`.** Without it the screen
-   does not refresh until the next input — egui repaints reactively by default
+   may not refresh until another wake or input — egui repaints reactively by default
    (see `repaint` in [01 Getting started](01-getting-started.md)).
 
 Plug it in with `Services::builder().wifi(RealWifi::spawn(InboxConfig::default())?).build()`
@@ -632,7 +631,7 @@ fn set_brightness(shell: &fairing::Shell) {
 ```
 
 **The gate is the key name.** Assign `[access.gates] "display.brightness" = "operator"`
-and anything below that level cannot change the brightness — the value stays put
+and a setting write below that level is refused — the setting value stays put
 and you get
 `ShellEvent::Access(AccessEvent::UnlockRequested { gate, then: Some(LaunchAction::Set(key, value)) })`
 instead ([05 §2.3](05-access-control.md#23-where-enforcement-happens)).
@@ -672,8 +671,9 @@ EEPROM, a PLC — and how often and how safely it writes them is the device's bu
 
 - **Saving**: every change arrives as `ShellEvent::SettingChanged { key, value }`. Store it.
 - **Restoring**: `Shell::restore_settings` takes what you stored and puts it back — in the
-  table, at the backends, in the theme and the language. It checks no gate, since the values
-  passed one when they were set, and emits no `SettingChanged`, since they are stored already.
+  table, at the backends, in the theme and the language. This trusted startup API
+  does not check gates or emit `SettingChanged`; the host must select and validate
+  the stored values it supplies.
   The theme switches at once, without the crossfade, and `radio.airplane` is applied after the
   rest and only ever turns the radios off.
 
@@ -723,8 +723,8 @@ There are two clock backends.
 
 | Backend | Feature | Behaviour |
 |---|---|---|
-| `clock::SystemClock` | always | `SystemTime` plus a **fixed offset you supply**. No dependencies, and **no DST** — in a region with summer time it is an hour out twice a year unless you update the offset yourself |
-| `clock::ChronoClock` | `chrono` | Asks the OS timezone database for the offset **at that moment**, so March and November correct themselves. Costs three crates in the tree |
+| `clock::SystemClock` | always | `SystemTime` plus a **fixed offset you supply**. No additional clock dependency and no automatic daylight-saving adjustment; the host must update the offset when the applicable civil-time offset changes |
+| `clock::ChronoClock` | `chrono` | Asks the OS timezone database for the offset **at that moment**, so changes follow the installed time-zone data. Adds the optional `chrono` dependency tree |
 
 ```rust
 use fairing::services::clock::SystemClock;

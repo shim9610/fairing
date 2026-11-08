@@ -153,8 +153,8 @@ impl Shell {
     /// trackpad, say. One with the same id is replaced.
     ///
     /// Nothing under the region sees a press that begins in it, and no gesture of the shell's
-    /// starts from it. The emergency gesture still works through it, and a tap in it still counts
-    /// as a hidden entry's corner knock. Where regions overlap, the
+    /// starts from it. The emergency gesture remains independent, while the
+    /// region-owned press is excluded from hidden-entry corner knocks. Where regions overlap, the
     /// one added later is on top: a region added after a handle takes the presses in the strip
     /// it covers. See [`GestureRegion`].
     ///

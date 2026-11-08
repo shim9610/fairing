@@ -873,8 +873,7 @@ fn the_language_key_survives_a_layout_change() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **The intermediate composition shows in the field at every jamo.** Appearing only once committed leaves
-/// the user unable to see what they are typing — the most conspicuous defect there is in Hangul input.
+/// Intermediate Hangul composition is present in the field after each supplied jamo.
 #[test]
 fn every_jamo_shows_its_half_built_syllable() -> fairing::Result<()> {
     let (mut h, form) = form_harness(true, ChromePolicy::default())?;

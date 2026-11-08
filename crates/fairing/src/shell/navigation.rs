@@ -7,7 +7,7 @@ use super::{
 };
 
 impl Shell {
-    /// The single enforcement point for running things. On a failed gate it does not open and
+    /// Dispatch a launch action using its current gate decision. A failed gate does not open and
     /// raises an `UnlockRequested`. For `Set` / `Toggle` the key name is the gate ("writing a
     /// settings value").
     pub fn launch(&mut self, action: LaunchAction) {

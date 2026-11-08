@@ -72,14 +72,8 @@ fn du(v: f32) -> Span {
     Span::fixed(Dim::du(v))
 }
 
-/// **The button's padding reaches the integrator.** Without this cell, changing one padding means climbing five
-/// rungs up the ladder (to the painter), and the widgets and notifications have no painter hook at all.
-///
-/// The token it drives is [`fairing::theme::MetricsSpec::content_inset`], not the retired
-/// `ComponentSpec::button[0]`. A button's side padding is the same question as where a list row's
-/// label starts, and answering it in two places is what left a switch row's label four du off a nav
-/// row's in the same card. What this test holds to is the path, and the path now runs through the
-/// one shared token.
+/// Changing MetricsSpec::content_inset changes button side padding.
+/// The test pins both values so the expected width delta is independent of defaults.
 #[test]
 fn the_button_padding_reaches_the_widget() -> fairing::Result<()> {
     // With a short label the `min_size` floor bites and the width does not change however much the padding grows —

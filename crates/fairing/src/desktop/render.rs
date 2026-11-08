@@ -7,9 +7,8 @@ use super::{
 };
 
 impl DesktopView {
-    /// Draw. `rect` is the whole content Rect. **Zero heap allocation per frame** — the slots are
-    /// walked borrowed, and the Rect records and the galley cache have only their values overwritten
-    /// (the regression is `examples/bench.rs`'s idle desktop).
+    /// Draw the desktop in `rect`. Slot records and text galleys are reused where their
+    /// inputs are unchanged. Cache rebuilds, egui and custom drawing can still allocate.
     pub fn ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -269,7 +268,7 @@ impl DesktopView {
     pub const fn set_legibility(&mut self, legibility: LabelLegibility) {
         self.legibility = legibility;
     }
-    /// The wallpaper. [`Wallpaper::Gradient`] caches its mesh to keep zero heap allocation per frame.
+    /// The wallpaper. [`Wallpaper::Gradient`] caches its mesh for reuse while its inputs remain unchanged.
     pub(super) fn paint_wallpaper(&mut self, painter: &egui::Painter, rect: Rect, theme: &Theme) {
         // **The pair is resolved before the match**, so it costs one line rather than a second copy
         // of every arm below it.

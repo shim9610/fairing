@@ -146,15 +146,9 @@ pub struct ElevationSpec {
 }
 
 impl Default for ElevationSpec {
-    /// Both lengths are the **eye** family — a millimetre with a device-pixel floor — and neither
-    /// carries a `finger` term. No finger lands on a shadow; a penumbra's job is to be seen at
-    /// arm's length through glass, and a gloved hand does not need a bigger one.
-    ///
-    /// The pixel floors are 4 and 2. At α 14/255 spread over an 8 du ramp each step is 1.75/255;
-    /// held at 4 physical pixels it is 3.5/255, which is where a gradient starts to band on an
-    /// 8-bit panel. Below that the honest answer is [`ElevationStyle::Off`], not a thinner shadow.
-    /// The floors are a *pair*: at 4 and 2 the defining property survives, because
-    /// `top = 4/2 − 2 = 0` still puts nothing above the caster.
+    /// Default elevation specification. Blur and offset use millimetre terms with
+    /// pixel floors and no finger term. Their values determine the cast-shadow extent;
+    /// applications can select `ElevationStyle::Off` when no elevation is desired.
     fn default() -> Self {
         Self {
             blur: Span::fixed(Dim::mm(1.20)).min(Dim::px(4.0)),
@@ -275,14 +269,10 @@ impl Theme {
     }
 }
 
-/// Paint `level` for a container whose drawn rect is `rect`.
+/// Paint `level` for a container at `rect`, using its own corner radius.
 ///
-/// `radius` is the caster's **own** radius. `Shadow::as_shape` adds `CornerRadius::from(spread)`
-/// and the tessellator adds half the blur on top, so the penumbra comes out rounder than the thing
-/// casting it — which is what a penumbra is, and must not be corrected.
-///
-/// The rim is `StrokeKind::Inside`, so an elevated container never measures wider than a flat one
-/// and the rows inside it do not reflow when a manufacturer turns elevation on.
+/// `Shadow::as_shape` and tessellation expand the shadow geometry for spread and
+/// blur. The rim uses `StrokeKind::Inside`, so it does not increase layout bounds.
 pub fn paint_elevation(
     painter: &Painter,
     theme: &Theme,

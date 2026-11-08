@@ -3,8 +3,8 @@
 #
 #   tools/readme-gifs.sh
 #
-# Each tour runs with `--record` (a fixed 60 Hz clock, so a software rasteriser records as smoothly
-# as a GPU; guide 01 §5) and the stretch it records is stitched by tools/make_gif.py. The tours run
+# Each tour runs with `--record` and a fixed 60 Hz input clock (guide 01 §5).
+# tools/make_gif.py stitches the recorded stretch. The tours run
 # under xvfb-run with Mesa's software rasteriser, as the committed GIFs were made: the kiosk wants a
 # 1080 x 2560 window, which no desktop screen holds.
 #

@@ -7,7 +7,7 @@
 //! back into numeric order to show.
 //!
 //! Any failed prebuild gate blocks the compiling stages: provenance, dependency approval,
-//! advisories and license checks must succeed before dependency code can run.
+//! advisories and license checks must succeed before those compiling stages run.
 //!
 //! 7 and 8 are installed plugins (`cargo-audit`, `cargo-deny`) rather than built into cargo. Absent,
 //! they print installation guidance and are skipped, and under `--strict` (CI) they count as failures.
@@ -393,12 +393,12 @@ fn summarize(steps: &[Step]) {
         .collect();
     if !missing.is_empty() {
         println!(
-            "Compiling stages not run: {} (integrity failed)",
+            "Compiling stages not run: {} (a prebuild gate failed)",
             join(&missing)
         );
     }
     if failed.is_empty() {
-        println!("\nAll passed.");
+        println!("\nExecuted audit checks passed.");
     } else {
         println!("\nStages failed: {}", join(&failed));
     }

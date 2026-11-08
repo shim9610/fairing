@@ -18,8 +18,7 @@ use egui::{Pos2, Rect, Response, Sense, Shape, Stroke, Vec2};
 /// The fewest dots on a side.
 pub const MIN_GRID: u8 = 3;
 
-/// The most dots on a side — twenty-five dots, every cell still a touch target on a panel the
-/// size of a phone.
+/// Maximum grid side length: five dots, giving twenty-five cells.
 pub const MAX_GRID: u8 = 5;
 
 /// A cell's side, in touch targets, at most.
@@ -139,9 +138,9 @@ impl<'a> PatternPad<'a> {
         self
     }
 
-    /// Draw the path as the finger draws it (the default). Off, the dots stay at rest while the
-    /// finger takes them — nothing on the glass for a glance over the shoulder to read, the
-    /// pattern's counterpart of a shuffled keypad.
+    /// Whether to paint the path and taken-dot feedback (enabled by default).
+    /// When disabled, the painter receives no path/finger/taken-dot data. This controls
+    /// visual feedback rather than physical-observation resistance.
     #[must_use]
     pub fn show_path(mut self, show_path: bool) -> Self {
         self.show_path = show_path;

@@ -746,13 +746,8 @@ fn nav_items_follow_config_and_recents_reports() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **The shell does not decide that a control cannot work.**
-///
-/// `Recents` and `Split` were drawn grey and their taps thrown away, because the crate's own
-/// overview and split panes are M5. But the crate having nowhere to go does not mean the **device**
-/// has nowhere to go — the icon is the shell's to draw and what it does is the integrator's to say.
-/// So both are live and both report. `Back` stays the one item the shell dims, because "is there a
-/// stack behind you" is a fact the shell owns.
+/// Recents and Split remain enabled and emit requests in this configuration.
+/// Back is disabled when no prior screen is available.
 #[test]
 fn recents_and_split_are_live_and_report() -> fairing::Result<()> {
     let mut cfg = single_level_access();
@@ -802,12 +797,8 @@ fn recents_and_split_are_live_and_report() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **Lock, log out and the overview are reported, never swallowed**.
-///
-/// `Shell::launch` had a catch-all arm that wrote these three to the log and dropped them, so the
-/// shade footer's lock button, the `tile.lock` quick tile and `ShellHandle::logout` were all
-/// controls that did nothing and gave the integrator no way to make them do anything. The arms are
-/// written out now, so a new `LaunchAction` cannot be swallowed the same way.
+/// Lock, logout and overview actions emit their corresponding shell events.
+/// The handle logout path is checked alongside direct launch calls.
 #[test]
 fn lock_logout_and_overview_leave_as_events() -> fairing::Result<()> {
     let mut h = test_shell(single_level_access(), |sh| {

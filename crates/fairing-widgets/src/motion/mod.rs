@@ -1,9 +1,9 @@
-//! The motion system — no dependencies.
+//! Time-based easing, spring evaluation and retained animation state.
 //!
 //! Three principles: 1:1 while following a finger, a spring that inherits the velocity on
-//! release, and short easing for every other transition. All of it is time-based, so it is
-//! independent of the frame rate, and the spring evaluates **a closed-form solution** each frame
-//! rather than integrating numerically, so no `dt` makes it diverge.
+//! release, and easing for transitions. Springs use closed-form evaluation rather
+//! than numerical integration. `Animated::tick` accumulates elapsed time with a dt
+//! cap, so delayed frames can advance animation by less than physical elapsed time.
 
 mod drag;
 
@@ -32,7 +32,7 @@ pub enum Easing {
     BackOut,
 }
 
-/// How far [`Easing::BackOut`] overshoots — Penner's `c1`, the value every toolkit shares.
+/// Overshoot coefficient for [`Easing::BackOut`] (Penner's `c1`).
 const BACK: f32 = 1.701_58;
 
 impl Easing {
@@ -336,7 +336,7 @@ pub struct Animated<T: Lerp = f32> {
     settle_scale: f32,
 }
 
-/// The dt cap. One late frame does not make it jump.
+/// Maximum elapsed-time increment applied by one animation tick.
 pub const MAX_DT: f32 = 0.05;
 
 /// The spring's settle decision — the offset (px).
@@ -736,7 +736,7 @@ mod tests {
     }
 
     /// The 50 ms dt cap: however late a real frame arrives (a large stall,
-    /// say), one `tick` advances by at most 50 ms, so it does not diverge.
+    /// say), one `tick` advances by at most 50 ms.
     #[test]
     fn dt_is_capped_and_never_diverges() {
         let mut a = Animated::new(0.0_f32);

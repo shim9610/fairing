@@ -121,10 +121,9 @@ impl<'a> MediaCard<'a> {
         self
     }
 
-    /// A scrim and a word over the picture, for an item that cannot be had.
-    ///
-    /// It is not [`Self::enabled`]: an unavailable *item* still opens, so you can read why. A
-    /// disabled *card* is one the operator has no rights to.
+    /// Overlay an unavailable-item scrim and label without disabling card interaction.
+    /// [`Self::enabled`] separately controls interaction; neither setting authenticates
+    /// the user or enforces shell permissions.
     #[must_use]
     pub fn veil(mut self, text: &'a str) -> Self {
         self.veil = Some(text);
@@ -145,13 +144,8 @@ impl<'a> MediaCard<'a> {
         self
     }
 
-    /// **How tall this card has to be at `width` to keep its aspect** — what a grid should give it.
-    ///
-    /// A `Grid` picks a cell height from a row count and only then discovers how wide the cell came
-    /// out, so a caller has no way to reason about the two together. This closes that: ask, then
-    /// size the cell. Measured on the kiosk's menu grid before it did, a tile asking for a square
-    /// picture was handed 282.7 du where it needed 636.4, and the shortfall was paid for out of the
-    /// photograph.
+    /// Required card height at `width` for the selected image aspect and text layout.
+    /// Use this when choosing a grid-cell height.
     ///
     /// ```no_run
     /// # fn f(ui: &mut egui::Ui, cx: &mut fairing_widgets::WidgetCx<'_>) {

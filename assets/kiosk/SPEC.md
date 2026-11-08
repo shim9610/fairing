@@ -24,14 +24,14 @@ shapes as fallbacks.
 
 ## 0. Shared art direction
 
-**For the 33 to read as one brand, everything below has to match.** It is repeated in each
-prompt, but if the model drifts, prefix this section and run it again.
+Use the following art direction for the asset set. Repeat it in each prompt and
+compare generated results for consistency before selecting them.
 
 | Axis | Value |
 |---|---|
 | Scene | On a dark matte counter (around deep charcoal `#14181F`), with a shop interior falling out of focus behind |
 | Light | One softbox at upper left 45° plus a weak fill from the right. Shadows soft and not long |
-| Colour temperature | **Warm amber and caramel highlights, cool blue-grey shadows.** The UI accent is `#4C8DFF` (a cool blue), so the photos have to be warm for the contrast to work |
+| Colour temperature | **Warm amber and caramel highlights, cool blue-grey shadows.** The target photo palette uses warm highlights alongside the cool-blue UI accent `#4C8DFF` |
 | Lens | 50 mm equivalent, f/2.8 shallow depth of field. The product sharp, only the background soft |
 | Angle | Drinks from a 3/4 high angle, desserts from the front slightly high, bean bags straight on |
 | Finish | Photographic studio product work. No illustration or 3D-render feel |
@@ -100,9 +100,9 @@ background, flat vector style, square composition, no text
 
 ## 2. Product photos (16)
 
-**The photo fills the top 62 % of a tile and the name and price take the bottom 38 %.** So they
-all have to be **square transparent PNGs** — an opaque rectangle gets its corners clipped by the
-tile and stops reading as a card.
+The design target allocates the upper 62 % of a tile to the photo and the lower
+38 % to name and price. Supply square transparent PNGs to avoid an opaque image
+background inside the tile.
 
 | Shared | Value |
 |---|---|
@@ -190,7 +190,7 @@ payment domain, so they live with the example (`assets/kiosk/icons/`).
 |---|---|
 | Size | 512×512 |
 | Background | **Transparent** |
-| Format | PNG (SVG is better still — it scales without limit) |
+| Format | PNG; use SVG when the integrating renderer supports vector assets |
 | Colour | **Solid white `#FFFFFF`.** The UI tints them with a role colour, and more than one colour breaks the tint |
 | Style | Outline at a uniform stroke weight, rounded caps, 2 px on a 24 grid (about 42 px at 512) |
 | Margin | 10 % clear on every side |
@@ -260,8 +260,7 @@ assets/kiosk/
 - [ ] Nothing that should be transparent has a white plate under it (check the alpha channel)
 - [ ] No text, logos or watermarks (the wordmark is the one exception)
 - [ ] The 7 icons are **solid white** (grey or a gradient breaks the tint)
-- [ ] The 16 product photos share a light direction and colour temperature — **get this wrong and
-      they do not read as one brand**
+- [ ] Compare the 16 product photos for consistent light direction and colour temperature
 - [ ] Nothing touches the frame
 
 Partial deliveries are fine; whatever arrives gets wired in, and the current shapes stay as the
@@ -279,7 +278,7 @@ The original brief paired the assets with these layout changes. Consult
 | Attract | Black background and a drawn cup | A full-bleed photo with a gradient scrim at the bottom, the wordmark, three recommendation photos, and the call-to-action button over the scrim |
 | Menu tiles | A shape of a cup, a name, a price | **The photo across the top 62 %** of the tile, name and price in the bottom 38 %. Sold out desaturates the photo and lays `state-sold-out` over it |
 | Dine-in / takeout | A shape of a cup versus a shape of a bag | Two real photographs |
-| Payment methods | A card, a QR and a banknote drawn in code | A refined icon set |
+| Payment methods | A card, a QR and a banknote drawn in code | The payment/receipt icon set |
 | Mid-payment | Just the progress ring | The `state-insert-card` photo plus the progress ring |
 | Receipt | A big number on black | A big number over `bg-ticket`, with the completion check |
 | Customer display | Three lines of text | `logo-mark` plus the large amount |

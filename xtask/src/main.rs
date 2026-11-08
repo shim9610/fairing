@@ -145,7 +145,7 @@ cargo xtask <command> [flags]
                         --write refreshes deps.allow from the current tree (keeping the existing reasons).
   dup-check             Check that any duplicate version is inside deny.toml [bans].skip.
   sync-check            The blocking/sync ban: it looks for lock types under
-                        crates/**/src and blocking calls under crates/fairing/src.
+                        crates/**/src and configured blocking-call spellings under both UI crates' src directories.
   licenses [--check]    Generate THIRD_PARTY.md. --check only looks at whether it is up to date.
   icons [--check]       assets/icons/*.svg → crates/fairing-widgets/src/icons/generated.rs.
                         --check only looks at whether it is up to date.

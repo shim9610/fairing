@@ -1,7 +1,8 @@
-//! [`ShellBuilder`] — the compile-time customisation entry point.
+//! [`ShellBuilder`] configures shell construction and registers extension hooks.
 //!
-//! This is where a device developer changes the shell **from code, without touching the crate**.
-//! Unlike what a config file does (layout and gate assignment), here the drawing itself changes:
+//! Builder methods select services, theme inputs and drawing/layout hooks. Untyped
+//! hooks below apply to ordinary `Shell`; [`build_protected`](ShellBuilder::build_protected)
+//! rejects them and uses typed application declarations instead.
 //!
 //! | Method | What it changes |
 //! |---|---|
@@ -448,8 +449,10 @@ impl ShellBuilder {
     /// [`Authenticator::methods`] returns and applies the answer; how a credential is stored and
     /// checked stays yours.
     ///
-    /// It only shows up in `[access] mode = "prompt"` with more than one level — in `routing` the
-    /// prompt is never drawn and in `off` nothing is gated.
+    /// Built-in prompting requires `mode = "prompt"` and supported authentication
+    /// methods. The multiple-level requirement applies to legacy level mode; token
+    /// mode still requires authentication with a single configured level. Routing
+    /// mode delegates authentication presentation to the host.
     ///
     /// ```no_run
     /// # use fairing::access::{AuthMethod, AuthOutcome, Authenticator, Credential};
@@ -651,10 +654,10 @@ impl ShellBuilder {
     /// The physical scale policy. Finger size, viewing magnification, the density fallback
     /// and the `ppp` range.
     ///
-    /// The default is a **bare finger** (`finger_mm = 9.0`) read at hand-held distance — the
-    /// density of a phone or a tablet. On a device worked with gloves or a stylus, hand over
-    /// [`ScalePolicy::gloved`](crate::unit::ScalePolicy::gloved) (13 mm) and every touch target,
-    /// row and bar grows with it.
+    /// Defaults use `finger_mm = 9.0` and a 360 mm viewing-distance parameter.
+    /// [`ScalePolicy::gloved`](crate::unit::ScalePolicy::gloved) selects 13 mm finger
+    /// sizing. Only dimensions that use finger terms follow that change; text and
+    /// fixed-size content have separate inputs. Check size on the target panel.
     ///
     /// ```no_run
     /// use fairing::unit::ScalePolicy;
@@ -724,12 +727,10 @@ impl ShellBuilder {
     /// millimetres with a device-pixel floor, and a spec frozen at `Scale::identity()` would cast
     /// the same penumbra on a 4 px/mm panel as on a 20 px/mm one.
     ///
-    /// The switch a manufacturer usually wants here is
-    /// [`ElevationSpec::flat`](crate::theme::ElevationSpec::flat): an e-ink or 16-level display
-    /// cannot reproduce a 5 % feather and dithers it into rings, so on those panels height should
-    /// not be drawn at all rather than drawn thinner. To keep the height but change how it is
-    /// expressed, set `ratios.style` to
-    /// [`ElevationStyle::Rim`](crate::theme::ElevationStyle::Rim) instead.
+    /// [`ElevationSpec::flat`](crate::theme::ElevationSpec::flat) disables elevation
+    /// painting. For a rim instead of a shadow, set `ratios.style` to
+    /// [`ElevationStyle::Rim`](crate::theme::ElevationStyle::Rim). Choose after
+    /// checking gradients and boundaries on the target display.
     #[must_use]
     pub fn elevation_spec(mut self, spec: ElevationSpec) -> Self {
         self.elevation_spec = Some(spec);
@@ -738,7 +739,8 @@ impl ShellBuilder {
 
     /// Pin the panel's physical size (in mm). It wins over the backend's `DisplayInfo::physical_mm`.
     ///
-    /// For a device with no EDID, or one that lies — an integrator knows their own device's inches.
+    /// Supply the visible panel width and height when backend metadata is missing
+    /// or inaccurate; physical-size accuracy depends on these values and host scale.
     #[must_use]
     pub fn physical_mm(mut self, width_mm: f32, height_mm: f32) -> Self {
         self.physical_mm = Some((width_mm, height_mm));
@@ -990,7 +992,7 @@ impl ShellBuilder {
         self
     }
 
-    /// Set the wallpaper from code. **Stronger** than `[desktop] wallpaper`.
+    /// Set the wallpaper from code, taking precedence over `[desktop] wallpaper`.
     ///
     /// The config file is the default for when an integrator has not decided in code, and this hook
     /// covers it. To read one from a file, wire up [`ShellBuilder::image_loader`] and write
@@ -1027,13 +1029,12 @@ impl ShellBuilder {
     /// | [`Preset::Base`](crate::theme::Preset::Base) | Neutral dark/light | A flat `Background` role |
     /// | [`Preset::Abyss`](crate::theme::Preset::Abyss) | The deep sea drawn from the manta art | The procedural deep sea (feature `brand`) |
     ///
-    /// **The branding is opt-in.** Call none of it and there is not a trace of the crate — the
-    /// default is the neutral palette on a flat background, with neither the manta nor the deep sea
-    /// anywhere.
+    /// Without a configured or builder-selected art preset, the default uses a
+    /// neutral palette and flat background rather than the manta and deep-sea art.
     ///
     /// To override a piece at a time, call [`ShellBuilder::palettes`] or
     /// [`ShellBuilder::wallpaper`] **after** this. The later call wins. Guide 09 §8 has a table of
-    /// how to override all of it.
+    /// supported branding customization points and protected-shell restrictions.
     ///
     /// ```no_run
     /// # fn main() -> fairing::Result<()> {
@@ -1073,8 +1074,8 @@ impl ShellBuilder {
     /// Build the shell. `ctx` is the context [`Waker`] will wrap.
     ///
     /// # Errors
-    /// Config validation failure ([`crate::Error::Config`]) — a value out of range, two or more
-    /// level tables with no `default_gate`, or a bad role name or colour format in
+    /// Config validation failure ([`crate::Error::Config`]) — a value out of range, legacy
+    /// multi-level mode with no `default_gate`, or a bad role name or colour format in
     /// `[theme.palette]`.
     // Every part of the shell is assembled in one place — split up, the order between the parts (fonts →
     // theme → services → the handle) is scattered across several functions and reads worse.
@@ -1544,8 +1545,9 @@ fn warn_ignored_bar_sizes(keys: &[&str], why: &str) {
 /// Read `[desktop] wallpaper = "file:…"` through the integrator's loader and put it up as the
 /// wallpaper.
 ///
-/// **The shell comes up even on failure.** A device must not fail to start over one background, so
-/// the error is logged and the `background` fallback `wallpaper_from_config` set is left as it is.
+/// A reported loader error is logged and leaves the `background` fallback selected
+/// by `wallpaper_from_config`. This handles the loader's returned error, not other
+/// startup failures or an unwind inside application decoding code.
 ///
 /// The decode happens **once**, here — outside the frame loop, so even a large original is done
 /// before the first screen appears.

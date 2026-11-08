@@ -532,22 +532,11 @@ fn main() -> fairing::Result<()> {
 /// The demo's config. The headless regression test reads the same file (`tests/m1_headless.rs`).
 const CONFIG: &str = include_str!("demo.toml");
 
-/// The demo's default wallpaper — **the original artwork**.
+/// Wallpaper assets embedded in the demo executable.
 ///
-/// The procedural Abyss (`--wallpaper=abyss`) is a code approximation of the same picture and is much
-/// shallower in detail. The demo has to show how the brand actually looks, so the original is laid
-/// down by default. It is baked into the executable, so no assets need loading onto the device.
-///
-/// **A different plate is prepared for each aspect ratio.** Stretching a landscape original onto a
-/// portrait panel with `cover` crops the manta enormously and ruins the picture whole (measured).
-/// Which plate to choose is **the integrator's judgement**, so it happens here rather than in the
-/// crate — it is the problem guide 09 §2.1 handles as "how many plates do I need?".
-/// **The light column is the palette's other half**. A texture follows nothing on its
-/// own, so a shell switching to its light palette at dusk would keep the dark painting under a pale
-/// UI. Only the landscape plate has a light twin so far; the rest pair with a flat background,
-/// which is a pair like any other — a painting at night, a plain colour by day.
-/// One row of [`WALLPAPERS`]: the aspect ratio's upper bound, the dark plate, and the light twin
-/// where one exists.
+/// The example selects an asset by aspect ratio. Landscape has a light counterpart;
+/// other aspects use a flat background for the light palette. `--wallpaper` can
+/// select a procedural or application-provided alternative.
 fn default_wallpaper(ctx: &egui::Context) -> Option<fairing::desktop::Wallpaper> {
     if wallpaper_arg().is_some() {
         return None;
@@ -609,19 +598,12 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
     Ok(shell)
 }
 
-/// The label legibility correction (guide 09 §2.2).
+/// Label-legibility treatment selected by the demo.
 ///
-/// On the original wallpaper the manta's **white belly passes through the middle of the icon grid** —
-/// that part alone cannot keep §2.2's "dark and low-contrast" requirement. Rather than redrawing the
-/// wallpaper, the integrator-side prescription is used.
-///
-/// **`veil` is the default here.** `shadow` brings the icons back too, but the "Widgets" label right
-/// over the white belly was still weak (measured). White text on a white ground is not saved by one
-/// layer of shadow. The veil flattens the picture but saves the whole grid for certain, and it suits
-/// the deep-sea theme — `--legibility=shadow|none` lets you try the others.
-///
-/// It is turned off for flat and procedural wallpapers (`--wallpaper=background|abyss`), where it is
-/// not needed — there is no reason to fog a well-authored background.
+/// The default veil tints the raster background under the icon grid.
+/// `--legibility=shadow|none` selects alternatives. Flat and procedural backgrounds
+/// disable this correction. Inspect the composited labels after changing assets
+/// or palettes.
 fn apply_legibility(shell: &mut fairing::Shell) {
     use fairing::desktop::LabelLegibility;
     let raster = wallpaper_arg().is_none_or(|name| name.starts_with("file:"));
@@ -643,13 +625,8 @@ fn legibility_arg() -> Option<fairing::desktop::LabelLegibility> {
     })
 }
 
-/// The built-in settings screens. **One line attaches all eleven.**
-///
-/// The demo's Mock backends offer Wi-Fi, Bluetooth, power, the clock and the display, so those five
-/// screens are registered and network and accounts, having no backend, drop out by themselves.
-///
-/// The colours are untouched — the settings screens are all role colours, so `--preset=abyss` has
-/// them follow the deep-sea palette as they are (guide 09 §8).
+/// Register the built-in settings screens supported by the demo backends.
+/// Desktop icons are registered separately by the demo.
 fn add_settings(shell: &mut fairing::Shell) {
     use fairing::settings::{add_all, SettingsConfig};
     // The desktop icons are turned off, since the demo lays out its own grid — only the screens are registered.
@@ -930,9 +907,8 @@ fn add_screens(shell: &mut fairing::Shell) {
     );
     shell.add(
         screen("fullscreen", |ui: &mut egui::Ui, cx: &mut Cx| {
-            // With the chrome hidden whole, **the screen** provides the way back — the pinned bottom
-            // bar is that place. A button tacked onto the end of a list has to be scrolled to, and on a
-            // device that is another way of saying "there is no way back".
+            // With shell chrome hidden, use a pinned bottom bar for Back rather than
+            // placing it after scrollable content.
             layout::action_bar(
                 ui,
                 cx,
@@ -1501,7 +1477,7 @@ struct Picks {
     device: usize,
 }
 
-/// `dropdowns`: the five closed forms of `Dropdown` and its four ways of opening.
+/// `dropdowns`: examples of configurable Dropdown triggers and openers.
 fn add_dropdowns_screen(shell: &mut fairing::Shell) {
     let mut picks = Picks {
         input: 1,
@@ -2649,10 +2625,10 @@ fn panel_scale(builder: fairing::ShellBuilder) -> fairing::ShellBuilder {
 
 /// `--wallpaper=NAME` — the wallpaper (`abyss` · a role name · `#RRGGBB` · `file:<path>`).
 ///
-/// `file:` is read only with feature `raster` on:
+/// The example installs common::image_loader for `file:` paths:
 ///
 /// ```text
-/// cargo run --example demo --features runner,mock,raster -- ///     --wallpaper=file:$PWD/assets/brand/abyss-landscape.webp
+/// cargo run -p fairing --example demo --features runner-x11,mock -- --wallpaper=file:$PWD/assets/brand/abyss-landscape.webp
 /// ```
 fn wallpaper_arg() -> Option<String> {
     std::env::args().find_map(|a| a.strip_prefix("--wallpaper=").map(str::to_owned))

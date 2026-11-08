@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile real downstream implementations; reject metadata effects and divergence."""
+"""Compile downstream metadata fixtures and check accepted/rejected cases against the restricted checker."""
 import json
 import os
 from pathlib import Path

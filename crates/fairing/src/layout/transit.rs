@@ -296,19 +296,14 @@ struct Cue<'k, K> {
     moving: Option<(Motion, f32, bool)>,
 }
 
-/// **Draw the page `key` names, and the way there from the page before it**.
+/// Draw the page identified by `key`, with its entry/exit motion from [`Transit`].
 ///
-/// `body` draws a page for whichever key it is handed. While a page's exit plays, that is the
-/// key before — so a body draws by the key it is given, never by the state it can see; the
-/// console's `page(ui, cx, open, state)` already has that shape. Between transitions the page
-/// is drawn straight into `ui`, so the container costs nothing at rest.
-///
-/// One container per `ui`: it keeps its stage under the `ui`'s id. A second one in the same
-/// `ui` goes inside a `push_id`.
-///
-/// A key that changes again mid-way turns: a page still on its way out heads for the new key
-/// from where it is, and a page on its way in goes back out — along the way it came, if that is
-/// where it is sent. Under `[motion] reduce` every half is instant, and the swap is a cut.
+/// During exit, the callback receives the outgoing key; draw that page rather than
+/// reading a newer selection from application state. At rest, the callback draws
+/// directly into the caller's `Ui`. The transition state is stored under that UI's
+/// ID; use a distinct `push_id` for another container in the same UI.
+/// Changing keys during a transition redirects the current entry/exit. Under
+/// reduced motion, each transition half completes without intermediate animation.
 #[expect(
     clippy::needless_pass_by_value,
     reason = "the key is the page's name, small and by value at every call site; the container keeps a copy"

@@ -1,6 +1,6 @@
 # 02. Screens
 
-Everything about building a screen: declaration → builder → state → `Cx` → lifecycle → stack navigation → per-screen chrome.
+Screen declaration, builders, state, `Cx`, lifecycle, navigation and per-screen chrome.
 
 A screen is a registered UI body: an `FnMut(&mut egui::Ui, &mut Cx)` closure or a
 `Screen` implementation. It draws inside the rectangle the shell supplies.
@@ -15,9 +15,9 @@ See [typed registration](../session-tokens.md#typed-permission-requirements).
 All of them go in with `shell.add(..)` and come out with `shell.remove(id)`.
 
 > The samples in this section and in §3 · §6 call `ui.heading` · `ui.button` directly — they
-> exist to show the **declaration mechanism**, so the inside of each screen is kept to nothing.
-> Real screens are not written that way. Cards, grids, touch targets and scrolling are
-> [§8 `layout`](#8-building-the-inside-of-a-screen-with-layout)'s job.
+> show the declaration mechanism with small screen bodies. Applications can use egui
+> directly or use [§8 `layout`](#8-building-the-inside-of-a-screen-with-layout) for
+> Fairing's card, grid, spacing and touch-size conventions.
 
 | Declaration | Signature | Where it shows up |
 |---|---|---|
@@ -209,8 +209,7 @@ draw the same state in two places.
 ### 3.1 Drawing one screen inside another
 
 `cx.draw_screen(ui, id)` draws whatever declaration is registered under `id`, right where you call
-it. A master-detail layout is that one line: the list on the left, and on the right the screen the
-selected row points at. The built-in `settings.home` is written this way, which is why replacing
+it. A master-detail layout can use this to embed the selected screen beside a list. The built-in `settings.home` is written this way, which is why replacing
 `settings.wifi` under the same id changes what the wide-screen right column shows.
 
 ```rust
@@ -600,8 +599,8 @@ back. `inset_or(default)` uses the value you pass when `inset` is `None`, and cl
 to 0.
 
 `edge_guard = true` blocks every edge regardless of `allow_peek`, leaving only the emergency
-gesture: a 2-second press within 64 px of a top corner. It is for screens where a mis-touch
-causes an accident on the spot — cutting, driving. The full contract is in
+gesture: a 2-second press within 64 px of a top corner. Use this policy to suppress
+shell edge navigation on the screen. The full contract is in
 [03 Chrome](03-chrome.md).
 
 ```rust
@@ -676,7 +675,7 @@ scrolling itself is provided by egui.
 `layout`'s **row** helpers are not the same thing as the widgets in
 `widgets`. `widgets::Switch` **draws** a switch;
 `layout::switch_row` decides **where that switch goes** next to its label. Building a screen,
-the row helpers are usually all you need.
+the row helpers combine that placement with the shared styling.
 
 ### 8.2 One page
 
@@ -712,9 +711,8 @@ shell.add(screen("network", |ui: &mut egui::Ui, cx: &mut Cx<'_>| {
 # }
 ```
 
-There are no separators inside a card. The card boundary already expresses the grouping, and a
-line on top of it splits one card in two. Group related rows with `group` and let the gaps
-between cards do the work — the eye then reads card by card.
+The default card layout uses gaps between groups rather than separators between
+rows. Use `group` for related rows; custom layouts can choose another treatment.
 
 ### 8.3 A bar pinned to the bottom
 
@@ -798,8 +796,9 @@ if let Some(hero_h) = layout::split_height(ui, cx, 0.34) { /* top: look at. bott
 # }
 ```
 
-On a portrait kiosk the top of the screen is out of reach. `action_bar` pins a bar to the bottom
-but cannot move where the body **starts**, so dividing top from bottom is `split_height`'s job.
+On a tall mounted panel, the reachable area depends on mounting height and the
+operator. `action_bar` pins controls to the bottom; `split_height` can divide the
+body into upper and lower regions.
 
 ### 8.6 Photos
 
@@ -824,10 +823,10 @@ ui.painter().image(tex.id(), into, layout::cover_uv(tex.size_vec2(), into), tint
 
 ### 9.1 Sharing app state across screens
 
-**Your app owns its state, and owns the shell.** The shell is a field of your app, not a container
-for it. Once a frame you lend the state to the screens with `Shell::frame_with`, and they reach it
-through `cx.app` / `cx.app_mut` / `cx.with_app`. Nothing is captured, nothing is stored by the
-crate, and there is no cell.
+In a custom host, the application owns both its state and the shell. Lend that
+state during an update with `logic_with` / `frame_with`; callbacks access it through
+`cx.app` / `cx.app_mut` / `cx.with_app`. The shell borrows the supplied state for
+that call, so screen closures need not capture a shared mutable-state container.
 
 ```rust
 use fairing::{screen, Cx, Services, Shell, ShellConfig};

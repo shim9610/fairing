@@ -3,7 +3,7 @@
 //! `Solid` follows a theme change because a role does, and `ThemedPainter` follows because it is
 //! handed the theme. A texture follows nothing: it is one image, so a shell that switches to its
 //! light palette at dusk keeps the dark painting under a pale UI, and the labels that were drawn to
-//! read against that painting stop reading.
+//! read against that painting may need different contrast treatment.
 //!
 //! What is checked here is the switch itself — that the two sides of a pair really do reach the
 //! screen as different drawings — and that a shell whose wallpaper is not a pair is untouched.

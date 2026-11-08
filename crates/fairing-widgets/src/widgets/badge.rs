@@ -11,10 +11,7 @@ use crate::theme::{ColorRole, Theme};
 use crate::unit::round_u8;
 use egui::{Color32, CornerRadius, Rect, Response, Sense, Stroke, StrokeKind, Vec2};
 
-/// What a badge says.
-///
-/// Borrowed rather than owned: a dock repaints every frame and a badge must not allocate to be
-/// drawn.
+/// Badge content, borrowed from the caller where it is text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BadgeValue<'a> {
     /// A number. Over `control.badge_max` it reads `99+`.
@@ -128,11 +125,7 @@ impl<'a> CountBadge<'a> {
         self
     }
 
-    /// Override the height (du). `control.badge_h` by default.
-    ///
-    /// The default is an overlay's size — 16 du at the floor, a third of a fingertip. A kiosk badge
-    /// read across a room is bigger: the reference kiosk's inline count measures 0.53 T, about
-    /// 1.6× this, and that is what this is for.
+    /// Override height in du; the default is `control.badge_h`.
     #[must_use]
     pub fn height(mut self, du: f32) -> Self {
         self.height = Some(du.max(0.0));
@@ -146,12 +139,8 @@ impl<'a> CountBadge<'a> {
         self
     }
 
-    /// Draw a zero count instead of drawing nothing.
-    ///
-    /// Off by default, which is iOS's rule and the one the dock already followed. The reference
-    /// kiosks do the opposite — they show `0` beside the basket, because there the badge is part of
-    /// a button's label and a button that loses half its content when empty reflows. Both are
-    /// right for their case, so it is a flag.
+    /// Draw a zero count instead of omitting it. Off by default.
+    /// Use `reserve` to retain space while an omitted badge is not painted.
     #[must_use]
     pub fn show_zero(mut self, show: bool) -> Self {
         self.show_zero = show;
@@ -217,9 +206,9 @@ impl<'a> CountBadge<'a> {
         response
     }
 
-    /// Draw it over a rect the caller already owns.
-    ///
-    /// Allocates nothing — see the module doc. Returns the rect it occupied, halo included.
+    /// Draw over a caller-owned rectangle without allocating a separate UI slot.
+    /// Return the occupied rectangle including the halo. Text layout and shape
+    /// submission may allocate.
     #[must_use]
     pub fn paint_over(
         self,
@@ -355,9 +344,7 @@ mod tests {
     use super::{badge_text, cells, BadgeTone, BadgeValue};
     use crate::theme::{contrast, Palette, Preset};
 
-    /// **The digits are readable on every tone in every palette** — the defect this element was
-    /// written to close. The dock shipped `OnPrimary` on `Danger` at 2.79 in base dark, and a
-    /// number the operator has to read is text, gated at 4.5.
+    /// Check badge text/fill contrast for the built-in tone and palette combinations.
     #[test]
     fn a_badges_digits_clear_the_text_floor_in_every_palette() {
         for &preset in Preset::ALL {
@@ -393,7 +380,7 @@ mod tests {
         );
     }
 
-    /// **A badge's pill reads on both grounds**, which is the 3.0 a filled shape needs.
+    /// Check filled-badge boundary contrast against the two tested container roles.
     #[test]
     fn a_badges_pill_reads_on_the_page_and_on_a_card() {
         for &preset in Preset::ALL {

@@ -1,4 +1,4 @@
-//! `Shell` — the top-level object. One [`Shell::frame`] per frame draws everything.
+//! `Shell` coordinates state updates and draws its registered UI in [`Shell::frame`].
 //!
 //! The frame order is a fixed contract.
 //! [`Shell::logic`] / [`Shell::logic_with`] can run state stages 1–4 plus eviction and
@@ -330,13 +330,12 @@ pub(crate) const STATUS_BAR_OVERLAY_AREA_ID: &str = "fairing.status_bar.overlay"
 /// warning).
 const MAX_PENDING_EVENTS: usize = 1024;
 
-/// The floor used when a backend's `next_wake` is already in the past. Handing `Duration::ZERO` over
-/// as it stands has egui read it as "repaint immediately" (`outstanding = 1`, two frames) and it
-/// quietly becomes 60 fps (egui 0.36.1 `context.rs` `request_repaint_after`).
+/// Minimum delay for a backend wake that is already overdue. A zero delay would
+/// request an immediate repaint through egui and could cause repeated updates.
 const MIN_WAKE: Duration = Duration::from_millis(1);
 
-/// After `next_wake` has pointed into the past this many frames in a row, it warns which backend it
-/// is. So that the only symptom of 100 % idle CPU is not "it is just slow".
+/// Warn after this many consecutive updates with an overdue backend wake, naming
+/// the backend so repeated scheduling requests can be investigated.
 const STALE_WAKE_FRAMES: u64 = 120;
 
 /// How many more times stage 14 handles the requests that `on_lifecycle` handlers made while it
@@ -400,8 +399,8 @@ fn draw_status_bar(
 
 /// Draw the status bar as a `Foreground` Area — `BarMode::Overlay`, the shade panel's status row and
 /// the peek all take this path (and the same Area id: only one of them is used per frame).
-/// `fade_in(false)`: an egui 0.36 `Area` applies an automatic 80 ms fade on the first frame it is
-/// visible and requests a repaint — turned off for idling at 0 fps and for an exact opacity.
+/// `fade_in(false)` disables egui Area's additional fade so the shell controls
+/// this surface's opacity and related repaint requests.
 #[allow(clippy::too_many_arguments)]
 fn draw_status_bar_area(
     ctx: &egui::Context,
@@ -441,12 +440,9 @@ fn draw_status_bar_area(
 
 /// The screen Rect the shade uses (A1).
 ///
-/// **Where a visible status bar has a band of its own, the shade comes down below it** — that is how
-/// iOS's Control Centre and One UI's quick panel behave, and the clock, the signal and the battery
-/// not disappearing while the shade opens is right on a device too. In overlay mode
-/// (`BarMode::Overlay`) and when hidden, the content starts at the very top of the screen, so this
-/// expression hands the whole screen back as it stands and the panel covers the status bar as before
-/// (and when hidden, the panel has a status row of **its own**).
+/// A visible status bar with its own band leaves that band outside the shade.
+/// In `BarMode::Overlay`, or with the bar hidden, the shade receives the full
+/// screen rectangle. The hidden-bar layout supplies a status row inside the panel.
 fn overlay_screen(layout: &Layout) -> egui::Rect {
     let full = layout
         .status
@@ -532,14 +528,14 @@ impl Shell {
     }
 
     /// Build the shell. `ctx` is the context [`Waker`](crate::services::Waker) will wrap — to hand the
-    /// handle to any thread without a lock, the context has to exist at construction. It
+    /// clone the wake handle for worker threads, the context must exist at construction. It
     /// applies the theme to `ctx` and gives the backends a `Waker`.
     ///
     /// A thin wrapper over [`Shell::builder`] — where customisation is needed, use the builder.
     ///
     /// # Errors
-    /// Config validation failure ([`crate::Error::Config`]) — above all, two or more level tables with
-    /// no `default_gate`, or a bad role name in `[theme.palette]`.
+    /// Config validation failure ([`crate::Error::Config`]), including legacy
+    /// multi-level mode without `default_gate` or a bad `[theme.palette]` role name.
     pub fn new(config: ShellConfig, services: Services, ctx: &egui::Context) -> Result<Self> {
         Self::builder(config).services(services).build(ctx)
     }
@@ -910,7 +906,8 @@ impl Shell {
     }
 
     /// Whether the shell's prompt is up — an unlock prompt, or the lock screen with its prompt.
-    /// Never in `routing` mode, with one level, or without an authenticator.
+    /// No built-in prompt in `routing` mode or without supported authenticator
+    /// methods. A single level suppresses it only in legacy level mode.
     #[must_use]
     pub fn unlock_prompt_visible(&self) -> bool {
         self.prompt.is_open()
@@ -1169,9 +1166,9 @@ impl Shell {
     ///
     /// # This is not a security boundary
     ///
-    /// The knocking is **concealment** and what stops anyone is the [`Gate`]. Leave `gate` empty and
-    /// whoever finds the door walks in — anything irreversible, like a factory reset or a calibration
-    /// value, takes one without exception.
+    /// A trigger controls discovery, not permission. Assign the entry a [`Gate`]
+    /// and classify the target screen/action according to the application policy.
+    /// Launching the target still performs its own gate checks.
     ///
     /// ```no_run
     /// # fn main() -> fairing::Result<()> {
@@ -1232,7 +1229,7 @@ impl Shell {
     /// [`KnockInput::pokes`](crate::access::KnockInput::pokes) `= 1`.
     /// [`Cx::knock`](crate::Cx::knock) comes here.
     ///
-    /// An unknown id does nothing — a typo does not stop the shell (the same policy as a config id the code never declares).
+    /// An unknown id is ignored.
     pub fn knock(&mut self, id: &str) {
         self.contain_fault(|shell| shell.knock_in(id, &mut None));
     }
@@ -1555,9 +1552,8 @@ fn leaves_overlay(action: &LaunchAction) -> bool {
     }
 }
 
-/// The density from the resolution and the physical size (physical px / mm). It is reckoned **by
-/// area** rather than as the mean of the short and long axes, so the area error is smallest even with
-/// non-square pixels. Where the values are odd it hands back `NaN` and sends it to the fallback.
+/// Effective density from the square root of the pixel-area / physical-area ratio.
+/// Invalid dimensions return `NaN` so the caller can select its fallback.
 fn density(size_px: (u32, u32), mm: (f32, f32)) -> f32 {
     let (w, h) = (f64::from(size_px.0), f64::from(size_px.1));
     let (mw, mh) = (f64::from(mm.0), f64::from(mm.1));

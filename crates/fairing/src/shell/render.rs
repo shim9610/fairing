@@ -1195,11 +1195,9 @@ impl Shell {
     }
     /// Stage 15: the repaint policy.
     pub(super) fn schedule_repaint(&mut self, ctx: &egui::Context, wake: FrameWake) {
-        // An immediate repaint only while an animation is running. Idle, it goes to the next
-        //     scheduled moment: the earliest of a clock boundary (only where a clock was **actually
-        //     drawn** this frame) · a backend's `next_wake` · a toast or heads-up expiring · a peek ·
-        //     the OSK debounce · something being held (the long-press timer). With none of them, nothing
-        //     is scheduled at all — idle at 0 fps.
+        // Request an immediate update for active animation, pending commands/requests
+        // or continuous mode. Otherwise choose the next clock, backend or UI deadline.
+        // The host may also schedule updates independently of this shell decision.
         let animating = self.is_animating()
             || wake.commands_pending
             || !self.requests.is_empty()
@@ -1211,9 +1209,8 @@ impl Shell {
         }
         let mut after = self.clock_wake();
         if let Some(at) = wake.next_wake {
-            // Handing a `next_wake` already past over as `Duration::ZERO` has egui read it as an
-            // immediate repaint and it quietly becomes 60 fps — a floor is put on it, and where it keeps
-            // pointing into the past, which backend it is gets announced.
+            // An overdue zero-delay wake would request another immediate update.
+            // Apply a delay floor and diagnose repeated overdue backend deadlines.
             let stale = at <= wake.now;
             self.note_stale_wake(stale, wake.now);
             let wake_in = at.saturating_duration_since(wake.now).max(MIN_WAKE);

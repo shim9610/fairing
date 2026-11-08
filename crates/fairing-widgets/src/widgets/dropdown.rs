@@ -60,8 +60,7 @@ const NO_MATCH: &str = "No match";
 /// field takes focus and so is the newer area, lies over the shield; the shade still lies over
 /// everything here, which is right — a pull-down is not a tap outside.
 const LAYER: egui::Order = egui::Order::Middle;
-/// The most of the available height a grid may take: more than a list, because its rows are
-/// few and a gloved hand wants every cell in sight.
+/// Maximum grid height as a fraction of the available pane.
 const GRID_FRACTION: f32 = 0.7;
 
 /// The closed control — what the finger sees before the list is up.
@@ -75,7 +74,7 @@ pub enum Trigger {
     Field(FieldLook),
     /// The value in running text, with no box — only the chevron says it opens.
     Inline,
-    /// A caption over a value set large enough to read from across the bench.
+    /// Caption over a value in the heading text style.
     Tile,
     /// A chip — a filter in a toolbar. Wears the selected chip's face while it is open.
     Chip,
@@ -603,13 +602,8 @@ fn scroll_rows(
     (out.state.clamped_offset().y, out.content_size.y)
 }
 
-/// egui's own single-line edit with no frame of its own — the head is its frame — in `edit`,
-/// showing `hint` while nothing is typed.
-///
-/// **It takes no focus of its own**. The list opens to be read first, the way any
-/// dropdown does; the keyboard comes when the field is tapped. Focus on opening raised the
-/// keyboard over the lower half of the pane the moment the list appeared — a search box, not a
-/// dropdown that can also be searched.
+/// Draw the search text editor without a separate frame.
+/// Opening does not request editor focus; tapping the field requests it.
 fn search_edit(
     ui: &mut egui::Ui,
     t: &Tokens,

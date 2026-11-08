@@ -77,7 +77,7 @@ config file uses the snake_case name.
 |---|---|---|---|---|
 | `Background` | `background` | `#0b0b0d` | `#e1e1e8` | Desktop base background, egui `extreme_bg_color` |
 | `Surface` | `surface` | `#141416` | `#ececf1` | **The page.** Status bar, nav bar, shade panel, screen background, toast and heads-up cards, OSK key bed, dock band (×0.6) |
-| `SurfaceVariant` | `surface_variant` | `#242428` | `#ffffff` | **What sits on the page, one step lighter than it in both modes** (iOS and Windows 11 both lift the card off the page rather than recessing it). Card ground (`layout::group`), tile ground, OSK keys, `BigButton::Normal`, egui `faint_bg_color` · `widgets.inactive` |
+| `SurfaceVariant` | `surface_variant` | `#242428` | `#ffffff` | **Surfaces placed on the page, lighter than `Surface` in both built-in modes.** Card ground (`layout::group`), tile ground, OSK keys, `BigButton::Normal`, egui `faint_bg_color` · `widgets.inactive` |
 | `OnSurface` | `on_surface` | `#f0f0f3` | `#1a1a1c` | Default text and icon colour on a surface, default status bar icon, egui `override_text_color` |
 | `Muted` | `muted` | `#93939d` | `#63636b` | Dimmed text, disabled icons (alpha 0.6), the empty arc and empty remainder of parametric icons, list subtitles |
 | `Primary` | `primary` | `#2878a9` | `#106aa2` | Tiles and switches that are on, `BigButton::Primary`, pressed widget outline, the emergency gesture ring, the default user-level dot |
@@ -88,14 +88,13 @@ config file uses the snake_case name.
 | `Focus` | `focus` | `#549ac5` | `#2784be` | Focus outline — egui `selection.stroke`, so a focused `TextEdit` wears it. Deliberately not the same value as `Primary`: a focus ring drawn over a pressed control has to be visible against the press |
 | `Scrim` | `scrim` | black α128 | black α100 | The dim behind the shade; its alpha is how dark it gets at the full pull |
 | `Outline` | `outline` | `#303036` | `#d2d2da` | 1 px borders, list separators, slider tracks |
-| `ControlEdge` | `control_edge` | `#70707b` | `#85858e` | The boundary that makes a control a control — a switch's track, a checkbox, a radio, a segmented strip. Gated at 3:1 against the surface, where `Outline` is decoration |
+| `ControlEdge` | `control_edge` | `#70707b` | `#85858e` | Control boundaries: switch tracks, checkboxes, radios and segmented strips. Built-in palette tests check at least 3:1 against supported surface backgrounds; `Outline` is decorative |
 | `Pressed` | `pressed` | white α28 | black α24 | Press tint (nav items, icons, keys, buttons, list rows) |
 | `Shadow` | `shadow` | white α14 | black α14 | The cast shadow of a floating container in light mode, its rim in dark mode. Figure-ground help, not a boundary |
 | `ShadeSurface` | `shade_surface` | = `surface` | = `surface` | The pull-down shade's face: the curtain, the floating card and the tile pucks on it. Unset, it follows `surface`; set it to colour the shade alone. Text on it stays `on_surface`, so keep the two readable together |
 
-Switching dark ↔ light interpolates every role per channel over 200 ms. So a new palette
-that fills in one or two roles and leaves the rest looks wrong mid-transition. Fill the rest with
-`..Palette::dark()`.
+Switching dark ↔ light interpolates palette roles per channel over 200 ms. Start
+from a complete palette, such as `..Palette::dark()`, when overriding selected roles.
 
 ### 1.2 Metrics tokens
 
@@ -115,7 +114,7 @@ from `MetricsSpec` in physical units each frame rather than being fixed
 | `status_icon_size` | `18.0` | The status bar's icons and the icons in the shade's notification rows. `[status_bar] icon_size` pins it from config |
 | `row_height` | one finger, `48.0` floor | `ListRow` height (the larger of this and `widget_height`). **One touch target** by default: the padding is inside the row, and a row grows only when its own text needs more |
 | `corner_radius` | `12.0` | **Container** corner radius — cards, tiles, toasts, heads-up, OSK keys, press tint, egui `window_corner_radius` and `menu_corner_radius` |
-| `control_radius` | `6.0` | **Control** corner radius — every egui widget (buttons, fields, combos). Half the container's, so a button inside a card does not read as another card. Set it equal to `corner_radius` for the old uniform look |
+| `control_radius` | `6.0` | **Control** corner radius — every egui widget (buttons, fields, combos). Half the default container radius; set it equal to `corner_radius` for uniform radii |
 | `edge_px` | `24.0` | Edge zone width. When a bar is visible, the whole bar becomes the zone |
 | `dock_height` | `96.0` | Dock band height |
 | `screen_inset` | `12.0` | Padding inside the rect a screen receives. `ChromePolicy::inset` overrides it per screen |
@@ -151,8 +150,8 @@ from `MetricsSpec` in physical units each frame rather than being fixed
 | `osk_max_key` | `72.0` du floor, `finger × 1.5` | The tallest a row of OSK keys gets, gap included — a cap on `[osk] height_ratio`, so a tall panel does not get rows the size of a palm. `[osk] min_key_px` wins where the two cross. `f32::INFINITY` lifts the cap — `None` in a `MetricsSpec` ([03 §6.2](03-chrome.md#62-layouts)) |
 | `split_divider` | `8.0` | The band between two panes ([03 §2.3](03-chrome.md#23-recent-screens-and-the-split)). Its handle is widened to `touch_target` for the finger; this is what is drawn and what the panes give up |
 | `widget_height` | one finger, `48.0` floor | Default height of `BigButton` · `ListRow` · the shade footer. One touch target, like a row |
-| `slider_thumb` | `28.0` du floor, `finger × 0.585` | Slider thumb diameter. It is dragged with a finger, so it is a **touch** dimension and tracks `finger_mm` — 28 du (4.4 mm) is right for a Material-sized hand and visibly under-scale beside a gloved 13 mm target |
-| `type_scale` | `13/16/17/22/16` du floors, `text × 0.811/1/1.063/1.374/1` | **The five text sizes** (`small` · `body` · `button` · `heading` · `monospace`). `Theme::egui_style()` builds egui's `TextStyle` from them. **They track the viewing distance, not `finger_mm`**: one body em (`Dim::text(1.0)`) is `0.008684 ×` `ScalePolicy::viewing_distance_mm` — 3.13 mm at the default 360 mm, about 20 du, a phone's body text. The hand and the eye are separate knobs: a gloved policy grows the touch targets and leaves the text alone, and a standing kiosk raises `viewing_distance_mm` and the text grows with everything sized in `text` beside it. The `du` floors provide fallback sizes when physical density is unknown; check readability on the target |
+| `slider_thumb` | `28.0` du floor, `finger × 0.585` | Slider thumb diameter. It is dragged with a finger, so it is a **touch** dimension and tracks `finger_mm` ; check the resolved diameter against the intended input device |
+| `type_scale` | `13/16/17/22/16` du floors, `text × 0.811/1/1.063/1.374/1` | **The five text sizes** (`small` · `body` · `button` · `heading` · `monospace`). `Theme::egui_style()` builds egui's `TextStyle` from them. **They track the viewing distance, not `finger_mm`**: one body em (`Dim::text(1.0)`) is `0.008684 ×` `ScalePolicy::viewing_distance_mm` — 3.13 mm at the default 360 mm, about 20 du. The hand and the eye are separate knobs: a gloved policy grows the touch targets and leaves the text alone, and a standing kiosk raises `viewing_distance_mm` and the text grows with everything sized in `text` beside it. The `du` floors provide fallback sizes when physical density is unknown; check readability on the target |
 
 ### 1.3 MotionTokens
 
@@ -346,9 +345,8 @@ Like the other two, they are left alone when a whole theme is injected (§1).
 
 ## 2. Changing only the colours with `[theme.palette]`
 
-Leaving metrics and motion alone and changing only colours is the most common request. Do not
-inject a theme for it; use config. It overlays whichever dark/light palette `[shell] theme`
-picked.
+To change colours while retaining metrics and motion, use `[theme.palette]`.
+It overlays whichever dark/light palette `[shell] theme` selected.
 
 ```toml
 [shell]
@@ -435,7 +433,7 @@ use fairing::{BarCx, ColorRole, Shell, ShellConfig};
 const DEVICE: &str = "LAB-7 CONTROL";
 
 fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
-    // Keeping the clock string buffer in the closure means no per-frame heap allocation.
+    // Reuse the clock string buffer's capacity between frames.
     let mut clock = String::new();
     Shell::builder(ShellConfig::default())
         .status_bar_painter(move |ui: &mut egui::Ui, bar: &mut BarCx<'_>| {
@@ -732,7 +730,7 @@ backends.
 
 ## 7. Reading `examples/custom_chrome.rs`
 
-A working example that changes the whole shell without touching the crate. It puts §1 · §3 · §4 ·
+An example combining the theme, bar, cell and wallpaper hooks from §1 · §3 · §4 ·
 §5 of this page, and the two custom tile kinds from [03 §4.4c](03-chrome.md#44c-tiles-the-crate-has-no-kind-for), into one file.
 
 ```sh
@@ -781,8 +779,8 @@ values.
 | Frame graph, top right | The last 180 frame intervals (ms) with p50 and p95. The gridline is the 33 ms budget |
 
 Moving a slider calls `ShellHandle::set_motion(tokens)` and takes effect from the next frame; an
-animation already in flight is left alone. A bar over the 33 ms line means that motion is eating
-the frame budget.
+animation already in flight is left alone. A bar over the 33 ms line records an interval above that reference budget;
+profiling is needed to identify whether rendering, scheduling or other work caused it.
 
 The same thing from code:
 
@@ -849,13 +847,15 @@ spring = { k = 500, c = 45 }
 reduce = true
 ```
 
-`reduce` makes every tween 0 ms and settles springs instantly. The state transitions themselves
-are unchanged — the shade still opens and closes, there are simply no frames in between.
+`reduce` zeroes the configured transition tweens and settles the built-in springs
+without intermediate motion. State changes still occur on host updates. Some status
+indicators use opacity pulses under reduced motion, and application drawing must
+handle the `reduce` flag where appropriate.
 
 | Where it is used | Why |
 |---|---|
-| Machines with an accessibility requirement | Users sensitive to motion |
-| Slow devices | Reclaiming frame budget |
+| Products offering reduced motion | Reduce transition movement; assess the complete UI against its accessibility requirements |
+| Devices where transition rendering is costly | Reduce frames spent on built-in transitions |
 | Headless tests | No waiting for transition frames |
 | Screenshot tours | No blurred intermediate frames |
 
@@ -866,8 +866,11 @@ to draw differently with and without animation, look at `cx.theme.motion.reduce`
 
 ## 9. Text and translations
 
-Every word the shell draws goes through `fairing::i18n::Strings`, and the words of your screens
-can too. **The English text is the key**: `cx.strings.get("Pump pressure")` returns the active
+Built-in UI labels use `fairing::i18n::Strings`; applications can use it for their
+own labels too. User-provided content and backend messages retain their supplied
+text.
+
+**The English text is the key**: `cx.strings.get("Pump pressure")` returns the active
 language's entry for it, or the text as written where the table has none. A word nobody
 translated reads as English, never as a blank.
 
@@ -944,7 +947,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
 ### 9.3 Fonts
 
 egui's own fonts have no Hangul, so a Korean panel needs a font that has it, handed over with
-`ShellBuilder::fonts` ([09 §3](09-branding.md#3-type--half-of-branding-and-the-crate-carries-no-fonts)).
+`ShellBuilder::fonts` ([09 §3](09-branding.md#3-type--font-installation)).
 The shell checks once per language: where no loaded font has the language's letters, it says so
 in the log rather than drawing boxes with no explanation.
 

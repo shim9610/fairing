@@ -7,7 +7,7 @@
 //! duplicate the layout arithmetic), and why, when the width runs short, items can be collapsed by
 //! one rule — the lowest `priority` first, and on a tie the rightmost.
 //!
-//! **Zero heap allocation per frame** is the goal: [`StatusBar`] holds the layout buffer
+//! Layout and text caches are reused: [`StatusBar`] holds the layout buffer
 //! and the text galleys and rebuilds them only when a value changes. The clock builds a string only
 //! when the displayed value (the minute, or the second) changes.
 //!
@@ -756,8 +756,8 @@ impl StatusBar {
     }
 
     /// Draw. `ui` is inside the top panel (or an Overlay `Area`). `custom` is the registry's
-    /// integrator items. Zero heap allocation per frame is the goal — the slot lists are borrowed,
-    /// not cloned.
+    /// integrator items. The slot lists are borrowed rather than cloned; text-cache rebuilds and custom
+    /// drawing can still allocate.
     pub(crate) fn ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -1691,7 +1691,7 @@ fn draw_builtin(
     fades.follow(theme.motion.crossfade.duration);
     match spec.item {
         StatusItem::Wifi => {
-            // A narrow accessor rather than cloning the snapshot (a heap allocation) — zero heap allocation on the render path.
+            // Use the narrow accessor to avoid cloning the owned backend snapshot.
             let wifi = &parts.services.wifi;
             fades.wifi.set((wifi.strength(), !wifi.enabled()), now);
             fades.wifi.paint(now, &pstyle, |(level, off), s| {

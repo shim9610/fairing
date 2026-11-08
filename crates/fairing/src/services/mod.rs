@@ -61,7 +61,7 @@ impl fmt::Debug for Waker {
     }
 }
 
-/// The backend capability bits (`Capabilities`). Unsupported entries disappear from the UI on their own.
+/// Backend capability bits used by built-in UI to select supported entries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Capabilities(pub u32);
 
@@ -115,7 +115,7 @@ pub enum ErrorKind {
     Other,
 }
 
-/// A backend error. The shell surfaces it as a toast or a notification and the UI does not die.
+/// A backend error value. Callers can return it or present it through shell notices.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceError {
     /// The kind.
@@ -158,7 +158,8 @@ pub type ServiceResult = Result<(), ServiceError>;
 /// What every backend shares. Polling runs on the event-loop thread for each state
 /// update, including logic-only ticks, and must not block.
 pub trait Backend {
-    /// Given once by the shell at startup. Hand it to a worker thread and `wake()` when the state changes.
+    /// Given when the backend is installed, at startup or replacement. A worker can
+    /// use it to request an update when the backend state changes.
     fn attach(&mut self, _waker: Waker) {}
     /// Every state update (a UI frame or a logic-only tick): drain the channel with
     /// `try_recv` and refresh the `latest` snapshot, on the event-loop thread.
@@ -295,7 +296,7 @@ pub trait WifiBackend: Backend {
     /// A clone of the snapshot.
     fn snapshot(&self) -> WifiSnapshot;
     /// Whether it is on — a value the status bar asks for **every frame**. The default
-    /// implementation clones [`WifiBackend::snapshot`] (a heap allocation), so a backend should
+    /// implementation calls [`WifiBackend::snapshot`] (which may allocate), so a backend should
     /// implement this and [`WifiBackend::strength`] directly.
     fn enabled(&self) -> bool {
         self.snapshot().enabled
@@ -315,7 +316,8 @@ pub trait WifiBackend: Backend {
     /// # Errors
     /// [`ServiceError`] if the backend does not support it (`Unsupported`) or it fails.
     fn scan(&mut self) -> ServiceResult;
-    /// Connect. The PSK is dropped immediately after it is passed on.
+    /// Connect using a borrowed PSK. Any credential retention by the implementation
+    /// is the backend's responsibility.
     ///
     /// # Errors
     /// [`ServiceError`] if the backend does not support it (`Unsupported`) or it fails.
@@ -382,7 +384,7 @@ pub trait BluetoothBackend: Backend {
     /// A clone of the snapshot.
     fn snapshot(&self) -> BtSnapshot;
     /// Whether it is on — a value the status bar asks for **every frame**. The default
-    /// implementation clones [`BluetoothBackend::snapshot`] (a heap allocation), so a backend
+    /// implementation calls [`BluetoothBackend::snapshot`] (which may allocate), so a backend
     /// should implement this and [`BluetoothBackend::any_connected`] directly.
     fn enabled(&self) -> bool {
         self.snapshot().enabled
@@ -580,7 +582,7 @@ pub trait NetworkBackend: Backend {
     fn interfaces(&self) -> Vec<IfaceSnapshot>;
     /// Whether a wired link is up: `Some(true)` up, `Some(false)` a wired interface with no link,
     /// `None` no wired interface at all (the status item hides). `status.ethernet` asks it every
-    /// frame and the default walks [`NetworkBackend::interfaces`] — an allocation — so a backend
+    /// frame and the default walks [`NetworkBackend::interfaces`], which may allocate, so a backend
     /// should answer it from its cache directly.
     fn ethernet_up(&self) -> Option<bool> {
         let wired: Vec<bool> = self

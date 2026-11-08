@@ -54,26 +54,9 @@ pub struct SliderColors {
     pub fill: ColorSpec,
     /// The remaining side. [`ColorRole::SurfaceVariant`] by default.
     pub track: ColorSpec,
-    /// The mover's **edge**. [`ColorRole::OnSurface`] by default.
-    ///
-    /// # Why it is the edge and no longer the whole handle
-    ///
-    /// A mover crosses both faces of the track, and measured across the four shipped palettes no
-    /// single role clears 3.0 against both `Primary` and `SurfaceVariant`. So the mover is
-    /// two-tone: a body that carries it over the filled side and this edge that carries it over
-    /// the empty one (11.94–17.38 for `OnSurface`). The old default of `OnSurface` therefore keeps
-    /// painting exactly what it painted, on the part of the mover it was always doing the work on.
-    ///
-    /// The body is [`ColorRole::OnPrimary`], the ink of the side it has to be seen against
-    /// (4.59–9.37). It used to be `Surface` — the container's own ground, which is near-white in a
-    /// light palette and near-black in a dark one, so the dark-theme mover came out as a black bar
-    /// inside a white outline and read as a **seam in the track** rather than a grip. The pair the
-    /// palette gate already holds is `on_primary/primary`, so this body cannot go quietly missing
-    /// on a new palette either.
-    ///
-    /// Overriding it is allowed and is the same kind of escape hatch as
-    /// [`TouchSlider::thickness`]: taking the track's own accent here loses the two-tone
-    /// guarantee, because on the filled side the edge then matches what it lies on.
+    /// Mover-edge colour, defaulting to [`ColorRole::OnSurface`].
+    /// The body uses `OnPrimary`; callers overriding these colours must check both
+    /// filled-side and empty-side contrast.
     pub handle: ColorSpec,
 }
 
@@ -168,8 +151,7 @@ impl<'a> TouchSlider<'a> {
         self
     }
 
-    /// Which mover to draw. See [`HandleStyle`] and the module docs — the default suits a gloved
-    /// finger, and the other three each suit a panel this one does not.
+    /// Select the mover style; see [`HandleStyle`]. The default is `Bar`.
     #[must_use]
     pub fn handle_style(mut self, style: HandleStyle) -> Self {
         self.style = style;
@@ -373,8 +355,7 @@ impl<'a> TouchSlider<'a> {
 pub struct Mover {
     /// Which shape.
     pub style: HandleStyle,
-    /// The body colour. `Surface` — the colour of the ground the control sits on, so the mover
-    /// reads as a cap punched through the track.
+    /// Mover-body colour. [`Mover::from_theme`] uses `ColorRole::OnPrimary`.
     pub body: Color32,
     /// Its size **across** the track: `metrics.slider_thumb`, larger than the track, which is what
     /// makes it stand proud. Also the [`HandleStyle::Knob`] diameter.
@@ -413,11 +394,7 @@ impl Mover {
     }
 }
 
-/// The arguments to [`paint_track`], bundled. Colours and thicknesses get their order confused loose.
-///
-/// **Public since the element split.** The shade's brightness control draws the same
-/// track and used to reach in as a crate sibling; across a crate boundary that has to be a stated
-/// part of the surface. Better stated than duplicated — two copies of the track arithmetic drift.
+/// Paint parameters shared by [`TouchSlider`] and other callers of [`paint_track`].
 #[derive(Debug, Clone, Copy)]
 pub struct TrackPaint {
     /// The **unswollen** thickness that fixes the value axis. Pressing does not shift where 0 % and 100 % are.
@@ -430,17 +407,15 @@ pub struct TrackPaint {
     pub todo: Color32,
     /// The mover's **edge** (see [`SliderColors::handle`]); its body is `Mover::body`.
     pub handle: Color32,
-    /// The track's own identifying edge — `Muted` at `control.stroke_edge`. `Stroke::NONE` draws
-    /// none, which is what a decorative read-out track wants.
+    /// Track boundary stroke. `Stroke::NONE` omits it.
     pub edge: Stroke,
     /// The mover.
     pub mover: Mover,
 }
 
 impl TrackPaint {
-    /// The vocabulary's track, resolved against a theme: `Primary` filled, `SurfaceVariant` empty,
-    /// a `Muted` edge and the two-tone mover. Recolour the fields that differ afterwards, so a
-    /// caller inherits every part it did not have an opinion about.
+    /// Resolve default track colours and geometry from the theme; callers can then
+    /// override individual fields.
     #[must_use]
     pub fn from_theme(theme: &Theme, base_track: f32, track_h: f32) -> Self {
         Self {
@@ -608,12 +583,8 @@ fn paint_mover(painter: &egui::Painter, at: egui::Pos2, p: &TrackPaint, slot: Re
     );
 }
 
-/// A shape of `width` held inside `slot`, centred where it does not fit.
-///
-/// The bounds are compared before the clamp because `f32::clamp` **panics** when its low bound is
-/// above its high one, and a slider laid in a column narrower than its own mover is a real case
-/// (a two-pane split at the narrow end, a gauge row beside a long label). A control that panics on
-/// a narrow column is worse than one that draws its mover a little off the value.
+/// Fit a shape of `width` inside `slot`, centring it when wider than the slot.
+/// Compare bounds before clamping so inverted bounds are not passed to `f32::clamp`.
 fn held_inside(x: f32, slot: Rect, width: f32) -> f32 {
     let (lo, hi) = (slot.min.x + width / 2.0, slot.max.x - width / 2.0);
     if lo > hi {
@@ -625,8 +596,8 @@ fn held_inside(x: f32, slot: Rect, width: f32) -> f32 {
 
 /// The focus ring: `Focus` at `control.stroke_mark`, `control.focus_gap` clear of the silhouette.
 ///
-/// **Outside is a contrast decision.** `Focus` against `Primary` measures 1.00–1.62, so a ring on
-/// the control's own edge fails 3.0 in every palette; against the container it is 3.10–11.53.
+/// The focus ring is placed outside the track so its colour can be checked
+/// against the container rather than the filled track.
 ///
 /// Vertically it clears the silhouette — the mover included, since the mover is the tallest part.
 /// Horizontally it takes the allocated rect's own edge instead: a full-width track has nothing
@@ -675,11 +646,7 @@ fn follow_finger(response: &mut Response, axis: Rect, value: &mut f32, lo: f32, 
     }
 }
 
-/// The press swell — [`TouchSlider`] and the shade use the same factor, `control.press_swell`.
-///
-/// It takes the theme because the factor is a token now: the private `PRESS_SWELL` constant it
-/// used to read could not be reached by an integrator, and press feedback that cannot be tuned
-/// per panel is the one piece of feedback a glove hides.
+/// Press-swell factor shared by the slider and shade, from `control.press_swell`.
 #[must_use]
 pub fn swollen(theme: &Theme, base_track: f32, grow: f32) -> f32 {
     base_track * (theme.control.press_swell - 1.0).mul_add(grow, 1.0)
@@ -780,13 +747,8 @@ mod tests {
     use crate::theme::{contrast, Palette, Preset, Theme};
     use crate::unit::Scale;
 
-    /// **The mover is visible on both sides of the boundary it sits on, in every palette.**
-    ///
-    /// Unlike the switch's knob, this one straddles the two faces at once — it marks the seam — so
-    /// it cannot cross-fade between them: the body carries the filled side and the edge carries the
-    /// empty one. The body used to be `Surface`, the container's own ground, which is near-black in
-    /// a dark palette; the mover then read as a gap in the track. It is now `OnPrimary`, and both
-    /// pairs below are ones `every_preset_meets_the_contrast_floor` already gates.
+    /// Check mover-body/filled-track and mover-edge/empty-track contrast in the
+    /// built-in palette pairs. This checks colour ratios, not physical visibility.
     #[test]
     fn the_mover_reads_on_both_sides_of_the_boundary() {
         for &preset in Preset::ALL {

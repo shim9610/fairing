@@ -164,7 +164,7 @@ fn a_grab_at_the_stop_that_lands_with_its_first_move_carries_on() -> fairing::Re
 /// The stop is read off the frame the panel drew, and the panel draws on every frame of the pull —
 /// so by the time the finger lets go the block's height has been known for a dozen frames. If this
 /// only worked from the second open, a device would go full-height once on boot and two-step ever
-/// after, which is worse than either.
+/// after; this test checks the first-open case.
 #[test]
 fn even_the_first_pull_of_the_session_stops() -> fairing::Result<()> {
     let mut h = shell(true)?;

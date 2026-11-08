@@ -70,11 +70,8 @@ impl Compose {
     }
 }
 
-/// A composing input method.
-///
-/// The implementation holds its own state and the caller calls [`Composer::feed`] on each key.
-/// **It uses no lock types** — it is only ever touched as `&mut self` on the
-/// single UI thread.
+/// A composing input method. The caller invokes [`Composer::feed`] with `&mut self`
+/// for each key. Implementations used on the UI thread must return promptly.
 pub trait Composer {
     /// The name used in logs and config (`"hangul"`).
     fn name(&self) -> &'static str;

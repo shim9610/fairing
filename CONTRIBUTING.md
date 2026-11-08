@@ -128,7 +128,8 @@ so it is checked there rather than in the graphical example tours.
 step of any script could not do what it asked. A script presses what it names
 (`Act::Tap(Spot::Text("Alerts"))` finds the label on the glass; there is no coordinate form) and says what it expects before each
 picture (`Act::Expect(Expect::Text("Lamp hours"))`), so a change that moves a row, renames a
-label or breaks a flow fails here rather than leaving a wrong picture under the right file name.
+label or breaks an asserted step can fail the tour. Review the captured images
+for rendering and content issues outside those assertions.
 The public repository's CI runs it on pull requests and pushes to `main`. When you change what a screen shows, run it; when you add a step to a
 script, name the thing you press and check what you expect to see — a coordinate written down
 is right for one row height only.
@@ -142,11 +143,10 @@ alters what one of them shows, rebuild them and commit the result:
 tools/readme-gifs.sh
 ```
 
-It needs `xvfb-run`, Mesa and Pillow (`pip install pillow`). A tour that fails a check stops
-the script, so the images are never rebuilt from a flow that went wrong. Each tour runs with `--record` on a
-fixed 60 Hz clock, so the frames do not depend on how fast the machine draws, and
-`tools/make_gif.py` stitches them the same way every time: rerun on the machine that made them,
-the script reproduced the committed GIFs byte for byte.
+It needs `xvfb-run`, Mesa and Pillow (`pip install pillow`). A failed tour check
+stops the script. Recorded tours use a fixed 60 Hz input clock;
+`tools/make_gif.py` encodes the captured frames. Renderer, fonts and tool versions
+can affect the resulting pixels and files.
 
 The social preview card at the top of the README, `docs/images/social-preview.png`, comes from
 `tools/social_preview.py` (Pillow again). After rebuilding it, upload it under the repository's
@@ -161,8 +161,9 @@ The user guide (`docs/guide/*`, indexed by [`docs/guide/README.md`](docs/guide/R
 describes **what the code does today**, so a PR that changes a public API, a config key, a
 default or an error message fixes the relevant section too. The guide's non-ignored Rust blocks are compiled
 as doctests by the audit's test stage (`crates/fairing/src/guide_probe.rs`), so an example that
-stops compiling fails CI. Its toml blocks are checked by nothing: keep them values that
-`ShellConfig` parses and validates, by hand, when you edit an example. Something planned
+stops compiling fails CI. TOML blocks are not Rust doctests: when editing them,
+check syntax and, for device configuration, parsing and validation through
+`ShellConfig`. Cargo snippets need Cargo/TOML checks instead. Something planned
 but not in the code yet is written in the guide as "not there", and the
 [roadmap](docs/roadmap.md) lists it. A change to how the crate is put together updates
 [`docs/architecture.md`](docs/architecture.md), and a new limit goes in the roadmap's known limits.

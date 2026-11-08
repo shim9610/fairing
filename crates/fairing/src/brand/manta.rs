@@ -1,17 +1,9 @@
-//! The manta mark. Not an icon but a **ribbon mesh**.
+//! Two-tone manta mark drawn as an authored ribbon mesh.
 //!
-//! The original mark is **two-tone** — a navy back over a white belly — and its silhouette is
-//! concave. The icon pipeline cannot do it: `IconDef::fill` is one `bool` for the whole icon, the
-//! painter fills every sub-path in the same colour, and filling adjacent convex pieces in the same
-//! colour has epaint anti-alias each piece separately, leaving a hairline along the seam.
-//!
-//! **A strip goes round the concavity**. Sampling the upper and lower boundaries N times at
-//! the same `t` and making a quad out of each neighbouring pair keeps the triangles right however
-//! concave the outline gets. The deep notches of the cephalic fins are inside the boundary curves
-//! too, so they need no drawing of their own.
-//!
-//! The icon set carries a separate **stroked** manta (`assets/icons/manta.svg`) — the two outputs
-//! are each right in their own place.
+//! Paired boundary samples form triangle strips for the back, belly and tail.
+//! This mesh is separate from the stroked manta in `assets/icons/manta.svg`.
+//! The authored boundaries determine the supported silhouette; this is not a
+//! general-purpose concave-polygon triangulator.
 
 // This is procedural geometry. The names in this file use the formula notation as it stands —
 // `s` (the object unit) · `w`/`h` (the screen) · `t` (a curve parameter) · `u`/`v` (screen fractions) ·
@@ -196,7 +188,7 @@ pub(super) const GRID_H: f32 = 20.0;
 /// different `pixels_per_point` gives a different LOD.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MantaLod {
-    /// `< 16 px` — a size at which any silhouette is a smudge. Only the outline is stroked.
+    /// Below 16 device pixels: stroke the outline.
     Glyph,
     /// `16..24 px` — a flat mass. No eyes, no tail, no fins.
     Silhouette,

@@ -4,10 +4,12 @@
 //!
 //! The render convention: the desktop and the screen instances are each drawn as an `Area`
 //! (`Order::Background`) on a different `LayerId`, and through a transition the layer is moved
-//! whole with `Context::set_transform_layer` and faded with `Ui::set_opacity`. Screen code knows
-//! none of it. The screen layer ids are a **finite set** (the Pane stack depth = the slot) — egui's
-//! `Areas` never prunes, so a new id per instance would grow the memory for ever (the head comment
-//! of `instance.rs`).
+//! whole with `Context::set_transform_layer` and faded with `Ui::set_opacity`.
+//! The workspace supplies these transforms around the screen callback. It reuses
+//! a finite set of layer IDs by pane/stack slot rather than issuing one per instance.
+//! Transform and opacity handling use egui's
+//! [Context](https://docs.rs/egui/0.37.0/egui/struct.Context.html) and
+//! [Ui](https://docs.rs/egui/0.37.0/egui/struct.Ui.html) APIs.
 //!
 //! The transition rules (A2 · A3):
 //! - **Interruption**: a new launch / back / close mid-transition finishes the one in progress at
@@ -19,8 +21,7 @@
 //!   close `Stopped` for the whole task (or `Destroyed` where a root pop ends the task). An A2
 //!   open's first `ui` comes at `t ≥ 0.5`.
 //! - **Blocking input**: through a transition every screen and desktop `Area` is left
-//!   `interactable(false)` — egui 0.36's hit test filters out that layer's widgets whole through
-//!   `Areas::is_interactable` (`context.rs` `begin_pass_mut`). A transparent shield `Area` over the
+//!   `interactable(false)`, using egui's area interaction control. A transparent shield `Area` over the
 //!   chrome is the M2 gesture shield's job.
 //! - **z order**: `Areas::end_pass` does `order.sort_by_key(|l| (l.order, wants_to_be_on_top))` —
 //!   **a stable sort**, so among layers that called `move_to_top` on the same frame the existing
