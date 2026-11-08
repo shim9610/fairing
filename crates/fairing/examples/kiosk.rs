@@ -2615,9 +2615,7 @@ fn build(
         }
     });
     let mut shell = builder.build(ctx)?;
-    shell
-        .desktop_mut()
-        .set_wallpaper(Wallpaper::Solid(ColorRole::Background));
+    shell.set_wallpaper(Wallpaper::Solid(ColorRole::Background));
     // The 33 real assets are decoded here, once — outside the frame loop, so it finishes before the
     // first screen appears. On a failure the shell is not stood up: the photographs are the screens, so
     // a fallback would be meaningless.

@@ -198,7 +198,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
         .status_bar_painter(status_bar_painter())
         .slot_painter(slot_painter)
         .build(ctx)?;
-    shell.desktop_mut().set_wallpaper(wallpaper);
+    shell.set_wallpaper(wallpaper);
     add_screens(&mut shell);
     add_hopper_tile(&mut shell);
     add_jog_tile(&mut shell);

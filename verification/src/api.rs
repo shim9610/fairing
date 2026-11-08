@@ -80,7 +80,6 @@ pub fn shell_contract(bytes: &[u8]) {
     let mut shell = Shell::builder(cfg).build(&ctx).unwrap();
     let allowed = Rc::new(Cell::new(true));
     shell
-        .access_mut()
         .set_policy(Box::new(SwitchPolicy(Rc::clone(&allowed))));
     let runs = Rc::new(Cell::new(0usize));
     let count = Rc::clone(&runs);
@@ -94,7 +93,7 @@ pub fn shell_contract(bytes: &[u8]) {
         let passes = held >= 1 && allowed.get();
         match byte % 10 {
             0 => {
-                shell.access_mut().set_subject(subject(next));
+                shell.set_subject(subject(next));
                 held = next;
             }
             1 => {
@@ -685,7 +684,6 @@ pub fn grant_contract(held: u16, candidate: u16, lock: bool, policy_passes: bool
         .unwrap();
     let allowed = Rc::new(Cell::new(false));
     shell
-        .access_mut()
         .set_policy(Box::new(SwitchPolicy(Rc::clone(&allowed))));
     let runs = Rc::new(Cell::new(0));
     let count = Rc::clone(&runs);

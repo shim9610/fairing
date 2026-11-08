@@ -82,7 +82,10 @@ fn mock_wifi_scan_completes_via_next_wake() -> fairing::Result<()> {
         .build();
     let mut h = Harness::new(single_level_access(), services)?;
     h.frames(1);
-    assert!(h.shell.services_mut().wifi.scan().is_ok());
+    assert!(h
+        .shell
+        .request_service(fairing::services::ServiceRequest::WifiScan)
+        .is_ok());
     assert_eq!(
         h.shell.services().wifi.snapshot().state,
         WifiState::Scanning

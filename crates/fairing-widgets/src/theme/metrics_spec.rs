@@ -256,7 +256,7 @@ impl MetricsSpec {
 
     /// The spec that reproduces **these** metrics exactly, every term in `du`.
     ///
-    /// `fairing_widgets::Shell::metrics_spec_mut` seeds itself with this where the
+    /// `fairing::Shell::metrics_spec` seeds itself with this where the
     /// shell was built without a spec, so a run-time change has a source of truth to be written on
     /// rather than being overwritten by the next frame's resolve.
     #[must_use]

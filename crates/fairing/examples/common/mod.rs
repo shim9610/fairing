@@ -1244,7 +1244,7 @@ impl<S: std::any::Any> Tour<S> {
             }),
             Act::Osk(name) => {
                 if let Some(layout) = fairing::osk::OskLayout::parse(name, true, false) {
-                    self.with_shell(|shell| shell.osk_mut().set_layout(layout))
+                    self.with_shell(|shell| shell.set_osk_layout(layout))
                 } else {
                     self.fail(&format!("Act::Osk({name:?}) - unknown layout"));
                     self.next_step();

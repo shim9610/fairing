@@ -54,7 +54,7 @@ fn shell_with(wallpaper: Wallpaper) -> fairing::Result<Harness> {
         })
         .desktop(),
     );
-    h.shell.desktop_mut().set_wallpaper(wallpaper);
+    h.shell.set_wallpaper(wallpaper);
     h.frames(2);
     Ok(h)
 }

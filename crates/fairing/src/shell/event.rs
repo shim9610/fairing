@@ -102,7 +102,7 @@ pub enum ShellEvent {
     ///         if secured && !known {
     ///             ask_for_a_password(&ssid); // …your own sheet; connect with what it collects
     ///         } else {
-    ///             let _ = shell.services_mut().wifi.connect(&ssid, None, false);
+    ///             let _ = shell.request_service(fairing::services::ServiceRequest::WifiConnect { ssid: &ssid, psk: None, hidden: false });
     ///         }
     ///     }
     /// }

@@ -603,7 +603,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
     }
     if let Some(placement) = dock_placement_arg() {
         log::info!("dock placement {placement:?}");
-        shell.desktop_mut().set_dock_placement(placement);
+        shell.set_dock_placement(placement);
     }
     add_hidden_entries(&mut shell);
     Ok(shell)
@@ -631,7 +631,7 @@ fn apply_legibility(shell: &mut fairing::Shell) {
         LabelLegibility::None
     });
     log::info!("label legibility {}", mode.as_str());
-    shell.desktop_mut().set_legibility(mode);
+    shell.set_desktop_legibility(mode);
 }
 
 /// `--legibility=none|shadow|veil` — the label legibility correction (guide 09 §2.2).
@@ -2611,7 +2611,7 @@ fn build_tour(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
     }
     if let Some(placement) = dock_placement_arg() {
         log::info!("dock placement {placement:?}");
-        shell.desktop_mut().set_dock_placement(placement);
+        shell.set_dock_placement(placement);
     }
     Ok(shell)
 }
@@ -2773,22 +2773,23 @@ fn status_labels() -> bool {
 /// Give the status bar items captions, text sizes and minimum widths.
 fn apply_status_labels(shell: &mut fairing::Shell) {
     use fairing::chrome::LabelPos;
-    let bar = shell.status_bar_mut();
     for (id, label) in [
         ("status.wifi", "Network"),
         ("status.bluetooth", "Bluetooth"),
         ("status.battery", "Power"),
         ("status.notifications", "Notification"),
     ] {
-        if let Some(spec) = bar.spec_mut(id) {
+        if let Some(mut spec) = shell.status_item_spec(id) {
             spec.label = Some(label.to_owned());
             spec.label_pos = LabelPos::Below;
             spec.pad_x = Some(6.0);
+            shell.set_status_item_spec(id, spec);
         }
     }
     // The clock takes a larger size rather than a caption. A minimum width keeps its place from shifting as the value wobbles.
-    if let Some(spec) = bar.spec_mut("status.clock") {
+    if let Some(mut spec) = shell.status_item_spec("status.clock") {
         spec.text_size = Some(22.0);
         spec.min_width = Some(84.0);
+        shell.set_status_item_spec("status.clock", spec);
     }
 }

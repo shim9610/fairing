@@ -157,7 +157,7 @@ fn the_cap_can_be_lifted() -> fairing::Result<()> {
 }
 
 /// **A theme lifts it with `f32::INFINITY`** — and it stays lifted when a run-time spec is
-/// seeded from that theme's metrics (`Shell::metrics_spec_mut`), where a pinned infinite length
+/// seeded from that theme's metrics (`Shell::metrics_spec`), where a pinned infinite length
 /// would have folded to 0 and squashed the keyboard to its floor.
 #[test]
 fn a_theme_lifts_the_cap_with_infinity() -> fairing::Result<()> {
@@ -169,7 +169,7 @@ fn a_theme_lifts_the_cap_with_infinity() -> fairing::Result<()> {
             .theme(theme)
             .build(ctx)
     })?;
-    let _ = h.shell.metrics_spec_mut();
+    h.shell.set_metrics_spec(h.shell.metrics_spec());
     h.frames(2);
     assert!(h.shell.theme().metrics.osk_max_key.is_infinite());
     let share = 0.38 * h.screen_rect().height();

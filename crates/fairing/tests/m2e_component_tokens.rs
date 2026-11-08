@@ -364,8 +364,9 @@ fn a_text_size_set_at_run_time_reaches_egui() -> fairing::Result<()> {
     // **The spec, not the resolved metrics** — with a spec in play the shell rebuilds
     // `theme.metrics` from it every frame, so a size written onto the theme is thrown away.
     let want = h.shell.theme().metrics.type_scale.body + 7.0;
-    h.shell.metrics_spec_mut().type_scale[1] =
-        fairing::unit::Span::fixed(fairing::unit::Dim::du(want)).pinned();
+    let mut spec = h.shell.metrics_spec();
+    spec.type_scale[1] = fairing::unit::Span::fixed(fairing::unit::Dim::du(want)).pinned();
+    h.shell.set_metrics_spec(spec);
     h.frames(2);
     assert!(
         (h.shell.theme().metrics.type_scale.body - want).abs() < f32::EPSILON,

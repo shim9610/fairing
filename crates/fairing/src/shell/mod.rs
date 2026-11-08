@@ -42,6 +42,7 @@
 mod authentication;
 mod host;
 mod observation;
+mod operations;
 pub use observation::ShellView;
 mod navigation;
 mod protected;
@@ -577,7 +578,7 @@ impl Shell {
     /// leave the declaration doing nothing without a word.
     ///
     /// Checked on the frame after the `add`, not inside it: an integrator may declare the item
-    /// first and list it in code afterwards (`nav_bar_mut().style = NavStyle::Buttons { .. }`),
+    /// first and list it in code afterwards (`set_nav_style(NavStyle::Buttons { .. })`),
     /// and a warning at the `add` would then be wrong.
     fn check_added_nav_items(&mut self) {
         if self.nav_item_checks.is_empty() {
@@ -816,25 +817,10 @@ impl Shell {
         &self.desktop
     }
 
-    /// The desktop (mutable — for swapping the wallpaper, and so on).
-    pub fn desktop_mut(&mut self) -> &mut DesktopView {
-        &mut self.desktop
-    }
-
     /// The status bar (for looking last frame's item Rects up with `item_rect`, and so on).
     #[must_use]
     pub fn status_bar(&self) -> &StatusBar {
         &self.status_bar
-    }
-
-    /// The status bar (mutable — `tap_action`, editing the slots).
-    pub fn status_bar_mut(&mut self) -> &mut StatusBar {
-        &mut self.status_bar
-    }
-
-    /// The nav bar (mutable — `enabled`, `style`, replacing the items).
-    pub fn nav_bar_mut(&mut self) -> &mut NavBar {
-        &mut self.nav_bar
     }
 
     /// The nav bar (for looking last frame's item Rects up with `item_rect`, and so on).
@@ -849,45 +835,10 @@ impl Shell {
         &self.theme
     }
 
-    /// **The metrics, to change at run time** — the text sizes
-    /// ([`MetricsSpec::type_scale`](crate::theme::MetricsSpec::type_scale)) included. The next frame
-    /// resolves them at the current scale and hands them to egui's style.
-    ///
-    /// It is the **spec** and not [`Theme::metrics`] because the resolved metrics are a derived
-    /// value: with a spec in play the shell rebuilds `theme.metrics` from it every frame, so a size
-    /// written onto the theme was thrown away before it could reach egui. That is what made the
-    /// type scale a token no rung of the override ladder could hold after start-up.
-    ///
-    /// Where the shell was built without one, the spec is seeded from the metrics it has, so this
-    /// always hands back something to write on.
-    ///
-    /// ```no_run
-    /// # use fairing::Shell;
-    /// # fn bigger(shell: &mut Shell) {
-    /// # let step = |s: &mut fairing::unit::Span<fairing::unit::Eye>, by: f32| { let _ = (s, by); };
-    /// // Standing 70 cm away rather than 30 — the body text goes up.
-    /// let spec = shell.metrics_spec_mut();
-    /// step(&mut spec.type_scale[1], 4.0);
-    /// # }
-    /// ```
-    ///
-    /// The palette and the motion tokens have their own paths: [`Shell::set_palettes`] and
-    /// [`Shell::set_theme_dark`] so the crossfade (10) runs, and [`Shell::set_motion`].
-    pub fn metrics_spec_mut(&mut self) -> &mut crate::theme::MetricsSpec {
-        self.theme_dirty = true;
-        self.metrics_spec
-            .get_or_insert_with(|| crate::theme::MetricsSpec::from_metrics(&self.theme.metrics))
-    }
-
     /// The backends.
     #[must_use]
     pub fn services(&self) -> &Services {
         &self.services
-    }
-
-    /// The backends (mutable).
-    pub fn services_mut(&mut self) -> &mut Services {
-        &mut self.services
     }
 
     /// **Connect the time source, while the shell is running**.
@@ -918,21 +869,19 @@ impl Shell {
     /// a backend: [`crate::settings::keys::UI_CLOCK_12H`], which
     /// `settings.datetime` writes and the status bar reads.
     pub fn set_clock(&mut self, clock: impl crate::services::ClockSource + 'static) {
-        let mut clock = Box::new(clock);
-        // The `Waker` goes to every backend at startup; one arriving later needs its own.
-        clock.attach(self.handle.waker().clone());
-        self.services.clock = clock;
+        self.contain_fault(|shell| {
+            let mut clock = Box::new(clock);
+            // Attach before publication, just like the other backend replacements.
+            clock.attach(shell.handle.waker().clone());
+            shell.services.clock = clock;
+            shell.handle.waker().wake();
+        });
     }
 
     /// Access control.
     #[must_use]
     pub fn access(&self) -> &Access {
         &self.access
-    }
-
-    /// Access control (mutable — for the integrator to replace the `AccessPolicy`, `access_mut().set_policy(..)`).
-    pub fn access_mut(&mut self) -> &mut Access {
-        &mut self.access
     }
 
     /// The shell's monotonic time at its last UI or logic update. `Cx::now`,
@@ -1022,12 +971,6 @@ impl Shell {
     #[must_use]
     pub fn osk(&self) -> &crate::osk::Osk {
         &self.osk.0
-    }
-
-    /// The OSK (mutable — replacing the layout, the manual toggle).
-    #[cfg(feature = "osk")]
-    pub fn osk_mut(&mut self) -> &mut crate::osk::Osk {
-        &mut self.osk.0
     }
 
     /// The notification centre.

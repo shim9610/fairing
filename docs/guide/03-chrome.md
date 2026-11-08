@@ -298,7 +298,7 @@ The same shape as a status bar item, except that the slots are the layout: a dec
 listed in `items` is not drawn. It does not get appended. On the frame after you add one, the
 shell logs a warning if the list still does not name it, or if the bar is off or in the gesture
 style and so will never draw it. Listing it in code after the `add`
-(`shell.nav_bar_mut().style`) is fine: the check waits for that frame.
+(`shell.set_nav_style(..)`) is fine: the check waits for that frame.
 
 ```rust
 use fairing::{nav_item, Cx, LaunchAction, Shell};
@@ -494,7 +494,7 @@ with two or more pages.
 | Dragging past the ends | Rubber-band resistance (`[motion.page] rubber`) |
 
 From the frame a horizontal drag passes the slop, icon taps in that gesture are cancelled. In
-code, move with `shell.desktop_mut().set_page(i)` (immediate) or `swipe_to(i, &tokens)` (spring).
+code, move with `shell.set_desktop_page(i)` (immediate) or `swipe_to(i, &tokens)` (spring).
 
 ### 3.4 The dock
 
@@ -568,7 +568,7 @@ use fairing::desktop::{Fit, Wallpaper};
 use fairing::Shell;
 
 fn set_gradient(shell: &mut Shell) {
-    shell.desktop_mut().set_wallpaper(Wallpaper::Gradient {
+    shell.set_wallpaper(Wallpaper::Gradient {
         top: egui::Color32::from_rgb(0x10, 0x18, 0x28),
         bottom: egui::Color32::from_rgb(0x04, 0x06, 0x0a),
     });
@@ -577,7 +577,7 @@ fn set_gradient(shell: &mut Shell) {
 /// The integrator uploads the texture with `ctx.load_texture(..)`. **Hand the handle over** and
 /// the wallpaper holds it.
 fn set_texture(shell: &mut Shell, texture: egui::TextureHandle) {
-    shell.desktop_mut().set_wallpaper(Wallpaper::owned(texture, Fit::Cover));
+    shell.set_wallpaper(Wallpaper::owned(texture, Fit::Cover));
 }
 
 /// With a loader installed, straight from a file at runtime.
@@ -1268,7 +1268,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
 | `Hangul` | Three, laid out like `Qwerty`'s | Two-set Hangul, composing syllables as you type. A `한/영` key switches to and from QWERTY |
 | `Custom(KeyLayout)` | Integrator-defined | Any number of faces. The one-character ⇧ rule is not attached |
 
-To change it at runtime, use `shell.osk_mut().set_layout(..)`.
+To change it at runtime, use `shell.set_osk_layout(..)`.
 
 **A field can ask for its own keys.** One layout per device is wrong for some field whatever it
 is — a PIN on a qwerty, a password on a number pad — so a field says what it takes with
@@ -1290,7 +1290,7 @@ use fairing::osk::{KeyAction, KeyDef, KeyFace, KeyLayout, KeyRow, OskLayout};
 use fairing::Shell;
 
 fn use_numpad(shell: &mut Shell) {
-    shell.osk_mut().set_layout(OskLayout::NumPad {
+    shell.set_osk_layout(OskLayout::NumPad {
         decimal: true,
         sign: false,
     });
@@ -1310,7 +1310,7 @@ fn use_custom_pad(shell: &mut Shell) {
             },
         ],
     };
-    shell.osk_mut().set_layout(OskLayout::Custom(KeyLayout {
+    shell.set_osk_layout(OskLayout::Custom(KeyLayout {
         name: "abc".into(),
         faces: vec![face],
     }));

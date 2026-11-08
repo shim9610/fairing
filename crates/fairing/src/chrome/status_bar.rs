@@ -541,6 +541,15 @@ pub const BUILTIN_IDS: &[&str] = &[
 ];
 
 impl StatusBar {
+    /// Discard placements and measurements derived from replaced host configuration.
+    pub(crate) fn invalidate_layout(&mut self) {
+        self.item_rects.clear();
+        self.measured.clear();
+        self.layout.clear();
+        self.texts.clear();
+        self.cells.clear();
+    }
+
     /// Build from the config. Built-in ids in a slot list become specs; integrator ids have only
     /// their place remembered. The gates are always filled in (the id by default) so that no `Gate`
     /// is built on the render path.
@@ -656,10 +665,11 @@ impl StatusBar {
     /// # let shell: &mut fairing::Shell = todo!();
     /// use fairing::chrome::LabelPos;
     ///
-    /// if let Some(spec) = shell.status_bar_mut().spec_mut("status.wifi") {
+    /// if let Some(mut spec) = shell.status_item_spec("status.wifi") {
     ///     spec.label = Some("Network".to_owned());
     ///     spec.label_pos = LabelPos::Below;
     ///     spec.label_size = Some(11.0);
+    ///     shell.set_status_item_spec("status.wifi", spec);
     /// }
     /// ```
     pub fn spec_mut(&mut self, id: &str) -> Option<&mut StatusItemSpec> {

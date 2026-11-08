@@ -212,10 +212,17 @@ crate version to upgrade from yet.
 
 | Before | Current migration |
 | --- | --- |
-| External literals for shell/widget configuration, including `..Default::default()` | `Type::default().configure(\|c\| { c.field = value; })` or direct field assignment on a default value; all configuration structs are non-exhaustive |
+| External literals for shell/widget configuration, including `..Default::default()` | `Type::default().configure(\|c\| { c.field = value; })` or direct field assignment on a default value; configuration structs in the product config modules are non-exhaustive |
 | `SessionGrant { gate, base, temporary_until }` | `SessionGrant::new(gate, base, temporary_until)`; read through `gate()`, `is_base()`, `temporary_until()` |
 | Exhaustive matches on `SessionError`, `SessionReadError`, `Decl`, `DeclKind` | Handle known cases and retain a fallback; these enums are non-exhaustive |
 | `screen::Registry`, `Shell::registry()` or `ProtectedShell::shell()` | `observe()` queries: `screen_ids`, `has_screen`, `screen_is_resident`, `nav_item_rect`, `settings`, `session_token`, `allows`, layout/time/fault/prompt state |
+| `Shell::desktop_mut()` | `set_wallpaper`, `set_desktop_page`, `swipe_desktop_to`, `set_dock_placement`, `set_desktop_legibility`, `set_desktop_slot_painter` |
+| `Shell::status_bar_mut()` | Edit a copied `status_item_spec(id)` and commit through `set_status_item_spec`; replace slots with `set_status_items`; use named visibility/height/background/icon/tap operations |
+| `Shell::nav_bar_mut()` | `set_nav_style`, `set_nav_enabled`, `set_nav_height`, `set_nav_background`; back availability is derived from workspace state |
+| `Shell::metrics_spec_mut()` | Edit an owned `metrics_spec()` then commit with `set_metrics_spec` |
+| `Shell::services_mut()` | `set_services`, `set_*_backend`, existing `set_clock`, and `request_service(ServiceRequest::...)`; retain a custom backend's command sender for host commands |
+| `Shell::access_mut()` | `set_policy`, `set_subject`, existing authenticator/response APIs; token mode never accepts an injected legacy subject |
+| `Shell::osk_mut()` | `set_osk_layout`, `toggle_osk_language`, `toggle_osk`, `hide_osk` (feature `osk`) |
 | `runner::run_app::<State>(...)` | Prefer inference or use `runner::run_app::<State, _>(...)`; the host type is now generic |
 
 Ordinary `Harness` type annotations still mean `Harness<Shell>`; annotate a
@@ -233,3 +240,11 @@ harness.frame();
 assert!(harness.shell.observe().session_token().is_none());
 # Ok::<(), fairing::Error>(())
 ```
+
+
+For individual host decisions, concrete call sites and owned-value migration,
+see [Host API decisions](../host-api-decisions.md). Backend replacement attaches
+its waker before publication; radio/audio acknowledgements from the old instance
+are discarded. Direct `ServiceRequest` commands retain trusted host authority;
+user-driven setting writes continue through `set_setting`, and `ProtectedShell`
+does not expose this host command API.

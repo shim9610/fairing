@@ -15,6 +15,8 @@ pub mod clock;
 #[cfg(feature = "mock")]
 pub mod mock;
 pub mod null;
+mod request;
+pub use request::ServiceRequest;
 
 pub use crate::time::WallTime;
 use std::any::Any;

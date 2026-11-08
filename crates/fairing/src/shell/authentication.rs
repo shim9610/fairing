@@ -311,7 +311,7 @@ impl Shell {
         self.propagate_access_change();
     }
     /// A new integrator subject invalidates the previous person's authentication even when
-    /// their levels are equal. Direct `access_mut().set_subject` is observed before polling too.
+    /// their levels are equal. Direct `set_subject` is observed before polling too.
     pub(super) fn observe_subject_change(&mut self, app: &mut AppRef<'_>) {
         let Some(from) = self.access.take_subject_change() else {
             return;

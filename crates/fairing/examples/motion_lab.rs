@@ -473,8 +473,8 @@ impl Lab {
         let tokens = shell.theme().motion;
         match self.step {
             0 => shell.home(),
-            1 => shell.desktop_mut().swipe_to(1, &tokens),
-            2 => shell.desktop_mut().swipe_to(0, &tokens),
+            1 => shell.swipe_desktop_to(1, &tokens),
+            2 => shell.swipe_desktop_to(0, &tokens),
             3 => shell.launch(LaunchAction::open("lab")),
             4 | 5 => shell.handle().toggle_overlay(),
             6 => shell.launch(LaunchAction::open("child")),

@@ -192,6 +192,6 @@ impl ProtectedShell {
 
     /// Install a policy that may only narrow the token's permissions.
     pub fn set_policy(&mut self, policy: Box<dyn crate::access::AccessPolicy>) {
-        self.inner.access_mut().set_policy(policy);
+        self.inner.set_policy(policy);
     }
 }

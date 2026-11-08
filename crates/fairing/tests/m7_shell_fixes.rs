@@ -158,7 +158,7 @@ fn manual_osk_at_rest_idles() -> fairing::Result<()> {
     })?;
     h.shell.launch(LaunchAction::open("manual"));
     h.frames(3);
-    h.shell.osk_mut().toggle();
+    h.shell.toggle_osk();
     h.frames(120);
     assert!(
         h.shell.osk().is_shown(),

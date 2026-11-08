@@ -57,7 +57,7 @@ use fairing::desktop::{Fit, Wallpaper};
 
 // Decoding and texture upload go through your own dependency.
 let (id, size) = upload_my_texture(ctx, include_bytes!("../assets/brand/abyss-4x3.webp"));
-shell.desktop_mut().set_wallpaper(Wallpaper::TextureFit {
+shell.set_wallpaper(Wallpaper::TextureFit {
     id,
     source_size: size, // the source size your decoder reported (egui::vec2)
     fit: Fit::Cover,   // fill the short side and crop the long one

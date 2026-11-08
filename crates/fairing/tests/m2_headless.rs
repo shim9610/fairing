@@ -185,13 +185,13 @@ fn custom_osk_nav_item_toggles_the_osk() -> fairing::Result<()> {
             }),
         );
     })?;
-    h.shell.nav_bar_mut().style = NavStyle::Buttons {
+    h.shell.set_nav_style(NavStyle::Buttons {
         items: vec![
             NavItem::Back,
             NavItem::Home,
             NavItem::Custom("osk".to_owned()),
         ],
-    };
+    });
     h.shell.launch(LaunchAction::open("manual"));
     h.frames(3);
     let item = need(
@@ -809,7 +809,8 @@ fn gesture_back_regrab_confirms_with_the_combined_progress() -> fairing::Result<
 #[test]
 fn toggle_uses_the_backend_state_for_builtin_keys() -> fairing::Result<()> {
     let mut h = test_shell(single_level_access(), |_| {})?;
-    h.shell.services_mut().wifi = Box::new(fairing::services::mock::MockWifi::new());
+    h.shell
+        .set_wifi_backend(fairing::services::mock::MockWifi::new());
     h.frames(2);
     assert!(h.shell.services().wifi.enabled(), "the Mock starts on");
     let _ = h.shell.poll_events();

@@ -1004,7 +1004,10 @@ fn a_pairing_passkey_is_drawn_and_confirming_answers_the_backend() -> fairing::R
 
     // The backend raises the request — `MockBluetooth` uses a fixed passkey, being a simulator.
     let addr = "AA:BB:CC:00:00:01";
-    if h.shell.services_mut().bluetooth.pair(addr).is_err() {
+    if h.shell
+        .request_service(fairing::services::ServiceRequest::BluetoothPair(addr))
+        .is_err()
+    {
         return Err(fairing::Error::Config(
             "the mock refused to pair".to_owned(),
         ));

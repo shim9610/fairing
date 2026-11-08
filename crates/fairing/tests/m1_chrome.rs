@@ -268,7 +268,7 @@ fn every_dock_placement_keeps_the_grid_clear() -> fairing::Result<()> {
             for id in ["g1", "g2", "g3", "g4"] {
                 shell.add(stub(id).icon(icon::GAUGE).desktop());
             }
-            shell.desktop_mut().set_dock_placement(placement);
+            shell.set_dock_placement(placement);
             Ok(shell)
         })?;
         // The first frame settles the layout and the second draws with it.
@@ -507,10 +507,12 @@ fn status_bar_custom_item_and_builtin_remove() -> fairing::Result<()> {
 fn status_bar_slots_are_laid_out_left_center_right() -> fairing::Result<()> {
     let mut h = test_shell(single_level_access(), |_| {})?;
     {
-        let bar = h.shell.status_bar_mut();
-        bar.left = vec![text_spec("t.left", "LEFT", 0)];
-        bar.center = vec![text_spec("t.center", "CENTER", 0)];
-        bar.right = vec![text_spec("t.right", "RIGHT", 0)];
+        h.shell
+            .set_status_items(Slot::Left, vec![text_spec("t.left", "LEFT", 0)]);
+        h.shell
+            .set_status_items(Slot::Center, vec![text_spec("t.center", "CENTER", 0)]);
+        h.shell
+            .set_status_items(Slot::Right, vec![text_spec("t.right", "RIGHT", 0)]);
     }
     h.frames(2);
     let bar = h.shell.status_bar();
@@ -544,14 +546,16 @@ fn status_bar_slots_are_laid_out_left_center_right() -> fairing::Result<()> {
 fn status_bar_collapses_low_priority_first() -> fairing::Result<()> {
     let mut h = test_shell(single_level_access(), |_| {})?;
     {
-        let bar = h.shell.status_bar_mut();
-        bar.left.clear();
-        bar.center.clear();
-        bar.right = vec![
-            text_spec("t.low", "LOWLOWLOWLOW", -1),
-            text_spec("t.mid", "MIDMIDMIDMID", 0),
-            text_spec("t.high", "HIGHHIGHHIGH", 1),
-        ];
+        h.shell.set_status_items(Slot::Left, vec![]);
+        h.shell.set_status_items(Slot::Center, vec![]);
+        h.shell.set_status_items(
+            Slot::Right,
+            vec![
+                text_spec("t.low", "LOWLOWLOWLOW", -1),
+                text_spec("t.mid", "MIDMIDMIDMID", 0),
+                text_spec("t.high", "HIGHHIGHHIGH", 1),
+            ],
+        );
     }
     // At a generous width all three show.
     h.frames(2);
@@ -565,14 +569,16 @@ fn status_bar_collapses_low_priority_first() -> fairing::Result<()> {
     let mut narrow =
         Harness::new(single_level_access(), fairing::Services::null())?.with_size(160.0, 600.0);
     {
-        let bar = narrow.shell.status_bar_mut();
-        bar.left.clear();
-        bar.center.clear();
-        bar.right = vec![
-            text_spec("t.low", "LOWLOWLOWLOW", -1),
-            text_spec("t.mid", "MIDMIDMIDMID", 0),
-            text_spec("t.high", "HIGHHIGHHIGH", 1),
-        ];
+        narrow.shell.set_status_items(Slot::Left, vec![]);
+        narrow.shell.set_status_items(Slot::Center, vec![]);
+        narrow.shell.set_status_items(
+            Slot::Right,
+            vec![
+                text_spec("t.low", "LOWLOWLOWLOW", -1),
+                text_spec("t.mid", "MIDMIDMIDMID", 0),
+                text_spec("t.high", "HIGHHIGHHIGH", 1),
+            ],
+        );
     }
     narrow.frames(2);
     let bar = narrow.shell.status_bar();
@@ -627,13 +633,11 @@ fn status_bar_item_tap_runs_tap_action() -> fairing::Result<()> {
         sh.add(stub("wifi-settings"));
     })?;
     {
-        let bar = h.shell.status_bar_mut();
-        bar.left = vec![text_spec("t.net", "NET", 0)];
-        bar.center.clear();
-        bar.right.clear();
-        if let Some(spec) = bar.left.first_mut() {
-            spec.tap_action = Some(LaunchAction::open("wifi-settings"));
-        }
+        let mut spec = text_spec("t.net", "NET", 0);
+        spec.tap_action = Some(LaunchAction::open("wifi-settings"));
+        h.shell.set_status_items(Slot::Left, vec![spec]);
+        h.shell.set_status_items(Slot::Center, vec![]);
+        h.shell.set_status_items(Slot::Right, vec![]);
     }
     h.frames(2);
     let rect = h

@@ -348,7 +348,7 @@ pub(crate) fn declarations(
     // The capabilities are asked of **each backend** — only the Wi-Fi backend knows whether there is Wi-Fi.
     let force = config.ignore_capabilities;
     // Likewise only the authenticator knows whether it manages its entries here.
-    let has_admin = force || shell.access_mut().has_admin();
+    let has_admin = force || shell.has_credential_admin();
     let services = shell.services();
     let has_wifi = force || services.wifi.capabilities().contains(Capabilities::WIFI);
     let has_bt = force

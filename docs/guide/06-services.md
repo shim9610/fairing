@@ -108,7 +108,7 @@ for event in shell.poll_events() {
         if secured && !known {
             self.password_sheet = Some(ssid);   // your own sheet, your own buffer
         } else {
-            let _ = shell.services_mut().wifi.connect(&ssid, None, false);
+            let _ = shell.request_service(fairing::services::ServiceRequest::WifiConnect { ssid: &ssid, psk: None, hidden: false });
         }
     }
 }
@@ -149,7 +149,7 @@ goes:
 # fn on_event(shell: &mut fairing::Shell, event: ShellEvent) {
 # match event {
 ShellEvent::WifiNetworkLongPressed { ssid, known } if known => {
-    let _ = shell.services_mut().wifi.forget(&ssid);
+    let _ = shell.request_service(fairing::services::ServiceRequest::WifiForget(&ssid));
 }
 # _ => {}
 # }
@@ -161,7 +161,7 @@ arrive as `WifiNetworkTapped`.
 
 Adding a hidden network needs nothing from the crate at all: collect the SSID
 and the password in your own screen and call
-`shell.services_mut().wifi.connect(&ssid, psk, true)`.
+`shell.request_service(fairing::services::ServiceRequest::WifiConnect { ssid: &ssid, psk, hidden: true })`.
 
 ### Pairing a Bluetooth device
 

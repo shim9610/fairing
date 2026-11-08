@@ -87,7 +87,7 @@ badge can stand all night.
 
 | Feature | With it off |
 |---|---|
-| `osk` | `Shell::osk()` and `osk_mut()` are behind `#[cfg(feature = "osk")]`, so they do not exist — a **compile error** (``no method named `osk` found``) |
+| `osk` | `Shell::osk()` and keyboard operations such as `set_osk_layout()` are behind `#[cfg(feature = "osk")]`, so they do not exist — a **compile error** (``no method named `osk` found``) |
 | `overlay` | `Shell::overlay()` is likewise a **compile error**. But `LaunchAction::OpenOverlay` — the in-shell path, reached through `cx.open` and friends — always compiles. Opening the shade with the feature off quietly logs ``the `overlay` feature is off, so the shade cannot open`` and **does nothing**. Not an error, not a panic |
 
 The `[overlay]` and `[osk]` config sections are parsed regardless
@@ -387,7 +387,7 @@ compile time. Blocking the UI thread stops the frame. A justified exception gets
 **Q3. How do I change the wallpaper?**
 For a flat colour, `[desktop] wallpaper = "#RRGGBB"` or a palette role name.
 Anything more — gradients, images, procedural patterns — goes through code:
-`shell.desktop_mut().set_wallpaper(Wallpaper::Painter(..))` and friends
+`shell.set_wallpaper(Wallpaper::Painter(..))` and friends
 ([04 §5](04-customization.md#5-painting-the-wallpaper-yourself),
 [03 §3.7](03-chrome.md#37-wallpaper)).
 

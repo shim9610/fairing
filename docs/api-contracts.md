@@ -270,7 +270,7 @@ compiler-generated rustdoc JSON in minimal/all-feature configurations with
 | `SessionGrant` | Private fields; full constructor, typed convenience constructors and read accessors | Internal extension does not require external exhaustive literals |
 | `SessionError`, `SessionReadError`, `Decl`, `DeclKind` | Non-exhaustive | New variants require a downstream fallback; known-variant behavior remains a contract |
 | Other public value enums | Retain existing closed/open status | A closed domain model is intentionally exhaustive; review a new variant as a source change |
-| Ordinary `Shell::*_mut` | Retain trusted legacy customization access | These concrete component types remain supported API; use declaration replacement, existing focused operations and `set_dock_placement` where sufficient |
+| Ordinary component mutation | Named operations and owned configuration replacement; seven broad mutable loans removed | Attach replacement backends before publication; invalidate derived configuration state; protected observation lends no mutable component |
 | `Shell::registry`, `ProtectedShell::shell` | Removed | `ShellView` provides screen/geometry/session/settings/fault queries without borrowing implementation stores |
 | Remaining hidden read-only test queries | Retain their paths as supported diagnostic APIs | Hidden rustdoc status grants no compatibility exemption; do not expose them through a mutable protected-shell conversion |
 | Runner and harness | Generic over sealed `HostedShell`, implemented only by the two shell modes | Shared host orchestration cannot install untyped declarations or convert protection modes |

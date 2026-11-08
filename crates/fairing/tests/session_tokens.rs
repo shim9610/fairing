@@ -233,7 +233,7 @@ fn token_mode_denies_legacy_bypasses_and_supports_one_level_multi_permission_ses
         !h.shell.access().allows(&Gate::from("measurement.run")),
         "single-level bypass opened token mode"
     );
-    h.shell.access_mut().set_subject(subject("injected"));
+    h.shell.set_subject(subject("injected"));
     h.frame();
     assert!(!h.shell.access().allows(&Gate::from("measurement.run")));
     let (_controller, token) = issue(
@@ -364,7 +364,7 @@ fn custom_policy_cannot_add_unissued_rights_and_logout_drops_tokens_without_meth
         None,
     );
     login(&mut h, &state, token);
-    h.shell.access_mut().set_policy(Box::new(OnlyMeasurement));
+    h.shell.set_policy(Box::new(OnlyMeasurement));
     h.frame();
     assert!(
         !h.shell.access().allows(&Gate::from("results.view")),
@@ -555,7 +555,6 @@ fn absent_or_faulted_authority_never_dispatches_policy_callbacks() -> fairing::R
     let (mut h, _, _) = harness()?;
     let calls = Rc::new(Cell::new(0));
     h.shell
-        .access_mut()
         .set_policy(Box::new(CountingPolicy(Rc::clone(&calls))));
     assert!(!h.shell.access().allows(&Gate::from("measurement.run")));
     assert_eq!(calls.get(), 0, "absent token dispatched a policy callback");
@@ -586,7 +585,7 @@ fn subject_replacement_invalidates_old_requests_even_if_session_notification_pan
     );
     state.borrow_mut().panic_on_end = true;
     let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        h.shell.access_mut().set_subject(subject("replacement"))
+        h.shell.set_subject(subject("replacement"))
     }));
     assert!(failed.is_err());
     state.borrow_mut().panic_on_end = false;
@@ -612,7 +611,6 @@ fn policy_callback_revocation_is_rechecked_before_a_protected_effect() -> fairin
     let (controller, token) = issue(&h, "a", vec![SessionGrant::base("measurement.run")], None);
     login(&mut h, &state, token);
     h.shell
-        .access_mut()
         .set_policy(Box::new(RevokingPolicy(Rc::new(RefCell::new(controller)))));
     h.shell.launch(LaunchAction::run("operate"));
     assert_eq!(

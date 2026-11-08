@@ -83,9 +83,7 @@ fn veil_adds_a_single_rect() -> fairing::Result<()> {
 #[test]
 fn it_can_be_changed_at_runtime() -> fairing::Result<()> {
     let mut h = desktop_shell("none")?;
-    h.shell
-        .desktop_mut()
-        .set_legibility(LabelLegibility::Shadow);
+    h.shell.set_desktop_legibility(LabelLegibility::Shadow);
     h.frames(2);
     assert_eq!(h.shell.desktop().legibility(), LabelLegibility::Shadow);
     Ok(())

@@ -118,7 +118,7 @@ texture, you do not need the loader:
 use fairing::desktop::{Fit, Wallpaper};
 
 let texture = ctx.load_texture("bg", decode(BG), opts);   // BG = include_bytes!("../art/bg.webp")
-shell.desktop_mut().set_wallpaper(Wallpaper::owned(texture, Fit::Cover));
+shell.set_wallpaper(Wallpaper::owned(texture, Fit::Cover));
 # }
 ```
 
@@ -260,7 +260,7 @@ going back to a flat colour:
 use fairing::desktop::LabelLegibility;
 
 shell.load_wallpaper(ctx, path, Fit::Cover)?;
-shell.desktop_mut().set_legibility(LabelLegibility::Shadow);
+shell.set_desktop_legibility(LabelLegibility::Shadow);
 # Ok(()) }
 ```
 
@@ -318,7 +318,7 @@ Directly, without a loader:
 use fairing::desktop::{Fit, Wallpaper};
 
 let texture = ctx.load_texture("bg", my_decode(BYTES), egui::TextureOptions::LINEAR);
-shell.desktop_mut().set_wallpaper(Wallpaper::owned(texture, Fit::Cover));
+shell.set_wallpaper(Wallpaper::owned(texture, Fit::Cover));
 # }
 ```
 
@@ -346,7 +346,7 @@ overrides, a raster cannot do it. Use `ThemedPainter`.
 use fairing::{ColorRole, Theme};
 use fairing::desktop::Wallpaper;
 
-shell.desktop_mut().set_wallpaper(Wallpaper::ThemedPainter(Box::new(
+shell.set_wallpaper(Wallpaper::ThemedPainter(Box::new(
     |painter: &egui::Painter, rect: egui::Rect, theme: &Theme| {
         // Do not capture colours — **read them from `theme` every frame** so they follow.
         painter.rect_filled(rect, 0.0, theme.color(ColorRole::Background));
@@ -573,7 +573,7 @@ style  = "buttons"          # or "gesture": the home indicator in place of the b
 items  = ["back", "home", "recents"]
 ```
 
-For per-item captions, text sizes and padding, take `status_bar_mut().spec_mut(id)` in code —
+For per-item captions, text sizes and padding, edit an owned `status_item_spec(id)` and commit it with `set_status_item_spec(id, spec)` —
 that is how the instrument-panel look (a caption under each icon) comes out.
 
 ### 6.2 Painting a bar entirely yourself
@@ -605,8 +605,8 @@ let shell = fairing::Shell::builder(config)
 use fairing::desktop::{Axis, DockPlacement};
 use fairing::gesture::Edge;
 
-shell.desktop_mut().set_dock_placement(DockPlacement::Edge(Edge::Left));      // a left rail
-shell.desktop_mut().set_dock_placement(DockPlacement::Band {                  // a floating band
+shell.set_dock_placement(DockPlacement::Edge(Edge::Left));      // a left rail
+shell.set_dock_placement(DockPlacement::Band {                  // a floating band
     axis: Axis::Horizontal,
     at: 0.66,
 });
@@ -967,7 +967,7 @@ when `wallpaper = "abyss"`.
 | `Shell::set_palettes` / `apply_palette` / `set_theme_dark` | Palettes at runtime |
 | `Shell::set_motion` | Motion tokens |
 | `Shell::register_icon` / `register_icon_painter` | A vector icon / a painter |
-| `Shell::status_bar_mut()` · `nav_bar_mut()` | Height, background role colour, per-item spec |
+| `Shell::set_status_bar_height` · `set_nav_height` · `set_status_item_spec` | Persistent metrics and owned item configuration |
 | `Desktop::set_wallpaper` · `set_dock_placement` | Background · dock position |
 | `Shell::load_wallpaper(ctx, path, fit)` | Swapping the background at runtime (needs a loader) |
 | `settings::add_all(shell, &SettingsConfig)` | The built-in settings screens (§8.3) |

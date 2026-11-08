@@ -616,7 +616,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
 Taking `SlotCx` by value is the `SlotPainter` contract: it carries an `&mut IconSet`, so it
 cannot be taken by reference.
 
-To swap it at runtime use `shell.desktop_mut().set_slot_painter(..)`, and `has_slot_painter()`
+To swap it at runtime use `shell.set_desktop_slot_painter(..)`, and `has_slot_painter()`
 to ask whether one is installed.
 
 ---
@@ -651,7 +651,7 @@ fn grid_wallpaper(theme: &Theme) -> Wallpaper {
 
 fn install(shell: &mut Shell) {
     let wallpaper = grid_wallpaper(shell.theme());
-    shell.desktop_mut().set_wallpaper(wallpaper);
+    shell.set_wallpaper(wallpaper);
 }
 ```
 
