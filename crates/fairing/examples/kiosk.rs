@@ -114,10 +114,9 @@ const LANGUAGES: [(&str, &str); 2] = [("en", "English"), ("ko", "한국어")];
 
 /// **Bring [`LANG`] up to the `ui.locale` setting**, once something has written it.
 ///
-/// Called at the top of every screen ([`with_order`]), so a write from anywhere — the switch on
-/// the attract screen, the crate's Language settings screen, a `ShellHandle` on another thread —
-/// redraws every screen in that language on the next frame. Until something writes it, the
-/// language stays where `--lang` started it.
+/// Called when a screen body enters [`with_order`]. A write from the attract-screen switch,
+/// Language settings or a `ShellHandle` is read when that body next runs. Until something
+/// writes the setting, the language stays where `--lang` started it.
 fn follow_locale(cx: &Cx<'_>) {
     if let Some(SettingValue::Text(tag)) = cx.settings.get(&LOCALE_KEY.into()) {
         set_lang(if tag == "ko" { Lang::Ko } else { Lang::En });
@@ -962,9 +961,8 @@ fn attract(ui: &mut egui::Ui, cx: &mut Cx<'_>, order: &mut Order, art: &Art) {
     }
 
     // **The language switch**, in the top corner where a kiosk keeps it. It writes the
-    // `ui.locale` setting rather than the language itself: every screen follows the setting
-    // ([`follow_locale`]), so the whole kiosk turns over on the next frame, and anything else
-    // that writes the setting turns it over the same way.
+    // `ui.locale` setting rather than the language itself. Screen bodies read the setting
+    // through `follow_locale` when they next run, regardless of which writer changed it.
     let inset = pad(cx);
     let switch_w = (hero.width() * 0.46).min(m.row_height * 7.0);
     let mut corner = band_ui(

@@ -436,8 +436,8 @@ mod tests {
         }
     }
 
-    /// A press only ever grows the painted silhouette, and the knob grows with it rather than
-    /// rattling inside a track that moved out from around it.
+    /// Check growth of the painted track and knob for the fixture's positive
+    /// press-growth distance, leaving the allocated rectangle unchanged.
     #[test]
     fn the_press_grows_the_whole_object() {
         let track = Rect::from_min_size(pos2(0.0, 0.0), egui::vec2(88.44, 49.13));

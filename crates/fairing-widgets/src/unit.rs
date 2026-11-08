@@ -632,7 +632,8 @@ pub struct ScalePolicy {
     pub finger_mm: f32,
     /// The "below this it is unusable" floor (mm). `None` means `finger_mm × 7/9`.
     pub finger_hard_mm: Option<f32>,
-    /// The field-of-view scale. Proportional to the `du` term only.
+    /// Factor used in the initial `pixels_per_point` derivation before the configured
+    /// clamp. Physical-unit coefficients are then derived from density and that scale.
     pub ui_scale: f32,
     /// Density to assume when physical size is unknown, in physical pixels per mm.
     /// The default is [`DU_PER_MM`], producing `pixels_per_point = 1.0` with the
@@ -651,10 +652,9 @@ pub struct ScalePolicy {
     /// following it — which is how the kiosk example ended up with 2.30x text beside 1.00x
     /// controls.
     pub viewing_distance_mm: f32,
-    /// The clamp range for `pixels_per_point`.
-    ///
-    /// The floor of 1.0 means "1 du never becomes smaller than one physical px", and it is why
-    /// everything written in `du` draws pixel-identically to today on a panel at ≤ 6.299 px/mm.
+    /// Clamp range for `pixels_per_point`. The default lower bound is 1.0, so a
+    /// resolved du occupies at least one physical pixel with the default range.
+    /// Applications can configure another range.
     pub ppp_range: (f32, f32),
     /// **A pinned `pixels_per_point`**, bypassing the density derivation entirely.
     ///

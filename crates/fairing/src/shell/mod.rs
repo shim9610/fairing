@@ -205,7 +205,7 @@ pub struct Shell {
     widget_painters: fairing_widgets::widgets::WidgetPainters,
     /// The integrator's gesture handle painter.
     handle_painter: Option<crate::gesture::HandlePainter>,
-    /// The buffer for the item list handed to a painter (only the values are overwritten each frame).
+    /// Reusable item-list storage for a painter; new rows or longer IDs can grow its allocations.
     bar_rows: Vec<BarItemRow>,
     /// The physical scale policy. How the density is used — separate from "what is known" (`DisplayInfo`).
     scale_policy: crate::unit::ScalePolicy,

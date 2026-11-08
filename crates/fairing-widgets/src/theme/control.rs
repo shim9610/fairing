@@ -19,10 +19,8 @@ use crate::Result;
 /// The resolved control tokens (= `Theme::control`). Lengths are du; the ratios are unitless.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ControlMetrics {
-    /// **How tall a control is drawn.** Three body ems — see [`ControlSpec::height`].
-    ///
-    /// Read it through [`control_height`], never on its own: on a panel whose text is set small
-    /// this can fall under the hand, and that free function is where the floor is applied.
+    /// Drawn control height. Use [`control_height`] to include the configured
+    /// touch-target floor.
     pub height: f32,
     /// The gap between a control's mark and its label, and between a leading icon and text.
     pub gap: f32,
@@ -40,10 +38,7 @@ pub struct ControlMetrics {
     pub min_button_w: f32,
     /// The narrowest a row's label column may be before the row stacks into two lines.
     pub row_min_label: f32,
-    /// How much a pressed control's painted silhouette grows.
-    ///
-    /// It **grows**, never shrinks. A control that shrinks under the finger moves away from the
-    /// thing pressing it, and on a panel the finger already covers it.
+    /// Painted-silhouette growth distance applied during a press.
     pub press_grow: f32,
     /// A hairline — a separator, a divider inside a card.
     pub stroke_hairline: f32,
@@ -78,7 +73,7 @@ pub struct ControlMetrics {
     pub tick_ratio: f32,
     /// How much a slider's track swells while it is held.
     pub press_swell: f32,
-    /// The one alpha a disabled control fades to. There is exactly one, for every control.
+    /// Configured alpha multiplier for disabled control paint paths.
     pub disabled_alpha: f32,
     /// A tinted badge's alpha behind an icon.
     pub badge_alpha: f32,

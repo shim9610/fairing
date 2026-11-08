@@ -10,7 +10,7 @@
 //! `epaint` wants an owned `Vec<Pos2>` (`PathShape`), so one `Vec` appears per subpath — that is
 //! the representation the icon design specifies, and it handles round joins and feathering in a
 //! single stroke so seams do not overlap and darken. Drawing it as separate pieces would remove
-//! the allocation but show double compositing at every joint on a disabled (alpha 0.6) icon.
+//! the point-vector allocation but may overlap translucent pieces at their joints.
 
 // UI geometry: small integer counts and pixel values crossing to f32. The loss is meaningless in this
 // range, so the cast lints are lifted for the whole file (the rest of the pedantic set stays).
@@ -135,12 +135,10 @@ impl Builder {
     }
 }
 
-/// Flatten 24-grid segments into polylines for a `size_px` square.
-///
-/// The coordinate system is pixels with the icon's top-left as the origin. Curves are subdivided
-/// evenly into 4–16 pieces by size, and the same `(def, size_px)` always gives
-/// the same result (it is deterministic). If allocation fails, returns an empty path;
-/// use [`try_flatten`] to distinguish that omission from an empty definition.
+/// Flatten 24-grid segments into local pixel coordinates using size-based curve
+/// subdivision. Successful subdivision is deterministic for the supplied definition
+/// and size. Allocation failure returns an empty path; use [`try_flatten`] to
+/// distinguish that omission from an empty definition.
 #[must_use]
 pub fn flatten(def: &IconDef, size_px: f32) -> Flattened {
     try_flatten(def, size_px).unwrap_or_else(|_| Flattened {

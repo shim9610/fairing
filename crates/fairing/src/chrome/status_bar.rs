@@ -7,9 +7,8 @@
 //! duplicate the layout arithmetic), and why, when the width runs short, items can be collapsed by
 //! one rule — the lowest `priority` first, and on a tie the rightmost.
 //!
-//! Layout and text caches are reused: [`StatusBar`] holds the layout buffer
-//! and the text galleys and rebuilds them only when a value changes. The clock builds a string only
-//! when the displayed value (the minute, or the second) changes.
+//! [`StatusBar`] reuses its layout buffer and displayed text buffers. Text is submitted to egui
+//! layout on each draw. The clock rewrites its buffer when its displayed time unit or format changes.
 //!
 //! [`crate::shell::ShellBuilder::status_bar_layout`] places the items (rung 4 of the
 //! override ladder): it is handed the built-in placement and moves what it wants, and the bar still
@@ -430,7 +429,7 @@ impl std::fmt::Debug for LayoutHook {
     }
 }
 
-/// A text item's galley cache. Laid out again only when the displayed value changes.
+/// A text item's displayed string and clock-format key.
 #[derive(Debug)]
 struct TextCache {
     id: String,
@@ -472,7 +471,7 @@ pub struct StatusBar {
     measured: Vec<(String, f32)>,
     /// Reused layout buffer; adding more placements can grow its capacity.
     layout: Vec<Placed>,
-    /// The text galley cache.
+    /// Displayed text buffers and clock-format keys.
     texts: Vec<TextCache>,
     /// The parametric cross-fade state plus the notification badge (M2).
     fades: StatusFades,
@@ -1269,7 +1268,7 @@ fn record(rects: &mut Vec<(String, Rect)>, id: &str, rect: Rect) {
     }
 }
 
-/// The text galley cache's slot. A `String` is made only for an id seen for the first time.
+/// The displayed-text cache slot. A new id allocates its string and may grow the vector.
 fn cache_index(texts: &mut Vec<TextCache>, id: &str) -> usize {
     if let Some(index) = texts.iter().position(|t| t.id == id) {
         return index;
@@ -1302,7 +1301,7 @@ fn wants_hour12(settings: &crate::settings::SettingsView) -> bool {
     )
 }
 
-/// A small stable number per format, so the galley cache key changes with the spelling.
+/// A small stable number per format, so the displayed-text key changes with the spelling.
 const fn format_bits(format: ClockFormat) -> u64 {
     match format {
         ClockFormat::Hm => 0,
@@ -1415,7 +1414,7 @@ fn write_badge(buf: &mut String, unread: u32) {
     buf.push(char::from(b'0' + u8::try_from(unread % 10).unwrap_or(9)));
 }
 
-/// The badge number's galley. Laid out again only when the unread count (or the icon size) changes. `None` at 0.
+/// Lay out the badge number for this draw, reusing its text buffer. Return `None` at 0.
 fn badge_galley(
     id: &str,
     unread: u32,
@@ -1622,8 +1621,7 @@ fn measure_builtin(
 }
 
 /// Draw one built-in item inside its own Rect. `status.notifications` is the bell icon plus the
-/// unread badge (the number's galley is cached, so it is laid out only when the value changes, and
-/// past 99 it reads "99+"), and a tap opens the shade through [`builtin_tap_action`]'s
+/// unread badge (values above 99 read "99+"), and a tap opens the shade through [`builtin_tap_action`]'s
 /// `OpenOverlay`.
 #[expect(
     clippy::too_many_lines,
@@ -1775,9 +1773,8 @@ fn draw_builtin(
             parts
                 .icons
                 .paint(painter, bell, &crate::icons::builtin::BELL, &style, theme);
-            // The badge number's galley is cached, so it is laid out only when the unread count changes
-            // (allocation-free). From 100 it reads "99+" — the status bar's width does not wobble as the
-            // digit count grows.
+            // From 100 the badge reads "99+", keeping the displayed digit count bounded.
+            // The text buffer is reused; layout receives an owned string on each draw.
             let Some(galley) = badge_galley(&spec.id, fades.unread, painter, style.size, texts)
             else {
                 return;

@@ -175,15 +175,15 @@ pub enum ShellEvent {
     /// **The recent-screens control was used**.
     ///
     /// The nav bar's `"recents"` item and
-    /// [`LaunchAction::OpenOverview`](crate::LaunchAction::OpenOverview) arrive here. Always
-    /// reported; with `[workspace] overview` on (the default) the shell's own overview opens too,
+    /// [`LaunchAction::OpenOverview`](crate::LaunchAction::OpenOverview) emit this when dispatched.
+    /// With `[workspace] overview` on (the default) the shell's own overview opens too,
     /// behind the `nav.recents` gate — off, for a device with an overview of its own,
     /// what they open is yours.
     OverviewRequested,
     /// **The split control was used**.
     ///
     /// The nav bar's `"split"` item, the split tile and
-    /// [`LaunchAction::ToggleSplit`](crate::LaunchAction::ToggleSplit). Always reported; with
+    /// [`LaunchAction::ToggleSplit`](crate::LaunchAction::ToggleSplit) emit this when dispatched; with
     /// `[workspace] split` on (the default) the shell also splits, behind the `workspace.split`
     /// gate — or goes back to one pane.
     SplitRequested,

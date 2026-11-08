@@ -834,7 +834,8 @@ mod tests {
         }
     }
 
-    /// Pressing only ever grows the track: press geometry never shrinks.
+    /// Check that the sampled press values grow the track with the default
+    /// reference-theme press-swell factor.
     #[test]
     fn the_press_swell_only_grows() {
         let theme = reference_theme();

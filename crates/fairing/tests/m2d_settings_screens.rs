@@ -14,7 +14,7 @@ use fairing::{screen, Cx, Shell, ShellEvent};
 use std::cell::Cell;
 use std::rc::Rc;
 
-/// A shell with every Mock on it (Wi-Fi, Bluetooth, power, the clock and the display).
+/// A shell built from services::mock::services().
 fn mock_shell(config: SettingsConfig) -> fairing::Result<Harness> {
     Harness::from_builder(move |ctx| {
         let services = fairing::services::mock::services();
@@ -26,7 +26,7 @@ fn mock_shell(config: SettingsConfig) -> fairing::Result<Harness> {
     })
 }
 
-/// A shell with no backend at all (all Null).
+/// A shell built with Null backends through Services::null().
 fn bare_shell(config: SettingsConfig) -> fairing::Result<Harness> {
     Harness::from_builder(move |ctx| {
         let mut shell = Shell::builder(single_level_access())
@@ -42,7 +42,7 @@ fn declared(h: &Harness) -> Vec<String> {
     h.shell.observe().screen_ids().map(str::to_owned).collect()
 }
 
-/// One call registers every one of the eleven that a backend stands behind.
+/// add_all registers the expected built-in screens for these mock services.
 #[test]
 fn add_all_registers_the_built_in_screens() -> fairing::Result<()> {
     let h = mock_shell(SettingsConfig::default())?;
@@ -517,11 +517,8 @@ fn visual_inset_shrinks_the_paint_not_the_hit() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **A slider row's layout turns on the width** — wide, the title, the track and the value are one line; narrow, two.
-///
-/// Stacked into two lines always, a slider card comes out more than twice as thick as a switch card. For one item of
-/// the same kind. But **what shrank is the padding, not the hit height** — the track takes `touch_target` in either
-/// layout (the glove policy).
+/// A slider row uses one line at the wide test size and two at the narrow size.
+/// The track retains the configured touch_target height in both layouts.
 #[test]
 fn a_wide_slider_row_folds_onto_one_line() {
     use fairing::layout;
@@ -651,8 +648,8 @@ fn visual_inset_floats_the_card_and_the_bar() -> fairing::Result<()> {
     Ok(())
 }
 
-/// `ListRow::height` **only grows** — a value below `touch_target` is taken up to that value. One screen being dense
-/// is no reason to make a row a gloved hand cannot press.
+/// ListRow::height clamps requests below touch_target up to that floor
+/// and permits a larger requested height.
 #[test]
 fn a_row_can_grow_but_never_below_the_touch_target() -> fairing::Result<()> {
     use fairing::widgets::ListRow;
@@ -768,20 +765,9 @@ fn the_grid_never_overflows_its_width() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **The built-in Wi-Fi screen shows; it does not connect**.
-///
-/// A tap on a network row leaves as [`ShellEvent::WifiNetworkTapped`] and the shell does nothing
-/// else — no `connect`, whether the network is open, saved or secured.
-///
-/// This is a regression test. The screen used to connect on a tap for open and saved
-/// networks and refuse a secured one it had no profile for, leaving a line in the log. `MockWifi`
-/// starts with `known` empty, the way a device does out of the box, so **every secured network was
-/// dead** — and because the tap was already spent, adding a password prompt meant rewriting the
-/// screen whole rather than taking one event.
-///
-/// The rows are probed rather than worked out — a test does not copy the layout formula. It sweeps
-/// bottom-up so it has the list before it can reach the scan row or the radio toggle, and stops as
-/// soon as every network has answered.
+/// Tapping a Wi-Fi network emits WifiNetworkTapped without invoking connect.
+/// The fixtures include open, known and secured networks. Rows are located by
+/// probing the rendered list rather than duplicating the layout formula.
 #[test]
 fn tapping_a_wifi_network_reports_it_and_connects_to_nothing() -> fairing::Result<()> {
     use fairing::services::WifiState;
@@ -901,10 +887,8 @@ fn open_settings(config: SettingsConfig, id: &str) -> fairing::Result<Harness> {
 
 /// **Holding a network row reports a long press, and that press is not also a tap.**
 ///
-/// This is where "forget this network" goes —
-/// [`WifiBackend::forget`](fairing::services::WifiBackend::forget) is the integrator's call, and
-/// without a hold to hang it on the only way to offer it would be to rewrite the screen, which is
-/// the blockage that handing network taps to the integrator set out to remove.
+/// The application can use the long-press event to offer a forget operation through
+/// [`WifiBackend::forget`](fairing::services::WifiBackend::forget).
 ///
 /// The row times its own press rather than asking egui, because `Response::long_touched()` needs
 /// real touch events and never fires where the platform delivers touch as the mouse —

@@ -469,7 +469,8 @@ mod tests {
         }
     }
 
-    /// **An overview card is never narrower than three touch targets**, at any finger width.
+    /// Check the default overview-card minimum width against three touch targets for
+    /// the sampled 5, 9 and 13 mm finger policies.
     #[test]
     fn the_overview_card_floor_is_three_touch_targets() {
         let spec = ComponentSpec::default();

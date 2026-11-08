@@ -52,7 +52,7 @@ fn native_options(options: &Options) -> eframe::NativeOptions {
     }
 }
 
-/// Open a fullscreen window and call `app` every frame. Returns when the window closes.
+/// Open a fullscreen window and call `app` for each UI pass. Returns when the window closes.
 ///
 /// # Errors
 /// [`Error::Runner`] if creating the window or initialising the graphics context fails.
@@ -71,7 +71,7 @@ pub fn run(options: Options, app: impl FnMut(&mut egui::Ui) + 'static) -> Result
     .map_err(|err| Error::Runner(err.to_string()))
 }
 
-/// Open a window and run the [`Shell`] `build` produced on that context, every frame.
+/// Open a window and run the [`Shell`] `build` produced on that context for each UI pass.
 /// `Shell::new` needs an `egui::Context` (`Waker`), so the shell is built after
 /// the window exists.
 ///

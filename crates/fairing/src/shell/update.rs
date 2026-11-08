@@ -339,7 +339,7 @@ impl Shell {
             );
         }
         self.scale = scale;
-        // `Metrics` stays f32 — the 71 places that read it do not change. Only the values are resolved again at this scale.
+        // Metrics fields stay f32; resolve their values again at this scale.
         if let Some(spec) = self.metrics_spec.as_ref() {
             let resolved = spec.resolve(&scale);
             // The text sizes go out as egui `TextStyle`s, so a change here has to reach the style too.

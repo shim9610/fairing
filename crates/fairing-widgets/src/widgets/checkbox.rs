@@ -223,8 +223,7 @@ fn tick_points(path: Rect) -> [Pos2; 3] {
             path.min.y + path.height() * v,
         )
     };
-    // The vertex sits about a third along, which is the proportion iOS, Material and One UI all
-    // land on; a centred vertex reads as a "v" rather than a tick.
+    // Place the vertex about a third along the path box.
     [at(0.0, 0.55), at(0.36, 1.0), at(1.0, 0.0)]
 }
 

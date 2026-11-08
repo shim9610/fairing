@@ -794,7 +794,7 @@ fn the_panes_take_a_press_while_the_divider_settles() -> fairing::Result<()> {
     Ok(())
 }
 
-/// A8's timings are `[motion.panes]` and A10's `[motion.overview]`, like every other motion.
+/// A8 uses [motion.panes] timings and A10 uses [motion.overview] timings.
 #[test]
 fn the_split_and_overview_timings_are_motion_tokens() -> fairing::Result<()> {
     let config = ShellConfig::from_toml(

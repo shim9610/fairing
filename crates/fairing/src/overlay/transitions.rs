@@ -318,7 +318,7 @@ impl Overlay {
         // are decided while the panel draws. So the rects the panel recorded last frame are what
         // this reads — the same one-frame-late trick `CUSTOM_WIDTH_GUESS` uses in the status bar,
         // and stable for the same reason: it only changes when the layout does. Before the first
-        // draw there are no rects and the shade is one-step, which is the safe way round.
+        // draw there are no recorded tile rectangles, so the shade has no intermediate stop.
         let resting = self.shade.at_detent();
         let moved = self.tiles_bottom().map(|stop| {
             let moved = self.tiles_stop.is_some_and(|old| (old - stop).abs() > 0.5);
@@ -420,7 +420,7 @@ impl Overlay {
         }
         self.tiles_dirty = false;
     }
-    /// Read the tile states from the backends and the config (every frame, allocation-free — the rules are in the [`tiles`] docs).
+    /// Refresh tile states from backend getters and settings; see the [`tiles`] rules.
     pub(super) fn refresh_tile_states(
         &mut self,
         services: &Services,
@@ -446,9 +446,8 @@ impl Overlay {
                     }
                     _ => on_off(matches!(settings.get(key), Some(SettingValue::Bool(true)))),
                 },
-                // Neither can be summarised in one tile: a `Panel` row is drawn by the integrator, so the
-                // crate knows no value for it, and a `Gauges` expansion row holds several values at once.
-                // Both are drawn as on while they are open (the same rule as the other expansion tiles).
+                // Panels and gauges have no single value; `lit_by` supplies their tile state,
+                // otherwise it defaults to Off independently of expansion.
                 TileKind::Panel { .. } | TileKind::Gauges { .. } => {
                     lit(t, settings, TileState::Off)
                 }
@@ -502,7 +501,7 @@ impl Overlay {
     pub(super) fn tile_label_width(&self, panel_w: f32, parts: &CxParts<'_>) -> f32 {
         panel::tile_width(panel_w, self.tile_columns, &parts.theme.metrics)
     }
-    /// Bring the panel's text galley cache up to date (only the entries whose content changed are laid out again; unused ones are dropped).
+    /// Refresh the panel's text entries and submit their current text to egui layout; drop unused entries.
     pub(super) fn refresh_texts(
         &mut self,
         ctx: &egui::Context,

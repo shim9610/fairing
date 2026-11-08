@@ -98,7 +98,7 @@ use std::time::{Duration, Instant};
 /// draw. These three are controls, so which of them exist is the device's to say.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FooterButton {
-    /// Clear every notification. Drawn only where there is something to clear.
+    /// Clear dismissible notifications. Drawn only where there is something to clear.
     ClearAll,
     /// Lock the session ([`LaunchAction::Lock`](crate::LaunchAction::Lock)).
     Lock,
@@ -1057,8 +1057,7 @@ fn on_off(on: bool) -> TileState {
     }
 }
 
-/// A tile with no on/off of its own: lit from [`QuickTile::lit_by`] where the declaration named a
-/// key, and otherwise whatever it has always been.
+/// Resolve a tile's optional [`QuickTile::lit_by`] Boolean setting, or use the supplied fallback.
 fn lit(tile: &QuickTile, settings: &SettingsView, without: TileState) -> TileState {
     match tile.lit_by.as_ref() {
         Some(key) => on_off(matches!(settings.get(key), Some(SettingValue::Bool(true)))),
@@ -1122,7 +1121,7 @@ fn gauge_texts(
     }
 }
 
-/// Find or make a cache entry (allocating only for a key seen for the first time) and bring its content up to date.
+/// Find or create a text entry and refresh it. New entries, growing text and egui layout can allocate.
 fn touch(
     texts: &mut Vec<PanelText>,
     key: TextKey,

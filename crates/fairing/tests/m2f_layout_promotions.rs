@@ -297,9 +297,8 @@ fn fill_height_grows_the_cell_but_stops_at_the_aspect_cap() -> fairing::Result<(
 /// Four things — does it split only on a panel stood on end, does it back off at a height that cannot give two
 /// bands, does it clamp the ratio, and does it measure the height it gives back from **the space left**.
 ///
-/// The rule that the judgement goes by the Pane (the same as `split_width`) is not measured here — inside a screen
-/// the Pane and the space left differ only by the inset, and a situation where the two give different answers
-/// cannot be made headless. That rule is the function's docs' to carry.
+/// This fixture does not distinguish a decision based on Pane size from one based on
+/// remaining Ui space. It does not test that part of split_height's contract.
 #[test]
 fn split_height_bands_a_standing_panel_but_not_a_lying_one() -> fairing::Result<()> {
     /// `(the judgement, the height left at that moment)`.

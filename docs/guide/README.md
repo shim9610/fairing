@@ -64,7 +64,7 @@ at a time as you need it.
 | Use our company colour | [09 §0 Branding options](09-branding.md#0-branding-options) |
 | Use a background image (requirements) | [09 §2 Background images](09-branding.md#2-background-images--requirements) |
 | Change the logo mark | [09 §5 Logo marks](09-branding.md#5-logo-marks--requirements) |
-| Remove every trace of the brand | [09 §8.5](09-branding.md#85-checking-that-nothing-of-ours-is-left) |
+| Customize the branded surfaces | [09 §8.5](09-branding.md#85-checking-that-nothing-of-ours-is-left) |
 | Start a new project from a file that runs (`examples/hello.rs`) | [01 §4](01-getting-started.md#4-a-minimal-app) · [01 §5](01-getting-started.md#5-running-the-bundled-examples) |
 | Run the bundled examples (`hello` · `protected` · `demo` · `console` · `kiosk` · `custom_chrome` · `motion_lab` · `palette_sheet`) | [01 §5](01-getting-started.md#5-running-the-bundled-examples) |
 | Test my UI with no window and no GPU | [01 §6 Headless](01-getting-started.md#6-testing-your-ui-headless) |

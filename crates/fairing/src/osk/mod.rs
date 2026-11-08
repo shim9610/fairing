@@ -145,9 +145,10 @@ pub struct Osk {
     /// reopen until `wants` has a rising edge (false → true). `None` = no suppression.
     dismissed: Option<bool>,
     lost_focus_at: Option<Instant>,
-    /// The key Rects drawn last frame (row, column, Rect). `clear` + `push` every frame — never reallocated.
+    /// The key Rects drawn last frame (row, column, Rect). Cleared and refilled each frame;
+    /// the vector reuses its capacity and grows if more keys are needed.
     key_rects: Vec<(usize, usize, Rect)>,
-    /// The label galley cache (in the current face's key order). No relayout while `labels_key` is unchanged.
+    /// This frame's label galleys, in the current face's key order.
     labels: Vec<Arc<egui::Galley>>,
     /// The galley cache's validity key = (face, text-size bits).
     labels_key: (usize, u32),
@@ -1022,7 +1023,7 @@ fn caret(ctx: &egui::Context, id: egui::Id) -> Option<usize> {
 /// glyph arrives and the atlas grows, those UVs shift wholesale and a cached galley draws the
 /// wrong characters from then on — reproducible straight away on dubeolsik with a Hangul font
 /// loaded. epaint's `GalleyCache` memoises the same input, so the layout cost is not paid twice.
-/// The `Vec` is only cleared and refilled, so its capacity is not reallocated either.
+/// Clearing and refilling the vector reuses its capacity until a larger face needs more slots.
 fn relayout_labels(
     painter: &egui::Painter,
     face: &KeyFace,

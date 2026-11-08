@@ -5,7 +5,7 @@
 //! [`Palette::apply_overrides`](crate::theme::Palette::apply_overrides) and
 //! [`MotionConfig`] feeds [`MotionTokens::from_config`](crate::theme::MotionTokens::from_config).
 //! The rest of the file they came from — the bars, the desktop, access, the OSK, gestures — stays
-//! with the shell, which is the only thing that knows what those mean.
+//! remains in the shell configuration module.
 //!
 //! `fairing` re-exports every type here from `fairing_widgets::config`, so a config written against the
 //! old paths still resolves.
@@ -44,7 +44,8 @@ impl Default for ThemeConfig {
 #[serde(default)]
 #[non_exhaustive]
 pub struct MotionConfig {
-    /// Every tween 0 ms, springs settle instantly.
+    /// Reduced-motion request. Motion-token construction uses zero-duration tweens;
+    /// consumers use the flag to select their reduced-motion behavior.
     pub reduce: bool,
     /// The default spring.
     pub spring: SpringConfig,

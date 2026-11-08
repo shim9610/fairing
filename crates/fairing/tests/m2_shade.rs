@@ -1205,7 +1205,7 @@ fn a_builtin_tile_falls_back_to_its_builtin_settings_screen() -> fairing::Result
 
 /// A7: **a long press on a tile goes where it was attached.**
 ///
-/// Where it goes is the integrator's to decide (the crate knows no settings screen names). Attached or not, the
+/// Where an explicit binding goes is the integrator's to decide. Attached or not, the
 /// fact of the long press goes out as `TileLongPressed`, so anyone wanting to raise a menu takes that.
 ///
 /// It uses the engine's `Gesture::LongPress` rather than egui's `long_touched()` — the latter only stands up when

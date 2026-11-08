@@ -111,7 +111,7 @@ impl Shell {
             }
         }
     }
-    /// **The one way a failed gate asks for an unlock**: the event always, and — when
+    /// Route a failed gate to an unlock request: emit the event, and — when
     /// the shell can prompt — the prompt over the screen. A granted unlock runs `then` through
     /// [`Shell::launch`] again, gate and all.
     pub(super) fn request_unlock(&mut self, gate: Gate, then: Option<LaunchAction>) {
@@ -339,7 +339,7 @@ impl Shell {
     }
     /// Lock: [`LaunchAction::Lock`], or `idle_lock_secs` running out (`idle`).
     ///
-    /// Always reported as [`ShellEvent::LockRequested`]. With a prompt to draw the
+    /// Emits [`ShellEvent::LockRequested`]. With a prompt to draw the
     /// shell carries it out: the session goes back to where it started and the lock screen
     /// comes up. Without one the idle lock still takes the session back — that is the timer's
     /// job — and the control is the integrator's.
@@ -603,9 +603,7 @@ impl Shell {
             self.launch_in(action, app);
         }
     }
-    /// Close the prompt without an answer — Cancel, back, a downgrade, the lock coming up, the
-    /// lock screen's Continue, the integrator vouching for someone. The authenticator is always
-    /// told: a wait ends with an answer or with `cancel`, and a reader stops listening.
+    /// Issue a fresh request identity, quarantining the shell if identities are exhausted.
     pub(super) fn new_auth_request(&mut self) -> Option<crate::access::AuthRequestId> {
         self.auth_request = crate::access::AuthRequestId::issue();
         if self.auth_request.is_none() {
@@ -614,6 +612,7 @@ impl Shell {
         }
         self.auth_request
     }
+    /// Close the prompt without an answer and notify the authenticator, if installed.
     pub(super) fn cancel_prompt(&mut self) {
         self.auth_request = None;
         self.routed_auth = None;

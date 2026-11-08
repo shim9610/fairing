@@ -217,8 +217,8 @@ impl<'a> ProgressRing<'a> {
         self
     }
 
-    /// Separate two rings that would otherwise share their eased value and cache. Only needed
-    /// where two are drawn in the same `Ui` scope.
+    /// Salt the widget ID used for eased value and mesh-cache state. Use a stable salt
+    /// when distinct instances would otherwise reuse an ID or move between UI positions.
     #[must_use]
     pub fn id_salt(mut self, salt: &'a str) -> Self {
         self.salt = salt;
@@ -855,7 +855,8 @@ mod tests {
         );
     }
 
-    /// **A band's vertices all sit on the band**, between the inner and outer radius.
+    /// Check vertices against the supplied band radii plus its anti-aliasing skirt.
+    /// Vertices in the skirt must be transparent.
     #[test]
     fn every_vertex_is_on_the_band() {
         let geom = Geometry {

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the fairing crates are recorded here. The format follows
+Notable changes to the fairing crates are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). From 0.1.0 the crates follow
 [Semantic Versioning](https://semver.org/); until then, any release may break the API.
 
@@ -310,9 +310,9 @@ next to the generated geometry. See [third-party notices](THIRD_PARTY.md).
   split button puts it beside the pane on show, and "Close all". The split control opens the
   same cards as a picker, offering only what fits; where nothing can, it says why. The
   `nav.recents` and `workspace.split` gates are enforced. `[motion.overview]`.
-- The string table: every word the shell draws — the shade, the lock screen and the unlock
-  prompt, the recent screens, the settings screens — is a key looked up in the active
-  language, and Korean is built in. `[shell] locale` is the language to start in (`ko-KR`
+- The string table looks up built-in UI labels for the shade, authentication
+  prompts, recent screens and settings in the active language; Korean is built in.
+  Application/backend values retain their supplied text. `[shell] locale` is the language to start in (`ko-KR`
   finds `ko`); the `ui.locale` setting, which `settings.locale` writes, switches it from the
   next frame. `ShellBuilder::translations` adds a language or changes a built-in entry, and
   your screens look their own words up through `cx.strings`; screen titles and level labels
@@ -365,8 +365,8 @@ next to the generated geometry. See [third-party notices](THIRD_PARTY.md).
   `ShellBuilder::widget_painters` or, outside the shell, in `WidgetCx::painters`. A widget whose
   kind has one is drawn by it, told its look — its rects, what it says, its state and how far
   each animation has got — and keeps its press, its drag, its value, its motion, focus and keys.
-  The shell lends them to every widget it draws, its own screens, prompt and recent screens
-  included. Every kind has one: `BigButton` (`ButtonLook`, with a long press's progress),
+  The shell supplies them through its widget contexts, including built-in screens,
+  prompts and recent screens. Supported kinds include: `BigButton` (`ButtonLook`, with a long press's progress),
   `IconButton`, `Switch`, `Checkbox`, `Radio` and a `RadioGroup`'s marks, `SegmentedControl`,
   `Chip`, `TouchSlider`, `Stepper`, `NumberField`, `TextField`, `WheelPicker`, `Dropdown` (the
   control, and while it is open the panel and each option), `PinPad` (the dot row and each key),
@@ -387,9 +387,9 @@ next to the generated geometry. See [third-party notices](THIRD_PARTY.md).
   the bottom (`HandleDirection::on(edge)`). Let go past `reach_mm`, it is that way's short
   gesture; held still there for `long_after`, it is the long one, which runs at once.
   `gesture(HandleGesture, action)` binds each of the six to a `LaunchAction`, with
-  `HandleAction::gate` in front where it needs one. A strip takes every press that begins in
-  it, as One Hand Operation+ handles do: nothing under it sees one, the shell's edge gestures
-  included, and just inward of it all is as before. The side strips end above the on-screen
+  `HandleAction::gate` in front where it needs one. An active strip reserves presses that begin in its current region for the
+  handle gesture. This controls shell gesture routing and egui hit testing; raw
+  input remains available through egui. The side strips end above the on-screen
   keyboard, even while it slides in or out, and a bottom strip stands aside for it; none is
   there over the shade, the unlock prompt, the recent screens or a screen with `edge_guard`.
   `ShellEvent::Gesture { handle, gesture }` reports each one. An arrow ahead of the finger says
@@ -397,7 +397,7 @@ next to the generated geometry. See [third-party notices](THIRD_PARTY.md).
   `remove_gesture_handle` and `gesture_handles` go with them.
 - Gesture regions of your own: `Shell::add_gesture_region(id, region)` takes a `GestureRegion`,
   a trait that places a stretch of the glass each frame (`place`, or `None` to stand aside),
-  hears every touch that begins in it from the press to the release (`touch`, with a
+  receives pointer phases for presses that begin in it (`touch`, with a
   `RegionTouch` of the phase, the movement since the last frame, the velocity, the time held and
   whether it went past the slop) and draws it (`paint`). Part of a screen used as a trackpad is
   one; the gesture handles are the shell's own. Nothing under a region sees its touches and no
@@ -406,8 +406,8 @@ next to the generated geometry. See [third-party notices](THIRD_PARTY.md).
   with `RegionCx::app_mut`. The later of two overlapping regions, or of a region and a handle,
   takes the press. Up to eight (`MAX_GESTURE_REGIONS`); `remove_gesture_region` and
   `gesture_regions` go with them. The engine reports a region's touch as `Gesture::Region`.
-- Toasts stand on the on-screen keyboard while it is up, rather than over its keys. On a panel
-  too short for that they come down over its top rows, never under the status bar.
+- Toast placement accounts for keyboard and status-bar bounds. On a short panel,
+  toast content can overlap the upper keyboard rows.
 - The on-screen keyboard's rows stop at one and a half fingers (`metrics.osk_max_key`, at
   least 72 du), so a tall portrait panel gets keys sized for a hand rather than a keyboard a
   third of the glass high. `[osk] min_key_px` still wins where the two cross, and `None` in a
@@ -447,7 +447,7 @@ next to the generated geometry. See [third-party notices](THIRD_PARTY.md).
 - **Default size policy.** `ScalePolicy::default()` uses a 9 mm finger parameter
   (`ScalePolicy::gloved()` is 13 mm) and text read at 360 mm, a 3.1 mm body em. A row
   (`metrics.row_height`, `widget_height`) is one touch target with its padding inside, rather
-  than three body ems plus a margin, and grows only when its own text needs more. A settings row
+  than three body ems plus a margin, with additional space for content as needed. A settings row
   uses the configured size policy; check physical size with panel metadata and host scale.
 - 23 touch widgets, from buttons, switches and sliders to a dropdown, a wheel picker, a
   progress ring, a PIN pad and a pattern pad. `ProgressRing::repaint_every` keeps a ring that

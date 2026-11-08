@@ -12,9 +12,8 @@ use std::fmt;
 // whole rather than variant by variant.
 #[non_exhaustive]
 pub enum Error {
-    /// Parsing or validating the configuration (`fairing.toml`) failed. Access-control config
-    /// errors land here too ("an unassigned gate") — they are never opened up
-    /// quietly.
+    /// Parsing or validating configuration failed, including access-declaration errors
+    /// reported by the shell.
     Config(String),
     /// Reading a file failed (loading the config). A file that is simply **absent** is not an error; it means the defaults.
     Io {

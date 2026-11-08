@@ -301,7 +301,7 @@ pub struct NavBar {
     /// The item Rects drawn last frame (in `items` order). Exposed as [`NavBar::item_rect`] so
     /// that tests need not duplicate the layout arithmetic.
     rects: Vec<Rect>,
-    /// The glyph fallback galley cache (in `items` order).
+    /// Glyph fallback size and colour keys (in `items` order).
     glyphs: Vec<GlyphCache>,
     /// This frame's cells, laid out the built-in way and then by the integrator's layout.
     /// A buffer whose values are overwritten each frame.
@@ -310,11 +310,8 @@ pub struct NavBar {
     live: Vec<bool>,
 }
 
-/// The font fallback galley cache for items with no built-in icon (`split` · `Custom`).
-/// `egui::Painter::text` **allocates a `String` on every call** (0.36.1 `painter.rs`:
-/// `layout_no_wrap(text.to_string())`), so even an idle frame allocates once per item — while the
-/// size and the colour are unchanged, the previous galley is reused (the same pattern as
-/// the status bar's `TextCache`).
+/// Size and colour key for font fallback glyphs (`split` · `Custom`).
+/// Drawing submits the glyph text to egui layout each frame; this record does not retain a galley.
 #[derive(Debug, Clone, Default)]
 struct GlyphCache {
     /// (the text size ×4 rounded, the colour's RGBA).
@@ -323,7 +320,7 @@ struct GlyphCache {
 
 impl PartialEq for GlyphCache {
     fn eq(&self, other: &Self) -> bool {
-        // The galleys are only a cache, so they are left out of the equality.
+        // Compare the stored rendering keys.
         self.key == other.key
     }
 }

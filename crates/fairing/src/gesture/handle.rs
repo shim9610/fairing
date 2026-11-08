@@ -5,10 +5,10 @@
 //! A handle sits on the left, the right or the bottom edge, a few millimetres thick,
 //! over the stretch of the edge it is given: the glass's outermost millimetres there. The bottom
 //! edge is the nav bar's or the handles', not both, so a handle goes there only with
-//! the nav bar off. Every press that begins in the strip is the
-//! handle's, as One Hand Operation+ has it: nothing under the strip sees one — not a
-//! screen's list or button, not a desktop page — and the shell's own edge gesture does not start
-//! there. A stroke that runs in from the edge is the handle's swipe; a tap, or a stroke along the
+//! the nav bar off. A primary-pointer press beginning in a placed strip belongs to the
+//! handle through the region routing described in [`GestureRegion`], ahead of underlying screen
+//! widgets or desktop pages. The shell's own edge gesture does not start there. A stroke running
+//! in from the edge is the handle's swipe; a tap, or a stroke along the
 //! edge, does nothing. Just inward of the strip all is as it would have been: the back gesture
 //! starts there on a side handle's edge.
 //!

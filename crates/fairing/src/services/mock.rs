@@ -620,8 +620,7 @@ impl WifiBackend for MockWifi {
     }
 
     fn connect(&mut self, ssid: &str, _psk: Option<&str>, hidden: bool) -> ServiceResult {
-        // A backend drops the PSK the moment it is handed over and never logs it — this simulator
-        // does not store it either.
+        // This simulator neither stores nor logs the borrowed PSK.
         if !self.latest.enabled {
             return Err(ServiceError::new(super::ErrorKind::Denied, "wifi off"));
         }

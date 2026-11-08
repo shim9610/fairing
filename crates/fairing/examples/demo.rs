@@ -966,9 +966,7 @@ fn add_screens(shell: &mut fairing::Shell) {
                     "The desktop icon for this screen is neither an SVG nor a glyph \
                      - it is a draw callback registered with `register_icon_painter`.",
                 );
-                // `Outlined` — the box holds a drawing and nothing else, so the drawing should be
-                // the only thing in it with weight. A filled card would put a grey slab behind
-                // three grey rings.
+                // Use an outlined group around the icon samples.
                 layout::section_card_with(
                     ui,
                     cx,
@@ -2239,8 +2237,7 @@ const PLAN: &[Act] = &[
     Act::Settle,
     Act::Wait(4),
     Act::Shot("25b-widgets-choice.png"),
-    // The Expandable card and the accordion sit at the end of the page: two dead-stop scrolls
-    // reach it, and the page's end is where it always lands.
+    // Scroll to the page end to reach the Expandable card and accordion.
     Act::Press(Spot::Page(0.5, 0.87)),
     Act::DragTo {
         to: Spot::Page(0.5, 0.02),

@@ -90,7 +90,7 @@ def main() -> None:
         append_images=quantised[1:],
         duration=durations,
         loop=0,
-        # Keep each frame in place for the next: Pillow stores only what changed.
+        # Retain the preceding frame for Pillow's inter-frame encoding.
         disposal=1,
         optimize=False,
     )

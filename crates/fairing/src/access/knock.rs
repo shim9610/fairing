@@ -80,7 +80,7 @@ pub enum KnockStep {
     Advanced,
     /// It went back to the beginning (wrong input, or a timeout).
     Reset,
-    /// **Complete.** The shell checks the gate and runs the action.
+    /// **Complete.** The shell checks the gate and runs the action if admitted.
     Opened,
 }
 

@@ -81,9 +81,8 @@ use std::time::Instant;
 /// How many slots have a sizing pass run through them on the first frame (a stack depth of up to 4 is free).
 const WARM_SLOTS: u32 = 4;
 
-/// The layer slots a pane may borrow: pane `i` borrows from `i × PANE_SLOTS` up, so the two panes'
-/// screens never share a layer. A stack deeper than this in one pane would — and it draws only its
-/// top two anyway.
+/// Each pane's layer range starts at `i × PANE_SLOTS`. Slots are distinct between panes
+/// while stack depths stay below this range width; deeper stacks can overlap the other pane's range.
 const PANE_SLOTS: u32 = 32;
 
 /// The divider's `Area` — the band, its grip, the focus line, and the handle a finger takes.

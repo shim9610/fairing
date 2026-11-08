@@ -248,7 +248,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
     Ok(shell)
 }
 
-/// The sheet: two columns, every control once.
+/// The sheet: a two-column collection of control samples.
 fn sheet(ui: &mut egui::Ui, cx: &mut Cx<'_>, f: &mut Fixed) {
     layout::page(ui, cx, "sheet", |ui, cx| {
         // `columns` and not `horizontal` + `allocate_ui`: the latter leaves each child in the
@@ -369,9 +369,8 @@ fn additions(ui: &mut egui::Ui, cx: &mut Cx<'_>, f: &mut Fixed) {
     });
 }
 
-/// The closed lists, which are the only element here that draws over its neighbours: every
-/// closed form, and a disabled one. What they open into is the demo's to show — a sheet is a
-/// still.
+/// Closed list samples, including a disabled dropdown.
+/// The demo tour shows the open forms; this sheet captures their closed appearance.
 fn lists(ui: &mut egui::Ui, cx: &mut Cx<'_>, f: &mut Fixed) {
     layout::section(ui, cx, "Closed lists");
     layout::group_with(ui, cx, layout::Deco::new().pad_content(), |ui, cx| {
@@ -544,7 +543,7 @@ fn editors(ui: &mut egui::Ui, cx: &mut Cx<'_>, f: &mut Fixed) {
     report_meters(ui, cx);
 }
 
-/// The bars: every state and both of the new looks, so one shot compares them.
+/// Progress-bar samples: determinate, indeterminate, disabled, stop-marked, stepped and stale.
 fn report_bars(ui: &mut egui::Ui, cx: &mut Cx<'_>) {
     layout::section(ui, cx, "Report");
     layout::group_with(ui, cx, layout::Deco::new().pad_x(0.0), |ui, cx| {

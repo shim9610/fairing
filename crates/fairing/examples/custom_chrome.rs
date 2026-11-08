@@ -337,7 +337,7 @@ fn grid_wallpaper(theme: &Theme) -> Wallpaper {
 // Slotting **something the crate knows nothing of** into the quick settings
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// A hopper's name · config key · colour · initial level (%). A concept only this device has, and the crate knows nothing of it.
+/// Example hopper data: name · config key · colour · initial level (%).
 const HOPPERS: [(&str, &str, ColorRole, i64); 3] = [
     ("Resin A", "hopper.a", ColorRole::Primary, 72),
     ("Resin B", "hopper.b", ColorRole::Warning, 41),
@@ -381,8 +381,8 @@ fn add_hopper_tile(shell: &mut fairing::Shell) {
     }
 }
 
-/// Something that fits no standard shape **takes a whole row** — here, an axis jog pad. The crate
-/// gives only the tile's shape and the open/close transition, and does not touch the inside of the row.
+/// An axis jog pad drawn in a custom tile panel. The shell supplies the panel and its
+/// open/close transition; the callback uses the supplied `Ui` and `Cx` to draw the controls.
 fn add_jog_tile(shell: &mut fairing::Shell) {
     // The tile body is `FnMut`, so the pad's position is a plain `mut` capture.
     let mut at = egui::vec2(0.0, 0.0);

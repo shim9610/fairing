@@ -120,10 +120,8 @@ pub enum AuthMethod {
 }
 
 impl AuthMethod {
-    /// What the prompt cannot draw as asked, a line each. It draws the nearest it can, which is
-    /// never what was meant — a 20-digit `len` submits on the keypad's 16th digit, so every try is
-    /// wrong until the lockout — and nothing on the screen says why. The shell logs these when
-    /// the prompt opens.
+    /// Unsupported method parameters, one diagnostic per line. For example, a 20-digit `len`
+    /// exceeds the keypad's 16-digit capacity. The shell logs these when the prompt opens.
     pub(crate) fn unhonoured(&self) -> Vec<String> {
         let mut lines = Vec::new();
         match self {
@@ -214,8 +212,8 @@ pub enum AuthOutcome {
     Granted(Subject),
     /// Issuer-controlled multi-permission session; requires `access.session_tokens = true`.
     Session(super::SessionToken),
-    /// No. The prompt shows `message` **as it is** — whether to say that a user does not exist is
-    /// the authenticator's call, so the shell never words a refusal itself.
+    /// Denied. The prompt resolves the supplied `message` through the string table. The
+    /// authenticator chooses whether that message reveals, for example, that a user does not exist.
     Denied {
         /// The line to show.
         message: LabelKey,
@@ -656,9 +654,8 @@ impl PinTable {
             }
             self.locked_until = None;
         }
-        // Every entry is compared, so the time taken does not depend on which level matched. The
-        // table offers a keypad and a pattern only; anything else can only be an integrator
-        // calling `submit` directly, and it is still an attempt.
+        // Compare the entries without returning on the first match. The table offers a keypad
+        // and a pattern; a credential submitted directly through the API is also an attempt.
         let (granted, wrong) = match &credential {
             Credential::Pin(pin) => (
                 self.pins.iter().fold(None, |hit, (level, expected)| {

@@ -147,7 +147,7 @@ pub mod keys {
     /// Silent: a new notification asks the audio backend for no cue (`Cue::Notify`). The banner
     /// still shows.
     pub const UI_SILENT: &str = "ui.silent";
-    /// Airplane mode = every radio off (`tile.airplane`).
+    /// Airplane mode requests Wi-Fi and Bluetooth off (`tile.airplane`).
     pub const RADIO_AIRPLANE: &str = "radio.airplane";
     /// Rotation lock (`tile.rotation_lock`, where the backend supports it).
     pub const DISPLAY_ROTATION_LOCK: &str = "display.rotation_lock";

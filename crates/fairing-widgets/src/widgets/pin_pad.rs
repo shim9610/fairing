@@ -90,8 +90,8 @@ pub struct PinPadResponse {
     pub response: Response,
     /// A digit went in or came out.
     pub changed: bool,
-    /// The PIN is complete — the last digit of a known length, or the OK key — and is the
-    /// caller's to take.
+    /// Submission was requested by the expected final digit or OK key. The caller
+    /// decides whether the supplied PIN is complete and valid.
     pub submitted: bool,
     /// Where each key was drawn, in key order.
     keys: [(PadKey, Rect); 12],

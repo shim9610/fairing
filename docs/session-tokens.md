@@ -52,8 +52,11 @@ new pair. This bounds each controller's authority to its issued catalog.
 Use the shell's monotonic `now` when issuing and updating sessions. Scheduled
 session and temporary-grant deadlines participate in Fairing's next-wake selection.
 The controller wakes the UI after publication or revocation. Issuance and updates
-allocate on the issuer side; token reads allocate nothing and do not wait or retry.
-Their work is bounded by the issued catalog, not by a universal execution-time bound.
+allocate on the issuer side. `snapshot(now)` and direct gate-name checks borrow
+the published state; they do not allocate or retry an overlapping publication.
+Typed convenience checks also invoke the application's `Permission::gate` mapping,
+whose allocation behavior belongs to that implementation. Lookup work depends on
+the issued catalog and gate-name lengths, without a universal execution-time bound.
 
 In `routing` mode, or without a built-in prompt method, token mode emits
 `AccessEvent::SessionRequested { request, gate }`. The host authenticates and calls

@@ -260,10 +260,10 @@ struct Held {
     progress: f32,
 }
 
-/// The long press the arc tracks: linear `0 → 1` while held, back on the `press_release` tween
-/// on a release before the end — the same reverse as `Button`'s ring, from the same token, so
-/// the two agree and both go instant under `reduce`. Returns the progress and whether the hold
-/// is complete.
+/// Track hold progress linearly over the supplied duration while pressed.
+/// Release before completion uses `motion.press_release`; reduced-motion token
+/// construction can make that reverse instant without changing the hold duration.
+/// Return progress and whether the hold has reached completion.
 fn hold(cx: &mut Cx<'_>, id: egui::Id, pressed: bool, duration: Duration) -> (f32, bool) {
     let tween = if pressed {
         Tween {

@@ -54,7 +54,7 @@ Every section is `#[serde(default)]`, so an empty `fairing.toml` is valid.
 | `locale` | `String` | `"en"` | The language to start in: a tag such as `"en"`, `"ko"` or `"ko-KR"` (a region finds its language's table) | None (any string). One with no table **warns at start-up** and the text stays English — not an error | `crate::i18n::Strings::new`. English and Korean are built in; add a language, or change a built-in entry, with `ShellBuilder::translations` ([04 §9](04-customization.md#9-text-and-translations)). The `ui.locale` setting (the `settings.locale` screen) switches it while the shell runs, from the next frame |
 | `theme` | `String` | `"dark"` | `"dark"` or `"light"` | Anything else **warns and falls back to dark** — not an error | `ShellConfig::build_theme` |
 | `idle_lock_secs` | `u64` | `0` | **Deprecated** — the key is `[access] idle_lock_secs` (§12) | None | Read in its place, with a warning at start-up, where `[access] idle_lock_secs` is 0. Where both are set, `[access]` wins and this one is warned about |
-| `repaint` | `RepaintMode` | `"reactive"` | `"reactive"` or `"continuous"` (debug: redraw every frame) | A **string enum**, so anything else is `Error::Config` — a parse failure, not a fallback | `schedule_repaint` inside `Shell::frame` — [08 §3](08-troubleshooting.md#3-checking-idle-repaint-behavior) |
+| `repaint` | `RepaintMode` | `"reactive"` | `"reactive"` or `"continuous"` (debug: request continuous updates; the host determines cadence) | A **string enum**, so anything else is `Error::Config` — a parse failure, not a fallback | `schedule_repaint` inside `Shell::frame` — [08 §3](08-troubleshooting.md#3-checking-idle-repaint-behavior) |
 | `cursor` | `CursorPolicy` | `"auto"` | `"auto"`, `"hidden"` or `"visible"`. Auto hides it on touch and shows it for a mouse | String enum; anything else is `Error::Config` | |
 
 Injecting `.theme(Theme)` in code makes `theme` irrelevant
@@ -158,7 +158,7 @@ treatment in [09 Branding](09-branding.md).
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `tier` | `AbyssTier` | `"lite"` | Quality tier: `"flat"`, `"lite"`, `"full"`. Higher tiers cost vertices; the shell drops a tier itself if the bake blows the budget |
-| `seed` | `u32` | fixed | Seeds the procedural layout, so a given seed always draws the same scene |
+| `seed` | `u32` | fixed | Seeds the procedural layout, so the same seed and other rendering inputs reproduce the procedural layout |
 | `rays` · `bubbles` · `fish` · `mantas` | `u8` | per tier | How many of each element |
 | `light_x` | `f32` | — | Where the light comes from, across the width |
 | `veil_top` · `veil_field` · `veil_bottom` | `f32` | — | Depth-veil density at the top, in the field, and at the bottom |
@@ -183,7 +183,7 @@ treatment in [09 Branding](09-branding.md).
 | `peek_ms` | `u64` | `2000` | How long a peeked status bar stays | None |
 | `two_step` | `bool` | `false` | Open in two steps: the first pull stops at the tiles, a second carries on to the notifications. Resting at the stop, the shade lies over the live page and a press outside closes it | Ignored, with a warning, under `layout = "split"` |
 | `reveal` | `String` | `"curtain"` | How the shade comes into view. `"curtain"` draws the panel down from the top edge. `"card"` is a floating card already at its final size and place, which the pull fades and slides in; the page behind is not dimmed | An unknown name **warns and draws the curtain** |
-| `card_width_ratio` | `f32` | `0.46` | A card's width as a share of the screen's. Never narrower than the tile row needs; where it would cover more than three quarters of the screen, it takes the full width less its insets | Outside `(0.0, 1.0]` is an error |
+| `card_width_ratio` | `f32` | `0.46` | A card's width as a share of the screen's. Sized using the tile row requirements and available screen width; where it would cover more than three quarters of the screen, it takes the full width less its insets | Outside `(0.0, 1.0]` is an error |
 | `card_anchor` | `String` | `"press"` | Which side of a wide screen a card rests on: `"press"` (the side the pull started from, the middle when opened without a finger), `"left"`, `"right"` or `"center"` | An unknown name **warns and behaves as `"press"`** |
 | `split_ratio` | `f32` | `0.5` | Where a split shade's two panels divide the top edge, as a share of the width from the left. One UI's phone layout is `0.7` | Outside `(0.0, 1.0)` is an error |
 | `card_glass` | `f32` | `0.7` | How opaque a card is over its frosted backdrop: `0` is clear glass, `1` turns the glass off. Where the runner sends no screenshot back, the card stays solid. With a `shade_panel_painter` there is no frost: the painter draws the ground ([04 §10.4](04-customization.md#104-the-shades-tiles-and-panel)) | Outside `0.0..=1.0` is an error |
@@ -202,7 +202,7 @@ remove one. See [03 §4.4a](03-chrome.md#44a-removing-reordering-adding).
 | `max_visible` | `u8` | `2` | Toasts on screen at once | `0` is an error |
 | `max_items` | `u16` | `100` | Hard retention cap including persistent entries; dismissible items may be replaced, otherwise new overflow is refused; zero selects 100 | None |
 | `toast_ms` | `u64` | `3000` | Default toast duration | None |
-| `dismiss_button` | `bool` | `true` | Draw the `×` on a shade notification row. Turn it off and the only ways to clear are **a left swipe and "Clear all"** | None |
+| `dismiss_button` | `bool` | `true` | Draw the `×` on a shade notification row. Turn it off to leave **left swipe and "Clear all"** as the built-in dismissal controls; programmatic dismissal remains available | None |
 
 Always parsed regardless of features. There is no key that disables notifications
 — you simply do not post any ([04 §6.1](04-customization.md#61-what-can-be-turned-off-and-how)).
@@ -231,8 +231,8 @@ outside the keyboard** all end the composition.
 
 > `ImeEvent::Preedit` is deliberately not used. It only reaches the widget that
 > holds focus that frame, and one stray empty `Preedit("")` from the integration
-> layer wipes the composing string — which is why composing text was invisible on
-> real hardware. The cost is that there is no composition underline.
+> layer can clear that string. The keyboard instead sends committed text; it does not
+> provide a composition underline.
 
 > Load a font with Hangul glyphs or the key labels render as tofu —
 > [08 §6](08-troubleshooting.md#6-korean-renders-as-tofu). The font and the input
@@ -268,7 +268,7 @@ validation only.
 
 | Key | Type | Default | Meaning | Validation |
 |---|---|---|---|---|
-| `reduce` | `bool` | `false` | `true` makes every tween 0 ms and every spring settle instantly | None |
+| `reduce` | `bool` | `false` | `true` zeroes config-derived tween durations and settles built-in springs without intermediate motion | None |
 | `spring` | `SpringConfig` (§10.1) | `{k=400, c=40}` | The base spring | §10.1 |
 | `snap_ratio` | `f32` | `0.33` | Release distance threshold, as a fraction | Outside `[0.0, 1.0]` is an error |
 | `fling_px_s` | `f32` | `800.0` | Release velocity threshold | Negative is an error |
@@ -523,7 +523,7 @@ allow_continue = true
 
 ## 13. A complete example
 
-Every section in one `fairing.toml`. Save it as-is and `ShellConfig::load` parses
+A self-contained `fairing.toml` with example section values. Save it as-is and `ShellConfig::load` parses
 and validates it.
 
 ```toml

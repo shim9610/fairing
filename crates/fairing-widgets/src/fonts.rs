@@ -57,13 +57,9 @@ pub enum FontFamilies {
     /// Both — the default. A Korean fallback is usually needed in both.
     #[default]
     Both,
-    /// The **bold** face, [`STRONG_FAMILY`].
-    ///
-    /// Screen titles and list-row titles are drawn in it (`Theme::strong`). The family always
-    /// exists: with nothing registered here it holds the same faces as `Proportional`, so a shell
-    /// with no bold renders exactly as it did and one with a bold gains a weight axis. Register
-    /// with [`FontPriority::First`] — a bold added as a fallback would only be reached by
-    /// characters the regular face is missing, which is the opposite of the point.
+    /// Strong family used by `Theme::strong`. `FontSet::definitions` seeds it from
+    /// proportional faces before registered sources are applied. Use
+    /// [`FontPriority::First`] to prioritize a supplied bold face.
     Strong,
     /// Display family for screen titles.
     ///
@@ -73,8 +69,7 @@ pub enum FontFamilies {
     Display,
 }
 
-/// The egui family name the bold face is bound to. It is always bound; see
-/// [`FontFamilies::Strong`].
+/// Name of the strong family configured by [`FontSet::install`].
 pub const STRONG_FAMILY: &str = "fairing-strong";
 
 /// **Whether this crate's named font families are live on `ctx` yet.**
@@ -97,8 +92,7 @@ pub fn strong_family() -> egui::FontFamily {
     egui::FontFamily::Name(STRONG_FAMILY.into())
 }
 
-/// The egui family name the display face is bound to. It is always bound; see
-/// [`FontFamilies::Display`].
+/// Name of the display family configured by [`FontSet::install`].
 pub const DISPLAY_FAMILY: &str = "fairing-display";
 
 /// The [`egui::FontFamily`] for display text.
@@ -396,11 +390,9 @@ fn looks_like_font(bytes: &[u8]) -> bool {
     )
 }
 
-/// **How many faces the file holds**, or `None` when it is not a font file at all.
-///
-/// A collection (`ttcf`) states the count as a big-endian `u32` at offset 8, right after the tag and
-/// the version. Every other signature is a single face. This is header arithmetic, not parsing —
-/// see [`FontSet::rejected`] on what that can and cannot promise.
+/// Face count from a recognized font header, or `None` for an unrecognized or
+/// incomplete header. `ttcf` supplies a big-endian count at byte offset eight;
+/// other accepted signatures report one. This does not parse or validate glyph data.
 fn face_count(bytes: &[u8]) -> Option<u32> {
     match bytes.first_chunk::<4>()? {
         b"ttcf" => bytes
@@ -558,10 +550,8 @@ fn has_font_extension(path: &Path) -> bool {
 mod tests {
     use super::*;
 
-    /// **Every named family is bound, even when nothing is registered.**
-    ///
-    /// Missing named families draw missing-glyph boxes. Both slots are seeded with usable
-    /// faces, and a later slot must preserve that guarantee too.
+    /// Check that the strong and display families in default prepared definitions
+    /// are bound to nonempty font-name lists.
     #[test]
     fn every_named_family_is_bound_even_with_nothing_registered() {
         let defs = FontSet::default().definitions();
@@ -716,8 +706,8 @@ mod reject_tests {
         assert_eq!(face_count(b""), None, "and an empty file is not one either");
     }
 
-    /// **The panic this exists to prevent**: epaint answers a font it cannot parse with
-    /// `panic!`, so a source that cannot be read must never reach it.
+    /// Check rejection of the supplied invalid-signature and collection-index fixtures
+    /// before they are included in font definitions.
     #[test]
     fn a_source_that_cannot_be_read_is_rejected_rather_than_handed_over() {
         let junk = FontSource::from_bytes("junk", b"this is not a font".to_vec());

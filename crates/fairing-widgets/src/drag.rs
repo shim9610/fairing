@@ -2,7 +2,7 @@
 //! [`kept`] for a region.
 //!
 //! A control that follows the finger — a slider, a switch, a wheel, a text field selecting its
-//! text — says so every frame the finger is down on it. A gesture the shell reads straight off
+//! text — renews a claim while the finger is down. A gesture the shell reads straight off
 //! the pointer, which takes part in no hit test, asks first and leaves such a drag alone: the
 //! rail's fold on a swipe across the page (`fairing::layout::Rail`). Anything else
 //! under a finger — a button, a tile, a page scrolling under it — has no meaning of its own for
@@ -19,9 +19,8 @@
 //! A thing that reads the pointer itself and has no response to hand over — a canvas, a chart
 //! being scrubbed, a pad an integrator drew on their own screen — keeps every drag that begins in
 //! its rect with [`keep`], said every frame it is drawn; [`kept`] answers for a press point the
-//! way [`claimed`] answers for a control. Neither takes anything away from the control
-//! or the region: its own presses, drags, pinches and scrolls arrive as they always did. A claim
-//! is a note to the gestures around it, not a shield over it.
+//! way [`claimed`] answers for a control. These helpers record markers; they do not
+//! consume egui input events. Cooperating shell gestures consult the markers.
 //!
 //! And [`press_point`] says where a press went down, for anything that reads the press itself: a
 //! fast finger is already somewhere else by the frame that sees it.
@@ -55,12 +54,9 @@ pub fn claimed(ctx: &egui::Context) -> bool {
 /// Where the kept regions are: the pass each was said in, and its rect.
 const KEPT: &str = "fairing.drag.kept";
 
-/// **Every drag that begins in `rect` is yours** — said every frame the region is drawn, by a
-/// thing that reads the pointer itself and has no response to hand to [`claim_if_held`].
-///
-/// It takes nothing from the region. Every press, drag, pinch and scroll reaches it exactly as
-/// before; this is a note to whatever reads the raw pointer around it — the rail's page swipe —
-/// to leave a drag that began here alone, and it is not a shield.
+/// Record `rect` as a kept region for this pass. Call while the region is drawn;
+/// cooperating gestures use [`kept`] to leave drags originating there to the region.
+/// The helper records geometry and does not consume input events.
 pub fn keep(ctx: &egui::Context, rect: egui::Rect) {
     let pass = ctx.cumulative_pass_nr();
     ctx.data_mut(|d| {
@@ -82,17 +78,10 @@ pub fn kept(ctx: &egui::Context, origin: egui::Pos2) -> bool {
         })
 }
 
-/// **Where this frame's press went down** — the point a gesture or a "pressed outside" check
-/// starts from, read off the press itself rather than off wherever the pointer is now.
-///
-/// egui's `interact_pos` is the position of the *last* pointer event of the pass. On a slow frame,
-/// or a quick flick on a touch digitizer, the finger comes down and moves on before the frame that
-/// sees it runs, and the pass holds both: `interact_pos` is already the moved point, and a press
-/// read off it lands wherever the finger got to. A pull begun on the top edge then reads as a press
-/// below the edge zone, and is no pull at all (one capture run in seven lost its first
-/// pull to this). So this is the pass's last press event, else `press_origin` — where the press
-/// still held began. The events come first because a press released within the same pass leaves
-/// `press_origin` unset.
+/// Return the last primary press position in this pass, or egui's held press origin.
+/// A pass may contain a press and subsequent moves, so its last interaction
+/// position can differ from the press position. Events are checked first because
+/// a same-pass release can clear egui's held press origin.
 #[must_use]
 pub fn press_point(input: &egui::InputState) -> Option<egui::Pos2> {
     input

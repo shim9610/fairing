@@ -39,7 +39,7 @@ compare generated results for consistency before selecting them.
 | Finish | Photographic studio product work. No illustration or 3D-render feel |
 | Never | **No text, logos, watermarks, people or hands.** Nothing cropped by the frame. No strong colour backgrounds |
 
-Always append to the prompt:
+Append to the prompt:
 
 ```
 photorealistic studio product photography, single soft key light from upper left 45 degrees,
@@ -81,7 +81,7 @@ horizontal 16:9 composition
 ```
 
 **3 · `logo-wordmark.png` — the wordmark**
-> The only image with real lettering in it. The shop is called `페어링 커피` (Fairing Coffee);
+> The wordmark contains the shop name. The shop is called `페어링 커피` (Fairing Coffee);
 > change it and the example's strings change with it. Only the Korean screen (`--lang=ko`)
 > shows it: the English screen sets "Fairing Coffee" as text in the display face, in the same
 > cream.

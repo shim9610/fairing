@@ -6,13 +6,14 @@
 //! [`crate::LaunchAction`] — a `Toggle(key)`'s gate is the key name, so it is checked twice
 //! (the render filter is presentation; the shell enforces).
 //!
-//! **The state-reading rules** (applied by [`super::Overlay`] every frame, with no allocation):
-//! for keys with a backend snapshot (`wifi.enabled`, `bluetooth.enabled`,
-//! `display.brightness`) the backend is the truth; everything else is the `SettingsView` value
-//! (`audio.volume` is an in-memory value in M2, defaulting to 0.5). `display.brightness` is
-//! [`TileState::Unavailable`] when the backend returns `None`, and `display.rotation_lock` is
-//! `Unavailable` when [`rotation_lock_available`] is false. `Action` draws as `Off`, and
-//! `Status` draws dimmed as `Unavailable`.
+//! **State-reading rules** (applied by [`super::Overlay`] during its state refresh):
+//! Wi-Fi, Bluetooth and brightness read their backends; audio volume does so when the backend
+//! reports volume support. The dark-theme toggle follows the currently drawn theme. Other
+//! toggles and sliders read `SettingsView`, with absent slider values defaulting to 0.5.
+//! Brightness is [`TileState::Unavailable`] when its backend returns `None`; rotation lock is
+//! unavailable when [`rotation_lock_available`] is false. `lit_by` can supply the displayed state
+//! for actions, panels, gauges and status tiles. Without it, actions default to `Off`, status tiles
+//! to `Unavailable`, and panels/gauges to `Off`.
 //!
 //! **A Slider tile** opens an expanded row (a track and a thumb) under the tile row on tap, and
 //! the value follows the finger 1:1 — the drawing is in [`super::panel`] and the expanded state

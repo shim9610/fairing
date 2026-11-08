@@ -195,7 +195,7 @@ impl AbyssParams {
     }
 }
 
-/// The bake cache's key. **Every item in it changes the baked result.**
+/// Inputs tracked by the bake cache; a changed key requests a new bake.
 #[derive(Clone, Copy, PartialEq)]
 struct BakeKey {
     /// The rect quantised to a 4 device px grid (the origin plus the size).
@@ -1013,7 +1013,7 @@ mod tests {
         assert_eq!(meshes, 1, "the background is a single mesh");
     }
 
-    /// A still desktop never bakes again. With the colours and the size unchanged, the cache hits.
+    /// Repeated draws with the same bake key reuse the retained cache entry.
     #[test]
     fn a_still_desktop_never_rebakes() {
         let ctx = egui::Context::default();

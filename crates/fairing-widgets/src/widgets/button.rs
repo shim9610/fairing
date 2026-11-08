@@ -1,6 +1,6 @@
 //! `BigButton` is a text button with an optional icon and long-press interaction.
 //!
-//! Button kinds select filled, outlined or text-only styling from theme roles.
+//! Button kinds select ordinary, primary or destructive styling from theme roles.
 //! Press feedback changes the painted shape without moving the allocated rectangle.
 //! Long-press feedback is painted around the button; focus is painted outside it.
 //! The caller supplies the label, enabled state and action handling.
@@ -16,11 +16,9 @@ use egui::{Color32, CornerRadius, Rect, Response, Sense, Stroke, StrokeKind, Vec
 use std::sync::Arc;
 use std::time::Duration;
 
-// Every length here is `theme.metrics` or `theme.control`, and every time is `theme.motion`:
-// the long press's completion pop runs on the `press` tween and the cancel reverse on
-// `press_release`, so both follow `[motion.press]` and go instant under `reduce`. They were
-// literals once (120 ms and 80 ms) and kept animating with reduce on.
-/// Button purpose and the corresponding theme-role selection.
+// Completion feedback uses `motion.press` for the pop and `motion.press_release`
+// for the cancel reverse. The hold duration remains the caller's supplied duration.
+/// Theme styling for ordinary, primary and destructive buttons.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum ButtonKind {
@@ -134,7 +132,7 @@ impl Ink {
 /// `cx.theme.…` inside that arithmetic is how a stray literal gets in unnoticed.
 #[derive(Debug, Clone, Copy)]
 struct Tokens {
-    /// `metrics.content_inset` — the side padding, the same token every row uses.
+    /// `metrics.content_inset` — the side padding.
     inset: f32,
     /// `control.gap` — icon to label, and the ring's clearance from the corner.
     gap: f32,
@@ -195,7 +193,7 @@ impl LongPressResponse {
         self.response.clicked()
     }
 
-    /// The long press completed. Only ever true on a button given a [`BigButton::long_press`].
+    /// Whether this response reports a completed long press.
     #[must_use]
     pub const fn long_pressed(&self) -> bool {
         self.completed

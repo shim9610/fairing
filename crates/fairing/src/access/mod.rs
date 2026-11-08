@@ -198,7 +198,7 @@ pub trait AccessPolicy {
 /// What happens to an unassigned gate. With two or more levels this **must** be stated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DefaultGate {
-    /// The lowest level (always open).
+    /// The lowest legacy level.
     Bottom,
     /// The highest level.
     Top,
@@ -716,8 +716,8 @@ fn secs_or_off(secs: u64) -> Option<Duration> {
     (secs > 0).then(|| Duration::from_secs(secs))
 }
 
-/// The longest any `[access]` timer may be: a year. Anything longer is a typo, and an `Instant`
-/// pushed that far out could overflow — a panic on the first frame, from a config value.
+/// Upper bound for `[access]` timer configuration: one year. Validation rejects longer spans
+/// before they are used to compute deadlines.
 pub(crate) const MAX_TIMER_SECS: u64 = 365 * 24 * 60 * 60;
 
 /// The `[access]` timers in range: none past [`MAX_TIMER_SECS`].

@@ -526,23 +526,9 @@ struct ValueSlot {
     mark_x: f32,
 }
 
-/// The floating layer an opener draws in, clipped to `clip`.
-///
-/// **Placed by this widget and never moved by egui.** An area is constrained to the screen by
-/// default, and constrained it is dragged to wherever its *remembered* size fits — a sheet
-/// starting below the pane's edge on purpose would be hauled up, and a panel whose first,
-/// invisible sizing frame laid every row out (a scroll area shows everything in that pass)
-/// would be hauled up for good, its rows then reaching down to where they were told to be and
-/// keeping the oversize alive frame after frame. The headless harness found it: a sheet whose
-/// layer reached a hundred pixels over its own top and took the tap that should have closed it.
-/// So the constraint is off, and the sizing pass lays nothing out: the size is known.
-///
-/// **The panel is the shield's sublayer**, so it lies right over the shield every frame. Drawing
-/// it second only decided the order the first time: egui raises a layer a press comes down on,
-/// and the tap outside that closes the list comes down on the shield. When both came back the
-/// shield was the one on top, and every row tapped after the reopen closed the list instead —
-/// on the bench, a choice that never took. A drag outside, which leaves the list open, raised
-/// the shield over rows still showing.
+/// Create the panel area without egui's screen-position constraint. Its size is
+/// known, so the initial sizing pass does not lay out rows. Place the panel as the
+/// shield's sublayer so an outside press does not raise the shield over its rows.
 fn panel(ui: &egui::Ui, id: egui::Id, rect: Rect, clip: Rect, add: impl FnOnce(&mut egui::Ui)) {
     ui.ctx().set_sublayer(
         egui::LayerId::new(LAYER, id.with("shield")),
@@ -722,9 +708,10 @@ enum Pick {
     At(usize),
 }
 
-/// Where an anchored list goes: under the trigger where there is room, above it where there is
-/// not, never taller than `fraction` of the bound, and never outside it. The second value is
-/// whether it had to be cut short.
+/// Place a list below the trigger when space permits, otherwise above it. Height
+/// is limited by `wanted`, the configured fraction and the larger side gap; width
+/// is limited to the bound width. The vertical origin follows the trigger edge.
+/// The second return value indicates content shorter than the requested height.
 fn place_list(trigger: Rect, bounds: Rect, wanted: f32, width: f32, fraction: f32) -> (Rect, bool) {
     let cap = bounds.height() * fraction;
     let below = bounds.max.y - trigger.max.y;
@@ -864,7 +851,8 @@ mod tests {
         assert!(bounds().contains_rect(rect), "it escaped its bound");
     }
 
-    /// **A list longer than its bound is cut and scrolls**, and it still never escapes.
+    /// Check capped height and scrolling indication for the supplied overlong-list
+    /// fixture inside its finite positive bound.
     #[test]
     fn a_long_list_is_cut_to_its_bound_and_says_so() {
         let trigger = Rect::from_min_max(pos2(0.0, 40.0), pos2(400.0, 88.0));
@@ -904,8 +892,8 @@ mod tests {
         );
     }
 
-    /// **A grid never outgrows its bound**: cut to the columns that fit, it grows down instead,
-    /// and it never has fewer than one column.
+    /// Check column reduction for the supplied narrow bounds. At least one column
+    /// is kept even when a single cell exceeds the supplied maximum width.
     #[test]
     fn a_grid_is_cut_to_the_columns_that_fit_and_never_to_none() {
         let narrow = GridShape::fit(9, 60.0, 48.0, 8.0, 150.0);

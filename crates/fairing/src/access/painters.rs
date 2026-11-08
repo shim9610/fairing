@@ -67,8 +67,8 @@ use egui::{CornerRadius, Rect};
 /// [`room`](Self::room). As the lock screen leaves it grows a little and fades; the growing is
 /// the shell's (the layer is scaled), the fading is [`alpha`](Self::alpha).
 pub struct LockScreenCx<'a> {
-    /// The whole screen: the ground. Every press that misses the way in is the shell's, and does
-    /// nothing.
+    /// The whole screen rectangle for the ground. The shell draws its prompt and backdrop
+    /// interaction target over this painter's output.
     pub screen: Rect,
     /// Where the built-in clock and date go: above the way in on a tall panel, beside it on a wide
     /// one.

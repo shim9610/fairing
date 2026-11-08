@@ -14,7 +14,7 @@ enabled = true
 items = ["back"]
 
 [desktop]
-# It uses neither a rail nor a grid. It boots straight into the idle screen and the customer never sees a desktop.
+# Start at the idle screen with screen-owned navigation and no desktop rail.
 rail = "none"
 
 [access]

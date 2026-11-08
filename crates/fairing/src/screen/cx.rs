@@ -1,4 +1,4 @@
-//! `Cx` — the handle a screen uses to ask the shell for something. Most screens only use `ui`.
+//! `Cx` — the handle a screen uses to ask the shell for services and navigation.
 
 use super::{ChromePolicy, LaunchAction, Lifecycle, Registry, ScreenValue};
 use crate::access::{Access, Gate, LevelTable, Session};
@@ -134,7 +134,7 @@ pub(crate) struct CxParts<'a> {
     pub(crate) icons: &'a mut IconSet,
     /// The per-id animation store.
     pub(crate) animations: &'a mut AnimationStore,
-    /// The integrator's widget painters, lent to every widget call.
+    /// The integrator's widget painters, available to Fairing widgets through `widgets()`.
     pub(crate) widget_painters: &'a mut fairing_widgets::widgets::WidgetPainters,
     /// The request queue.
     pub(crate) requests: &'a mut Vec<CxRequest>,
@@ -189,7 +189,7 @@ impl CxParts<'_> {
 ///
 /// Its rect is the space it was really given rather than the host's pane, its instance is
 /// [`InstanceId::NONE`] because it has none, and the OSK inset is only however much of the keyboard
-/// reaches into its own rect — a guest drawn in the top half of the pane is not covered at all.
+/// reaches into its own rect — a guest above the keyboard has no inset.
 fn guest_pane(host: &PaneInfo, rect: egui::Rect) -> PaneInfo {
     // How far the OSK reaches up from the bottom of the host's pane, minus whatever of that lies
     // below the guest's own bottom edge.
@@ -512,9 +512,9 @@ impl<'a> Cx<'a> {
 
     /// Take a resident screen out of its declaration for the length of one call, then put it back.
     ///
-    /// Taking rather than borrowing is what makes nesting safe — see
-    /// [`Registry::take_resident`](crate::screen::Registry::take_resident). `None` where there was
-    /// nothing to take.
+    /// The registry slot remains empty during the call, so a nested lookup cannot take the
+    /// same resident again. See [`Registry::take_resident`](crate::screen::Registry::take_resident).
+    /// Returns `None` when no resident is available to take.
     ///
     /// With unwinding enabled, a callback panic restores the resident screen and propagates to the shell boundary.
     /// This helper logs no payload, since an integrator's error may contain sensitive data.

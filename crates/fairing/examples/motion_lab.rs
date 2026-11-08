@@ -430,8 +430,8 @@ impl Lab {
         })
     }
 
-    /// Where the graph goes — what [`lab_ui`] reserved on the title row. There is none on a frame the
-    /// lab screen is not in view (the desktop, a child screen).
+    /// The rectangle most recently reserved by [`lab_ui`] on the title row.
+    /// It stays available during replay and is absent before the first lab layout.
     fn graph_rect(&self) -> Option<egui::Rect> {
         self.shared.graph_rect
     }
@@ -446,7 +446,7 @@ impl Lab {
         self.filled = (self.filled + 1).min(SAMPLES);
     }
 
-    /// A percentile (0 with no samples). The sort is over a fixed array — no heap allocation.
+    /// A percentile (0 with no samples), computed by stably sorting a copy of the sample buffer.
     fn percentile(&self, p: f32) -> f32 {
         let mut buf = self.times;
         let Some(used) = buf.get_mut(..self.filled) else {

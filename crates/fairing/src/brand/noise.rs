@@ -29,7 +29,7 @@ pub(super) fn rand01(seed: u32, index: u32, channel: u32) -> f32 {
             .wrapping_mul(0x9e37_79b9)
             .wrapping_add(channel.wrapping_mul(0x85eb_ca6b)),
     );
-    // Only the top 24 bits are used — an f32 has 24 significant bits, so the low 8 are eaten by the rounding anyway.
+    // Use the top 24 bits, which fit the significand precision of f32.
     #[expect(
         clippy::cast_precision_loss,
         reason = "24 bits fit exactly into an f32"

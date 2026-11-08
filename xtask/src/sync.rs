@@ -180,9 +180,10 @@ pub(crate) fn scan(root: &Path) -> Result<Report> {
 /// behind — declared, defaulted, documented in the customization guide as tunable, and read by no
 /// one. An integrator setting them saw nothing happen.
 ///
-/// The check is deliberately narrow: a `pub` field on a struct whose name ends in `Metrics`, read
-/// nowhere in `crates/**/src` outside the file that declares it. Reads from tests and examples do
-/// not count — a token exercised only by a test still does not turn anything.
+/// The check searches `crates/*/src` for a bare-name mention of each `pub` field on a struct whose
+/// name ends in `Metrics`, excluding declaration, initializer and doc-comment lines. A mention
+/// in the declaring file counts. Integration-test and example directories are outside the scan;
+/// unit-test code inside `src` is included.
 fn orphan_tokens(root: &Path, sources: &[(PathBuf, String)], report: &mut Report) {
     for (file, text) in sources {
         let mut inside = false;
@@ -211,8 +212,8 @@ fn orphan_tokens(root: &Path, sources: &[(PathBuf, String)], report: &mut Report
             // The field's own name, not `.name`: `has_token` wants a word boundary on both
             // sides, and the `.` in `c.pad` has a word character before it, so every nested
             // component token came back an orphan on the first run. A bare name over-accepts for
-            // short ones (a local called `pad` counts as a read), which is the safe direction for
-            // a blocking rule — what it is here to catch is a token mentioned **nowhere**.
+            // short ones (a local called `pad` counts as a read). This avoids false orphan reports
+            // for those mentions, but can miss fields that have no actual widget use.
             //
             // A read **in the declaring file counts**: a token the theme itself derives another
             // token from does turn something. What does not count is the declaration and the

@@ -38,7 +38,7 @@ source.
 | `[status_bar] left` / `center` / `right` undeclared | **Neither warning nor error** | An empty text slot (`StatusItem::Text("")`) takes up the space and draws nothing |
 | `[nav_bar] items` undeclared | **Neither warning nor error** | `NavItem::Custom(id)` with no matching `nav_item` declaration draws a fallback `•` glyph, **enabled**, and accepts taps — but there is no callback behind it, so nothing happens |
 | A `nav_item` that `[nav_bar] items` does not list | **Warns** on the frame after the `add` (``nav_item `{id}` will not be drawn: …``) — also on a bar that is off or in the gesture style | Nothing is drawn: a nav item is never appended |
-| `cx.open("settings.wifi")` (or any `settings.*`) without `settings::add_all` — or `settings.wifi`, `settings.bluetooth`, `settings.network` or `settings.power` with `add_all` but no backend that reports that capability | **Warns** (``launch: screen `settings.wifi` was never declared``) | Nothing opens. Add the built-in screens and the backend, or `SettingsConfig::ignoring_capabilities` ([01 §4.1](01-getting-started.md#41-the-built-in-settings-screens)) |
+| `cx.open("settings.wifi")` (or another `settings.*`) when no screen is registered under that id; for example, omitted default registration or a capability-filtered Wi-Fi, Bluetooth, network or power screen | **Warns** (``launch: screen `settings.wifi` was never declared``) | Nothing opens. Add the built-in screens and the backend, or `SettingsConfig::ignoring_capabilities` ([01 §4.1](01-getting-started.md#41-the-built-in-settings-screens)) |
 
 **So a typo in a bar slot shows up only as an empty gap or a dot that does
 nothing.** When an item is missing, check the id spelling against the built-in
@@ -113,8 +113,8 @@ xvfb-run -a -s "-screen 0 1024x600x24" env LIBGL_ALWAYS_SOFTWARE=1 \
   cargo run -p fairing --features runner-x11 --example demo -- --size=1024x600
 ```
 
-With only `runner` in an X11 environment — no `eframe/x11` — the window either never
-appears or you get an initialisation `Error::Runner`. Switch to `runner-x11`.
+The `runner` feature does not enable `eframe/x11`. Use `runner-x11` when the host requires
+an X11 backend.
 
 ## 6. Korean renders as tofu
 
@@ -241,7 +241,7 @@ for payload cleanup, output scope and the recovery example.
 | `examples/bench` | `cargo run -p fairing --release --example bench` | p50/p95/max in ms per scenario, plus animation frame counts, as text on stdout |
 | `examples/motion_lab` | `cargo run -p fairing --features runner-x11 --example motion_lab -- --size=1024x600` | A graph of the last 180 frames top right (interval in ms, p50, p95, the 33 ms budget line) — **by eye** |
 | `Harness::frame_shapes()` | Inside a headless test | The shapes actually drawn this frame — use it to catch things being drawn that should not be |
-| `Shell::is_animating()` | Anywhere | Whether an animation is live this frame. Stuck at `true` while idle means something never finishes |
+| `Shell::is_animating()` | Anywhere | Whether an animation is live this frame. If it stays `true`, inspect active animations and repeated update requests |
 
 ### 8.2 Running the bench
 
@@ -261,8 +261,8 @@ investigate and repeat under comparable conditions.
 | Check | Why |
 |---|---|
 | **Idle desktop p50 and heap counters** | Compare render time separately from allocation. The separate diagnostic allocator measures Rust allocation counts/live bytes; timing alone does not identify allocation. See [memory limits](../memory-limits.md) |
-| **How many fonts you loaded** | Every font added through `egui::Context::set_fonts` adds first-rasterisation and atlas-rebuild cost. If one Korean font is enough, do not stack several |
-| **Known render allocations** | `icons::paint` allocates one `Vec<Pos2>` per sub-path with three or more points (epaint's `PathShape` wants an owned Vec), plus one each for the parametric bluetooth and volume icons. On the M1 baseline (51 icons then), 69 of 146 sub-paths were allocation-free `LineSegment`s — worth knowing when you add custom icons |
+| **How many fonts you loaded** | Fonts used by rendered text can add rasterisation and cache cost; replacing the font set invalidates font caches. If one Korean font is enough, do not stack several |
+| **Known render allocations** | Icon paths represented by epaint `PathShape` own vertex vectors; line segments use a different representation. Parametric icons can also construct vectors. Profile the current icon set and drawing paths for the target workload |
 | **Debug versus release** | Debug and release builds use different optimization settings. Use `--release` for comparable device measurements |
 
 ## 9. Passing the audit
@@ -286,7 +286,7 @@ missing `cargo-audit` or `cargo-deny` only prints an install hint and skips.
 | 10 | Notices | `xtask licenses --check` | Whether `THIRD_PARTY.md` is current |
 | 11 | Generated files | `xtask icons --check` | Whether `icons/generated.rs` matches `assets/icons/*.svg` |
 | 12 | Target build | `cargo check -p fairing --features runner --target aarch64-unknown-linux-gnu` | aarch64 portability — **a compile check, not a binary** |
-| 13 | Blocking sync | `xtask sync-check` | Bans eight identifiers across `crates/**/src/**/*.rs`: `Mutex`, `RwLock`, `Condvar`, `Barrier`, `OnceLock`, `LazyLock`, `parking_lot` and `tex_manager`. Only the last is not our own type — `Context::tex_manager()` hands back an `Arc<RwLock<..>>`, and the calling source never spells `RwLock`, so the name is the only handle. In `crates/fairing/src` and `crates/fairing-widgets/src` (the UI thread) it also bans `.recv(`, `.recv_timeout(`, a **no-argument `.join()`** and `thread::sleep`. Matching `.join(` broadly would need an exemption on every `Path::join`, so only the argument-less form counts |
+| 13 | Blocking sync | `xtask sync-check` | Bans eight identifiers across `crates/**/src/**/*.rs`: `Mutex`, `RwLock`, `Condvar`, `Barrier`, `OnceLock`, `LazyLock`, `parking_lot` and `tex_manager`. `tex_manager` is an accessor name rather than a type or crate identifier — `Context::tex_manager()` hands back an `Arc<RwLock<..>>`, and the calling source never spells `RwLock`, so the name is the only handle. In `crates/fairing/src` and `crates/fairing-widgets/src` (the UI thread) it also bans `.recv(`, `.recv_timeout(`, a **no-argument `.join()`** and `thread::sleep`. Matching `.join(` broadly would need an exemption on every `Path::join`, so only the argument-less form counts |
 
 Adding a dependency:
 
@@ -307,8 +307,8 @@ Adding a dependency:
 ### 10.1 The release profile
 
 The workspace root deliberately has no `[profile.release]`: a profile set by a
-library never propagates to the integrator's binary, and `panic = "abort"` breaks
-`cargo test --release`. Put it in **your own** root `Cargo.toml`
+dependency does not control the integrator's binary. Choose the release profile in **your own**
+root `Cargo.toml`
 ([01 §3](01-getting-started.md#3-the-device-binary-profile)).
 
 ```toml
@@ -430,8 +430,9 @@ PIN table (or your authenticator) and the keypad comes up
 ([05 §5](05-access-control.md#5-the-shells-prompt-and-the-authenticator)).
 
 **Q8. Does `[shell] locale = "ko"` give me Korean text?**
-Yes, for everything the shell draws: the shade, the lock screen, the unlock prompt
-and the `settings` screens. Your screens' words come out in Korean once you look
+Yes, for built-in translated labels in the shade, lock screen, unlock prompt
+and `settings` screens. Application labels, backend messages and other supplied content
+need their own translations. Your screens' words come out in Korean once you look
 them up with `cx.strings.get(..)` and give them a Korean entry through
 `ShellBuilder::translations`; a word with no entry stays English. You need a font
 with Hangul too (§6) — without one the shell logs a warning and the text is boxes.

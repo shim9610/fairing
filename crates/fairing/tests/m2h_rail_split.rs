@@ -1,11 +1,8 @@
 //! **The chrome is one L, not two regions with a rule between them** — `layout::rail_split`.
 //!
-//! Every other screen anatomy in the crate divides with a line, because with an arbitrary palette
-//! `Surface` and `Background` can be close enough that colour alone separates nothing. That stops
-//! being true when the rail is chrome rather than a region of the page: the top bar already fills
-//! `Surface`, so an arm filling the same role continues it, and a line between them would cut the
-//! shape in half at the point it is meant to turn the corner. What divides the page from the
-//! chrome is the page's own panel, one step in.
+//! The rail arm uses Surface to continue the top bar. No divider is drawn at their
+//! seam; the page panel is inset beside the rail. Tests inspect the seam geometry
+//! and the composited colour roles.
 //!
 //! # Reading a role off the frame
 //!

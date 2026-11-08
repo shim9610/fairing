@@ -128,15 +128,15 @@ so it is checked there rather than in the graphical example tours.
 
 ## The example tours are checks
 
-`tools/tours.sh` runs every example's `--tour` script under Xvfb, stills only, and fails if any
-step of any script could not do what it asked. A script presses what it names
+`tools/tours.sh` runs the selected example tours under Xvfb, stills only. With no
+selector, it runs the script's configured tour set. A failed step fails that run. A script presses what it names
 (`Act::Tap(Spot::Text("Alerts"))` finds the label on the glass; there is no coordinate form) and says what it expects before each
 picture (`Act::Expect(Expect::Text("Lamp hours"))`), so a change that moves a row, renames a
 label or breaks an asserted step can fail the tour. Review the captured images
 for rendering and content issues outside those assertions.
 The public repository's CI runs it on pull requests and pushes to `main`. When you change what a screen shows, run it; when you add a step to a
-script, name the thing you press and check what you expect to see — a coordinate written down
-is right for one row height only.
+script, name the target and assert the expected result. Named targets use the
+reported geometry when layout changes.
 
 ## Rebuilding the README's animations
 

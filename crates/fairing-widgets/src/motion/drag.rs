@@ -117,7 +117,7 @@ impl DragSpring {
         self.band = band;
     }
 
-    /// Begin a drag: take the current value as the starting point (mid-spring, from right there — every animation can be interrupted).
+    /// Begin a drag from the current value, replacing the current tween or spring mode.
     pub fn begin(&mut self) {
         self.start = self.anim.value();
         self.anim.drag(self.start, 0.0);

@@ -31,8 +31,8 @@ impl Shell {
     /// # }
     /// ```
     ///
-    /// Only `LaunchAction::Run` actually runs your code on the spot; `Open` puts a screen up and its
-    /// `ui` runs in the next frame, which has the state anyway.
+    /// `LaunchAction::Run` invokes an admitted action body during this call. `Open` puts a screen
+    /// up; its `ui` runs in a subsequent drawing pass with the state lent by that pass.
     pub fn launch_with(&mut self, action: LaunchAction, app: &mut dyn std::any::Any) {
         self.contain_fault(|shell| shell.launch_in(action, &mut Some(app)));
     }
@@ -63,8 +63,8 @@ impl Shell {
                     self.request_unlock(gate, Some(LaunchAction::OpenOverlay));
                 }
             }
-            // **Always reported**, and in `prompt` mode with an authenticator **also
-            // carried out**: there the shell owns the session's way up — its prompt — so it
+            // Emit request events for these dispatched controls; in `prompt` mode with an authenticator also
+            // carried out: there the shell owns the session's way up — its prompt — so it
             // owns the way down too. Elsewhere what locking and logging out mean is the device's.
             // The arms are written out rather than left to a catch-all so that a new variant
             // cannot be swallowed here again the way these three once were.
@@ -75,7 +75,7 @@ impl Shell {
         }
     }
     /// The overview control (the nav bar's `"recents"`, `LaunchAction::OpenOverview`).
-    /// Always reported as [`ShellEvent::OverviewRequested`], and the shell's own
+    /// Emits [`ShellEvent::OverviewRequested`], and the shell's own
     /// overview comes up where `[workspace] overview` is on. Pressed with it up, it goes back.
     pub(super) fn open_overview(&mut self) {
         self.events.push(ShellEvent::OverviewRequested);
@@ -106,7 +106,7 @@ impl Shell {
     }
     /// The split control (the split tile, the nav bar's `"split"` item,
     /// `LaunchAction::ToggleSplit`). Split, back to one pane keeping the focused one; one pane in
-    /// the Tasks view, the task used last beside it. Always reported as
+    /// the Tasks view, the task used last beside it. Emits
     /// [`ShellEvent::SplitRequested`], and carried out where `[workspace] split` is on.
     pub(super) fn toggle_split(&mut self) {
         self.events.push(ShellEvent::SplitRequested);

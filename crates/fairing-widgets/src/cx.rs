@@ -26,8 +26,8 @@ pub struct WidgetCx<'a> {
     /// while it is up. A widget that opens a panel keeps the panel clear of it (`Dropdown`).
     /// Zero where nothing is.
     pub inset_bottom: f32,
-    /// The widget painters: a widget whose kind has one is drawn by it, the rest draw
-    /// themselves. `None` draws every widget the built-in way.
+    /// Optional painter bundle for built-in widgets. A supported widget uses its
+    /// registered kind-specific callback; otherwise it uses its built-in drawing.
     pub painters: Option<&'a mut WidgetPainters>,
 }
 

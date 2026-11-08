@@ -140,10 +140,10 @@ The memory-pressure correction adds hard persistent-notification retention,
 bounded pending toasts and fallible factories/display admission. The production
 global allocator feature is withdrawn; the unpublished lab demonstrates actual
 fallible recovery and the remaining unsupported infallible abort separately.
-Local correction validation passes all 14 strict audit stages (1,835 tests passed,
+Local correction validation passed all 14 strict audit stages (1,835 tests passed,
 16 ignored), 36 native API tests, nineteen Miri tests, four Loom scenarios and
-all four mutation controls. Normal/16 MiB/64 MiB trials pass real exhausted-arena
-refusal, preallocated work and deferred display recovery. Sixteen BOMs pass
+all four mutation controls. Normal/16 MiB/64 MiB trials passed real exhausted-arena
+refusal, preallocated work and deferred display recovery. Sixteen BOMs passed
 schema/graph validation; neither product graph includes the diagnostic allocator.
 Fresh hosted artifacts provide per-commit fuzz/coverage totals rather than
 reusing the earlier allocator-prototype coverage figures.

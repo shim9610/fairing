@@ -4,8 +4,8 @@
     python3 tools/social_preview.py
 
 The card is the brand splash with the name, the one-line description and a row of tags over the
-open water above the manta. It needs Pillow (`pip install pillow`) and reads only files in this
-repository: the splash from assets/brand and the faces from assets/fonts. GitHub takes the card
+open water above the manta. It needs Pillow (`pip install pillow`); its artwork and font inputs
+are the splash from assets/brand and the faces from assets/fonts in this repository. GitHub takes the card
 from the repository settings (Settings, General, Social preview), not from this file.
 """
 from pathlib import Path

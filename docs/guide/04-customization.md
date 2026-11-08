@@ -58,8 +58,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
 ```
 
 Injecting a theme makes `[shell] theme` (dark|light) and `[theme.palette]` **ignored**, and logs
-a warning at startup. Ignoring them silently would only ever show up as "why is the colour not
-changing".
+a warning at startup.
 
 The single source of truth for bar heights is `theme.metrics.status_bar_height` ·
 `nav_bar_height`; `build()` feeds those into the status bar and the nav bar. Without an injected
@@ -99,10 +98,9 @@ from a complete palette, such as `..Palette::dark()`, when overriding selected r
 ### 1.2 Metrics tokens
 
 `Metrics` is `Copy`, so change a few fields with `..Metrics::default()`. Units are du
-(density-independent units, egui's points) unless stated otherwise. There are 50 fields today;
-the table covers the ones you are likely to change, and the API docs describe every one.
-Twenty-two of them, plus the type scale and the slider thumb, are resolved
-from `MetricsSpec` in physical units each frame rather than being fixed
+(density-independent units, egui's points) unless stated otherwise. The table selects commonly adjusted fields; see the API docs for individual fields.
+Physical metrics, the type scale and the slider thumb are resolved from `MetricsSpec`
+during updates rather than being fixed.
 
 | Field | Default | What it changes |
 |---|---|---|
@@ -112,9 +110,9 @@ from `MetricsSpec` in physical units each frame rather than being fixed
 | `icon_cell` | two fingers, `96.0` floor | The side of a desktop cell. What the automatic grid counts columns and rows from |
 | `icon_size` | one finger, `48.0` floor | Desktop icon size. Toast, heads-up and tile icons are half of it |
 | `status_icon_size` | `18.0` | The status bar's icons and the icons in the shade's notification rows. `[status_bar] icon_size` pins it from config |
-| `row_height` | one finger, `48.0` floor | `ListRow` height (the larger of this and `widget_height`). **One touch target** by default: the padding is inside the row, and a row grows only when its own text needs more |
+| `row_height` | one finger, `48.0` floor | `ListRow` height (the larger of this and `widget_height`). **One touch target** by default: the padding is inside the row, and text and widget metrics determine additional height |
 | `corner_radius` | `12.0` | **Container** corner radius — cards, tiles, toasts, heads-up, OSK keys, press tint, egui `window_corner_radius` and `menu_corner_radius` |
-| `control_radius` | `6.0` | **Control** corner radius — every egui widget (buttons, fields, combos). Half the default container radius; set it equal to `corner_radius` for uniform radii |
+| `control_radius` | `6.0` | Default **control** corner radius in the egui style (buttons, fields, combos); per-widget styling can override it. Half the default container radius; set it equal to `corner_radius` for uniform radii |
 | `edge_px` | `24.0` | Edge zone width. When a bar is visible, the whole bar becomes the zone |
 | `dock_height` | `96.0` | Dock band height |
 | `screen_inset` | `12.0` | Padding inside the rect a screen receives. `ChromePolicy::inset` overrides it per screen |
@@ -260,7 +258,7 @@ groups.
 | `slider` | `label_gap` · `track_ratio` | 8 · 0.64 |
 | `switch` | `knob_inset` · `height` | 3 · `finger(0.6)` (floor 28.8) |
 | `list_row` | `pad` · `two_line_offset` · `chevron_w` | 16 · 11 · 20 |
-| `overview` | `card_gap` · `card_min_width` | 24 · `finger(3.0)` (floor 144) — the recent screens' cards are `0.6 ×` the content, never narrower than this ([03 §2.3](03-chrome.md#23-recent-screens-and-the-split)) |
+| `overview` | `card_gap` · `card_min_width` | 24 · `finger(3.0)` (floor 144) — the recent screens' cards are `0.6 ×` the content, subject to this minimum and the available content width ([03 §2.3](03-chrome.md#23-recent-screens-and-the-split)) |
 | `popover` | `max_width` · `caret` · `icon_gap` | 420 · 8 · 12 — a desktop icon's info popover: the widest it is drawn, how far it stands off the icon, the gap beside its icons ([03 §3.8](03-chrome.md#38-holding-an-icon-the-info-popover)) |
 | `status_bar` | `item_gap` · `user_dot` | 10 · 8 — the gap between two status items, and the diameter of the user level's colour dot. The bar's height, icon size and edge pad are `Metrics` (§1.2); these two are the bar's own |
 | `shade` | **nine multipliers** — separate table below | |
@@ -308,7 +306,7 @@ let shell = Shell::builder(ShellConfig::default()).component_spec(spec).build(ct
 
 - **Values are `Span`s.** Mix `Dim::du` · `Dim::mm` · `Dim::finger` freely and put a floor on
   them with `.min(..)`. They resolve against that screen's `Scale` every frame.
-- **Only the track thickness is a ratio.** `slider_track_ratio` is a multiple of
+- **The slider track thickness is a ratio.** `slider_track_ratio` is a multiple of
   `metrics.slider_thumb`, not a length — exposed as a length it invites a big thumb on a
   thread-thin track.
 - **Switch height is a drawing size.** The hit rect keeps the touch target regardless. Shrinking
@@ -333,7 +331,7 @@ use fairing::{Shell, ShellConfig};
 
 fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
     Shell::builder(ShellConfig::default())
-        // An e-ink or 16-level panel dithers a soft shadow into rings: draw no height at all.
+        // Example for a display where soft shadows are unsuitable: disable elevation.
         .elevation_spec(ElevationSpec::flat())
         .build(ctx)
 }
@@ -538,8 +536,8 @@ fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
 }
 ```
 
-`painter.text` allocates a string on every call. In real device code, cache the galley and only
-re-lay it out when the value changes — that is what the built-in bars do.
+`painter.text` converts its input to owned text for layout. Cache a reusable galley where
+profiling shows repeated formatting or layout cost; rebuild it when its inputs change.
 
 ---
 
@@ -660,11 +658,11 @@ fn install(shell: &mut Shell) {
 }
 ```
 
-`rect` is the whole content rect. It is called every frame, so do not allocate in it — drawing
-lines directly, as above, is enough. On a machine that switches dark and light, the captured
+`rect` is the whole content rect. The callback runs when the wallpaper is drawn; cache reusable
+geometry if its construction is costly. On a machine that switches dark and light, the captured
 colours are frozen, so rebuild the wallpaper on the switch.
 
-The other four backgrounds (`Solid` · `Fixed` · `Gradient` · `Texture`) are in
+The wallpaper variants are listed in
 [03 Chrome §3.7](03-chrome.md#37-wallpaper).
 
 ---
@@ -676,20 +674,20 @@ The other four backgrounds (`Solid` · `Fixed` · `Gradient` · `Texture`) are i
 | What | How | Result |
 |---|---|---|
 | Status bar | `[status_bar] enabled = false` | No bar, and the content grows by that much. The top edge zone stays |
-| Status bar (per screen) | `ChromePolicy::status_bar = BarMode::Hide` | Hidden only while that screen is focused. With `allow_peek`, a pull still shows it |
+| Status bar (per screen) | `ChromePolicy::status_bar = BarMode::Hide` | Follows the focused screen; in split view both panes must request hiding. With `allow_peek`, a pull can reveal it |
 | Nav bar | `[nav_bar] enabled = false` | Going back is up to in-screen buttons (`cx.finish()`) or the edge gesture |
 | One nav item | Remove it from `[nav_bar] items` | The slot itself disappears |
 | Gesture back | `[nav_bar] back_edges = []` | Edge swipes no longer go back |
 | Dock | `[desktop] dock = []` and no `.dock()` declaration | No band is drawn and the grid grows |
 | Page indicator | Fit the icons on one page | With one page it gives its space back automatically |
-| Shade (at runtime) | Put the `overlay.open` gate at a higher level + `[status_bar] tap_opens_shade = false` | It does not open; only `UnlockRequested` fires |
+| Shade (at runtime) | Deny `overlay.open` for the intended sessions through the access policy; optionally disable `[status_bar] tap_opens_shade` | Denied entry leaves it closed and requests authentication; token routing can also emit `SessionRequested` |
 | Shade (at compile time) | Turn the `overlay` feature off | The `overlay` module, tiles and scrim all go |
 | Some shade tiles | Remove them from `[overlay] tiles` | |
 | OSK (per screen) | `ChromePolicy::osk = OskMode::Off` | For a screen with a hardware keyboard |
 | OSK (at compile time) | Turn the `osk` feature off | The `osk` module goes entirely |
 | All gestures | `[gesture] enabled = false` | No edge swipes, long presses or flings. **The emergency gesture stays** |
 | Heads-up banners | `[notify] heads_up = false` | Notifications only stack in the shade |
-| Animation | `[motion] reduce = true` | Every tween 0 ms, springs settle instantly |
+| Animation | `[motion] reduce = true` | Config-derived tweens have zero duration; built-in springs settle without intermediate motion |
 | Notifications themselves | Send none | There is no setting for it |
 
 Config sections for a subsystem turned off by feature are **parsed and ignored.** With `overlay`
@@ -753,7 +751,7 @@ cargo run -p fairing --features runner-x11 --example custom_chrome -- --size=102
 
 The thing to watch while reading is **what the shell keeps doing.** Three painters and two
 foreign tiles later, the layout rects, gate decisions, hit testing and press detection, the
-A2/A3 transitions and the repaint policy are all still the shell's. The painters only paint.
+A2/A3 transitions and the repaint policy are all still the shell's. The hooks provide drawing while the shell retains that built-in interaction logic.
 
 ---
 
@@ -767,7 +765,7 @@ A2/A3 transitions and the repaint policy are all still the shell's. The painters
 cargo run -p fairing --features runner-x11 --example motion_lab -- --size=1024x600
 ```
 
-It puts every `[motion]` token on a slider and replays transitions on a loop while you pick
+It provides sliders for motion settings and replays transitions on a loop while you pick
 values.
 
 | On screen | What it does |
@@ -804,7 +802,7 @@ fn apply_snappy(handle: &ShellHandle) {
 
 | Key | Default | Meaning |
 |---|---|---|
-| `reduce` | `false` | True makes every tween 0 ms (§8.3) |
+| `reduce` | `false` | True zeroes config-derived tween durations (§8.3) |
 | `spring` | `{ k = 400, c = 40 }` | The default spring. `c = 2√k` is critical damping |
 | `snap_ratio` | `0.33` | Release distance threshold (0..=1) |
 | `fling_px_s` | `800.0` | Release velocity threshold (px/s) |
@@ -1010,10 +1008,10 @@ narrower hooks, on two rungs of the override ladder:
 | `.gesture_handle_painter(..)` | 5 | — | Each gesture handle's strip, and the arrow while it is swiped ([03 §9.2](03-chrome.md#92-gesture-handles)) | The strips and where they go, which press is a handle's, the way, the reach and the rest, the gestures and what they run |
 | `GestureRegion::paint` | 5 | — | A gesture region of your own, drawn by its own trait ([03 §9.3](03-chrome.md#93-gesture-regions-of-your-own)) — with its rect and its touch | Where it may go (over a screen or the desktop), which press is its, its touch from the press to the release, the guard that keeps the press from what is under it |
 
-Three rules hold for every one of them.
+The layout hooks use the following conventions; hook-specific behavior follows below.
 
 - **A layout starts from the built-in placement.** It is handed the rects the shell would use and
-  changes only the ones it wants, so moving one piece is one line rather than a re-implementation.
+  changes only the ones it wants, so a callback can adjust selected rects.
   The rects are in a fixed order — the config's for items and tiles (the status bar's left,
   centre, right), reading order for keys, oldest first for toasts — and each context names them
   (`index_of`, `id`).
@@ -1170,7 +1168,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
   then the next), placed the built-in way. `OskKeyLayoutCx` names them — `key(i)` gives a key's
   row, place and `KeyDef`, `index_of(label)` finds one — and carries `panel` (the keyboard at its
   full height, where it is this frame: it slides up from below, so place keys relative to it) and
-  `face_index`. The layout runs for every face, so a key moved on the lowercase face is not moved
+  `face_index`. The layout receives the active face, so moving a key on the lowercase face does not move it
   on the symbols face unless the layout says so there too.
 - A key's hit area is its rect and half the gap round it, cut by the panel, wherever the layout
   puts it. Keep the rects apart: where two overlap, the one later in reading order takes the

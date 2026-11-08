@@ -62,9 +62,9 @@ pub(crate) fn path(root: &Path) -> PathBuf {
 }
 
 /// The copy inside `crates/fairing`, which the shell's licence screen embeds
-/// (`settings.licences`). A published crate can only `include_str!` what is inside its own
-/// folder, so the notices live at the root for people and inside the crate for the build; the
-/// two are the same bytes, and stage 10 fails where they are not.
+/// (`settings.licences`). The extracted crate archive does not contain the repository-root
+/// notices file, so a copy lives inside the crate for that build. Stage 10 checks that
+/// the repository-root and crate copies contain the same bytes.
 pub(crate) fn crate_copy(root: &Path) -> PathBuf {
     root.join("crates").join("fairing").join("THIRD_PARTY.md")
 }

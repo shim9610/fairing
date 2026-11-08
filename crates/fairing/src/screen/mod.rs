@@ -28,7 +28,7 @@ use std::time::Duration;
 
 /// A screen with state. `ui` is the only required method.
 pub trait Screen {
-    /// Every frame. `ui` is the whole pane content rect.
+    /// Draw when the instance is visible and admitted. `ui` covers its pane content rect.
     fn ui(&mut self, ui: &mut egui::Ui, cx: &mut Cx<'_>);
 
     /// Back. `Consumed` if the screen has navigation of its own.
@@ -138,21 +138,21 @@ pub enum LaunchAction {
     Set(SettingKey, SettingValue),
     /// Toggle a setting (M4).
     Toggle(SettingKey),
-    /// Lock. Always reported as [`ShellEvent::LockRequested`](crate::ShellEvent::LockRequested);
+    /// Lock. Dispatch emits [`ShellEvent::LockRequested`](crate::ShellEvent::LockRequested);
     /// in `prompt` mode with an authenticator the shell's lock screen comes up as well.
     Lock,
-    /// Log out. Always reported as
+    /// Log out. Dispatch emits
     /// [`ShellEvent::LogoutRequested`](crate::ShellEvent::LogoutRequested); in `prompt` mode with an
     /// authenticator the session goes back to the starting subject as well.
     Logout,
     /// Open the shade (M2).
     OpenOverlay,
-    /// The recent screens: up, or back down when they are up. Always reported as
+    /// The recent screens: up, or back down when they are up. Dispatch emits
     /// [`ShellEvent::OverviewRequested`](crate::ShellEvent::OverviewRequested); carried out where
     /// `[workspace] overview` is on and the session passes `nav.recents`.
     OpenOverview,
     /// The split control: back to one pane keeping the focused one, or two — the cards
-    /// as a picker, or the task used last. Always reported as
+    /// as a picker, or the task used last. Dispatch emits
     /// [`ShellEvent::SplitRequested`](crate::ShellEvent::SplitRequested); carried out where
     /// `[workspace] split` is on and, to enter a split, the session passes `workspace.split`.
     ToggleSplit,

@@ -38,7 +38,7 @@ pub enum Command {
     Home,
     /// For an integrator applying the result of their own authentication.
     SetSubject(Subject),
-    /// Log out — the same as [`LaunchAction::Logout`]: always reported, and carried out (back to
+    /// Log out — the same as [`LaunchAction::Logout`]: dispatch emits a request, and carries it out (back to
     /// the starting subject) where the shell draws its own prompt.
     Logout,
     /// An icon badge.

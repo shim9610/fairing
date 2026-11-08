@@ -2,8 +2,8 @@
 //! argument parsing, installing a Hangul font, the screenshot tour driver (a synthetic finger
 //! included) and a PNG encoder written with std alone.
 //!
-//! Each gallery example gives only its own **script** (a list of [`Act`]s) and its shell-building function,
-//! and takes the rest from here. This module is compiled whole into each example through `mod
+//! For a gallery tour, each example supplies its **script** (a list of [`Act`]s) and shell-building
+//! function to the shared driver. This module is compiled whole into each example through `mod
 //! common;`, so a different part of it is used by each — which is why `dead_code` is lifted for the
 //! whole file (this is not library code).
 #![allow(dead_code)]
@@ -391,7 +391,7 @@ pub enum Act {
     /// **Look at the frame, and fail the tour where it is not what the script expects.** A tour
     /// that only photographs cannot tell a right screen from a wrong one; this is where a script
     /// says what it should be looking at before it takes the picture. A miss is logged with what
-    /// was there, and the script goes on, so one run reports every miss.
+    /// was there, and the script continues to later steps.
     Expect(Expect),
     /// [`Act::Expect`] with patience: looked for on every frame until it holds, and failed once
     /// `frames` have passed without it. For what arrives after an animation the shell does not
@@ -439,8 +439,8 @@ pub enum Side {
     Right,
 }
 
-/// How far inside an edge of the glass an edge gesture is pressed (px). Within every edge zone
-/// (`metrics.edge_px` is 24 du and up), and clear of the window's own border.
+/// How far inside an edge of the glass a tour edge gesture is pressed (px).
+/// This inset avoids the window border with the examples' default edge zones.
 const EDGE_IN: f32 = 4.0;
 
 /// What an [`Act::Expect`] checks.
@@ -587,11 +587,9 @@ const PATTERN_STROKE: usize = 3;
 
 /// The egui plugin that attaches synthetic pointer events to **the next pass's `RawInput`**.
 ///
-/// `ctx.input_mut(|i| i.events.push(..))` will not do — egui 0.36.1 replaces `InputState::events`
-/// wholesale with `RawInput`'s on each pass (`begin_pass`), and refreshes the `pointer` state (the
-/// press, the position, the velocity) only from `RawInput` events at that moment. So they have to go
-/// in the same place the headless harness (`fairing::testing::Harness`) puts them, `RawInput.events`,
-/// for the gesture engine (`ctx.input().pointer`) to see them. The queue lives in `ctx.data`, so the
+/// Append events to `RawInput.events` before egui builds the pass's pointer state, as the
+/// headless harness (`fairing::testing::Harness`) does. Editing `InputState::events` afterwards
+/// would leave the pointer state used by the gesture engine out of sync with those events. The queue lives in `ctx.data`, so the
 /// plugin is an empty type (no lock types; the same frame as `crate::osk::inject`).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SyntheticInput;
@@ -700,12 +698,8 @@ impl egui::Plugin for SyntheticInput {
     }
 
     fn input_hook(&mut self, ctx: &egui::Context, input: &mut RawInput) {
-        // **Pin the window as focused.** The tour runs on Xvfb with no window manager, where winit
-        // never once sends `Focused(true)`. egui draws the caret and the IME composition underline only
-        // while `input.focused` is true (`viewport_has_focus` in `text_edit/builder.rs`), so without
-        // turning this on the caret and the composition marking drop out of the text-field pictures
-        // entirely — what is visible on a real device would be missing from the documentation images
-        // alone.
+        // Pin input focus for Xvfb tours without a window manager, so egui includes
+        // the caret and IME composition marking in text-field screenshots.
         input.focused = true;
         ctx.data_mut(|d| {
             let clock: &mut VirtualClock = d.get_temp_mut_or_default(Self::clock_id());
@@ -835,7 +829,7 @@ pub type BuildApp<S> = Box<dyn FnOnce(&egui::Context) -> fairing::Result<(fairin
 ///
 /// **A tour is a check as well as a camera.** A step that could not do what the script asked —
 /// a label that is not on the glass, an [`Act::Expect`] that does not hold, a shot that could not
-/// be written — is logged as an error, the script goes on so one run lists every miss, and the
+/// be written — is logged as an error, the script continues to later steps, and the
 /// run ends in `Err`. The examples return it from `main`, so a tour that went wrong exits
 /// non-zero, and `tools/tours.sh` and CI fail on it.
 ///
@@ -1251,7 +1245,7 @@ impl<S: std::any::Any> Tour<S> {
     }
 
     /// A step that could not do what the script asked: logged, and the run exits non-zero at
-    /// the end. The script goes on, so one run lists every miss.
+    /// the end. The script continues to later steps.
     fn fail(&mut self, what: &str) {
         log::error!("{what}");
         self.failed.set(true);
@@ -1570,7 +1564,7 @@ impl<S: std::any::Any> Tour<S> {
     }
 
     /// [`Act::Key`]: find the OSK key by label, press it, and release it on the next frame. Where the
-    /// label cannot be found it fails the tour and moves on, so one run lists every miss.
+    /// label cannot be found it records a failure and continues to later steps.
     #[cfg(feature = "osk")]
     fn key_step(&mut self, ctx: &egui::Context, label: &'static str) -> Flow {
         let Some(rect) = self.shell.as_ref().and_then(|s| s.osk().key_rect(label)) else {
@@ -1781,9 +1775,9 @@ pub fn write_png(path: &Path, image: &egui::ColorImage) -> std::io::Result<usize
 
 /// The decoder an integrator wires into `ShellBuilder::image_loader` (guide 09 §1).
 ///
-/// **The crate does not decode images.** This function sitting among the examples is the evidence —
-/// `image` is a dev-dependency of `fairing` and never enters an integrator's tree, and an integrator
-/// writes these ten lines into their own code with the decoder they chose.
+/// Fairing delegates image decoding to this callback. `image` is a dev-dependency used by these
+/// examples; depending on the Fairing library does not add that dev-dependency to a consumer's tree.
+/// An integrator provides a callback using their chosen decoder.
 ///
 /// Wired up, one config line changes the wallpaper:
 ///
@@ -1876,8 +1870,8 @@ const WALLPAPERS: &[WallpaperPlate] = &[
 
 /// The wallpaper for a screen's aspect ratio. The table is in ascending order of the aspect ratio's **upper bound**.
 fn wallpaper_for(aspect: f32) -> (&'static [u8], Option<&'static [u8]>) {
-    // The last row is `INFINITY`, so `find` always matches, but in case the table is ever edited it
-    // falls back to the portrait plate.
+    // The final `INFINITY` bound covers finite aspect ratios. Fall back to the portrait
+    // plate if no row matches, including a NaN input.
     let fallback = WALLPAPERS
         .first()
         .map_or((&[][..], None), |(_, dark, light)| (*dark, *light));

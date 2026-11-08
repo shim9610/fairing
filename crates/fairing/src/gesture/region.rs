@@ -1,5 +1,5 @@
-//! **Gesture regions** — a stretch of the glass that takes every touch beginning in it,
-//! and hears that touch from its press to its release. A [`GestureRegion`] of your own says where
+//! **Gesture regions** — rectangles that claim a primary-pointer press beginning in them
+//! and follow that pointer until release. A [`GestureRegion`] of your own says where
 //! it is each frame, follows its touches and draws itself: a part of a screen used as a trackpad,
 //! a jog dial, a strip for a gesture of your own. The gesture handles are the shell's own
 //! regions, built on the same trait.
@@ -45,7 +45,7 @@ pub const MAX_GESTURE_REGIONS: usize = 8;
 /// and every region of your own.
 pub(crate) const MAX_ZONES: usize = 3 * MAX_HANDLES_A_SIDE + MAX_GESTURE_REGIONS;
 
-/// **A gesture region**: a stretch of the glass that takes every touch beginning in it.
+/// **A gesture region** claims primary-pointer presses beginning inside its placed rectangle.
 /// Add one with [`Shell::add_gesture_region`](crate::Shell::add_gesture_region).
 ///
 /// A part of a screen as a trackpad: the finger moves a pointer the app keeps, and a tap is a

@@ -84,8 +84,8 @@ pub(crate) fn parse(text: &str) -> Result<Vec<Entry>> {
     Ok(entries)
 }
 
-/// Only these two direct dependencies are pinned exactly at `=X.Y.Z` (to control the MSRV
-/// and API drift). Every other direct dependency and every transitive one is written as a caret.
+/// These dependencies are always pinned at `=X.Y.Z` to control MSRV and API drift.
+/// Other names use `VersionReq::caret`, which also pins `0.0.z` and prereleases exactly.
 const EXACT_PIN: [&str; 2] = ["egui", "eframe"];
 
 /// The version-req `--write` puts on a new line.
@@ -384,7 +384,7 @@ winnow                 ^1            MIT OR Apache-2.0
 
     #[test]
     fn new_lines_use_the_design_version_rule() -> Result<()> {
-        // Only egui and eframe are pinned exactly.
+        // In this fixture, egui and eframe are exact pins; the other versions use caret ranges.
         assert_eq!(
             default_req("egui", &Version::parse("0.36.1")?).to_string(),
             "=0.36.1"

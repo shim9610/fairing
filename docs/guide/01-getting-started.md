@@ -104,7 +104,7 @@ Straight from `crates/fairing/Cargo.toml`.
 | `settings` | ✓ | The eleven built-in settings screens and `settings::add_all` ([§4.1](#41-the-built-in-settings-screens)). The setting keys and values screens use are there either way |
 | `runner` | | `fairing::runner` — an eframe-based fullscreen bootstrap (Wayland + glow) |
 | `runner-x11` | | `runner` plus `eframe/x11` |
-| `chrono` | | `fairing::services::clock::ChronoClock` — a clock that asks the OS timezone database every frame, so daylight saving corrects itself. Costs three crates in the tree; the default `SystemClock` is a fixed offset and does not know about DST |
+| `chrono` | | `fairing::services::clock::ChronoClock` — a clock that uses the offset from installed timezone data when queried, including applicable daylight-saving rules. Adds the optional chrono dependency tree; the default `SystemClock` is a fixed offset and does not know about DST |
 
 The default set is `["mock", "overlay", "osk", "brand", "settings"]`. A device with a hardware
 keyboard and no need for a shade can drop them all:
@@ -216,7 +216,7 @@ built-in settings, a status bar item and a nav bar item, standing alone so you c
 
 `cx.open("settings.home")` opens a screen with that id, so one has to be there. The built-in
 settings screens go in with one call (feature `settings`, on by default): the home list,
-display, sound, date and time, language and about always; Wi-Fi, Bluetooth, network and power
+display, sound, date and time, language and about without capability requirements; Wi-Fi, Bluetooth, network and power
 when a backend reports that capability; users and access when your authenticator manages its
 entries.
 
@@ -228,7 +228,8 @@ add_all(shell, &SettingsConfig::default());
 # }
 ```
 
-Without it, `cx.open("settings.home")` only logs that the screen was never declared. So does
+If no screen is registered as `settings.home`, `cx.open("settings.home")` logs that it was never
+declared. Under default built-in registration, the same happens for
 `cx.open("settings.wifi")` on a device with no Wi-Fi backend — with the default `Null`
 backends, a Wi-Fi screen could only say "not supported", so it is left out.
 `SettingsConfig::default().ignoring_capabilities()` puts every screen in regardless. Narrowing
@@ -354,7 +355,8 @@ reports — the shell has already acted — and a few are requests that only you
 | `ScreenClosed { id, instance }` | A screen closed: popped, removed, or its task ended | — |
 | `WentHome` | The shell went to the desktop | — |
 | `HiddenEntry { id }` | A hidden entry point's knock completed ([05](05-access-control.md#hidden-entry-points--the-service-menu)) | — |
-| `Access(AccessEvent)` | Every unlock request, grant, refusal, lockout and change of subject ([05 §8](05-access-control.md#8-audit-logging-with-accessevent)) | In `routing` mode, `UnlockRequested` is yours to answer |
+| `Gesture { handle, gesture }` | A registered gesture handle completed a gesture; failed admission also requests an unlock | — |
+| `Access(AccessEvent)` | Unlock requests, grants, refusals, lockouts and session changes ([05 §8](05-access-control.md#8-audit-logging-with-accessevent)) | In `routing` mode, `UnlockRequested` is yours to answer |
 | `PowerRequest(PowerRequest)` | Shutdown, reboot or suspend was asked for | Clean up, then `Shell::commit_power` — the shell does not act on its own |
 | `SettingChanged { key, value }` | A setting changed | Store it if it should survive a restart: the shell writes no files, and `Shell::restore_settings` puts what you stored back ([06 §7.1](06-services.md#71-keeping-settings-across-a-restart)) |
 | `DeclRemoved(id)` | A declaration, a built-in status item or a tile was removed | — |
@@ -366,8 +368,8 @@ reports — the shell has already acted — and a few are requests that only you
 | `IconLongPressed { id }` | A desktop icon was held; the info popover shows unless `[desktop] long_press = "none"` ([03 §3.8](03-chrome.md#38-holding-an-icon-the-info-popover)) | — |
 | `WifiNetworkTapped { ssid, secured, known }` | A network row on `settings.wifi` was tapped | Connect — joining a network is the device's ([06 §1](06-services.md#connecting-is-yours)) |
 | `WifiNetworkLongPressed { ssid, known }` | A network row was held | Offer to forget it, for instance |
-| `LockRequested` | The lock control, `tile.lock`, `LaunchAction::Lock`, or the idle lock | In `prompt` mode with an authenticator the shell locks; elsewhere, what locking means is yours |
-| `LogoutRequested` | Log out was asked for — `LaunchAction::Logout`, `ShellHandle::logout`, a tap on the `status.lock` padlock | In `prompt` mode with an authenticator the shell returns to the starting subject; elsewhere it is yours (`ShellHandle::set_subject`) |
+| `LockRequested` | The lock control, `tile.lock`, `LaunchAction::Lock`, or the idle lock | Token mode detaches local session authority. In legacy mode a prompt-capable authenticator supplies the lock screen; an idle lock also resets the session without a prompt. Other explicit legacy locks are host requests |
+| `LogoutRequested` | Log out was asked for — `LaunchAction::Logout`, `ShellHandle::logout`, a tap on the `status.lock` padlock | Token mode detaches local session authority. Legacy mode resets to the starting subject when a prompt is available; otherwise the host handles it |
 | `OverviewRequested` | The recent-screens control was used | Only with `[workspace] overview = false`: show your own |
 | `SplitRequested` | The split control was used | Only with `[workspace] split = false` |
 | `SplitToggled(two)` | Two panes came up (`true`) or the workspace went back to one | — |
@@ -387,8 +389,8 @@ None of them needs real hardware: `hello` and `protected` run on the null backen
 | `console` | `cargo run -p fairing --features runner-x11,mock --example console -- --size=1280x800` | A bench-instrument example: a rail down the left joined to the status bar, five pages with their own transitions, and the shade split into two floating cards |
 | `kiosk` | `cargo run -p fairing --features runner-x11,mock --example kiosk -- --size=1080x2560 --panel-mm=380x900` | A café-ordering example using Fairing layouts, widgets and application-specific drawing. `--layout=portrait\|counter\|compact` selects three example layouts, and a switch on its attract screen changes the language of every screen at run time (`--lang=ko` starts it in Korean) |
 | `custom_chrome` | `cargo run -p fairing --features runner-x11 --example custom_chrome -- --size=1024x600` | Replacing the chrome without touching the crate: a `Theme` built in code, a hand-drawn status bar, circular desktop badges, a procedural wallpaper, no nav bar, a gauges tile the crate draws from a declaration, and a jog-pad tile it knows nothing about |
-| `motion_lab` | `cargo run -p fairing --features runner-x11 --example motion_lab -- --size=1024x600` | Every `[motion]` token on a slider, replaying the shade, page swipes, push/pop and icon zoom. A frame-time graph sits top right (p50, p95, a 33 ms rule) and the tuned values export as TOML |
-| `palette_sheet` | `cargo run -p fairing --release --features runner-x11,mock --example palette_sheet -- --tour out/ --panel-mm=305x381` | One frame with every control on it, for comparing palettes (`--preset=base\|abyss\|linen`, `--theme=dark\|light`) |
+| `motion_lab` | `cargo run -p fairing --features runner-x11 --example motion_lab -- --size=1024x600` | Motion controls on sliders, replaying the shade, page swipes, push/pop and icon zoom. A frame-time graph sits top right (p50, p95, a 33 ms rule) and the tuned values export as TOML |
+| `palette_sheet` | `cargo run -p fairing --release --features runner-x11,mock --example palette_sheet -- --tour out/ --panel-mm=305x381` | A widget gallery frame for comparing palettes (`--preset=base\|abyss\|linen`, `--theme=dark\|light`) |
 
 The gallery examples open fullscreen without `--size`; `hello` sets its window in code
 and `protected` uses the runner default. The galleries need `mock`; `hello` and `protected`

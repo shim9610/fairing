@@ -1424,8 +1424,8 @@ fn removing_a_builtin_status_item_emits_decl_removed() -> fairing::Result<()> {
     Ok(())
 }
 
-/// With the clock taken out and no backend wake either, an idle frame schedules no repaint at all — waking at the clock's
-/// next minute boundary is a rule for when the clock is **visible** (repaints come only from input, a wake or an animation).
+/// With no visible clock, backend wake or active animation in this fixture,
+/// the settled idle frame records no repaint request.
 #[test]
 fn idle_without_a_visible_clock_schedules_no_repaint() -> fairing::Result<()> {
     let mut h = test_shell(single_level_access(), |_| {})?;

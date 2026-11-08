@@ -88,14 +88,15 @@ has no shell to tick; a custom host must connect `Shell::logic*` itself.
 |---|---|---|
 | `overlay` | on | The shade: quick-settings tiles, the notification list, the scrim |
 | `osk` | on | The on-screen keyboard |
-| `settings` | on | The built-in settings screens. The setting values are always there |
+| `settings` | on | The built-in settings screens; the settings value model remains available without this feature |
 | `brand` | on | The manta mark and the Abyss background |
 | `mock` | on | Mock backends for development |
 | `runner` | off | An eframe window bootstrap, `runner::run_shell` |
 | `runner-x11` | off | The same, with X11 as well as Wayland |
 | `chrono` | off | A clock that follows the system time zone and daylight saving |
 
-A large part comes out whole behind its feature. Turned off, it is not compiled at all.
+Feature flags remove the corresponding drawing and integration code. Shared
+configuration and value types can remain available when a subsystem is disabled.
 
 ## 3. Modules
 
@@ -286,7 +287,8 @@ asks the display backend to inhibit its idle timer. Idle repaint checks are in
 
 `testing::Harness` runs whole frames on `egui::Context` with virtual time, so a test taps and
 drags where the shell actually drew, with no window, no GPU and no sleeping. The library's tests
-and the guide's non-ignored Rust blocks run under `cargo xtask audit`. Its all-target
+run under `cargo xtask audit`, which also compiles guide Rust blocks and executes
+those not marked `no_run` or `ignore`. Its all-target
 Clippy pass also compiles the enabled examples; real-window tours run separately
 through `tools/tours.sh`. The audit checks formatting, API docs, dependencies,
 licenses, locks and blocking calls. CI runs it with
@@ -349,7 +351,7 @@ The contrast rule concerns control boundaries, not overall WCAG conformance.
 | 1.1 | The slot is a full touch target on both axes, whatever size the control is drawn at |
 | 1.3 | Inside a row, the row owns the hit rect. A control drawn into it senses nothing of its own |
 | 1.4 | A disabled control lets the tap through to whatever is beneath it |
-| 1.5 | A press only ever grows the painted shape. The allocated rect never moves |
-| 3.1 | Use a contrast ratio of at least 3:1 for identifying control boundaries, following [WCAG 1.4.11](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html). `Outline` is a divider, never a control's edge |
+| 1.5 | Paint press feedback without changing the allocated rectangle |
+| 3.1 | Use a contrast ratio of at least 3:1 for identifying control boundaries, following [WCAG 1.4.11](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html). Use `Outline` for decorative dividers and a control-boundary role for interactive edges |
 | 4.1 | The pill shape is kept for movers that ride a track, so it stays the cue that something travels |
-| 7.1 | Colour alone is never the channel. A state also shows in shape or fill |
+| 7.1 | Use shape or fill changes alongside colour for state cues |

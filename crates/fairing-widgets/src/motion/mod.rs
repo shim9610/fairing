@@ -329,9 +329,9 @@ pub struct Animated<T: Lerp = f32> {
     target: T,
     velocity: T,
     mode: Mode<T>,
-    /// The scale on the spring's settle decision — [`SETTLE_DISTANCE`] and [`SETTLE_VELOCITY`]
-    /// are **in px**, so a normalised driving value (A3's `p ∈ [0, 1]` = `dx / W`) has to be
-    /// multiplied by `1 / W` or it settles on the first tick ([`Animated::release_scaled`]).
+    /// Scale applied to [`SETTLE_DISTANCE`] and [`SETTLE_VELOCITY`] thresholds.
+    /// For a value normalized by width `W`, [`Animated::release_scaled`] accepts
+    /// `1 / W` to convert pixel thresholds into that value's units.
     /// [`Animated::release`] uses 1.
     settle_scale: f32,
 }
@@ -386,11 +386,9 @@ impl<T: Lerp> Animated<T> {
         self.release_scaled(target, spring, 1.0);
     }
 
-    /// The same as [`Animated::release`] but with the settle decision scaled by `settle_scale`.
-    /// **A normalised driving value** (A3's `p = dx / W`, A4's page units) hits the
-    /// absolute px decision (0.5 px, 10 px/s) on the very first tick, making the spring
-    /// effectively instant — passing `1 / W` converts "0.5 px" into the value's own units. Zero
-    /// or below is treated as 1.
+    /// Like [`Animated::release`], with the settle thresholds scaled by `settle_scale`.
+    /// For a value normalized by width `W`, use `1 / W` to convert pixel thresholds
+    /// to that value's units. Non-finite, zero or negative scales use 1.0.
     pub fn release_scaled(&mut self, target: T, spring: Spring, settle_scale: f32) {
         self.target = target;
         self.settle_scale = if settle_scale > 0.0 && settle_scale.is_finite() {

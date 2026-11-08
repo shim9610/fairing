@@ -263,8 +263,7 @@ impl<'a> SegmentedControl<'a> {
             });
         }
         SegmentedPick {
-            // Unreachable — `show` returns early on an empty slice — but a widget does not panic
-            // while painting, so the empty case degrades to a zero-size response instead.
+            // The empty-options case returns before this branch; retain an empty fallback.
             response: response
                 .unwrap_or_else(|| ui.allocate_exact_size(Vec2::ZERO, Sense::hover()).1),
             picked,
@@ -306,9 +305,8 @@ struct Strip {
     cell: f32,
     /// How many segments.
     n: usize,
-    /// A segment's corner radius, `control_radius − mark_radius`. Because the radius ladder
-    /// halves, that equals `mark_radius` at every scale, so a segment's curve is concentric with
-    /// the strip's with nobody computing anything.
+    /// Segment corner radius, rounded from `control_radius - mark_radius`.
+    /// Custom metrics can vary these two values independently.
     radius: CornerRadius,
     /// How far a label is kept from its cell's edges (`control.gap`).
     pad: f32,
@@ -524,8 +522,8 @@ mod tests {
         assert_eq!(s.index_at(9_999.0), 3);
     }
 
-    /// The cells tile the band exactly: cell 0 starts at its left edge and the last one ends at
-    /// its right, so the travelling face never overhangs the strip's own rounded corner.
+    /// Check that the four fixture cells tile the band and that an intermediate
+    /// position preserves cell width. This assertion does not test rounded-corner clipping.
     #[test]
     fn the_cells_tile_the_band() {
         let s = strip();

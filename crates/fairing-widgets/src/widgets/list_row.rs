@@ -276,7 +276,7 @@ impl ListRow {
         // starts inside a container; `components.list_row.pad` keeps the job it is actually named
         // for, the gap between one trailing item and the next. They were the same 16 du number in
         // two places, so raising the layout token moved the card, the note and the title and left
-        // every row's label where it was - measured, the label did not shift a pixel.
+        // the label column at its configured inset.
         let edge = cx.theme.metrics.content_inset;
         let (switch_slot, radio_slot) = self.control_slots(cx.theme, rect);
         let mut right = rect.max.x - edge;
@@ -446,7 +446,7 @@ impl ListRow {
         };
         let muted = cx.theme.color(ColorRole::Muted);
         if self.enabled && response.is_pointer_button_down_on() {
-            // A7: the press tint is immediate on the first frame (a row does not scale — the list would wobble).
+            // A7: use the current pointer-down response for the tint, without scale animation.
             ui.painter()
                 .rect_filled(rect, 0.0, cx.theme.color(ColorRole::Pressed));
         }
@@ -524,12 +524,8 @@ impl ListRow {
     /// not also a tap.
     pub fn show_with_long_press(mut self, ui: &mut egui::Ui, cx: &mut Cx<'_>) -> RowPress {
         let m = &cx.theme.metrics;
-        // **The row is floored against its own text, not only against the finger.** `row_height`
-        // and `type_scale` both derive from the viewing distance, so at every panel size the two
-        // move together and this floor never binds. It binds when an integrator raises the text
-        // on its own - rung 2 of the override ladder, which is exactly what a low-vision setting
-        // does - and without it a two-line row kept its height while its title and subtitle grew
-        // straight through the bottom of the card.
+        // Floor row height against the configured row/widget heights, touch target
+        // and the measured title/subtitle height.
         let height = self
             .height
             .unwrap_or_else(|| m.row_height.max(m.widget_height))

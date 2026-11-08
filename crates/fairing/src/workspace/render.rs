@@ -611,7 +611,7 @@ impl Workspace {
     ///
     /// Two `Area`s: what is drawn is in one that is click-through, so that it can cover the
     /// content without taking a press from the panes, and the handle is a second, no bigger than
-    /// the handle — an interactable `Area` takes every press inside its own rect.
+    /// the handle — its interactable `Area` participates in egui hit testing within that rect.
     pub(super) fn divider_ui(
         &mut self,
         ctx: &egui::Context,

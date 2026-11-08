@@ -1,7 +1,7 @@
 //! `ShellConfig` — the M1 sections of `fairing.toml` (`[shell]`, `[status_bar]`, `[nav_bar]`,
 //! `[theme]`, `[desktop]`, `[motion]`, `[access]`), with loading and defaults.
 //!
-//! Configuration handles **placement and assignment only**. Declarations (screens, actions,
+//! Configuration sets placement, appearance, interaction and access policy. Declarations (screens, actions,
 //! status items) live in code, and an id the config refers to that does not exist in code is
 //! logged as a warning and ignored. The M2 sections (`[overlay]`, `[notify]`,
 //! `[osk]`, `[gesture]`) are parsed whatever the features are — a section for a subsystem that
@@ -335,11 +335,8 @@ impl ShellConfig {
                 )));
             }
         }
-        // **A device with no back at all is not allowed to boot**. `gesture` has no back
-        // button — back is a `back_edges` swipe — so with `back_edges` empty there is no way out of
-        // the stack at all, the kind of accident found only after shipping. A bar turned off
-        // (`enabled = false`) does not catch here: it is normal for the screen to draw its own back then
-        // (as the kiosk example does), and the style value means nothing.
+        // An enabled gesture navigation bar needs at least one back edge: this style has no
+        // back button. With the bar disabled, validation leaves navigation to the app.
         if self.nav_bar.enabled
             && self.nav_bar.style == "gesture"
             && self.nav_bar.back_edges.is_empty()

@@ -9,14 +9,14 @@
 //!
 //! **The curve**: the time progress ([`ParamFade::progress`]) is linear and only the alpha goes
 //! through `CubicOut` ("tweens are `CubicOut`"). The incoming value gets
-//! `CubicOut(t)` and the outgoing one `1 − CubicOut(t)`, so the two alphas always sum to 1.
+//! `CubicOut(t)` and the outgoing one `1 − CubicOut(t)`: complementary factors
+//! before `Color32` alpha quantization.
 //!
 //! **On consecutive changes** (a Wi-Fi strength going 0 → 2 → 3 within 120 ms): the fade is not
 //! restarted. **The outgoing value is left as it is** and only the
 //! incoming one is swapped for the new value, finishing on the original schedule — the
-//! intermediate value was never on screen, so dropping it does not show, and a rapidly changing
-//! value never leaves the icon stuck half-faded. Returning to where it started (0 → 1 → 0)
-//! cancels the fade outright.
+//! current incoming drawing is replaced without replaying intermediate values.
+//! Returning to the outgoing value (0 → 1 → 0) cancels the fade.
 
 use super::parametric::ParamStyle;
 use crate::motion::Easing;

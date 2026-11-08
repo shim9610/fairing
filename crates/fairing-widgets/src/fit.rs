@@ -1,16 +1,9 @@
 //! Aspect-preserving image fitting: containment and cropped coverage.
 
-/// The Rect fitted **inside** `into` keeping the aspect ratio — CSS's `object-fit: contain`.
+/// Fit the source aspect ratio inside `into`, as with CSS `object-fit: contain`.
 ///
-/// [`IconRef::Texture`](crate::icons::IconRef::Texture) holds only a `TextureId` and so **does
-/// not know the original size**.
-/// It therefore fills the `rect` it is given as it stands, and a 3:2 photo handed to a square icon
-/// slot is drawn squashed. It is not the kind of thing the crate can fix from inside — only whoever
-/// uploaded the texture knows its size. They can narrow the Rect with this function before handing
-/// it over.
-///
-/// `source` is the original's pixel size (`TextureHandle::size_vec2()`). It need not be a texture —
-/// anything whose size is known will do.
+/// The caller supplies the source dimensions; a `TextureId` alone does not carry
+/// them. Return `into` unchanged when a source dimension is zero or negative.
 ///
 /// ```
 /// use fairing_widgets::fit;
@@ -20,9 +13,6 @@
 /// assert_eq!(at.size(), egui::vec2(100.0, 100.0));
 /// assert_eq!(at.center(), into.center());
 /// ```
-///
-/// Where the original's size is unknown (0 or below) it hands `into` back as it stands — a texture
-/// not yet uploaded is one such case.
 #[must_use]
 pub fn contain(source: egui::Vec2, into: egui::Rect) -> egui::Rect {
     if source.x <= 0.0 || source.y <= 0.0 {

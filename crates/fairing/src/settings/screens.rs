@@ -295,8 +295,7 @@ fn format_clock(now: crate::time::WallTime, hour12: bool, strings: &Strings) -> 
     )
 }
 
-/// Offset minutes → `+09:00`.
-/// `3 d 4 h`, `4 h 12 min`, `12 min` — the two largest units, which is all an uptime needs.
+/// Format uptime as days/hours, hours/minutes, or minutes: `3 d 4 h`, `4 h 12 min`, `12 min`.
 fn format_uptime(secs: u64, strings: &Strings) -> String {
     let (days, hours, minutes) = (secs / 86_400, secs / 3_600 % 24, secs / 60 % 60);
     let fill = |template: &str| {
@@ -314,6 +313,7 @@ fn format_uptime(secs: u64, strings: &Strings) -> String {
     }
 }
 
+/// Offset minutes → `+09:00`.
 fn format_offset(offset_min: i32) -> String {
     let sign = if offset_min < 0 { '-' } else { '+' };
     let abs = offset_min.unsigned_abs();

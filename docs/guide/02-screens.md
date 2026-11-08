@@ -136,8 +136,8 @@ they do not come from a registry declaration but from the `[overlay] tiles` list
 
 ## 2. The `ScreenDecl` builder
 
-`screen` and `screen_with` both return a `ScreenDecl`. Every method below is optional and the
-order does not matter.
+`screen` and `screen_with` both return a `ScreenDecl`. The methods below are optional. Setters can override earlier values; for example,
+`.fullscreen()` and `.chrome(..)` both set the chrome policy.
 
 | Method | Default | What it does |
 |---|---|---|
@@ -305,8 +305,7 @@ fn main() -> fairing::Result<()> {
 
 ## 4. The `Cx` handle
 
-`Cx` is how a screen asks the shell for something. A closure may ignore `cx` entirely, and most
-screens only ever touch `ui`.
+`Cx` is how a screen asks the shell for something. A closure may ignore `cx` entirely when it only needs to draw through `ui`.
 
 ### Fields
 
@@ -472,8 +471,8 @@ has a fixed priority:
 handled separately by `Shell::gesture_back`, which pops straight through
 `Workspace::release_gesture_back` — it does
 **not** ask `on_back`. So a screen with internal navigation that returns `BackAction::Consumed`
-still closes when a finger swipes the edge. Today the only defence is `[nav_bar] back_edges = []`
-on such a screen, which turns gesture-back off.
+still closes when a finger swipes the edge. Disable gesture-back globally with `[nav_bar] back_edges = []`, or suppress built-in
+edge gestures on that screen with `ChromePolicy::edge_guard = true`.
 
 `shell.home()` closes the shade with it and goes to the `Home` view. The task stays alive and the
 whole of it goes `Stopped`, so tapping the icon again brings the stack back as it was.
@@ -590,7 +589,7 @@ A `ChromePolicy` is set in two places: on the declaration (`.chrome()` · `.full
 | `status_bar` | `BarMode` | `Show` | `Show` · `Hide` · `Overlay` (translucent, over the content) |
 | `nav_bar` | `BarMode` | `Show` | `Show` · `Hide`. `Overlay` is treated as `Show` |
 | `allow_peek` | `bool` | `true` | Let an edge pull briefly reveal a hidden bar |
-| `edge_guard` | `bool` | `false` | Blocks every edge gesture. Only the emergency gesture is left |
+| `edge_guard` | `bool` | `false` | Suppresses built-in shell edge gestures; the emergency gesture remains. Custom gesture regions choose how to handle the blocked-edge flags |
 | `osk` | `OskMode` | `Auto` | `Auto` (follows focus) · `Manual` (toggle only) · `Off` |
 | `keep_awake` | `bool` | `false` | Stops the display idle timer |
 | `allow_split` | `bool` | `true` | Allow a split to come up while this screen is focused. Off, `open_in_other_pane` and the split control keep to one pane |
@@ -602,8 +601,9 @@ everything else at its default. `allow_peek` stays `true`, so pulling an edge br
 back. `inset_or(default)` uses the value you pass when `inset` is `None`, and clamps negatives
 to 0.
 
-`edge_guard = true` blocks every edge regardless of `allow_peek`, leaving only the emergency
-gesture: a 2-second press within 64 px of a top corner. Use this policy to suppress
+`edge_guard = true` suppresses built-in edge gestures regardless of `allow_peek`. The emergency
+gesture remains: a top-corner hold, 2 seconds by default (`[gesture] emergency_ms`).
+Custom gesture regions still receive the blocked-edge flags. Use this policy to suppress
 shell edge navigation on the screen. The full contract is in
 [03 Chrome](03-chrome.md).
 
@@ -635,7 +635,7 @@ fn main() -> fairing::Result<()> {
         .chrome(ChromePolicy {
             status_bar: BarMode::Overlay,
             nav_bar: BarMode::Hide,
-            edge_guard: true, // no mis-touch mid-cut; only the emergency gesture is left
+            edge_guard: true, // suppress built-in edge gestures; the emergency gesture remains
             inset: Some(0.0),
             ..ChromePolicy::default()
         }),
@@ -721,7 +721,7 @@ rows. Use `group` for related rows; custom layouts can choose another treatment.
 ### 8.3 A bar pinned to the bottom
 
 Buttons that must stay visible **however long the body gets** — confirm, pay — go in an
-`action_bar`. The body flows above it and scrolling never runs underneath. When the OSK comes up,
+`action_bar`. The layout reserves a band below the body for it. When the OSK comes up,
 the bar steps above it.
 
 ```rust

@@ -256,8 +256,8 @@ impl DesktopView {
     pub fn is_pressed(&self) -> bool {
         self.press.key.is_some()
     }
-    /// The tap Rect of a page indicator dot drawn last frame. With only one page it is not drawn, so
-    /// `None` (the A4 horizontal swipe is M2 — in M1 this tap is the only way to change page).
+    /// The tap Rect of a page indicator dot drawn last frame. With only one page the indicator is
+    /// not drawn, so this returns `None`. Pages also support horizontal swipes.
     #[must_use]
     pub fn page_indicator_rect(&self, index: usize) -> Option<Rect> {
         self.indicator_rects

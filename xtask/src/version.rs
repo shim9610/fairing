@@ -162,8 +162,9 @@ impl VersionReq {
     /// Build the default caret form.
     ///
     /// 1.0 and above becomes `^X`, `0.Y.z` becomes `^0.Y`, and `0.0.z` and a pre-release are exact pins.
-    /// A patch update does not break the gate, and only a minor (for 0.x) or major update shows up as an
-    /// approval diff.
+    /// Stable versions at 1.0 or above admit updates within the major version; stable
+    /// `0.Y.z` versions with `Y > 0` admit updates within that minor version. Exact pins require approval
+    /// for any version change.
     pub(crate) fn caret(version: &Version) -> Self {
         if version.is_pre() || (version.major == 0 && version.minor == 0) {
             return Self::exact(version);

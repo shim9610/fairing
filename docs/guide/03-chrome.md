@@ -35,12 +35,12 @@ and bar visibility.
 
 | id | What it draws | When it is drawn | Tap |
 |---|---|---|---|
-| `status.clock` | The clock (`clock_format`) | Always | none |
+| `status.clock` | The clock (`clock_format`) | No backend capability requirement | none |
 | `status.wifi` | A parametric Wi-Fi strength icon | The backend reports `Capabilities::WIFI` | none |
 | `status.bluetooth` | Bluetooth (off / on / connected) | The backend reports `Capabilities::BLUETOOTH` | none |
 | `status.battery` | Battery level and charge indicator | `services.power.battery()` is `Some` | none |
-| `status.notifications` | A bell with an unread count badge | Always | Opens the shade (`LaunchAction::OpenOverlay`) |
-| `status.user` | A level-coloured dot and the subject's name | Always | none |
+| `status.notifications` | A bell with an unread count badge | No backend capability requirement | Opens the shade (`LaunchAction::OpenOverlay`) |
+| `status.user` | A level-coloured dot and the subject's name | No backend capability requirement | none |
 | `status.ethernet` | Wired network, dimmed while the cable is out | The network backend reports `Capabilities::ETHERNET` | none |
 | `status.volume` | Volume (four steps, muted) | The audio backend reports `Capabilities::VOLUME` | none |
 | `status.brightness` | Brightness | The display backend reports `Capabilities::BRIGHTNESS` | none |
@@ -174,11 +174,11 @@ back_edges = ["left"]
 | `items` value | What it does | State |
 |---|---|---|
 | `"back"` | Pops the stack | Disabled when the stack is empty |
-| `"home"` | Goes home | Always enabled |
-| `"recents"` | The recent screens (§2.3) | Always enabled. Reported as `ShellEvent::OverviewRequested` too |
-| `"split"` | The split control (§2.3) | Always enabled. Reported as `ShellEvent::SplitRequested` too |
+| `"home"` | Goes home | Enabled in the built-in button bar; bar visibility and layout still apply |
+| `"recents"` | The recent screens (§2.3) | Button remains enabled; `nav.recents` gates its action. Reported as `ShellEvent::OverviewRequested` too |
+| `"split"` | The split control (§2.3) | Button remains enabled; `workspace.split` gates entry. Reported as `ShellEvent::SplitRequested` too |
 | `"osk"` | Manual OSK toggle | Pairs with a `nav_item("osk", ..)` declaration (§6.3) |
-| Any other string | The slot for a `nav_item(id, ..)` declaration | An empty slot if there is no declaration |
+| Any other string | The slot for a `nav_item(id, ..)` declaration | Without a declaration, the default fallback is `•` with no callback |
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -232,7 +232,7 @@ itself, or with nothing that fits — it says so in a toast rather than doing no
 over its cards, it takes them down. What two panes mean for a screen is
 [02 §6.1](02-screens.md#61-two-panes).
 
-- **Both are always reported** — `ShellEvent::OverviewRequested` / `SplitRequested` — and
+- **Handling either request reports its event** — `ShellEvent::OverviewRequested` / `SplitRequested` — and
   `ShellEvent::SplitToggled(bool)` follows a split coming up or going.
 - **The cards make way.** A screen opened from anywhere else while they are up — a launch, a
   notification, another thread — takes them down first, so it is on show; home takes them down
@@ -257,11 +257,15 @@ over its cards, it takes them down. What two panes mean for a screen is
   narrowest width are `components.overview.card_gap` and `card_min_width`
   ([04 §1.2](04-customization.md#12-metrics-tokens) · [§1.6](04-customization.md#16-widget-metrics--componentspec)).
 
-### 2.4 Controls the shell draws but does not act on
+<a id="24-controls-the-shell-draws-but-does-not-act-on"></a>
 
-Two presses leave only as events. The icon is the crate's; what it means is yours — with one
-exception: in `[access] mode = "prompt"` with an authenticator, the shell carries out the lock
-(its lock screen) and the logout (back to `[access] initial`) as well, and still reports them
+### 2.4 Lock and logout controls
+
+Lock and logout actions emit the events below. In token mode they also detach local session
+authority. In legacy mode, when the authenticator offers a prompt, the shell resets the session
+and can show its lock screen for a lock request; without a prompt, explicit actions are left
+to the host. The idle
+lock resets the session even without a prompt
 ([05 §7](05-access-control.md#7-the-session--temporary-unlocks-the-timeout-the-idle-lock)).
 
 | Where | Event |
@@ -353,7 +357,7 @@ the bottom edge takes the buttons' work:
   the lift's travel — 35 % of the pane's height, between 15 and 60 mm — or flung up faster than
   `[motion] fling_px_s`, it is home; short of that, the screen springs back down and goes on. A
   slide along the indicator goes through by the same two rules, across the pane's width. A pause
-  counts only a quarter of the way up: lower, it is a hand making up its mind, and a later pause
+  counts only a quarter of the way up: below that threshold, a later pause
   higher up still brings the cards.
 - **A run of switches keeps its order.** Right, right, left goes back one, rather than bouncing
   between the last two. A touch anywhere but the indicator's edge ends the run.
@@ -373,7 +377,7 @@ and `ShellHandle::launch` still reach them.
 ## 3. The desktop
 
 The desktop is not a screen; it is the workspace's home view. Icons **always originate in code
-declarations**, and the config file only overrides position, label, icon name and lock
+declarations**, and the config file overrides position, label, description, icon name and lock
 presentation. An id in config with no declaration in code logs a warning and is ignored.
 
 ### 3.1 Putting icons on from code
@@ -587,8 +591,8 @@ fn set_from_file(shell: &mut Shell, ctx: &egui::Context) -> fairing::Result<()> 
 }
 ```
 
-Pass only an `id` to `Wallpaper::TextureFit` (or `Texture`) and the texture is freed the moment
-you drop the `TextureHandle`, leaving a black background. Unless you manage an atlas yourself,
+`Wallpaper::TextureFit` and `Texture` retain an id, not the texture handle. Dropping the last
+retained `TextureHandle` releases the texture; the stored id then refers to a released texture. Unless you manage an atlas yourself,
 **use `Wallpaper::owned`** — the wallpaper holds the handle.
 
 `Wallpaper::Painter` is in
@@ -658,8 +662,8 @@ It exists when the `overlay` feature is on (it is by default).
 | `cx.launch(LaunchAction::OpenOverlay)` | Anywhere |
 | `shell.handle().toggle_overlay()` | Including from another thread |
 
-Every path goes through the `overlay.open` gate. Fail it and only `AccessEvent::UnlockRequested`
-goes out; the shade does not open.
+These entry paths check the `overlay.open` gate. A failed check keeps the shade closed and
+requests an unlock. Token-mode routing can also emit `AccessEvent::SessionRequested`.
 
 The moment the shade **leaves its closed state** (the first pull, not the fully-open position)
 the focused screen gets `Lifecycle::Paused`, and it gets `Resumed` when the shade is fully closed
@@ -719,7 +723,7 @@ The three footer buttons are `clear_all` · `lock` · `settings`, and **none of 
 is unconditional** — a device with no lock concept, or one that never registered
 `settings.home` (which the settings button opens), leaves them out of the list.
 The subject's name and the level dot are not in the list: those are state rather
-than controls, and they always draw. An unknown name warns and is skipped.
+than controls, and their rendering is independent of the footer button list. An unknown name warns and is skipped.
 
 Note that `lock` and the `tile.lock` tile issue the same `LaunchAction::Lock`,
 so by default the shade offers it twice.
@@ -969,10 +973,10 @@ Built-in tiles go to their paired built-in settings screen **without being told 
 | `tile.brightness` · `tile.theme` | `settings.display` |
 | `tile.volume` | `settings.sound` |
 
-Only if that screen is actually registered — turn it off with `[settings] only`, or drop the
+Only if that screen is actually registered — exclude it with `SettingsConfig::only` / `.without`, or drop the
 `settings` feature, and it goes nowhere.
 
-Attached or not, **the long press itself always** goes out as
+Whether or not a detail screen is attached, a recognized long press is reported as
 `ShellEvent::TileLongPressed { id }`. Take that if you want a menu or a dialog instead of a
 screen. A locked tile goes nowhere on a long press — the unlock prompt is raised on taps only
 (raise it on a mere press-and-hold and it is easy to summon by accident). A press consumed by a
@@ -1026,7 +1030,8 @@ The `×` can be turned off. Choose whether to show it based on the supported inp
 devices and the product's dismissal flow. The swipe and "Clear all" paths remain
 when it is hidden.
 
-With `motion.reduce = true`, all three disappear instantly as they used to.
+With `motion.reduce = true`, dismissal skips the exit animation and is processed in the
+provided UI update.
 
 ```rust
 # use fairing::{LaunchAction, Notification, NotificationId};
@@ -1230,12 +1235,10 @@ numpad_sign = false
 | `height_ratio` | `0.38` | Height = screen height × this. Above 0 and at most 1 |
 | `min_key_px` | `48.0` | Minimum height of a key, the gaps between rows not counted. If the ratio gives less, it is raised |
 
-The ratio has a ceiling too. A row of keys is never taller than the theme's `osk_max_key` — one
-and a half fingers, and at least 72 du (04 §1.2) — so a tall portrait panel gets a keyboard sized
-for a hand rather than a third of the glass. Where the floor and the ceiling cross (a big
-`min_key_px` on a small panel), the floor wins. Either way the keyboard is never taller than the
-room above the nav bar (the screen, when the nav bar is off), so its top row is always on the
-glass — on a panel too short for the floor, the keys come out shorter than `min_key_px`.
+The theme's `osk_max_key` caps the ratio-derived row height: by default, one and a half fingers
+with a 72 du floor (04 §1.2). A larger `min_key_px` takes precedence over that cap.
+The resulting keyboard height is clamped to the room above the nav bar (the screen when
+the nav bar is off), so keys can be shorter than `min_key_px` on a short panel.
 
 The ceiling is a theme token, so it changes in code: give the builder a `MetricsSpec` with an
 `osk_max_key` of your own, or `None` to lift it and let the ratio alone decide.
@@ -1247,7 +1250,7 @@ use fairing::{Shell, ShellConfig};
 
 fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
     let spec = MetricsSpec {
-        // Rows of at most a finger and a quarter, never under 60 du. `None` lifts the cap.
+        // Requested row-height cap: 1.25 fingers with a 60 du floor. `None` lifts the cap.
         osk_max_key: Some(Span::fixed(Dim::finger(1.25)).min(Dim::du(60.0))),
         ..MetricsSpec::default()
     };
@@ -1685,10 +1688,10 @@ by the `builtin_names_resolve` test.
 
 | Edge | Gesture | When |
 |---|---|---|
-| Top | The shade, pulled down | Always. The status bar's tap and `LaunchAction::OpenOverlay` are the other ways in (§4.1) |
+| Top | The shade, pulled down | With `overlay`, gestures enabled and no `edge_guard`; opening checks `overlay.open`. The status bar's tap and `LaunchAction::OpenOverlay` are other entry paths (§4.1) |
 | Bottom | Home, the recent screens, the task before or after | `[nav_bar] style = "gesture"` (§2.6) |
 | Left, right | Back | The edges in `[nav_bar] back_edges` — the left one by default (§2) |
-| A top corner, held 2 s | The emergency gesture: the shade, or the prompt for `chrome.emergency` | Always — with `edge_guard` and with gestures off too ([05](05-access-control.md#one-entry-point-already-exists)) |
+| A top corner, held for `emergency_ms` (2 s by default) | The emergency gesture: the shade, or the prompt for `chrome.emergency` | Remains recognized with `edge_guard` and with gestures off; shade rendering requires `overlay` ([05](05-access-control.md#one-entry-point-already-exists)) |
 
 `[gesture] enabled = false` turns them all off but the emergency gesture, and a screen's
 `ChromePolicy::edge_guard` turns them off over that screen. A gesture handle (§9.2) takes the
@@ -1884,7 +1887,8 @@ screen reads the same `Pointer` through `cx.app::<Pointer>()` and draws it.
   as a second finger.
 - **Where regions overlap, the one added later is on top** and takes the press. That holds for
   handles too: a region added after a handle takes the presses in the strip it covers.
-- **The emergency gesture works through every region**: two seconds still in a top corner.
+- **Regions do not suppress emergency recognition**: hold still in a top corner for
+  `[gesture] emergency_ms` (2 seconds by default).
   Hidden-entry corner knocks do not count presses which began in a region, including a tap
   released in the same pass or after that region was removed. The region owns that press.
 - **Over a screen or the desktop only.** Not over the shade, the unlock prompt or the recent

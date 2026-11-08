@@ -49,7 +49,7 @@ fn sub_springs_are_validated_like_the_base_spring() {
     );
 }
 
-/// A page spring of k = 0, which would never settle, does not get past the shell's builder.
+/// The shell builder rejects a page spring with k = 0.
 #[test]
 fn zero_page_spring_is_refused_at_build() {
     let mut cfg = single_level_access();

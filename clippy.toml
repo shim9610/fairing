@@ -32,10 +32,9 @@ disallowed-methods = [
   { path = "std::panic::panic_any", reason = "product code returns errors rather than starting an unwind" },
   { path = "std::sync::mpsc::SyncSender::send", reason = "bounded sends must return Full instead of waiting; use BoundedSender::try_send" },
   { path = "std::sync::mpsc::SyncSender::send_timeout", reason = "the UI must not wait for queue capacity", allow-invalid = true },
-  # The receiving half, **resolved by type** — so an alias or a re-export cannot walk past it, which
-  # is what the `xtask sync-check` text scan could not promise. `for msg in rx` is the one
-  # form no lint can reach: it desugars to `IntoIterator::into_iter`, and banning that bans every
-  # `for` loop. `fairing::inbox::Inbox` closes that one by construction instead.
+  # These method bans use resolved types, including aliases and re-exports.
+  # They do not identify implicit IntoIterator calls in `for msg in rx`.
+  # `fairing::inbox::Inbox` keeps the Receiver private and exposes try_recv/drain.
   { path = "std::sync::mpsc::Receiver::recv", reason = "it blocks the UI thread. Use Inbox::try_recv / Inbox::drain" },
   { path = "std::sync::mpsc::Receiver::recv_timeout", reason = "the same, with a deadline" },
   { path = "std::sync::mpsc::Receiver::recv_deadline", reason = "the same, unstable", allow-invalid = true },

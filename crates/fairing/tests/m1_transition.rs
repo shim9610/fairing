@@ -908,9 +908,8 @@ fn resume_from_home_zooms_and_task_switch_is_immediate() -> fairing::Result<()> 
     Ok(())
 }
 
-/// A background task's `evict_after` expiring does not break the foreground's A2 — only a user command interrupts a
-/// transition, and the memory policy stays out of sight. `Workspace::close_where` only calls
-/// `settle()` where the matching instance is **the active Pane task or is mid-transition**.
+/// Evicting a background task does not settle the foreground A2 transition.
+/// Workspace::close_where settles an affected active or transitioning task.
 #[test]
 fn background_evict_does_not_cut_a_running_home_transition() -> fairing::Result<()> {
     let clock = Clock::default();

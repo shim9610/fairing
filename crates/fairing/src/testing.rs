@@ -323,9 +323,9 @@ impl<H: HostedShell> Harness<H> {
         self.pending.push(Event::Text(text.to_owned()));
     }
 
-    /// **Every text drawn in one frame, with where it was drawn** — the frame is run for it.
-    /// A text clipped away whole (scrolled out of its area) is left out: it is not on the glass,
-    /// so a finger cannot land on it. A wrapped or truncated label carries its full text.
+    /// Collect text shapes from one rendered frame with their rectangles.
+    /// Shapes outside their clip rectangles are omitted; occlusion by other layers is not tested.
+    /// A wrapped or truncated label carries its full text.
     #[must_use]
     pub fn texts(&mut self) -> Vec<(String, Rect)> {
         let mut out = Vec::new();
@@ -335,13 +335,12 @@ impl<H: HostedShell> Harness<H> {
         out
     }
 
-    /// **Where the one text reading `label` is this frame** — the rectangle to press, found by
-    /// what it says rather than where it was last seen, so a row that moves with the type scale
-    /// or the finger size is still the row pressed. The label is matched whole, trimmed. A
-    /// widget that paints its label twice over itself is one place.
+    /// Find the rectangle of a unique text shape reading `label` in the current frame.
+    /// Match the whole trimmed label, merging duplicate paints within one pixel.
+    /// This follows layout changes but does not test whether another layer intercepts a press.
     ///
     /// # Errors
-    /// [`crate::Error::Config`] with what *is* on the glass when nothing reads `label`, and
+    /// [`crate::Error::Config`] with the collected text when nothing reads `label`, and
     /// with where each is when more than one text does — name a text that is drawn once.
     pub fn text_rect(&mut self, label: &str) -> Result<Rect> {
         let texts = self.texts();
@@ -411,7 +410,7 @@ fn collect_texts(shape: &egui::Shape, clip: Rect, out: &mut Vec<(String, Rect)>)
     }
 }
 
-/// The texts on the glass, for a message about what was not among them.
+/// Collected text labels for a lookup-failure diagnostic.
 fn texts_seen(texts: &[(String, Rect)]) -> String {
     let mut names: Vec<&str> = texts
         .iter()
@@ -463,9 +462,8 @@ pub fn access_config_mode(levels: &[&str], default_gate: Option<&str>, mode: &st
 /// Build a shell on the `Null` backends (a fixed clock) and add declarations with `setup`
 /// (`test_shell`).
 ///
-/// **It forces `motion.reduce = true`** — transitions finish immediately, which is what makes
-/// the "two frames and it has landed" contract hold. To test the animation itself, pass a config
-/// to [`Harness::new`] directly.
+/// Sets `motion.reduce = true` to skip built-in transition animations.
+/// To test the animation itself, pass a config to [`Harness::new`] directly.
 ///
 /// # Errors
 /// A configuration error.

@@ -532,9 +532,9 @@ impl ShellBuilder {
     }
 
     /// **Draw the widgets yourself** (rung 5) — a painter per kind,
-    /// each optional ([`WidgetPainters`](crate::widgets::WidgetPainters)). Every widget the shell
-    /// draws gets them: your screens' through `cx.widgets()`, and the shell's own — the settings
-    /// screens, the unlock prompt's keys and buttons, the recent screens' buttons. A widget keeps
+    /// each optional ([`WidgetPainters`](crate::widgets::WidgetPainters)). Painter-enabled Fairing
+    /// controls receive them through `cx.widgets()`, including the built-in settings, prompt
+    /// and recent-screen buttons. A widget keeps
     /// its press, its value and its motion; the painter is told its look and draws it.
     #[must_use]
     pub fn widget_painters(mut self, painters: crate::widgets::WidgetPainters) -> Self {

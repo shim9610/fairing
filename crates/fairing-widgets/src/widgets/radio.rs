@@ -428,8 +428,8 @@ mod tests {
         assert!(on.dot + on.edge < on.radius, "the dot has reached the ring");
     }
 
-    /// Rule 1.5: a press only ever makes the painted silhouette bigger, by `press_grow`
-    /// on every side, and the dot goes with it instead of being left at its resting size.
+    /// Check painted-radio growth for the fixture's positive `press_grow`, including
+    /// the dot geometry.
     #[test]
     fn the_press_grows_the_whole_control() {
         let (ms, dot, se, sm) = REF;

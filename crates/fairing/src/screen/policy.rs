@@ -37,7 +37,7 @@ pub struct ChromePolicy {
     pub nav_bar: BarMode,
     /// Let an edge pull reveal hidden chrome (true by default).
     pub allow_peek: bool,
-    /// Block edge gestures (false by default). The emergency gesture always remains.
+    /// Block edge gestures (false by default). This flag does not disable the emergency gesture.
     pub edge_guard: bool,
     /// The on-screen keyboard.
     pub osk: OskMode,

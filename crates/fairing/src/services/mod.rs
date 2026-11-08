@@ -168,7 +168,7 @@ pub trait Backend {
     /// ([`crate::Shell::now`]) — headless it is virtual time (1/60 s at a step), so a
     /// time-dependent backend (a simulated scan delay, say) can be tested with no `sleep`.
     /// The default delegates to [`Backend::poll`]. A backend that watches the
-    /// clock implements this and does not use `Instant::now()`.
+    /// clock should implement this using the supplied time rather than `Instant::now()`.
     fn poll_at(&mut self, _now: Instant) {
         self.poll();
     }
@@ -223,7 +223,8 @@ pub enum PowerRequest {
 pub trait PowerBackend: Backend {
     /// The battery. `None` on a machine without one.
     fn battery(&self) -> Option<BatterySnapshot>;
-    /// Reboot, shut down or suspend. Returns immediately.
+    /// Request reboot, shutdown or suspend. Implementations must submit the request
+    /// without waiting for the operation to complete.
     ///
     /// # Errors
     /// [`ServiceError`] if the backend does not support it (`Unsupported`) or it fails.
@@ -295,14 +296,14 @@ impl WifiSnapshot {
 pub trait WifiBackend: Backend {
     /// A clone of the snapshot.
     fn snapshot(&self) -> WifiSnapshot;
-    /// Whether it is on — a value the status bar asks for **every frame**. The default
+    /// Whether it is on — queried when the built-in status item needs it. The default
     /// implementation calls [`WifiBackend::snapshot`] (which may allocate), so a backend should
     /// implement this and [`WifiBackend::strength`] directly.
     fn enabled(&self) -> bool {
         self.snapshot().enabled
     }
     /// The connection strength (the same as [`WifiSnapshot::strength`]; 0 when not connected).
-    /// Asked every frame — the default clones the snapshot, so implement it directly.
+    /// Queried while drawing the built-in status item; the default clones the snapshot.
     fn strength(&self) -> u8 {
         self.snapshot().strength()
     }
@@ -383,7 +384,7 @@ impl BtSnapshot {
 pub trait BluetoothBackend: Backend {
     /// A clone of the snapshot.
     fn snapshot(&self) -> BtSnapshot;
-    /// Whether it is on — a value the status bar asks for **every frame**. The default
+    /// Whether it is on — queried when the built-in status item needs it. The default
     /// implementation calls [`BluetoothBackend::snapshot`] (which may allocate), so a backend
     /// should implement this and [`BluetoothBackend::any_connected`] directly.
     fn enabled(&self) -> bool {
@@ -486,8 +487,8 @@ pub enum Cue {
 /// With the `Null` default the sound screen still writes `audio.volume` and `audio.muted`, so an
 /// integrator who would rather apply them from [`crate::ShellEvent::SettingChanged`] can.
 pub trait AudioBackend: Backend {
-    /// The level and mute. `None` if unknown (the status item hides). Asked every frame while
-    /// `status.volume` is shown, so keep it a copy of a cached value.
+    /// The level and mute. `None` if unknown (the status item hides). Queried while drawing
+    /// `status.volume`, so keep it a copy of a cached value.
     fn volume(&self) -> Option<AudioSnapshot>;
     /// Set the level, 0..=100.
     ///
@@ -581,9 +582,9 @@ pub trait NetworkBackend: Backend {
     /// The interfaces, in the order to list them.
     fn interfaces(&self) -> Vec<IfaceSnapshot>;
     /// Whether a wired link is up: `Some(true)` up, `Some(false)` a wired interface with no link,
-    /// `None` no wired interface at all (the status item hides). `status.ethernet` asks it every
-    /// frame and the default walks [`NetworkBackend::interfaces`], which may allocate, so a backend
-    /// should answer it from its cache directly.
+    /// `None` no wired interface at all (the status item hides). The built-in `status.ethernet`
+    /// item queries it while drawing. The default walks [`NetworkBackend::interfaces`], which may
+    /// allocate, so a backend should answer it from its cache directly.
     fn ethernet_up(&self) -> Option<bool> {
         let wired: Vec<bool> = self
             .interfaces()
@@ -853,7 +854,7 @@ impl ServicesBuilder {
 
     /// **A backend of your own** — a GPIO line, a PLC link, a card reader, a door sensor:
     /// anything the shell has no slot for. It takes part in the frame like the built-in ones —
-    /// [`Backend::attach`] hands it the [`Waker`] at startup, [`Backend::poll_at`] runs every frame
+    /// [`Backend::attach`] hands it the [`Waker`] at startup, [`Backend::poll_at`] runs each state update
     /// and [`Backend::next_wake`] arms the next repaint — and a screen reaches it by its type with
     /// [`Services::custom`] / [`Services::custom_mut`].
     ///

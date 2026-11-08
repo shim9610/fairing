@@ -6,7 +6,7 @@ Screens and chrome know nothing about hardware. The Wi-Fi screen sees a
 `WifiBackend` trait and cannot tell whether `nmcli`, D-Bus or a mock sits behind
 it. Four rules hold that up.
 
-1. **The UI only sees traits.** Concrete types are chosen when assembling
+1. **The built-in UI uses backend trait interfaces.** Concrete types are chosen when assembling
    `Services`; ordinary host setters can replace them later without lending the live store.
 2. **Snapshot plus command.** Reads go through cached snapshots or the trait's
    narrower accessors. Commands return acceptance/refusal promptly; asynchronous
@@ -76,7 +76,7 @@ implementations can avoid copying data that the item does not use.
 slider and `status.brightness`. `set_power` is on the trait but nothing in the shell
 calls it yet. `AudioBackend` drives `settings.sound` and `status.volume`, and is asked
 for `Cue::Notify` when a new notification arrives (unless `ui.silent` is on).
-`NetworkBackend` drives `status.ethernet` — `ethernet_up()` is asked every frame, so
+`NetworkBackend` drives `status.ethernet` — `ethernet_up()` is queried when that item is rendered, so
 answer it from a cache — and `settings.network`: the interface cards, an IPv4 form (DHCP or a
 manual address, checked with `std::net` before `configure` is called) and the hostname, the
 editing behind the `settings.network.edit` gate. The screen is registered when the backend
@@ -161,7 +161,7 @@ ShellEvent::WifiNetworkLongPressed { ssid, known } if known => {
 One press never means two things — the release that ends a hold does not also
 arrive as `WifiNetworkTapped`.
 
-Adding a hidden network needs nothing from the crate at all: collect the SSID
+For a hidden network, collect the SSID
 and the password in your own screen and call
 `shell.request_service(fairing::services::ServiceRequest::WifiConnect { ssid: &ssid, psk, hidden: true })`.
 
@@ -481,7 +481,7 @@ construction above stands in for driver I/O, not a complete Wi-Fi driver.
 A door switch, a card reader, a PLC link, a scale — the shell has no slot for them,
 and it does not need one. `ServicesBuilder::custom` takes any `Backend`, and from then
 on it is treated like the built-in ones: `attach` hands it the `Waker` at start-up,
-`poll_at` runs every frame and `next_wake` arms the next repaint. A screen reaches it
+`poll_at` runs during operational state updates and `next_wake` requests the next repaint. A screen reaches it
 by its type with `cx.services.custom::<T>()` (or `custom_mut` to send it a command).
 One per type — a second of the same type replaces the first.
 
@@ -574,8 +574,7 @@ A status bar item or a tile of your own reads it the same way, through its `cx`.
 
 ## 6. Hiding what the hardware cannot do
 
-The status bar and the tiles ask `capabilities()` every frame and decide whether
-to draw.
+The status bar and tiles consult backend capabilities when refreshing their eligible items.
 
 ```rust,ignore
 // the status bar, from measure_builtin in crates/fairing/src/chrome/status_bar.rs
@@ -584,8 +583,8 @@ StatusItem::Battery => parts.services.power.battery().map(|_| style.size * 1.4),
 ```
 
 Battery presence is decided by `battery()` returning `Some`, not by
-`Capabilities::BATTERY`. A mains-only device with no battery still reports
-`POWER_CONTROL` for reboot and shutdown, and the battery item simply does not
+`Capabilities::BATTERY`. A mains-only device with no battery can report
+`POWER_CONTROL` if it supports reboot or shutdown, and the battery item simply does not
 appear.
 
 For "usable if supported, dimmed if not" — the rotation-lock tile — pull it into a
@@ -597,8 +596,8 @@ pub fn rotation_lock_available(display: Capabilities) -> bool {
 }
 ```
 
-Report exactly what your backend supports. Over-report and the UI appears but
-every command fails with `Unsupported`; under-report and working features hide.
+Report exactly what your backend supports. Over-reporting can expose controls whose commands return `Unsupported`; under-reporting
+can hide supported features.
 
 ## 7. Reading and writing settings
 
@@ -662,7 +661,8 @@ completion or failure and wake the UI, as for its other asynchronous operations.
 
 Changing `radio.airplane` also updates and emits `SettingChanged` for both radio keys.
 Enabling an individual radio clears airplane mode without enabling the other one.
-Persist every emitted change: the latest values then restore the same coupled state.
+Persist the emitted changes so the latest values retain the requested coupled configuration.
+Restoring backend-controlled values still depends on backend acceptance.
 
 Read inside a screen with `cx.settings.get(&key)`; `Cx::settings` is a read-only
 view.
@@ -711,8 +711,7 @@ fn on_events(shell: &mut Shell, store: &mut Store) {
 
 Two things to mind on the saving side:
 
-- **A slider sends one event per step.** Writing the file on every event writes it dozens of
-  times a drag; keep the latest value per key and write after a pause.
+- **A slider can emit several changes during a drag.** Rather than writing a file per event, keep the latest value per key and write after a pause.
 - **Not on the UI thread.** File IO inside the frame stalls it. Hand the write to a thread of
   your own over a channel.
 
@@ -762,7 +761,8 @@ fn go_to_kst(shell: &mut fairing::Shell) {
 }
 ```
 
-The shell never sets the clock itself — it asks yours what the time is.
+Built-in time displays read the clock backend. A host can request
+`ServiceRequest::SetTime`; the `ClockSource` implementation decides whether to accept it.
 
 ### 8.2 12- or 24-hour
 
@@ -800,7 +800,7 @@ fn running_2024() -> MockClock {
 }
 ```
 
-`fixed` never moves; `running` starts at the time of the first `poll_at` and
+`fixed` does not advance automatically; `running` starts at the time of the first `poll_at` and
 follows the shell's monotonic clock. Either one can be jumped to an arbitrary time
 by sending `ClockMsg::Set(WallTime)` to the `MockControl<ClockMsg>` from
 `control()`.

@@ -15,7 +15,7 @@ concurrency:
 # **The jobs run on the public repository only.** The development repository is private, and
 # a private repository's Actions minutes are paid for; the public one's are free and it carries
 # the same tree (minus the internal notes), so every push lands there and is checked there. On
-# any other repository every job is skipped, which costs nothing.
+# other repositories the repository condition skips these jobs.
 jobs:
   audit:
     if: github.repository == 'shim9610/fairing'

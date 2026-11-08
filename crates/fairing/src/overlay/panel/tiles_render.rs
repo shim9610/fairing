@@ -414,8 +414,7 @@ pub(super) fn draw_tiles(
     //
     // Measuring the width needs the progress first, and the progress needs `parts` borrowed, so it is
     // walked **twice per row**. `AnimationStore::animate` only moves its value at the per-frame `tick`,
-    // so calling it twice in the same frame gives the same value (this file is allocation-free per frame,
-    // so an array cannot be used).
+    // so calling it twice in the same frame gives the same value without a separate progress buffer.
     let mut cursor_y = top;
     // A tile in motion is drawn **behind** the Slider row — otherwise the row's ground covers it.
     let mut moving: [(usize, Rect, f32); MOVING_MAX] = [(0, Rect::NOTHING, 0.0); MOVING_MAX];

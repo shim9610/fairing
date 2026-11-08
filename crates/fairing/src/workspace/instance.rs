@@ -384,8 +384,8 @@ impl Instance {
         }
     }
 
-    /// Send every queued event out through `on_lifecycle` (frame stage 14; an instance being drawn
-    /// has [`Instance::ui`] call it first). The closure queue was already filled by
+    /// Drain queued events through mediated `on_lifecycle` dispatch (frame stage 14; an instance
+    /// being drawn has [`Instance::ui`] call it first). Denied hooks are skipped. The closure queue was already filled by
     /// [`Instance::queue`].
     pub(crate) fn flush_lifecycle(&mut self, cx: &mut Cx<'_>) {
         while let Some(event) = self.pending.pop_front() {
@@ -399,18 +399,16 @@ impl Instance {
         }
     }
 
-    /// The event to ride `cx.event` on the next `ui` call. One per call, in order — `Created`
-    /// always comes on the first `ui` (`cx.event == Some(Created)`).
+    /// Pop the next closure event in queue order. The initial queue begins with `Created`.
     pub(crate) fn next_closure_event(&mut self) -> Option<Lifecycle> {
         self.for_closure.pop_front()
     }
 
     /// The screen's `ui`.
     ///
-    /// It sends any pending `on_lifecycle` out before drawing — `Created` comes "right after the
-    /// instance is created, **before the first `ui`**", and frame stage 14's batch flush
-    /// comes after the drawing, too late. Instances that are not drawn (a task gone home, the
-    /// graveyard) are left to stage 14 as before.
+    /// Drain pending lifecycle events before dispatching the UI body, with admission checked
+    /// for each hook. Frame stage 14 handles pending events for instances not drawn here
+    /// (such as a task at home or an instance in the graveyard).
     pub fn ui(&mut self, ui: &mut egui::Ui, cx: &mut Cx<'_>) {
         self.flush_lifecycle(cx);
         self.last_ui = Some(cx.now);

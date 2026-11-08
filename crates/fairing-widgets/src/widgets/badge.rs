@@ -239,18 +239,13 @@ pub fn badge_text(value: BadgeValue<'_>, max: u16) -> String {
     }
 }
 
-/// How many digit cells a string occupies.
-/// How many digit cells a string occupies. `f32`, because every use of it is a width: a
-/// badge that reached the precision limit of an `f32` count would be about a metre wide.
+/// Digit-cell count represented as `f32` for width arithmetic.
 fn cells(text: &str) -> u16 {
     u16::try_from(text.chars().count()).unwrap_or(u16::MAX)
 }
 
-/// The pill's width for `text` at height `h`.
-///
-/// `cells × cell` and not the string's own advance — see the module doc on jitter. A `0` is the
-/// reference glyph because it is the widest digit in almost every face and the one a tabular
-/// figure is cut to.
+/// Pill width using fixed digit cells measured from the glyph `0`, rather than
+/// the current string's variable advance width.
 fn pill_width(painter: &egui::Painter, theme: &Theme, text: &str, h: f32) -> f32 {
     let font = egui::FontId::proportional(h * theme.control.badge_text_ratio);
     let cell = painter

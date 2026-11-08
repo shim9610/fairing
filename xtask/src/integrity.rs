@@ -54,7 +54,7 @@ pub(crate) fn check(root: &Path) -> Result<bool> {
     Ok(false)
 }
 
-/// It looks at every `.cargo/config[.toml]` in the repository.
+/// Inspect `.cargo/config[.toml]` at the workspace root and each listed member root.
 fn cargo_config(root: &Path, members: &[PathBuf], problems: &mut Vec<String>) -> Result<()> {
     let mut dirs = vec![root.to_path_buf()];
     dirs.extend(members.iter().cloned());

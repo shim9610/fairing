@@ -221,7 +221,7 @@ impl Preset {
 }
 
 impl Palette {
-    /// Preset × dark/light. **The single source of every palette**.
+    /// Resolve one built-in preset for the selected dark/light mode.
     #[must_use]
     pub fn preset(preset: Preset, dark: bool) -> Self {
         match (preset, dark) {
@@ -922,8 +922,8 @@ pub struct Theme {
     /// The component metrics. The twenty values widgets and notifications draw
     /// themselves with — named apart from [`Metrics`], which moves the layout.
     pub components: ComponentMetrics,
-    /// The control tokens — what every control shares, so that a switch, a
-    /// slider and a button read as one family rather than three drawings. See [`ControlMetrics`].
+    /// Shared control metrics. Individual widgets can also use component metrics,
+    /// widget options and custom painting. See [`ControlMetrics`].
     pub control: ControlMetrics,
     /// How high a container sits — see [`Theme::elevate`].
     pub elevation: ElevationMetrics,
@@ -1027,7 +1027,7 @@ impl Theme {
             );
         }
         let dark = inputs.theme_name != "light";
-        // Passing a typo quietly to the default preset makes "why is the brand not coming on" impossible to find.
+        // Reject unknown preset names instead of selecting a default.
         let preset = preset_from_config(inputs.theme)?;
         let mut theme = Self {
             palette: Palette::preset(preset, dark),
@@ -1312,11 +1312,9 @@ mod tests {
         }
     }
 
-    /// **Every preset** × dark/light × four pairs clears the floor. Adding a
-    /// preset is caught automatically through [`Preset::ALL`] — which is why `ALL` exists.
-    ///
-    /// The alpha roles (`scrim`, `pressed`) are out of scope — they lie over a background, so
-    /// their contrast on their own means nothing.
+    /// Check the listed contrast pairs for each preset in [`Preset::ALL`] and both
+    /// modes. New presets must be added to that slice to be included.
+    /// Alpha-overlay roles require a composited background and are tested separately.
     #[test]
     fn every_preset_meets_the_contrast_floor() {
         for &preset in Preset::ALL {
@@ -1342,7 +1340,7 @@ mod tests {
                     ("on_primary/primary", p.on_primary, p.primary, 4.5),
                     ("danger/surface", p.danger, p.surface, 4.5),
                     ("danger/surface_variant", p.danger, p.surface_variant, 4.5),
-                    // Disabled: deliberately under the active state, never under legibility.
+                    // Check the disabled colour against the listed 3:1 contrast thresholds.
                     ("disabled/surface", dim, p.surface, 3.0),
                     ("disabled/surface_variant", dim, p.surface_variant, 3.0),
                     // Drawn shapes — a filled control, a track, a mover's edge, a focus ring.
@@ -1428,7 +1426,7 @@ mod tests {
         let dark = Palette::dark();
         let light = Palette::light();
         let mid = dark.lerp(&light, 0.5);
-        // All 14 roles have to lie between the two endpoints (linear interpolation, so each channel within
+        // The listed role channels stay between the two endpoint palettes (each channel within
         // min..=max) — it catches the regression of handing one palette back whole (the t<0.5 branch of the
         // original skeleton).
         for role in [

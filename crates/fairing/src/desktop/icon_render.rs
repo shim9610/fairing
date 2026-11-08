@@ -225,7 +225,8 @@ pub(super) fn draw_badge(
         .tone(BadgeTone::Alert)
         .paint_over(painter, cx.theme, icon, BadgeAnchor::TopEnd);
 }
-/// The label (wrapped over `label_lines` lines, with `…` where it overflows). The galley is rebuilt only when the width changes.
+/// The label, wrapped over `label_lines` lines with `…` on overflow. Submit its current text,
+/// font and width to egui layout on each draw.
 #[allow(clippy::too_many_arguments)] // An internal helper that takes the painter, the geometry and the state in one go.
 pub(super) fn draw_label(
     painter: &egui::Painter,

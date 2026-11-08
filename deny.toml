@@ -65,9 +65,8 @@ deny = [
     { crate = "wgpu", reason = "GL (glow) only. It doubles the tree" },
 ]
 
-# The eleven measured duplicate pairs. They arise only from platform/clipboard drift with the runner
-# feature on; with the core alone (egui/serde/toml/log) there are zero duplicates.
-# The policy: empty this list each release branch and confirm it is still needed.
+# Reviewed duplicate-version exceptions, including runner platform/clipboard dependencies.
+# Recheck each exception on release branches and remove entries no longer needed.
 skip = [
     { crate = "calloop@0.13", reason = "winit 0.30 ↔ smithay-client-toolkit 0.20 drift. Tracking upstream" },
     { crate = "calloop-wayland-source@0.3", reason = "winit 0.30 ↔ smithay-client-toolkit 0.20 drift" },

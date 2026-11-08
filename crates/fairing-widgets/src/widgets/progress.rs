@@ -564,8 +564,8 @@ mod tests {
         assert_eq!(ProgressBar::determinate(0.5).value, Some(0.5));
     }
 
-    /// **A progress track is under half a slider track at every finger size**, so a panel that
-    /// retunes what you grab cannot quietly make what it reports with thicker than it.
+    /// Check the default progress/slider thickness ratio for the sampled 6, 9, 13 and
+    /// 16 mm finger policies.
     #[test]
     fn a_progress_track_stays_under_half_the_thing_you_grab() {
         for finger in [6.0_f32, 9.0, 13.0, 16.0] {
@@ -739,8 +739,8 @@ mod tests {
         );
     }
 
-    /// **A track too narrow to count falls back to one cell.** Cells that are dots are not
-    /// countable, and a bar must never draw nothing.
+    /// Check continuous-track fallback when the sampled width cannot fit the requested
+    /// cell spacing; zero or one step also uses a continuous track.
     #[test]
     fn a_track_too_narrow_to_count_falls_back_to_one_cell() {
         let narrow = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(40.0, 6.0));

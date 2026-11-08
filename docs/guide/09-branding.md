@@ -40,7 +40,7 @@ Choose the hook that matches the part of the product you want to change.
 | "Our own procedural background art" | `Wallpaper::ThemedPainter` | none |
 | "Our icon set" | `register_icon_painter`, or replacing the SVGs (§4) | SVGs or reference art for the chosen route |
 | "Our logo mark" | Register a custom mesh painter (§5) | Reference art for authoring |
-| "No trace of the crate's brand at all" | Keep the `Base` preset (§8) | none |
+| "Neutral preset without the Abyss artwork" | Use the `Base` preset (§8) | none |
 
 Colour, typography and layout changes use configuration and code. Prepare image
 assets or reference art for the routes identified in the last column.
@@ -293,7 +293,7 @@ surfaces. `BarMode::Overlay` changes that relationship for the status bar.
 |---|---|
 | Push bright areas into the **top 25 % of the content** | There is slack above the first icon row. The bottom is taken by the dock |
 | Check label/background contrast against the product's text requirements | 4.5:1 is the WCAG normal-text criterion; size, content and the rendered background also matter (§9) |
-| Never put text, logos or watermarks **inside the image** | They get cropped, rotated, and never translated |
+| Keep text and logos outside the wallpaper when they need stable placement or runtime translation | Cropping and rotation affect embedded artwork; the translation table does not translate image pixels |
 
 For a light theme, consider a separate light image or an adjusted veil. Check
 contrast with the dark label colours actually rendered.
@@ -335,7 +335,7 @@ shell.set_wallpaper(Wallpaper::owned(texture, Fit::Cover));
 |---|---|---|
 | `Cover` | Fills the short side and **crops** the long one | Default. Photo and artwork backgrounds |
 | `Contain` | Fits it all in; the remainder is the `background` role colour | Drawings and logos that must not be cropped |
-| `Stretch` | Stretches (the same as `Wallpaper::Texture`) | Only when the source already has that ratio |
+| `Stretch` | Stretches (the same as `Wallpaper::Texture`) | When distortion is acceptable; matching the source and destination ratios avoids it |
 
 The config string is read by `Fit::parse` — `"cover"` · `"contain"` · `"stretch"`,
 case-insensitive. An unknown name warns and falls back to `cover`.
@@ -483,8 +483,8 @@ Two constraints:
 - **It is `Fn`, not `FnMut`.** `IconPainter = Box<dyn Fn(..)>`, so it cannot hold `&mut` state.
   If you need a cache, capture a `RefCell` — that is what `brand::manta_painter` does.
   (`Mutex` / `RwLock` / `OnceLock` are banned in this crate.)
-- **It is called once per icon drawn per frame.** The "no heap allocation" rule from §2.4 applies
-  here too. Twelve icons on a desktop page means twelve calls a frame.
+- **Each custom icon draw invokes its painter.** Cache reusable geometry where useful and measure
+  repeated work on the target workload; the callback type does not enforce allocation behavior.
 
 > To draw a **whole desktop cell** (icon + label + badge + press state), the hook is
 > `ShellBuilder::slot_painter`, not an icon painter — that one is `FnMut` and gets the cell rect,
@@ -605,8 +605,9 @@ let shell = fairing::Shell::builder(config)
 
 > **Parametric icons do not change when you replace icons.** The status bar's Wi-Fi, battery,
 > Bluetooth and signal glyphs are **parametric** drawings that take state as an argument, so an
-> `IconRef` cannot point at them (nor can the painter registration in §4.2). The only way to make
-> those four yours is `status_bar_painter`.
+> `IconRef` cannot point at them (nor can the painter registration in §4.2). Replace a built-in
+> item with a `status_item` declaration under the same id for per-item UI, or use
+> `status_bar_painter` to replace the whole bar.
 
 ### 6.3 Dock placement
 
@@ -691,8 +692,9 @@ the neutral palette and a flat background — no manta, no abyss. That is why th
 
 ### 8.2 The layer-by-layer override table
 
-Whatever is called **after** `preset` wins. The rows are independent, so you can change only the
-colours and keep our background.
+`preset` sets a paired palette and a wallpaper. Later `.palettes(..)` or `.wallpaper(..)` calls
+replace those respective values. An injected `.theme(..)` supplies its own palette, metrics and
+motion; configuration overrides follow the precedence described in [04](04-customization.md).
 
 | # | What the crate produces | How to override it | Where |
 |---|---|---|---|
@@ -702,7 +704,7 @@ colours and keep our background.
 | 4 | Type | `.fonts(FontSet)` — **the crate carries no fonts** | §3 |
 | 5 | The background | `.wallpaper(..)` · `[desktop] wallpaper` · `image_loader` + `file:` | §1 · §2 |
 | 6 | 80 vector icons | `register_icon_painter` (recommended), or replacing the SVGs | §4 |
-| 7 | 4 parametric icons (wifi/battery/bluetooth/signal) | **An `IconRef` cannot point at them** — take the whole bar with `status_bar_painter` | §6.2 |
+| 7 | 4 parametric icons (wifi/battery/bluetooth/signal) | **An `IconRef` cannot point at them** — replace the item with a same-id `status_item`, or the whole bar with `status_bar_painter` | §6.2 |
 | 8 | Status bar · nav bar | `.status_bar_painter(..)` / `.nav_bar_painter(..)` | §6.2 |
 | 9 | Desktop cells | `.slot_painter(..)` (`SlotCx` brings press state and gates) | 04 |
 | 9b | **Colour, corners and spacing of the layout inside a screen** | `layout::Deco` on `grid` · `group_with` · `action_bar_with` | — |
@@ -711,8 +713,8 @@ colours and keep our background.
 | 12 | The manta mark | Opt-in to begin with — do not call `manta_painter` and it is not there | §5 |
 | 13 | Strings | `.translations(Translations)` — an entry of yours wins over the built-in one, and a language of yours joins English and Korean. Replacing a screen replaces its labels too | 04 §9 · §8.3 |
 
-Row 7 is the only place you cannot change shallowly. Those four change shape with their state, so
-they cannot be expressed as a static icon slot.
+Row 7 uses state-dependent drawing rather than static icon slots. Replacing an item or the bar
+means supplying the corresponding drawing logic.
 
 ### 8.3 The built-in settings screens — three depths
 
@@ -720,7 +722,7 @@ they cannot be expressed as a static icon slot.
 # fn f(shell: &mut fairing::Shell) {
 use fairing::settings::{add_all, SettingsConfig};
 
-add_all(shell, &SettingsConfig::default());   // ← every built-in screen in one line
+add_all(shell, &SettingsConfig::default());   // Register the built-in screens eligible under the default filters.
 # }
 ```
 
@@ -733,7 +735,7 @@ add_all(shell, &SettingsConfig::default());   // ← every built-in screen in on
 | Middle | `.without_home_icon()` | Keeps the screen, drops the desktop icon |
 | Middle | `add_all_with(shell, cfg, list)` | **Which rows the settings list offers** — yours in, built-ins out, in your order |
 | Deep | `shell.add(screen("settings.wifi", ..))` | **That whole screen** (labels, layout, behaviour) |
-| All | Never call `add_all` | None of them exist |
+| Automatic registration | Omit `add_all` | No built-ins are registered by that helper; you can still register screens individually |
 | Compile | Exclude `settings` under `default-features = false` | They leave the binary as well |
 
 **Registering the same id again replaces it** — the point being that there is no special API for
@@ -920,7 +922,7 @@ Common sources include:
 
 | Switch | What it does |
 |---|---|
-| `[desktop.abyss] animate = true` | Moves the mantas every frame. Turning it on logs a warning at startup |
+| `[desktop.abyss] animate = true` | Updates manta motion during wallpaper drawing and requests animation updates. Turning it on logs a warning at startup |
 | `[shell] repaint = "continuous"` | Requests continuous updates; the host controls the delivered frame cadence |
 | A `ctx.request_repaint()` inside your own background callback | Requests an update whenever that callback executes |
 
@@ -944,8 +946,8 @@ Example asset sizes for the image-based customization routes:
 | 5 | Splash | 1920×1080 | PNG/WebP | If you use a boot screen (**no API yet**, §7) |
 | 6 | Icon set | 24×24 SVG | Stroke | To change the icons |
 
-If all you want is a colour change, **none of these are needed.** One line of `[theme.palette]`
-carries through to the water.
+Colour-only changes do not require image assets. `[theme.palette]` affects drawing that reads
+the overridden palette roles; the procedural background also has its own colour inputs.
 
 For wallpaper images 1 and 2, register `ShellBuilder::image_loader` (§1.1).
 The host supplies decoding for its startup screen in row 5. Rows 3 and 4 are
@@ -981,7 +983,9 @@ when `wallpaper = "abyss"`.
 | `animate` | `false` | Requests updates for animation. Turning it on warns at startup |
 | `bake_budget_ms` | `1.5` | Over budget drops the tier one step and warns |
 
-## Appendix B. Every public hook that touches branding
+<a id="appendix-b-every-public-hook-that-touches-branding"></a>
+
+## Appendix B. Branding-related hooks
 
 | Hook | What it changes |
 |---|---|

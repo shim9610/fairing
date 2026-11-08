@@ -23,15 +23,15 @@ pub enum Elevation {
     None,
     /// A sheet lying on the page — a card, a tile, a grid cell.
     Raised,
-    /// Over content that scrolls under it — an action bar, a toast, a heads-up banner, an open
-    /// list. The only level that is *identified* rather than decorated; see the module doc.
+    /// Floating surface, such as an action bar, toast, banner or open list.
+    /// Uses the floating-level boundary and elevation tokens.
     Floating,
 }
 
 /// Which mechanism expresses height.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ElevationStyle {
-    /// Cast on a light palette, rim on a dark one. The only value a shell normally sets.
+    /// Choose cast-shadow styling in light mode and rim styling in dark mode.
     #[default]
     Auto,
     /// Always a cast shadow, whatever the mode.
@@ -43,11 +43,8 @@ pub enum ElevationStyle {
     Off,
 }
 
-/// The two things one frame paints height with.
-///
-/// **The only place either colour is made is [`Theme::elevate`]** — the `Ink::of` rule the controls
-/// follow, applied to a container: every ratio is folded into one `gamma_multiply` in one function
-/// rather than sprinkled down a paint path.
+/// Resolved shadow and rim colours/strokes returned by [`Theme::elevate`].
+/// The built-in paint path applies configured opacity ratios during resolution.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Elevated {
     /// Under the caster. [`Shadow::NONE`] when the style is [`Rim`](ElevationStyle::Rim) or
@@ -220,11 +217,8 @@ impl ElevationSpec {
 }
 
 impl Theme {
-    /// **The ink for one level — the only place an elevation colour is made.**
-    ///
-    /// [`ElevationStyle::Auto`] resolves here, against `self.dark`: a cast shadow on a light
-    /// palette, a rim on a dark one. Both ratios are folded into a single `gamma_multiply` so that
-    /// a level's alpha is arrived at once rather than by chaining multiplies that each round.
+    /// Resolve shadow and rim styling for a level. `Auto` selects the mechanism
+    /// using `self.dark`; configured alpha ratios are combined before scaling colour.
     #[must_use]
     pub fn elevate(&self, level: Elevation) -> Elevated {
         let e = &self.elevation;
@@ -297,9 +291,7 @@ mod tests {
     use super::{Elevated, Elevation, ElevationSpec, ElevationStyle};
     use crate::theme::{contrast, ColorRole, Palette, Preset, Theme};
 
-    /// A theme on one preset and mode. `Theme` has no such constructor of its own —
-    /// the shell always arrives through `from_inputs` — and every test here needs all
-    /// four palettes.
+    /// Construct the preset/mode fixtures used by these tests.
     fn theme_of(preset: Preset, dark: bool) -> Theme {
         Theme {
             palette: Palette::preset(preset, dark),

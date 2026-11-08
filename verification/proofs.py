@@ -350,7 +350,7 @@ for name, old, new in [
                            expected_failure=True, marker="VERIFICATION:- FAILED"))
 (OUT / "summary.json").write_text(json.dumps(results, indent=2) + "\n")
 
-# A successful component proof must never masquerade as the requested whole-app theorem.
+# Keep component-proof status separate from the whole-application theorem.
 subprocess.run([sys.executable, ROOT / "verification/proof_obligations.py", "--require-components"], check=True)
 results.append(execute("whole-app-claim-guard", [sys.executable, ROOT / "verification/proof_obligations.py", "--require-whole-app"],
                        environment, expected_failure=True, marker="OPEN_PROOF_OBLIGATIONS"))

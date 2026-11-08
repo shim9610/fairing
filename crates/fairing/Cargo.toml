@@ -57,13 +57,13 @@ chrono = ["dep:chrono"]
 name = "protected"
 required-features = ["runner", "settings"]
 
-# The smallest complete app, standing alone (no `mod common`) so it can be copied. It runs on
+# A standalone app example without `mod common`, intended for copying. It runs on
 # the null backends, so it needs no `mock`; `settings` is stated for the screens it adds.
 [[example]]
 name = "hello"
 required-features = ["runner", "settings"]
 
-# Every other example uses the Mock backends. `mock` is a default feature, but it is stated explicitly
+# Examples using Mock backends declare that feature explicitly as well as relying on its default
 # so that a `--no-default-features` build skips them quietly rather than failing to compile.
 
 [[example]]
@@ -101,8 +101,8 @@ required-features = ["runner-x11", "mock"]
 [lints]
 workspace = true
 
-# docs.rs builds the Linux target only: that is where the crate runs, and the runner's window
-# stack is the one part that differs per platform.
+# docs.rs builds the Linux API reference with all features. Window integration
+# on other platforms needs separate build validation.
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

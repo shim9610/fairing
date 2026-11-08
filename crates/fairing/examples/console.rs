@@ -444,7 +444,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
     );
     shell.add(brand_item());
     // The built-in settings screens, for the Settings page's tiles to open. No desktop icon:
-    // this console has no desktop, and the rail is the only way in.
+    // this console uses rail navigation, with Settings tiles linking to these screens.
     fairing::settings::add_all(
         &mut shell,
         &fairing::settings::SettingsConfig::default().without_home_icon(),

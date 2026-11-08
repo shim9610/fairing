@@ -72,7 +72,7 @@ impl AccessPolicy for SwitchPolicy {
     }
 }
 
-/// Every direct/queued action and setting is checked at execution, including policy changes.
+/// Check execution-time gates in direct and queued launch/setting paths, including policy changes.
 pub fn shell_contract(bytes: &[u8]) {
     let ctx = fairing::egui::Context::default();
     let mut cfg = configured();
@@ -419,7 +419,7 @@ pub fn time_contract(utc_secs: u64, offset_min: i32) {
     }
 }
 
-/// Services forwards one timestamp exactly once to every backend, then takes the earliest deadline.
+/// Check completed service-poll forwarding of the supplied timestamp and earliest reported deadline.
 pub fn services_contract(delays: [Option<u16>; 2]) {
     use fairing::services::{Backend, Services};
     struct Timer<const ID: u8> {
@@ -519,7 +519,7 @@ pub fn configuration_contract(bits: u32, columns: u8) {
     }
 }
 
-/// Actual shell-to-backend writes follow accepted intent, never a second unacknowledged write.
+/// Check serialization of setting-command intent while a prior backend acknowledgment is pending.
 pub fn backend_contract(bytes: &[u8]) {
     use fairing::services::{Backend, ServiceResult, Services, WifiBackend, WifiSnapshot};
     struct Wifi {

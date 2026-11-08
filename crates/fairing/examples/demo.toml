@@ -36,8 +36,8 @@ temporary_secs = 120
 
 # `default_gate = "top"`, so every gate not here is maintainer. The status bar's built-in items and the
 # integrator's item (`temp`) carry gates too (a status bar item is usually assigned bottom) — leaving
-# one out empties the status bar outright. Only `admin` is locked on purpose: opening it brings up the keypad
-# (the PIN is in `[access.pin_table]` below).
+# one out hides that item. The `admin` desktop entry is intentionally locked: opening it brings
+# up the keypad (the PIN is in `[access.pin_table]` below).
 [access.gates]
 dashboard = "viewer"
 progress = "viewer"
@@ -75,7 +75,8 @@ service = "viewer"
 "status.lock" = "bottom"
 temp = "bottom"
 # M2: the shade, the emergency gesture, the default tiles and the settings keys the tiles use. `default_gate = "top"`,
-# so leaving one out has the shade raise only `UnlockRequested` and the tiles drawn with a padlock.
+# so an omitted shade/tile gate falls back to maintainer access: opening the shade can request
+# unlock, and denied tiles are drawn with a padlock.
 "overlay.open" = "viewer"
 "chrome.emergency" = "viewer"
 "tile.wifi" = "viewer"

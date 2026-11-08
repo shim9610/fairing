@@ -150,7 +150,7 @@ def main():
     parser.add_argument('--skip-build',action='store_true')
     parser.add_argument('--profile',choices=['all','minimal','both'],default='both')
     mode=parser.add_mutually_exclusive_group()
-    mode.add_argument('--require-proved',action='store_true',help='Prove the common kernel and reject every unguarded or unclassified protected contract entry')
+    mode.add_argument('--require-proved',action='store_true',help='Prove the common kernel and check compiled protected entries for unguarded or unclassified routes')
     mode.add_argument('--expect-counterexample',action='store_true',help='Detector regression: require the known compiler path AND its concrete denied-session reproduction')
     parser.add_argument('--skip-probe',action='store_true',help='Analysis only; cannot confirm or certify the concrete program')
     args=parser.parse_args()

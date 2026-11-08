@@ -62,11 +62,7 @@ pub struct MetricsSpec {
     pub corner_radius: Span<Eye>,
     /// A control's corner radius.
     pub control_radius: Span<Eye>,
-    /// Where a row's or a card's content starts, measured in from its edge.
-    ///
-    /// It is here rather than left at its default because it is the token every row-like thing now
-    /// shares, and a panel that scales its rows has to scale the inset with them or the text drifts
-    /// towards the edge. At adoption step 1 it carries only its `du` base, so nothing moves yet.
+    /// Content inset measured inward from a row or card edge.
     pub content_inset: Span<Eye>,
     /// **A card's inner padding** — the gap between a card's edge and the row inside it.
     ///

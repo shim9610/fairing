@@ -192,7 +192,7 @@ fn subpaths(segs: &[Seg]) -> Vec<Vec<(f64, f64)>> {
     out
 }
 
-/// Whether a closed polygon is convex. Every neighbouring pair of edges has to have the same cross-product sign.
+/// Check consistent turn signs around a polygon. For a simple polygon, this tests convexity.
 fn is_convex(points: &[(f64, f64)]) -> bool {
     let count = points.len();
     if count < 4 {

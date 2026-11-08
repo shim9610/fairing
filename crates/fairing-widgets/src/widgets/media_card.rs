@@ -170,20 +170,8 @@ impl<'a> MediaCard<'a> {
         let gap = cx.theme.control.gap;
         let width = ui.available_width().max(m.touch_target);
         let text_h = self.text_height(ui, cx);
-        // The picture takes its aspect **unless the place is shorter**, in which case it takes what
-        // is left. A card in a grid cell has its height decided by the grid, and a picture that
-        // insisted on its aspect there would run over the cell below it — the grid does not clip.
-        // **The aspect the caller asked for is kept, whatever room it is given.** It used to be the
-        // *height* that was capped and the width left at the card's own, so a place too short for
-        // the ratio silently widened the box instead of shrinking it — and `cover_uv` then cropped
-        // the subject to fill it. Measured on the kiosk's menu grid: a tile that asked for 1.000
-        // was drawn at **3.435**, throwing away 71 % of every photograph, in a card whose caller
-        // had written "square, because a 4:3 box would crop the top off every cup". The caller's
-        // reason for the parameter was exactly what the widget was defeating.
-        //
-        // Capping the width instead keeps the ratio and leaves the card's colour at the sides — so
-        // a cell too short to hold the picture **looks** too short, and the caller can see it and
-        // ask for more ([`Self::height_for`] says how much).
+        // Cap picture width by the available height and aspect ratio before placing
+        // the tile; this preserves the requested aspect in a short cell.
         let room = (ui.available_height() - text_h).max(m.touch_target);
         let picture = Vec2::new(width, width / self.aspect);
         let picture = if picture.y > room {

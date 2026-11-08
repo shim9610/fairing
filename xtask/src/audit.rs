@@ -95,8 +95,8 @@ fn append_builds(steps: &mut Vec<Step>, build: impl FnOnce() -> Vec<Step>) {
 /// The stages that do not compile: integrity · blocking/sync · duplicate versions · the allowlist ·
 /// the notices file · the generated files · the two plugins.
 ///
-/// 13 (blocking/sync) comes right after 0. It is only a text scan and so is cheap, and on a tree that
-/// has taken a lock in it is better to say so before spending time on the compiling stages.
+/// 13 (blocking/sync) follows 0 and scans source text before the compiling stages,
+/// so a matched blocking-call pattern can stop those stages.
 fn gates(root: &Path, strict: bool) -> Vec<Step> {
     vec![
         internal(0, "integrity", "xtask integrity", || integrity::check(root)),

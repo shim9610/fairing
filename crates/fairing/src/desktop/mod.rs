@@ -76,8 +76,8 @@ pub enum Badge {
 impl Badge {
     /// The borrowed form [`CountBadge`] draws.
     ///
-    /// The stored one owns its string because an [`IconSlot`] outlives the frame; the drawn one
-    /// borrows because a dock repaints every frame and must not allocate to do it.
+    /// The stored form owns its string because an [`IconSlot`] outlives the frame. This view
+    /// borrows that text so converting the badge does not clone its string.
     #[must_use]
     pub fn as_value(&self) -> BadgeValue<'_> {
         match self {
@@ -763,9 +763,8 @@ pub struct DesktopCtx<'a> {
     pub strings: &'a crate::i18n::Strings,
 }
 
-/// One icon cell's record across frames. The list is built only on [`DesktopView::rebuild`] and the
-/// render path only overwrites values — the label and badge galleys are cached so no string is laid
-/// out per frame.
+/// One icon cell's id and last drawn rectangle across frames. Rebuilding the desktop recreates
+/// these records; the render path updates their rectangles.
 #[derive(Debug)]
 struct IconRecord {
     /// The declaration id.
@@ -884,9 +883,9 @@ pub struct DesktopView {
     legibility: LabelLegibility,
     label_lines: u8,
     page_index: usize,
-    /// The per-icon records (last frame's Rect, the galley cache). Built only on `rebuild` / `place_all`.
+    /// Per-icon ids and last-frame rectangles, rebuilt with the desktop placements.
     records: Vec<IconRecord>,
-    /// The wrap width the label galleys were made at. A change in cell width throws the galleys away.
+    /// The wrap width submitted for desktop label layout.
     label_width: f32,
     press: Press,
     /// The tap Rects of last frame's page indicator (as many as there are pages). Exposed as
