@@ -113,6 +113,49 @@ def replacement(key):
     raise ValueError('Removal has no reviewed migration: ' + key)
 
 
+def change_details(key, decision):
+    """Concrete decisions for every intentional removal/signature change."""
+    path, kind = key.rsplit('#', 1)
+    if decision == 'remove':
+        if '::SessionGrant::' in path:
+            return {
+                'current_usage': 'Public grant field access is removed. Construct the complete grant with SessionGrant::new; read gate(), is_base() and temporary_until().',
+                'reason': 'Keep the grant representation private so adding internal state does not require changing downstream literals; construction and later observation use explicit methods.',
+                'replacement': replacement(key),
+                'compatibility': 'External grant literals and field accesses require the documented constructor/getter migration.',
+            }
+        return {
+            'current_usage': 'The previous component/store loan is removed; use the named replacement or observer queries.',
+            'reason': 'Stop coupling the host to mutable implementation stores. The library owns derived-state invalidation and protected hosts never regain an ordinary-shell loan.',
+            'replacement': replacement(key),
+            'compatibility': 'Calls to this removed API require source migration; standalone caller-owned components remain supported.',
+        }
+    if decision != 'change':
+        return {}
+    if kind == 'struct' and ('::config::' in path or path.endswith(('::Options', '::InboxConfig'))):
+        return {
+            'current_usage': path + '::default().configure(|value| { /* assign supported fields */ })',
+            'reason': 'This configuration is extensible: non_exhaustive blocks downstream exhaustive literals while Default and synchronous configure preserve field customization when optional fields are added.',
+            'replacement': path + '::default()/configure; public field reads and assignment remain supported.',
+            'compatibility': 'External complete struct literals, including update syntax, migrate to default/constructors; destructuring needs .. . Existing field meanings remain contracts.',
+        }
+    if path.endswith(('::SessionError', '::SessionReadError', '::Decl', '::DeclKind')):
+        return {
+            'current_usage': 'Match the documented variants of ' + path + ' with a fallback arm.',
+            'reason': 'Allow additional authentication/read failures or declaration categories without forcing exhaustive downstream matches; existing known-variant behavior is preserved.',
+            'replacement': 'Keep known variant arms and add _ => ...; construction of existing variants remains available.',
+            'compatibility': 'Existing exhaustive downstream matches require a fallback arm because the enum is now non_exhaustive.',
+        }
+    if '::runner::' in path or '::testing::' in path:
+        return {
+            'current_usage': 'Use inferred sealed HostedShell for ' + path + '; Harness defaults to ordinary Shell and accepts ProtectedShell explicitly.',
+            'reason': 'Share runner/harness orchestration across ordinary and protected hosts without exposing an untyped registration conversion or permitting downstream host implementations.',
+            'replacement': 'Prefer inference; run_app::<State, _>(...) adds the inferred host parameter, and Harness<ProtectedShell> selects protected hosting.',
+            'compatibility': 'Ordinary inferred calls and default Harness annotations remain supported; explicit generic argument lists may need the host parameter.',
+        }
+    raise ValueError('Changed API has no specific reviewed decision: ' + key)
+
+
 def build(before, after):
     old, new = contracts(before), contracts(after)
     traits = {key.split('#')[0] for key in old.keys() | new.keys() if key.endswith('#trait')}
@@ -157,6 +200,7 @@ def build(before, after):
             'before': previous, 'after': current,
             'consumer_reference_candidates': references.get(key.split('#')[0].rsplit('::', 1)[-1], []),
         }
+        records[key].update(change_details(key, decision))
     return {'baseline_head': before['head'], 'extractor_sha256': after['extractor_sha256'],
             'consumer_evidence_scope': 'Reference candidates are literal identifier matches in repository tests, examples, assurance clients and the standalone package consumer. They aid review and do not establish type resolution or per-API test coverage. Executed external consumer profiles are recorded separately in PR evidence.',
             'compiler': after['compiler'], 'decisions': records}
@@ -190,9 +234,10 @@ def compact(ledger):
     result['decisions'] = {}
     for key, record in ledger['decisions'].items():
         stored = dict(record)
-        for field, reference in [('reason', record['category']),
-                                 ('current_usage', key.rsplit('#', 1)[1] + ('-removed' if record['after'] is None else '')),
-                                 ('compatibility', record['decision'])]:
+        specific = record['decision'] in {'change', 'remove'}
+        for field, reference in [('reason', key if specific else record['category']),
+                                 ('current_usage', key if specific else key.rsplit('#', 1)[1]),
+                                 ('compatibility', key if specific else record['decision'])]:
             table = result['shared_text'][field]
             if reference in table and table[reference] != stored[field]:
                 raise ValueError('Inconsistent shared decision text: ' + reference)
