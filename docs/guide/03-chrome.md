@@ -494,7 +494,7 @@ with two or more pages.
 | Dragging past the ends | Rubber-band resistance (`[motion.page] rubber`) |
 
 From the frame a horizontal drag passes the slop, icon taps in that gesture are cancelled. In
-code, move with `shell.set_desktop_page(i)` (immediate) or `swipe_to(i, &tokens)` (spring).
+code, move with `shell.set_desktop_page(i)` (immediate) or `shell.swipe_desktop_to(i, &tokens)` (spring).
 
 ### 3.4 The dock
 

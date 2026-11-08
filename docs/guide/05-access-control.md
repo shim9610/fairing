@@ -309,8 +309,8 @@ A few rules hold whatever the authenticator does:
   also discards them and restarts the challenge, preserving the lockout.
   A timeout or integrator subject replacement invalidates pending authentication
   even when the old and new subjects have the same numeric level. Direct
-  `set_subject` changes are observed before the next frame or launch;
-  use `ShellHandle::set_subject` for the shell's monotonic clock.
+  `Shell::set_subject` changes are observed before the next frame or launch;
+  both it and queued `ShellHandle::set_subject` use the shell's monotonic clock.
 - **An authenticator that offers nothing** (`methods()` empty) behaves as
   `routing` (§6): no prompt and no lock screen, and the lock and logout controls
   are only reported.

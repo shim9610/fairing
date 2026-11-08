@@ -79,8 +79,7 @@ pub fn shell_contract(bytes: &[u8]) {
     cfg.access.mode = "routing".into();
     let mut shell = Shell::builder(cfg).build(&ctx).unwrap();
     let allowed = Rc::new(Cell::new(true));
-    shell
-        .set_policy(Box::new(SwitchPolicy(Rc::clone(&allowed))));
+    shell.set_policy(Box::new(SwitchPolicy(Rc::clone(&allowed))));
     let runs = Rc::new(Cell::new(0usize));
     let count = Rc::clone(&runs);
     shell.add(action("guarded", move |_| count.set(count.get() + 1)));
@@ -683,8 +682,7 @@ pub fn grant_contract(held: u16, candidate: u16, lock: bool, policy_passes: bool
         .build(&ctx)
         .unwrap();
     let allowed = Rc::new(Cell::new(false));
-    shell
-        .set_policy(Box::new(SwitchPolicy(Rc::clone(&allowed))));
+    shell.set_policy(Box::new(SwitchPolicy(Rc::clone(&allowed))));
     let runs = Rc::new(Cell::new(0));
     let count = Rc::clone(&runs);
     shell.add(action("guarded", move |_| count.set(count.get() + 1)));

@@ -968,7 +968,7 @@ when `wallpaper = "abyss"`.
 | `Shell::set_motion` | Motion tokens |
 | `Shell::register_icon` / `register_icon_painter` | A vector icon / a painter |
 | `Shell::set_status_bar_height` · `set_nav_height` · `set_status_item_spec` | Persistent metrics and owned item configuration |
-| `Desktop::set_wallpaper` · `set_dock_placement` | Background · dock position |
+| `Shell::set_wallpaper` · `set_dock_placement` | Background · dock position |
 | `Shell::load_wallpaper(ctx, path, fit)` | Swapping the background at runtime (needs a loader) |
 | `settings::add_all(shell, &SettingsConfig)` | The built-in settings screens (§8.3) |
 | `settings::add_all_with(shell, &SettingsConfig, list)` | The same, over a settings list of your own (§8.3) |
