@@ -75,7 +75,7 @@ impl Rig {
                 theme,
                 icons,
                 anims,
-                anim_scope: egui::Id::new("m7"),
+                anim_scope: egui::Id::unique("m7"),
                 frame: *frame,
                 inset_bottom: 0.0,
                 painters: painters.as_mut(),
@@ -673,7 +673,7 @@ fn a_text_field_painter_sees_the_reveal_state() -> TestResult {
 #[test]
 fn the_animation_store_recovers_after_a_nan_target() {
     let mut store = AnimationStore::new();
-    let id = egui::Id::new("nan");
+    let id = egui::Id::unique("nan");
     let tween = Tween::cubic_out(Duration::from_millis(100));
     let _ = store.animate(id, f32::NAN, tween, 0);
     let first = store.animate(id, 1.0, tween, 0);

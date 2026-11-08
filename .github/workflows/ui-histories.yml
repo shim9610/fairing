@@ -1,0 +1,57 @@
+name: UI interaction histories
+
+on:
+  pull_request:
+  push: { branches: [main] }
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-histories-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_BUILD_JOBS: "2"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  histories:
+    if: github.repository == 'shim9610/fairing'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Record the tested revision and compiler
+        run: |
+          mkdir -p target/assurance/ui-histories
+          { git rev-parse HEAD; rustc --version --verbose; cargo --version; } > target/assurance/ui-histories/build.txt
+      - name: Replay retained-context histories and shrink failing traces
+        env:
+          PROPTEST_CASES: "512"
+          PROPTEST_RNG_SEED: "20261101"
+        run: |
+          mkdir -p target/assurance/ui-histories
+          cargo test --locked --manifest-path verification/Cargo.toml --lib widget_lifecycle:: -- --nocapture 2>&1 | tee target/assurance/ui-histories/native.log
+      - name: Check authentication replies at the expiry boundary
+        run: |
+          cargo test --locked --manifest-path verification/Cargo.toml --lib transitions::deadlines::expiry_cancels_old_replies_before_replacement_and_fresh_input -- --exact --nocapture 2>&1 | tee target/assurance/ui-histories/deadline-replies.log
+      - name: Reject focus and popup cleanup defects
+        run: python3 verification/controls.py --only focus-isolation --only popup-retirement --only deadline-reply
+      - name: Check verification formatting
+        run: cargo fmt --manifest-path verification/Cargo.toml -- --check
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ui-interaction-histories
+          path: |
+            target/assurance/ui-histories/
+            target/assurance/controls/selected-deadline-reply-focus-isolation-popup-retirement/
+          retention-days: 14

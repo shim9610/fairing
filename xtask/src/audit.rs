@@ -6,8 +6,8 @@
 //! decision. The table's numbers are fixed stage identifiers, and the result table is sorted
 //! back into numeric order to show.
 //!
-//! Where 0 (integrity) fails, the compiling stages do not run at all — in that state the source
-//! being compiled may differ from what `Cargo.toml` / `Cargo.lock` says.
+//! Any failed prebuild gate blocks the compiling stages: provenance, dependency approval,
+//! advisories and license checks must succeed before dependency code can run.
 //!
 //! 7 and 8 are installed plugins (`cargo-audit`, `cargo-deny`) rather than built into cargo. Absent,
 //! they print installation guidance and are skipped, and under `--strict` (CI) they count as failures.
@@ -62,17 +62,7 @@ pub(crate) fn run(root: &Path, strict: bool) -> bool {
         println!("--strict: a missing plugin and a version mismatch count as failures too.");
     }
     let mut steps = gates(root, strict);
-    if steps
-        .iter()
-        .any(|step| step.number == 0 && step.outcome == Outcome::Fail)
-    {
-        println!(
-            "\nIntegrity (0) failed. The compiling stages (1·2·3·4·12) will not run — \n\
-             compiling in that state is running code Cargo.toml does not speak for."
-        );
-    } else {
-        steps.extend(builds(root, &cargo));
-    }
+    append_builds(&mut steps, || builds(root, &cargo));
     steps.push(report(
         9,
         "make updates visible",
@@ -83,6 +73,23 @@ pub(crate) fn run(root: &Path, strict: bool) -> bool {
     steps.sort_by_key(|step| step.number);
     summarize(&steps);
     !steps.iter().any(|step| step.outcome == Outcome::Fail)
+}
+
+/// Keep dispatch behind the approval boundary, including failures reported by installed tools.
+fn append_builds(steps: &mut Vec<Step>, build: impl FnOnce() -> Vec<Step>) {
+    let failed: Vec<_> = steps
+        .iter()
+        .filter(|step| step.outcome == Outcome::Fail)
+        .map(|step| step.number)
+        .collect();
+    if failed.is_empty() {
+        steps.extend(build());
+    } else {
+        println!(
+            "\nPrebuild gates {} failed. The compiling stages (1·2·3·4·12) will not run.",
+            join(&failed)
+        );
+    }
 }
 
 /// The stages that do not compile: integrity · blocking/sync · duplicate versions · the allowlist ·
@@ -162,7 +169,7 @@ fn builds(root: &Path, cargo: &str) -> Vec<Step> {
             root,
             cargo,
             &["test", "--locked", "--workspace", "--all-features"],
-            &[],
+            &[("RUSTDOCFLAGS", "--cfg fairing_repo_docs")],
         ),
         external(
             4,
@@ -407,7 +414,51 @@ fn join(numbers: &[usize]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_tools_lock, Outcome};
+    use super::{append_builds, parse_tools_lock, Outcome, Step};
+
+    fn gate(number: usize, outcome: Outcome) -> Step {
+        Step {
+            number,
+            title: "approval",
+            command: "probe".into(),
+            outcome,
+        }
+    }
+
+    #[test]
+    fn rejected_prebuild_gates_never_dispatch_compilation() {
+        for rejected in [0, 13, 5, 6, 10, 11, 7, 8] {
+            let mut steps = vec![gate(0, Outcome::Pass), gate(rejected, Outcome::Fail)];
+            let mut called = false;
+            append_builds(&mut steps, || {
+                called = true;
+                vec![gate(3, Outcome::Pass)]
+            });
+            assert!(!called, "gate {rejected} dispatched build commands");
+            assert_eq!(steps.len(), 2);
+            assert!(steps.iter().any(|step| step.outcome == Outcome::Fail));
+        }
+    }
+
+    #[test]
+    fn approved_prebuild_gates_dispatch_and_preserve_build_failure() {
+        let mut steps = vec![gate(0, Outcome::Pass), gate(6, Outcome::Pass)];
+        let mut called = false;
+        append_builds(&mut steps, || {
+            called = true;
+            vec![gate(3, Outcome::Fail)]
+        });
+        assert!(called);
+        assert_eq!(steps.len(), 3);
+        assert!(matches!(
+            steps.last(),
+            Some(Step {
+                number: 3,
+                outcome: Outcome::Fail,
+                ..
+            })
+        ));
+    }
 
     #[test]
     fn reads_the_tools_lock() {

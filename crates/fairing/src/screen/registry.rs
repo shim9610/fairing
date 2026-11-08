@@ -4,7 +4,7 @@
 //! closes open screens (ending an instance is done by `Shell` on the next frame, when it sees
 //! the registry changed).
 
-use super::{ActionDecl, DesktopPlacement, Screen, ScreenDecl, ScreenSource};
+use super::{ActionDecl, DesktopPlacement, ScreenDecl, ScreenSource};
 use crate::chrome::NavItemDecl;
 use crate::chrome::StatusItemDecl;
 #[cfg(feature = "overlay")]
@@ -114,6 +114,40 @@ pub struct Registry {
 }
 
 impl Registry {
+    pub(crate) fn bind_initial_library_requirements(&mut self) {
+        for declaration in &mut self.screens {
+            let gate = declaration.gate_name();
+            match &mut declaration.source {
+                ScreenSource::Resident(Some(body)) => body.library_requirement(gate),
+                ScreenSource::Resident(None) => {}
+                ScreenSource::Factory(factory) => factory.library_requirement(gate),
+            }
+        }
+        for declaration in &mut self.actions {
+            declaration.run.library_requirement(declaration.gate_name());
+        }
+        for declaration in &mut self.status_items {
+            declaration.ui.library_requirement(
+                declaration
+                    .gate
+                    .clone()
+                    .unwrap_or_else(|| crate::Gate::from(&declaration.id)),
+            );
+        }
+        for declaration in &mut self.nav_items {
+            declaration.ui.library_requirement(
+                declaration
+                    .gate
+                    .clone()
+                    .unwrap_or_else(|| crate::Gate::from(&declaration.id)),
+            );
+        }
+        #[cfg(feature = "overlay")]
+        for declaration in &mut self.tiles {
+            declaration.bind_library_requirement();
+        }
+    }
+
     /// An empty registry.
     #[must_use]
     pub fn new() -> Self {
@@ -225,7 +259,7 @@ impl Registry {
     /// would not have compiled at all.
     ///
     /// `None` where the id is gone, the declaration is a factory one, or the screen is already out.
-    pub(crate) fn take_resident(&mut self, id: &str) -> Option<Box<dyn Screen>> {
+    pub(crate) fn take_resident(&mut self, id: &str) -> Option<super::ScreenHandle> {
         match &mut self.screens.iter_mut().find(|d| d.id() == id)?.source {
             ScreenSource::Resident(screen) => screen.take(),
             ScreenSource::Factory(_) => None,
@@ -236,7 +270,7 @@ impl Registry {
     ///
     /// Where the declaration has gone in the meantime (`shell.remove(id)` from inside the screen's
     /// own `ui`) the screen is dropped — the declaration it belonged to no longer exists.
-    pub(crate) fn put_resident(&mut self, id: &str, screen: Box<dyn Screen>) {
+    pub(crate) fn put_resident(&mut self, id: &str, screen: super::ScreenHandle) {
         if let Some(decl) = self.screens.iter_mut().find(|d| d.id() == id) {
             if let ScreenSource::Resident(slot) = &mut decl.source {
                 *slot = Some(screen);

@@ -4,7 +4,13 @@ The chrome is the shell around the content: the status bar, the nav bar, the des
 notifications, the OSK, touch widgets, icons and gestures. It is drawn even if you register no
 screens at all.
 
-There are three ways to work with it.
+The examples below use ordinary `Shell`. With `ProtectedShell`, wrap custom
+screen/action/status/nav/tile declarations in `Protected::new(value, declaration)`;
+the library checks their token requirements before dispatch. Untyped global painter
+hooks are rejected. Use [typed elements](../session-tokens.md#typed-permission-requirements)
+for custom protected drawing.
+
+There are three ways to work with an ordinary shell.
 
 | Way | What it decides | When to use it |
 |---|---|---|
@@ -701,6 +707,11 @@ The card shade (`reveal = "card"`, `card_width_ratio`, `card_anchor`, `card_glas
 the split's `split_ratio` and the two-step pull (`two_step`) are in
 [07 §6](07-config-reference.md#6-overlay-feature-overlay).
 
+Card backdrops use egui 0.37 screenshot callbacks. A callback wakes the UI and its image
+is consumed on the UI thread. Each request belongs to its opening card, viewport and
+theme; a close, timeout, resize or theme change discards a late result. Hosts that do not
+complete screenshot requests leave the card solid.
+
 An id in `tiles` that is neither built in nor declared logs a warning and is ignored.
 
 The three footer buttons are `clear_all` · `lock` · `settings`, and **none of them
@@ -1079,12 +1090,19 @@ updates in place, keeping its position.
 | `duration` | `Duration` | `Duration::ZERO` = `[notify] toast_ms`; `Duration::MAX` = until tapped | `.duration(d)` |
 | `icon` | `Option<IconRef>` | `None` | `.icon(icon)` |
 
-`&str` and `String` are `Into<Toast>`, so `handle.toast("Saved")` works directly.
+`Shell::toast` and `ShellHandle::toast` accept `ToastInput`. Borrowed `&str` and
+`&String` use fallible text construction; `String` and `Toast` transfer ownership.
+`handle.toast("Saved")` still works. A custom type that only implements `Into<Toast>`
+must be converted to `Toast` explicitly. Use `try_toast` to observe refusal.
 
 ### 5.3 Sending from another thread
 
-`ShellHandle` is `Clone + Send`. Inside it is one channel and a wake handle — no locks. Sending
-wakes the UI, and it is processed in stage 2 of the next frame.
+`ShellHandle` is `Clone + Send`. It uses a bounded channel and a wake handle.
+Accepted sends wake the UI; commands execute in FIFO order within the budget of a
+subsequent UI or logic update. The API does not wait for capacity, but standard
+channel internals may synchronize: this is not a lock-free guarantee. Void helpers
+discard rejected commands without logging. Use `try_send` to distinguish a full
+queue from a disconnected shell and recover the original command.
 
 ```rust
 use fairing::notify::Level;
@@ -1144,13 +1162,21 @@ the timing and the taps stay the shell's
 
 | Situation | Result |
 |---|---|
-| A new id | Added to the list, unread +1, heads-up |
+| A new id with available retention | Added to the list, unread +1, heads-up candidate |
 | The same id and the same `source` | Content replaced in place. No unread increment, **no heads-up** |
 | The same id, a different `source` | Taken out of the list and moved to the new source group. Also treated as an update |
-| Over the retention limit | Above `[notify] max_items` (100 by default), the oldest non-persistent ones are dropped |
+| At the retention limit | The oldest non-persistent item may be replaced. If every retained item is persistent, a new id is refused without eviction; the cap includes persistent items |
+
+`Shell::try_notify` and `NotificationCenter::try_push` preserve rejected notification
+ownership and distinguish `Full`, `TooLarge` and `AllocationFailed`. The convenience
+`NotificationCenter::push` reports `CenterChange::Rejected`; `Shell::notify` has no
+return value. Queue admission through a handle does not acknowledge display admission.
 
 The unread count goes to zero the moment the shade opens. That is the number in
 `status.notifications`'s badge, drawn as `99+` above 99.
+
+Unread state is tracked per notification id: dismissing or evicting an unread item removes
+its badge contribution, while removing an already-read item leaves the unread count alone.
 
 ### 5.6 `[notify]` keys
 
@@ -1158,7 +1184,7 @@ The unread count goes to zero the moment the shade opens. That is the number in
 |---|---|---|
 | `heads_up` | `true` | Banners for new notifications |
 | `max_visible` | `2` | Toasts visible at once. Zero is a config error at startup |
-| `max_items` | `100` | Notification centre retention limit |
+| `max_items` | `100` | Hard notification retention cap including persistent items; zero selects 100 |
 | `toast_ms` | `3000` | How long a toast with no `duration` shows |
 
 ---
@@ -1860,19 +1886,23 @@ screen reads the same `Pointer` through `cx.app::<Pointer>()` and draws it.
   as a second finger.
 - **Where regions overlap, the one added later is on top** and takes the press. That holds for
   handles too: a region added after a handle takes the presses in the strip it covers.
-- **The emergency gesture works through every region**: two seconds still in a top corner. So do
-  the hidden entries' corner knocks ([05](05-access-control.md#hidden-entry-points--the-service-menu)),
-  which are read from the raw pointer: a tap in a region over a knock corner still counts as a
-  knock, so keep a trackpad out of the corners your hidden entries use.
+- **The emergency gesture works through every region**: two seconds still in a top corner.
+  Hidden-entry corner knocks do not count presses which began in a region, including a tap
+  released in the same pass or after that region was removed. The region owns that press.
 - **Over a screen or the desktop only.** Not over the shade, the unlock prompt or the recent
   screens, and not at all with `[gesture] enabled = false`. There `place` is not asked and a press
   reaches what is under the region.
 - **`paint` draws it**, every frame it is placed, on a layer over the screens and the shade.
   A `RegionLook` carries its rect, the touch in it while there is one, the shell's time, the
   scale, the theme and the icons. Nothing is drawn by default.
-- **A frame behind, like the handles.** A region is placed from last frame's layout, and egui
-  finds what a press hits from where things were the frame before, so a region that moves, grows
-  or first appears is a frame or two behind the glass ([roadmap §4](../roadmap.md#4-known-limits)).
+- **Current shell geometry.** Placement uses the current chrome policy, screen size, pane
+  geometry and keyboard band. A showing keyboard reserves its target band immediately. Guard
+  areas are registered before user drawing with their current position and size. egui still
+  computes widget hits from the previous pass. When the region map changes and a new press
+  begins in a region, Fairing omits ordinary UI callbacks for that pass, registers the guards
+  and requests a repaint. Region callbacks and backend/authorization work continue. This can
+  leave the ordinary view blank for one pass rather than deliver the press to both handlers;
+  the input is not replayed. Widget hits outside the claimed region are not retroactively rerouted ([roadmap §4](../roadmap.md#4-known-limits)).
 
 Eight regions at most (`MAX_GESTURE_REGIONS`). The ids of the handles and the regions are one
 namespace, and a region with an id already there replaces the old one in its place.

@@ -63,8 +63,9 @@ pub(crate) enum HeadsUpAction {
 #[doc(hidden)]
 pub struct HeadsUp {
     current: Option<Banner>,
+    display_status: crate::memory::DisplayStatus,
     height: f32,
-    /// The icon polyline cache (no allocation on the render path).
+    /// Cached icon polylines; translated draw paths still require owned point storage.
     icons: IconCache,
     /// The integrator's banner, in place of the built-in one (rung 5).
     painter: Option<HeadsUpPainter>,
@@ -96,7 +97,7 @@ struct Banner {
     gate: Option<Gate>,
     y: DragSpring,
     phase: HeadsUpPhase,
-    until: Instant,
+    until: Option<Instant>,
     rect: Rect,
     /// Whether a finger is resting on the banner — the hold timer stops while it is (A6).
     pressed: bool,
@@ -110,28 +111,62 @@ struct Banner {
 
 impl Banner {
     /// Overwrite the content (reusing the string buffers; the galleys are invalidated).
-    fn fill(&mut self, notification: &Notification) {
+    fn fill(&mut self, notification: &Notification) -> Option<()> {
+        // Stage every allocating field before publishing new content; failure hides the banner.
+        let title = crate::memory::try_string(&notification.title).ok()?;
+        let body = crate::memory::try_string(&notification.body).ok()?;
+        let icon = match notification.icon.as_ref() {
+            Some(icon) => icon.try_clone().ok()?,
+            None => notification.level.icon(),
+        };
+        let gate = notification
+            .gate
+            .as_ref()
+            .map(|gate| {
+                let name = match &gate.0 {
+                    std::borrow::Cow::Borrowed(name) => std::borrow::Cow::Borrowed(*name),
+                    std::borrow::Cow::Owned(name) => {
+                        std::borrow::Cow::Owned(crate::memory::try_string(name)?)
+                    }
+                };
+                Ok::<_, std::collections::TryReserveError>(crate::access::Gate(name))
+            })
+            .transpose()
+            .ok()?;
         self.id = notification.id;
-        self.title.clear();
-        self.title.push_str(&notification.title);
-        self.body.clear();
-        self.body.push_str(&notification.body);
-        self.icon = notification.shown_icon();
+        self.title = title;
+        self.body = body;
+        self.icon = icon;
         self.level = notification.level;
         self.progress = notification.progress;
-        self.gate.clone_from(&notification.gate);
+        self.gate = gate;
         self.rect = Rect::NOTHING;
         self.pressed = false;
         self.needed = 0.0;
+        Some(())
     }
 }
 
 impl HeadsUp {
+    /// Missing optional-banner storage, without allocating another notification.
+    #[must_use]
+    pub fn display_status(&self) -> crate::memory::DisplayStatus {
+        let mut status = self.display_status;
+        status.merge(self.icons.display_status());
+        status
+    }
+    /// Acknowledge omitted-banner observations.
+    pub fn take_display_status(&mut self) -> crate::memory::DisplayStatus {
+        self.display_status.merge(self.icons.take_display_status());
+        std::mem::take(&mut self.display_status)
+    }
+
     /// A banner of height `height` (`theme.metrics.heads_up_height`).
     #[must_use]
     pub fn new(height: f32) -> Self {
         Self {
             current: None,
+            display_status: crate::memory::DisplayStatus::default(),
             height: height.max(1.0),
             icons: IconCache::new(),
             painter: None,
@@ -152,10 +187,17 @@ impl HeadsUp {
     /// Raise a new notification (replacing one already up — the later one wins).
     pub fn show(&mut self, notification: &Notification, now: Instant, tokens: &MotionTokens) {
         let h = self.height;
-        let until = now + tokens.heads_up_in.duration + tokens.heads_up_hold;
+        let until = now
+            .checked_add(tokens.heads_up_in.duration)
+            .and_then(|t| t.checked_add(tokens.heads_up_hold));
         // A banner already up is reused — the string and galley buffers stay, so there are fewer allocations.
         if let Some(banner) = &mut self.current {
-            banner.fill(notification);
+            if banner.fill(notification).is_none() {
+                self.current = None;
+                self.icons.clear();
+                self.display_status.allocation_failed = true;
+                return;
+            }
             banner.phase = HeadsUpPhase::Entering;
             banner.until = until;
             banner.y.set_range(-h, 0.0);
@@ -168,12 +210,12 @@ impl HeadsUp {
         y.to(0.0, tokens.heads_up_in);
         self.current = Some(Banner {
             id: notification.id,
-            title: notification.title.clone(),
-            body: notification.body.clone(),
-            icon: notification.shown_icon(),
+            title: String::new(),
+            body: String::new(),
+            icon: notification.level.icon(),
             level: notification.level,
             progress: notification.progress,
-            gate: notification.gate.clone(),
+            gate: None,
             y,
             phase: HeadsUpPhase::Entering,
             until,
@@ -182,6 +224,15 @@ impl HeadsUp {
             wrap: 0.0,
             needed: 0.0,
         });
+        if self
+            .current
+            .as_mut()
+            .and_then(|banner| banner.fill(notification))
+            .is_none()
+        {
+            self.current = None;
+            self.display_status.allocation_failed = true;
+        }
     }
 
     /// The notification on screen was updated in place: the banner takes the new content and
@@ -191,7 +242,11 @@ impl HeadsUp {
             return;
         };
         let (rect, pressed, needed) = (banner.rect, banner.pressed, banner.needed);
-        banner.fill(notification);
+        if banner.fill(notification).is_none() {
+            self.current = None;
+            self.display_status.allocation_failed = true;
+            return;
+        }
         banner.rect = rect;
         banner.pressed = pressed;
         banner.needed = needed;
@@ -264,7 +319,7 @@ impl HeadsUp {
             true
         } else {
             b.phase = HeadsUpPhase::Holding;
-            b.until = now + hold;
+            b.until = now.checked_add(hold);
             if reduce {
                 b.y.snap(0.0);
             } else {
@@ -296,9 +351,11 @@ impl HeadsUp {
             // pushing the expiry back by dt — no separate state is needed. Once the exit has begun, a
             // finger resting on it does not stop it going all the way out.
             HeadsUpPhase::Holding if b.pressed => {
-                b.until += Duration::from_secs_f32(dt.clamp(0.0, crate::motion::MAX_DT));
+                let elapsed = Duration::try_from_secs_f32(dt.clamp(0.0, crate::motion::MAX_DT))
+                    .unwrap_or(Duration::ZERO);
+                b.until = b.until.and_then(|t| t.checked_add(elapsed));
             }
-            HeadsUpPhase::Holding if now >= b.until => {
+            HeadsUpPhase::Holding if b.until.is_some_and(|at| now >= at) => {
                 b.phase = HeadsUpPhase::Leaving;
                 b.y.to(-h, out);
                 return true;
@@ -369,7 +426,7 @@ impl HeadsUp {
         self.current
             .as_ref()
             .filter(|b| b.phase == HeadsUpPhase::Holding && !b.pressed)
-            .map(|b| b.until)
+            .and_then(|b| b.until)
     }
 
     /// Where the banner rests, `h` tall: centred at the top of `screen`, a screen inset in from
@@ -440,7 +497,7 @@ impl HeadsUp {
         let rect = place.translate(egui::vec2(0.0, y));
         banner.rect = rect;
         let allowed = banner.gate.as_ref().is_none_or(|gate| access.allows(gate));
-        let response = egui::Area::new(egui::Id::new("fairing.heads_up"))
+        let response = egui::Area::new(egui::Id::unique("fairing.heads_up"))
             .order(egui::Order::Tooltip)
             .fixed_pos(rect.min)
             .constrain(false)
@@ -549,7 +606,7 @@ fn paint_with(
     );
 }
 
-/// One banner: the background, icon, title, body and progress. Galley- and polyline-cached, so no allocation.
+/// One banner. Failed owned-text copies omit this optional display.
 /// With `hidden` (a gated notification the session may not read) that line is the title, and
 /// the body, the progress and the notification's own icon and accent are left out.
 fn paint_banner(
@@ -560,6 +617,17 @@ fn paint_banner(
     theme: &Theme,
     icons: &mut IconCache,
 ) {
+    let Ok(title_text) = crate::memory::try_string(hidden.unwrap_or(&banner.title)) else {
+        return;
+    };
+    let body_text = if hidden.is_none() && !banner.body.is_empty() {
+        let Ok(text) = crate::memory::try_string(&banner.body) else {
+            return;
+        };
+        Some(text)
+    } else {
+        None
+    };
     let painter = ui.painter();
     let metrics = theme.metrics;
     painter.rect_filled(
@@ -590,7 +658,7 @@ fn paint_banner(
     banner.wrap = wrap;
     // The galleys are not held across frames — a growing atlas throws the UVs out.
     let title = painter.layout(
-        hidden.map_or_else(|| banner.title.clone(), str::to_owned),
+        title_text,
         egui::TextStyle::Button.resolve(ui.style()),
         Color32::PLACEHOLDER,
         wrap,
@@ -600,9 +668,9 @@ fn paint_banner(
     } else {
         banner.progress
     };
-    let body = (hidden.is_none() && !banner.body.is_empty()).then(|| {
+    let body = body_text.map(|text| {
         painter.layout(
-            banner.body.clone(),
+            text,
             egui::TextStyle::Body.resolve(ui.style()),
             Color32::PLACEHOLDER,
             wrap,
@@ -836,5 +904,20 @@ mod tests {
         assert_eq!(hu.visible(), Some(NotificationId::of("m")));
         assert_eq!(hu.phase(), Some(HeadsUpPhase::Entering));
         assert!((hu.y() + 88.0).abs() < 1e-6, "from −H again");
+    }
+    #[test]
+    fn unrepresentable_hold_is_retained_without_panicking_or_expiring() {
+        let tokens = MotionTokens {
+            heads_up_hold: Duration::MAX,
+            ..MotionTokens::default()
+        };
+        let now = Instant::now();
+        let mut banner = HeadsUp::new(88.0);
+        banner.show(&note(), now, &tokens);
+        for _ in 0..32 {
+            banner.tick(0.05, now, &tokens);
+        }
+        assert_eq!(banner.visible(), Some(note().id));
+        assert_eq!(banner.next_deadline(), None);
     }
 }

@@ -43,11 +43,9 @@ const SIZE: (f32, f32) = (1440.0, 5800.0);
 
 /// The one frame the tour takes.
 ///
-/// **The sheet is opened on a later frame, not in `build`.** `set_fonts` only takes effect at the
-/// next `begin_pass`, and the tour harness builds the shell *inside* frame 1 — so a screen drawn on
-/// that frame still has the old font definitions, and the first `Theme::strong` draw panics epaint
-/// with "`FontFamily::Name(\"fairing-strong\")` is not bound to any fonts". `runner::run_shell`
-/// builds in eframe's creation closure, before any frame, and never sees this.
+/// The sheet opens after the shell's startup and font readiness have settled. egui 0.37
+/// can install fonts immediately before text layout, or defer them to the next pass after
+/// layout; the same tour therefore works for either build timing.
 const PLAN: &[Act] = &[
     Act::Settle,
     Act::Wait(4), // let `set_fonts` land before anything asks for the strong family

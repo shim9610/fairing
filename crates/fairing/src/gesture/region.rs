@@ -17,14 +17,16 @@
 //!   lost, gestures turned off.
 //! - **Order.** Where two regions overlap, the one added later is on top and takes the press.
 //! - **The emergency gesture** works through every region: two seconds still in a top
-//!   corner. So do the hidden entries' corner knocks, read from the raw pointer: a tap in a
-//!   region over a knock corner still counts as a knock.
+//!   corner. Hidden-entry corner knocks do not count a press owned by a region.
 //! - **Drawing.** [`GestureRegion::paint`] draws it each frame it is placed, on a layer over the
 //!   screens and the shade.
 //!
-//! A region is laid out from last frame's layout, and egui finds what a press hits from where
-//! things were the frame before, so a region that moves or first appears is a frame or two behind
-//! the glass.
+//! Regions use the current shell layout and keyboard band. Guard areas are registered before
+//! user drawing with their current position and size. egui computes widget hits from the
+//! previous pass. If the region map changed and a new press belongs to a region, ordinary
+//! UI callbacks are omitted for that pass and a repaint is requested, preventing dual dispatch.
+//! Region callbacks and backend/authorization work continue; the ordinary view may be blank
+//! for one pass. This does not retroactively reroute hits outside the claimed region.
 
 use super::{Edge, EdgeMask, HandlePainter, Phase, MAX_HANDLES_A_SIDE};
 use crate::access::Gate;
@@ -112,7 +114,7 @@ pub trait GestureRegion {
 pub struct RegionPlaceCx<'a> {
     /// The glass.
     pub screen: Rect,
-    /// The content: the glass between the bars, as last laid out.
+    /// The current content: the glass between the bars.
     pub content: Rect,
     /// The focused screen's declaration id: `None` at home.
     pub focused: Option<&'a str>,
@@ -127,10 +129,10 @@ pub struct RegionPlaceCx<'a> {
     /// This frame's scale: millimetres to points.
     pub scale: Scale,
     pub(crate) edge_zones: [Rect; 4],
-    /// The status bar where it shows, as last laid out — for a handle's
+    /// The current status bar where it shows — for a handle's
     /// [`HandleEnd::Bar`](super::HandleEnd::Bar).
     pub(crate) status_bar: Option<Rect>,
-    /// The nav bar where it shows, as last laid out.
+    /// The current nav bar where it shows.
     pub(crate) nav_bar: Option<Rect>,
     /// Whether the nav bar is on (`[nav_bar] enabled`): then the bottom edge is the bar's, and no
     /// handle goes there.

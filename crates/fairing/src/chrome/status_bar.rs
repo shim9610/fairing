@@ -217,7 +217,7 @@ impl LabelPos {
 }
 
 /// The closure that draws a top-bar item.
-pub(super) type StatusItemUi = Box<dyn FnMut(&mut egui::Ui, &mut Cx<'_>)>;
+pub(super) type StatusItemUi = crate::access::mediation::UiCallback;
 
 /// An integrator top-bar item declaration (`status_item(id, Slot, |ui, cx| ..)`).
 pub struct StatusItemDecl {
@@ -249,7 +249,7 @@ pub fn status_item(
         gate: Some(Gate::from(&id)),
         id,
         slot,
-        ui: Box::new(ui),
+        ui: crate::access::mediation::UiCallback::legacy(Box::new(ui)),
         priority: 0,
         enabled: true,
     }
@@ -770,7 +770,7 @@ impl StatusBar {
             },
         );
         // The bar's own tap is registered first — an item registered later wins the hit test.
-        let bar = ui.interact(rect, egui::Id::new("fairing.status_bar"), Sense::click());
+        let bar = ui.interact(rect, egui::Id::unique("fairing.status_bar"), Sense::click());
         let inner = rect.shrink2(egui::vec2(parts.theme.metrics.status_edge_pad, 0.0));
 
         self.measure(ui, parts, custom);
@@ -805,7 +805,7 @@ impl StatusBar {
         // No built-in item was drawn, so last frame's Rects are not left behind.
         self.mark_hidden();
         let rect = ui.max_rect();
-        let bar = ui.interact(rect, egui::Id::new("fairing.status_bar"), Sense::click());
+        let bar = ui.interact(rect, egui::Id::unique("fairing.status_bar"), Sense::click());
         let pane = PaneInfo {
             rect,
             outer: rect,
@@ -894,7 +894,7 @@ impl StatusBar {
                     let Some(decl) = custom.get(custom_index) else {
                         continue;
                     };
-                    if !decl.enabled {
+                    if !decl.enabled || !allowed(parts, decl.gate.as_ref(), &decl.id) {
                         continue;
                     }
                     layout.push(Placed {
@@ -1079,9 +1079,19 @@ impl StatusBar {
                 Slot::Right => right,
             };
             let spec = placed.spec.and_then(|i| specs.get(i));
+            if let Some(decl) = placed.custom.and_then(|index| custom.get(index)) {
+                if !decl.enabled || !allowed(parts, decl.gate.as_ref(), &decl.id) {
+                    continue;
+                }
+            }
+            if let Some(spec) = spec {
+                if !gate_allows(parts.access, spec.gate.as_ref(), &spec.id) {
+                    continue;
+                }
+            }
             let widget_id = match (spec, placed.custom.and_then(|i| custom.get(i))) {
-                (Some(spec), _) => egui::Id::new(("fairing.status_bar.item", &spec.id)),
-                (None, Some(decl)) => egui::Id::new(("fairing.status_bar.item", &decl.id)),
+                (Some(spec), _) => egui::Id::unique(("fairing.status_bar.item", &spec.id)),
+                (None, Some(decl)) => egui::Id::unique(("fairing.status_bar.item", &decl.id)),
                 (None, None) => continue,
             };
             let response = ui.interact(placed.rect, widget_id, Sense::click());
@@ -1094,7 +1104,7 @@ impl StatusBar {
                             .layout(egui::Layout::left_to_right(egui::Align::Center)),
                     );
                     let mut cx = parts.cx(pane, None);
-                    (decl.ui)(&mut child, &mut cx);
+                    decl.ui.paint(&mut child, &mut cx);
                     // The real content width is recorded so the next frame's estimate converges.
                     let content = child.min_rect();
                     if content.is_positive() {
@@ -1120,34 +1130,63 @@ impl StatusBar {
                 action = Some(StatusBarAction::ItemTapped(id.to_owned()));
             }
         }
-        // An integrator item that collapsed before it was ever drawn is run once, out of sight,
-        // to measure it: laid out on the estimate alone it could stay collapsed for good where
-        // its real width fits. Measured, a collapsed item is not run again.
-        for placed in layout.iter().filter(|placed| !placed.shown) {
-            let Some(decl) = placed.custom.and_then(|i| custom.get_mut(i)) else {
-                continue;
-            };
-            if measured.iter().any(|(id, _)| *id == decl.id) {
-                continue;
-            }
-            let mut child = ui.new_child(
-                egui::UiBuilder::new()
-                    .max_rect(ui.max_rect())
-                    .layout(egui::Layout::left_to_right(egui::Align::Center))
-                    .invisible(),
-            );
-            let mut cx = parts.cx(pane, None);
-            (decl.ui)(&mut child, &mut cx);
-            // Something that draws nothing is recorded too, so it is not run again.
-            let content = child.min_rect();
-            let width = if content.is_positive() {
-                content.width()
-            } else {
-                CUSTOM_WIDTH_GUESS
-            };
-            record_width(measured, &decl.id, width);
-        }
+        measure_collapsed(
+            ui,
+            parts,
+            custom,
+            layout,
+            measured,
+            pane,
+            [left, center, right],
+        );
         action
+    }
+}
+
+/// Measure a never-drawn collapsed custom item without making it visible.
+fn measure_collapsed(
+    ui: &mut egui::Ui,
+    parts: &mut CxParts<'_>,
+    custom: &mut [StatusItemDecl],
+    layout: &[Placed],
+    measured: &mut Vec<(String, f32)>,
+    pane: PaneInfo,
+    slots: [&[StatusItemSpec]; 3],
+) {
+    for placed in layout.iter().filter(|placed| !placed.shown) {
+        let Some(decl) = placed.custom.and_then(|i| custom.get_mut(i)) else {
+            continue;
+        };
+        let spec = placed.spec.and_then(|index| {
+            slots
+                .get(usize::from(placed.slot.rank()))
+                .and_then(|slot| slot.get(index))
+        });
+        if !decl.enabled
+            || !allowed(parts, decl.gate.as_ref(), &decl.id)
+            || spec.is_some_and(|spec| !gate_allows(parts.access, spec.gate.as_ref(), &spec.id))
+        {
+            continue;
+        }
+        if measured.iter().any(|(id, _)| *id == decl.id) {
+            continue;
+        }
+        let mut child = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(ui.max_rect())
+                .layout(egui::Layout::left_to_right(egui::Align::Center))
+                .invisible(),
+        );
+        let mut cx = parts.cx(pane, None);
+        decl.ui.paint(&mut child, &mut cx);
+        // Something that draws nothing is recorded too, so it is not run again.
+        let content = child.min_rect();
+        let width = if content.is_positive() {
+            content.width()
+        } else {
+            CUSTOM_WIDTH_GUESS
+        };
+        record_width(measured, &decl.id, width);
     }
 }
 

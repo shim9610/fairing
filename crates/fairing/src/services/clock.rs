@@ -1,10 +1,10 @@
-//! Two clock backends — the default [`SystemClock`], and [`ChronoClock`] behind feature
+//! Two clock backends — the default [`SystemClock`], and `ChronoClock` behind feature
 //! `chrono`.
 //!
 //! The default is `SystemTime` plus **an offset from the config**. It
 //! takes no dependency, and in exchange it does not know about DST — put it somewhere with
 //! summer time and it is an hour out twice a year. Devices where that matters turn on the
-//! `chrono` feature and use [`ChronoClock`] (measured: +3 crates).
+//! `chrono` feature and use `ChronoClock` (measured: +3 crates).
 
 use super::{Backend, Capabilities, ClockSource, WallTime};
 use std::time::{SystemTime, UNIX_EPOCH};

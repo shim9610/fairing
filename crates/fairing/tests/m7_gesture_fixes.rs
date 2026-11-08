@@ -5,6 +5,7 @@
 //! The rules are the other integration tests': `fairing::Result<()>`, no `panic!`, no `unwrap`.
 
 use fairing::gesture::{GestureRegion, Phase, RegionCx, RegionPlaceCx, RegionTouch};
+#[cfg(feature = "overlay")]
 use fairing::overlay::OverlayState;
 use fairing::testing::{access_config, test_shell, Harness};
 use fairing::{screen, Cx, LaunchAction, ShellConfig, ShellEvent};
@@ -138,6 +139,7 @@ fn back_gesture_settles_after_a_lock_mid_drag() -> fairing::Result<()> {
 
 /// A shade pull under way when an unlock request comes in settles once the finger lifts.
 #[test]
+#[cfg(feature = "overlay")]
 fn shade_settles_after_an_unlock_request_mid_pull() -> fairing::Result<()> {
     let mut h = shell(gated())?;
     let from = egui::pos2(500.0, 10.0);
@@ -165,6 +167,7 @@ fn shade_settles_after_an_unlock_request_mid_pull() -> fairing::Result<()> {
 /// A fast shade pull cut off by a lock goes back up: the cancelled pull does not open the shade
 /// behind the lock screen.
 #[test]
+#[cfg(feature = "overlay")]
 fn shade_stays_shut_behind_a_lock_that_cut_a_pull_off() -> fairing::Result<()> {
     let mut h = shell(gated())?;
     let from = egui::pos2(500.0, 10.0);

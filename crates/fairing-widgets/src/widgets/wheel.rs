@@ -40,6 +40,7 @@
 
 use super::{WheelLook, WheelRow};
 use crate::cx::WidgetCx as Cx;
+use crate::interaction::concrete::Capture;
 use crate::motion::{Animated, Mode};
 use crate::theme::ColorRole;
 use crate::unit::round_u8;
@@ -124,8 +125,6 @@ impl<'a> WheelPicker<'a> {
                 Sense::hover()
             },
         );
-        // The drum follows the finger, and says so: the rail's page swipe leaves this drag alone.
-        crate::drag::claim_if_held(&response);
         let count = self.options.len();
         if count == 0 {
             return response;
@@ -137,43 +136,64 @@ impl<'a> WheelPicker<'a> {
             *self.selected = wanted;
             response.mark_changed();
         }
-        let id = ui.id().with(self.id_salt);
-        let mut drum: Drum = ui.data(|d| d.get_temp::<Drum>(id)).unwrap_or(Drum {
-            pos: Animated::new(as_f32(wanted)),
-            caller: false,
+        let id = ui.scope_id().with(self.id_salt);
+        let mut drum: Capture<Drum> = crate::interaction::load_capture::<Drum>(
+            ui.ctx(),
+            id,
+            self.enabled && ui.is_enabled(),
+            crate::interaction::Lifetime::Mounted,
+        )
+        .unwrap_or(Capture {
+            payload: Drum {
+                pos: Animated::new(as_f32(wanted)),
+                caller: false,
+            },
+            captured: false,
         });
 
         // The caller moved the value while the drum was at rest, or while it was still turning
         // to the caller's last value: turn to it, the short way round on a joined drum.
-        let resting = drum.pos.mode() == Mode::Idle || drum.caller;
-        if resting && index_at(drum.pos.target(), count, self.wrap) != wanted {
-            let target = self.turn_to(drum.pos.value(), wanted, count);
-            drum.pos.to(target, cx.theme.motion.switch);
-            drum.caller = true;
+        let resting = drum.payload.pos.mode() == Mode::Idle || drum.payload.caller;
+        if resting && index_at(drum.payload.pos.target(), count, self.wrap) != wanted {
+            let target = self.turn_to(drum.payload.pos.value(), wanted, count);
+            drum.payload.pos.to(target, cx.theme.motion.switch);
+            drum.payload.caller = true;
         }
-        if self.enabled && self.steer(ui, cx, &response, rect, row_h, &mut drum.pos) {
-            // The finger took over: from here the rows passed are the operator's choice.
-            drum.caller = false;
+        // egui can retain a held pointer across a missing/disabled widget. A mounted
+        // animation is not proof of a live drag; only a fresh press can start capture.
+        let transition = crate::interaction::concrete::capture_step(
+            Some(&drum),
+            self.enabled && ui.is_enabled(),
+            crate::interaction::pointer(&response),
+        );
+        drum = crate::interaction::concrete::apply_capture(drum, transition);
+        let admitted = transition.admitted;
+        if admitted {
+            // The drum owns this live gesture; the surrounding page swipe leaves it alone.
+            crate::drag::claim_if_held(&response);
+            if self.steer(ui, cx, &response, rect, row_h, &mut drum.payload.pos) {
+                drum.payload.caller = false;
+            }
         }
         let dt = ui.input(|i| i.stable_dt);
-        if drum.pos.tick(dt) {
+        if drum.payload.pos.tick(dt) {
             ui.ctx().request_repaint();
         }
 
         // A turn to the caller's value keeps that value: the rows it passes on the way are not
         // changes the operator made.
-        if !drum.caller {
-            let index = index_at(drum.pos.value(), count, self.wrap);
+        if !drum.payload.caller {
+            let index = index_at(drum.payload.pos.value(), count, self.wrap);
             if index != *self.selected {
                 *self.selected = index;
                 response.mark_changed();
             }
         }
-        if drum.pos.mode() == Mode::Idle {
-            drum.caller = false;
+        if drum.payload.pos.mode() == Mode::Idle {
+            drum.payload.caller = false;
         }
-        ui.data_mut(|d| d.insert_temp(id, drum));
-        self.paint(ui, cx, rect, row_h, drum.pos.value());
+        crate::interaction::store(ui.ctx(), id, drum);
+        self.paint(ui, cx, rect, row_h, drum.payload.pos.value());
         response
     }
 

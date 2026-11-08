@@ -325,10 +325,14 @@ impl<'a> ChipRow<'a> {
             cx,
             out.inner_rect,
             out.content_size.x,
-            out.state.offset.x,
+            out.state.clamped_offset().x,
         );
         let response = out.inner.unwrap_or_else(|| {
-            ui.interact(out.inner_rect, ui.id().with(self.id_salt), Sense::hover())
+            ui.interact(
+                out.inner_rect,
+                ui.scope_id().with(self.id_salt),
+                Sense::hover(),
+            )
         });
         ChipPick { response, picked }
     }

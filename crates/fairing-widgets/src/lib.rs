@@ -29,7 +29,7 @@
 //!     theme: &theme,
 //!     icons: &mut icons,
 //!     anims: &mut anims,
-//!     anim_scope: egui::Id::new("my-app"),
+//!     anim_scope: egui::Id::unique("my-app"),
 //!     frame: 0,
 //!     inset_bottom: 0.0,
 //!     painters: None,
@@ -62,9 +62,26 @@
 //! - [`fonts`] — font installation, including the bold face the weight axis needs.
 //! - [`widgets`] — the touch controls.
 //!
-//! The shell re-exports all of it, so integrator code says `fairing_widgets::…` as it always did.
+//! The shell re-exports these modules, so shell applications can use `fairing::widgets`,
+//! `fairing::theme` and the other module paths without a direct widget-crate dependency.
+//! Standalone widgets do not enforce shell session permissions. For library-managed
+//! protected measurement and paint, use `fairing::elements::ElementTree` through
+//! `fairing::ProtectedShell::add_elements`.
 
 #![forbid(unsafe_code)]
+#![cfg_attr(
+    not(test),
+    forbid(
+        clippy::disallowed_methods,
+        clippy::disallowed_macros,
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::todo,
+        clippy::unimplemented
+    )
+)]
 // A `pub` item has to be reachable from the crate root — anything else is `pub(crate)`.
 // The audit's clippy stage denies warnings, so this keeps the public surface to what is meant.
 // It sits here rather than in the workspace lints because the examples, tests and xtask are
@@ -78,6 +95,8 @@ pub mod error;
 pub mod fit;
 pub mod fonts;
 pub mod icons;
+mod interaction;
+pub mod memory;
 pub mod motion;
 pub mod theme;
 pub mod unit;

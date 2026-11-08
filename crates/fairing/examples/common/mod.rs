@@ -132,67 +132,42 @@ pub fn korean_fonts() -> fairing::FontSet {
     fonts
 }
 
-/// What the examples' own screenshot commands carry. The shell asks for screenshots too — a card's
-/// frosted backdrop takes one as it opens — and the images come back as the same
-/// `Event::Screenshot`, so the examples keep to the ones marked as theirs.
-#[derive(Debug, Clone, Copy)]
-struct OurShot;
-
-/// Ask eframe for a screenshot marked as the examples' own.
+/// Ask eframe for a screenshot delivered to the examples' own callback queue.
 fn ask_for_shot(ctx: &egui::Context) {
-    ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::new(
-        OurShot,
-    )));
+    let ready = ctx.clone();
+    ctx.request_screenshot(move |image| {
+        ready.data_mut(|d| {
+            d.get_temp_mut_or_default::<Vec<Arc<egui::ColorImage>>>(egui::Id::unique(
+                "fairing.examples.shots",
+            ))
+            .push(image);
+        });
+        ready.request_repaint();
+    });
 }
 
-/// The images that rode this frame's input back for [`ask_for_shot`]; the shell's are left alone.
 fn our_shots(ctx: &egui::Context) -> Vec<Arc<egui::ColorImage>> {
-    ctx.input(|i| {
-        i.events
-            .iter()
-            .filter_map(|event| match event {
-                egui::Event::Screenshot {
-                    image, user_data, ..
-                } if user_data
-                    .data
-                    .as_ref()
-                    .is_some_and(|data| data.is::<OurShot>()) =>
-                {
-                    Some(Arc::clone(image))
-                }
-                _ => None,
-            })
-            .collect()
+    ctx.data_mut(|d| {
+        std::mem::take(d.get_temp_mut_or_default(egui::Id::unique("fairing.examples.shots")))
     })
 }
 
-/// What a recorded frame's screenshot carries ([`Act::Record`]): the file it is written to.
-#[derive(Debug, Clone)]
-struct FrameShot(PathBuf);
-
-/// Ask for a screenshot of this frame, bound for `path`.
 fn ask_for_frame(ctx: &egui::Context, path: PathBuf) {
-    ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::new(
-        FrameShot(path),
-    )));
+    let ready = ctx.clone();
+    ctx.request_screenshot(move |image| {
+        ready.data_mut(|d| {
+            d.get_temp_mut_or_default::<Vec<(PathBuf, Arc<egui::ColorImage>)>>(egui::Id::unique(
+                "fairing.examples.frames",
+            ))
+            .push((path, image));
+        });
+        ready.request_repaint();
+    });
 }
 
-/// The recorded frames that rode this frame's input back, with the file each is bound for.
 fn frame_shots(ctx: &egui::Context) -> Vec<(PathBuf, Arc<egui::ColorImage>)> {
-    ctx.input(|i| {
-        i.events
-            .iter()
-            .filter_map(|event| match event {
-                egui::Event::Screenshot {
-                    image, user_data, ..
-                } => user_data
-                    .data
-                    .as_ref()
-                    .and_then(|data| data.downcast_ref::<FrameShot>())
-                    .map(|FrameShot(path)| (path.clone(), Arc::clone(image))),
-                _ => None,
-            })
-            .collect()
+    ctx.data_mut(|d| {
+        std::mem::take(d.get_temp_mut_or_default(egui::Id::unique("fairing.examples.frames")))
     })
 }
 
@@ -204,7 +179,7 @@ fn frame_shots(ctx: &egui::Context) -> Vec<(PathBuf, Arc<egui::ColorImage>)> {
 /// them**.
 ///
 /// eframe's screenshot is N → N+2 (see `Tour`'s docs). Here there is only the one, so it is requested
-/// on frame `after` and written when the event arrives, then the window closes.
+/// on frame `after` and written when the callback answers, then the window closes.
 pub struct OneShot {
     dir: PathBuf,
     name: &'static str,
@@ -672,11 +647,11 @@ const RECORD_DT: f32 = 1.0 / 60.0;
 
 impl SyntheticInput {
     fn queue_id() -> egui::Id {
-        egui::Id::new("fairing.examples.synthetic_input")
+        egui::Id::unique("fairing.examples.synthetic_input")
     }
 
     fn clock_id() -> egui::Id {
-        egui::Id::new("fairing.examples.virtual_clock")
+        egui::Id::unique("fairing.examples.virtual_clock")
     }
 
     /// Put the frames on [`VirtualClock`] from the next one on.
@@ -690,7 +665,7 @@ impl SyntheticInput {
     /// Register the plugin once (the same type is not taken twice, but a flag is checked first so as
     /// not to make an `Arc`).
     pub fn install(ctx: &egui::Context) {
-        let installed = egui::Id::new("fairing.examples.synthetic_input.installed");
+        let installed = egui::Id::unique("fairing.examples.synthetic_input.installed");
         if ctx.data(|d| d.get_temp::<bool>(installed)) == Some(true) {
             return;
         }
@@ -805,10 +780,9 @@ enum Flow {
 /// asks for a `Context`).
 ///
 /// # The one-frame delay
-/// `eframe` 0.36.1's glow backend gathers the viewport commands at the end of a frame
-/// (`handle_viewport_output`, `glow_integration.rs` line 864) and reads a screenshot with
-/// `read_screen_rgba` (line 806) **after drawing the next frame**. So the picture of a command sent on
-/// frame N is frame N+1's screen, and the `egui::Event::Screenshot` rides frame N+2's input.
+/// `eframe` 0.37's glow backend gathers screenshot callbacks at the end of a frame and
+/// reads the image **after drawing the next frame**. A command sent on frame N captures
+/// frame N+1; its callback queues the image for the tour's update on frame N+2.
 /// [`Tour::last_t`] holds the previous frame's progress (= the frame captured), so which `t` was
 /// captured is known exactly.
 struct Tour<S> {
@@ -1010,7 +984,7 @@ impl<S: std::any::Any> Tour<S> {
         }
     }
 
-    /// Write the `Event::Screenshot` that rode this frame's input out as a PNG.
+    /// Write the completed screenshot callbacks out as PNGs.
     fn collect(&mut self, ctx: &egui::Context) {
         for image in our_shots(ctx) {
             self.inflight = self.inflight.saturating_sub(1);

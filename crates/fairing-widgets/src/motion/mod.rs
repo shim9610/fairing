@@ -842,7 +842,7 @@ mod tests {
     fn animation_store_prunes_exactly_at_retain_boundary() {
         use super::AnimationStore;
         let mut store = AnimationStore::new();
-        let id = egui::Id::new("m1-retain-test");
+        let id = egui::Id::unique("m1-retain-test");
         store.animate(id, 1.0, Tween::default(), 0);
         for frame in 1..AnimationStore::RETAIN_FRAMES {
             store.tick(1.0 / 60.0, frame);

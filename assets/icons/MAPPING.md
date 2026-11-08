@@ -5,7 +5,7 @@ Source: [`lucide-static@1.39.0`](https://cdn.jsdelivr.net/npm/lucide-static@1.39
 full).
 
 Files are saved under **our own names**. The constants are `NAMES` in
-`crates/fairing/src/icons/builtin.rs`. `cargo xtask icons` uses the file name verbatim as
+`crates/fairing-widgets/src/icons/builtin.rs`. `cargo xtask icons` uses the file name verbatim as
 `IconDef::name`.
 
 Downloading (51 icons, including the ones whose names match):
@@ -121,5 +121,5 @@ That makes 51 + 27 + 2 = **80**.
 ```sh
 cargo run -p xtask --locked -- icons          # regenerate generated.rs
 cargo run -p xtask --locked -- icons --check  # is the checked-in copy current (audit stage 11)
-cargo test -p fairing --lib icons             # builtin_names_resolve and friends
+cargo test --locked -p fairing-widgets --lib icons # builtin_names_resolve and friends
 ```

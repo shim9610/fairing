@@ -431,7 +431,7 @@ impl Overview {
         // Card counts are tiny, so the conversions are exact.
         #[allow(clippy::cast_precision_loss)]
         let last = cards.len().saturating_sub(1) as f32;
-        let id = egui::Id::new(AREA_ID);
+        let id = egui::Id::unique(AREA_ID);
         let now = Instant::now();
         let strings = parts.strings;
         let mut picked = None;
@@ -733,7 +733,7 @@ fn widget_cx<'p>(parts: &'p mut CxParts<'_>) -> WidgetCx<'p> {
         theme: parts.theme,
         icons: &mut *parts.icons,
         anims: &mut *parts.animations,
-        anim_scope: egui::Id::new(AREA_ID),
+        anim_scope: egui::Id::unique(AREA_ID),
         frame: parts.frame,
         inset_bottom: 0.0,
         painters: Some(&mut *parts.widget_painters),

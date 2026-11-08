@@ -98,9 +98,9 @@ mod with_overlay {
             ctx.set_sublayer(
                 egui::LayerId::new(
                     egui::Order::Foreground,
-                    egui::Id::new(crate::overlay::PANEL_AREA_ID),
+                    egui::Id::unique(crate::overlay::PANEL_AREA_ID),
                 ),
-                egui::LayerId::new(egui::Order::Foreground, egui::Id::new(status_area_id)),
+                egui::LayerId::new(egui::Order::Foreground, egui::Id::unique(status_area_id)),
             );
         }
         #[allow(clippy::too_many_arguments)]

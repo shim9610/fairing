@@ -13,7 +13,7 @@
 //! (`Shell::launch` / `back` / `home`) and **a synthetic finger** (`common::SyntheticInput` — it puts
 //! pointer events into the next pass's `RawInput`, as the headless harness does), sends an
 //! `egui::ViewportCommand::Screenshot` at the appointed moments, and writes the `ColorImage` that
-//! comes back through `egui::Event::Screenshot` out as a PNG. A mid-transition frame is captured by
+//! comes back through the screenshot callback out as a PNG. A mid-transition frame is captured by
 //! reading the transition's progress `t` every frame and taking **the frame closest** to the target,
 //! and a mid-gesture frame (the shade pull, the page swipe, back) is captured with the finger still
 //! held (`motion.reduce` has to be off). After the last frame, a `ViewportCommand::Close`.
@@ -586,10 +586,13 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
                     strength,
                 }
             };
-            if !wifi_control.send(WifiMsg::State(state)) {
-                break;
+            match wifi_control.try_send(WifiMsg::State(state)) {
+                Ok(()) => waker.wake(),
+                Err(error) if error.kind() == fairing::inbox::QueueErrorKind::Full => {
+                    // Skip this transient sample; the next tick reports newer strength.
+                }
+                Err(_) => break,
             }
-            waker.wake();
         }
     });
 

@@ -166,7 +166,7 @@ pub struct Osk {
     press_held_while_dismissed: bool,
     /// A tap on the screen while closed ended on the last frame (if something still has focus, it reopens).
     press_while_dismissed: bool,
-    /// The special-key icon cache — glyphs egui's default font does not have (⇧ ⌫ ↵ ▾ ✓) are drawn
+    /// The special-key icon cache — glyphs egui's default font does not have are drawn
     /// with built-in icons ([`special_icon`]). The label strings stay `key_rect`'s keys.
     icons: IconCache,
     /// The context, held from drawing time. `update(wants: bool, ..)` has no context, so this is
@@ -221,6 +221,13 @@ impl std::fmt::Debug for Osk {
 }
 
 impl Osk {
+    pub(crate) fn display_status(&self) -> crate::memory::DisplayStatus {
+        self.icons.display_status()
+    }
+    pub(crate) fn take_display_status(&mut self) -> crate::memory::DisplayStatus {
+        self.icons.take_display_status()
+    }
+
     /// From `[osk]`.
     #[must_use]
     pub fn from_config(cfg: &OskConfig) -> Self {
@@ -837,9 +844,9 @@ impl Osk {
         // its order every frame — egui keeps every area ever created in its order and puts a
         // new one above the old, so once is not enough. Raised, the same holds one order up,
         // over the unlock prompt.
-        let layer = egui::LayerId::new(order, egui::Id::new("fairing.osk"));
+        let layer = egui::LayerId::new(order, egui::Id::unique("fairing.osk"));
         ctx.move_to_top(layer);
-        egui::Area::new(egui::Id::new("fairing.osk"))
+        egui::Area::new(egui::Id::unique("fairing.osk"))
             .order(order)
             .fixed_pos(panel.min)
             .default_size(panel.size())
@@ -1047,13 +1054,15 @@ enum Glyph<'a> {
     Icon(&'static IconDef),
 }
 
-/// The icon substitute for special-key glyphs egui's default fonts (Ubuntu-Light plus the emoji
-/// icon font) do **not** have. The label strings themselves are left alone, so lookups and
+/// The icon substitute for special-key glyphs egui's bundled default fonts do not have.
+/// The label strings themselves are left alone, so lookups and
 /// injection — `key_rect("⇧")` and friends — behave the same.
 fn special_icon(label: &str) -> Option<&'static IconDef> {
     let name = match label {
         "⇧" => "arrow-up",
         "⌫" => "arrow-left",
+        "⏮" => "chevron-left",
+        "⏭" => "chevron-right",
         "↵" | "✓" => "check",
         "▾" => "chevron-down",
         // It keeps the language-switch key visible on a device with no Hangul font.
@@ -1101,7 +1110,7 @@ fn key_response(ui: &egui::Ui, hot: Rect, index: KeyIndex) -> (bool, bool) {
     let (r, k) = index;
     let resp = ui.interact(
         hot,
-        egui::Id::new(("fairing.osk.key", r, k)),
+        egui::Id::unique(("fairing.osk.key", r, k)),
         egui::Sense::click(),
     );
     (resp.clicked(), resp.is_pointer_button_down_on())
@@ -1164,6 +1173,38 @@ mod tests {
 
     fn qwerty() -> Osk {
         Osk::from_config(&OskConfig::default())
+    }
+
+    #[test]
+    fn built_in_control_keys_render_with_only_bundled_fonts() {
+        let ctx = egui::Context::default();
+        let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let font = egui::TextStyle::Button.resolve(ui.style());
+            ui.fonts_mut(|fonts| {
+                for layout in [
+                    super::layouts::numpad(true, true),
+                    super::layouts::qwerty(true),
+                    super::layouts::hangul(true),
+                ] {
+                    for key in layout
+                        .faces
+                        .iter()
+                        .flat_map(|face| face.rows.iter().flat_map(|row| &row.keys))
+                    {
+                        if !matches!(&key.action, super::KeyAction::Text(_)) {
+                            assert!(
+                                super::special_icon(key.label.as_ref()).is_some()
+                                    || fonts.has_glyphs(&font, key.label.as_ref()),
+                                "{} control {:?} needs a font glyph or vector icon",
+                                layout.name,
+                                key.label
+                            );
+                        }
+                    }
+                }
+            });
+        });
+        output.drop_without_applying_deltas();
     }
 
     /// `hide()` does not reopen even with the focus unchanged, and releases only on the

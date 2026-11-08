@@ -329,7 +329,7 @@ pub fn transit<K: Transit>(
     body: impl FnOnce(&mut Ui, &mut Cx<'_>, &K),
 ) {
     let ctx = ui.ctx().clone();
-    let id = ui.id().with(TRANSIT_KEY);
+    let id = ui.scope_id().with(TRANSIT_KEY);
     let clock = Clock {
         now: ctx.input(|i| i.time),
         exit_default: cx.theme.motion.crossfade,

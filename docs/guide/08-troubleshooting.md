@@ -14,8 +14,8 @@ straight to stderr or the log — it names the key.
 | `initial` names no level | `[access] initial = "x" is not in levels` | Same rule | Fix the typo |
 | `pin_table` names no level | `[access.pin_table] "x" is not a level in levels` | Every key in `[access.pin_table]` except the fixed `attempt_limit`, `lock_secs`, `shuffle` and `max_len` has to be a level name (the same in `[access.pattern_table]`, whose fixed keys are `grid`, `min_points`, `show_path`, `attempt_limit` and `lock_secs`) | Fix the typo, or add the level to `levels` |
 | A PIN over `max_len` | `[access.pin_table] "x" must be 1 to 6 digits - the keypad has nothing else` | `max_len` caps the table as well as the keypad | Shorten the PIN, or raise `max_len` (16 at most) |
-| A pattern that cannot be drawn | `[access.pattern_table] "x" = "1-3-6-9": a finger cannot draw it as written - a stroke across a dot takes that dot, so it records "1-2-3-6-9"` | A stroke from one dot to another across a third takes the third, as every pattern lock does — the pattern as written could never be entered | Write the path the message gives (or route round the dot) |
-| Empty `levels` | `[access] levels is empty` | `[access.levels]` needs at least one entry (one means no authentication) | Put something in, even `levels = ["default"]` |
+| A pattern that cannot be drawn | `[access.pattern_table] "x": invalid pattern; check dot range, minimum length, repeated dots and dots crossed by each stroke` | A stroke across a dot takes that dot. The error identifies the level and validation rules without printing the secret | Check the configured path against the grid, including intervening dots |
+| Empty `levels` | `[access] levels is empty` | `[access.levels]` needs at least one entry. One level bypasses legacy level checks; token mode still requires grants | Put something in, even `levels = ["default"]` |
 | Grid columns or rows too large | `[desktop] columns must be 0 (auto) or at most 12` (rows cap at 8) | `MAX_COLUMNS = 12`, `MAX_ROWS = 8`. A larger value allocates a `Vec` of empty cells per page and the renderer walks it every frame | Stay inside the cap, or use `0` for auto |
 | Bar height rejected | `[status_bar] height must be greater than 0` / `[nav_bar] height must be greater than 0` | An enabled bar needs a positive height | Fix the value, or set `enabled = false` |
 | `[motion]` value out of range | e.g. `[motion] snap_ratio must be within 0..=1`, `[motion.spring] k must be greater than 0 and c at least 0` | Springs, ratios and pixel values that make no physical sense stop the start-up | Check the table in [07 §10](07-config-reference.md#10-motion) |
@@ -56,7 +56,8 @@ With `[shell] repaint = "reactive"` (the default), the shell never calls
    in `top` or `htop`. CPU should fall to roughly zero. If it keeps a core busy,
    something is asking for a repaint every frame.
 2. **Compare.** Switch to `[shell] repaint = "continuous"` for a forced 60 fps and
-   compare CPU. No difference means reactive is not actually taking effect.
+   compare CPU and repaint requests. Similar CPU use alone does not distinguish
+   continuous repaint from other background work.
 3. **Read the log.** If a backend keeps returning a `next_wake()` in the past —
    the usual bug is not refreshing its own snapshot — the shell can never go idle,
    and every `STALE_WAKE_FRAMES` (an internal constant) you get:
@@ -115,7 +116,7 @@ appears or you get an initialisation `Error::Runner`. Switch to `runner-x11`.
 
 ## 6. Korean renders as tofu
 
-egui's `default_fonts` (Ubuntu family plus emoji) has no CJK glyphs. `fairing`
+egui's bundled `default_fonts` have no CJK glyphs. `fairing`
 does **not** embed a font file — they run to several megabytes and how far to
 subset is a per-device call. What it gives you instead is
 [`fairing::fonts`](../../crates/fairing-widgets/src/fonts.rs) and `ShellBuilder::fonts`.
@@ -188,9 +189,9 @@ with the font on and no layout, you can read Korean but not type it.
 
 ## 7. Known defects
 
-The limits the crate has today are listed in the [roadmap](../roadmap.md#4-known-limits). The
-defects found while checking real renders through the screenshot tour (`--tour` over Xvfb +
-llvmpipe) were of these kinds, and all of them are fixed:
+Current limits are listed in the [roadmap](../roadmap.md#4-known-limits). The
+following examples record earlier corrections found through screenshot tours
+(`--tour` over Xvfb and llvmpipe):
 
 | Kind | Example |
 |---|---|
@@ -201,12 +202,31 @@ llvmpipe) were of these kinds, and all of them are fixed:
 | Missing glyphs | OSK special keys as tofu — replaced with icons |
 | Render mapping | A half-pulled shade showing nothing — changed to a curtain |
 
-Public-API and documentation mismatches found by reading the source against this
-guide are closed too; the
-workarounds this guide used to suggest are no longer needed (`fairing::egui` is
+Earlier API workarounds are no longer needed: `fairing::egui` is
 re-exported, `runner::run_shell_with` exists, so does
 `services::clock::ChronoClock`, `Shell::remove` reaches built-in tiles, and
-`Lifecycle::Resized` is emitted).
+`Lifecycle::Resized` is emitted. Changes affecting older checkouts are listed in
+[10 Migration](10-migration.md).
+
+### Runtime faults and replacement
+
+With `panic = "unwind"`, a callback panic caught at a shell/runner boundary
+quarantines the shell. Check `Shell::is_faulted()`: ordinary dispatch, backend
+polling and event delivery stop, command admission closes, and the failed pass's
+viewport graphics/platform output is discarded. Loan helpers restore borrowed
+ownership before propagating to that boundary; they do not return `None` and
+continue the interrupted callback.
+
+The host can opt into `RecoveryUi` and use `take_restart_request()` to consume its
+button request. `Shell::restart_with` installs a host-built replacement; producers
+must obtain its new handle because old queues are not transferred. The supplied
+`run_shell_with_recovery` and `run_app_with_recovery` runners expose host recovery
+callbacks. No automatic restart or replay policy is installed.
+
+Replacement does not reset the egui context/GPU or roll back application effects.
+Aborts, double panics and complete renderer heap exhaustion are outside this
+boundary. See [runtime panics and replacement](../memory-limits.md#runtime-panics-and-sensitive-ui-state)
+for payload cleanup, output scope and the recovery example.
 
 ## 8. Checking performance
 
@@ -236,7 +256,7 @@ regression.
 
 | Check | Why |
 |---|---|
-| **Idle desktop p50** | It is the proxy for per-frame heap allocation. A counting allocator needs `unsafe impl GlobalAlloc` and the workspace is `unsafe_code = "forbid"`, so this cannot be measured directly — if idle p50 moves, something in the render path started allocating |
+| **Idle desktop p50 and heap counters** | Compare render time separately from allocation. The separate diagnostic allocator measures Rust allocation counts/live bytes; timing alone does not identify allocation. See [memory limits](../memory-limits.md) |
 | **How many fonts you loaded** | Every font added through `egui::Context::set_fonts` adds first-rasterisation and atlas-rebuild cost. If one Korean font is enough, do not stack several |
 | **Known render allocations** | `icons::paint` allocates one `Vec<Pos2>` per sub-path with three or more points (epaint's `PathShape` wants an owned Vec), plus one each for the parametric bluetooth and volume icons. On the M1 baseline (51 icons then), 69 of 146 sub-paths were allocation-free `LineSegment`s — worth knowing when you add custom icons |
 | **Debug versus release** | Debug numbers are a different order of magnitude (x86 baseline idle p95: 0.042 ms release, 0.75 ms debug). Always bench and compare with `--release` |
@@ -252,13 +272,13 @@ missing `cargo-audit` or `cargo-deny` only prints an install hint and skips.
 | 0 | Integrity | `xtask integrity` | Tables other than `[alias]` in `.cargo/config.toml`, a `vendor/` directory, `[patch]` / `[replace]`, a missing `[lints] workspace = true`, an odd `Cargo.lock` origin |
 | 1 | Format | `cargo fmt --all --check` | Formatting |
 | 2 | Lint | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | Clippy, including the lints banning `unwrap`, `panic` and `unsafe` |
-| 3 | Tests | `cargo test --workspace --all-features` | Everything |
+| 3 | Tests | `RUSTDOCFLAGS="--cfg fairing_repo_docs" cargo test --locked --workspace --all-features` | Product tests, public API doctests and repository-guide examples |
 | 4 | Docs | `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features` | rustdoc warnings |
 | 5 | Duplicate versions | `cargo tree -e normal -d --all-features` | Duplicates outside `deny.toml [bans].skip` |
 | 6 | Allow-list | `xtask deps-check` | Every crate in the tree is in `deps.allow` |
 | 7 | Advisories | `cargo audit --deny warnings` | RustSec advisories (needs the plugin) |
 | 8 | Licences and sources | `cargo deny check` | Licences, sources, the ban list (needs the plugin) |
-| 9 | Update visibility | `cargo update --dry-run` | Reports only; never fails |
+| 9 | Update visibility | `cargo update --dry-run` | Reports only; its exit status does not fail the audit |
 | 10 | Notices | `xtask licenses --check` | Whether `THIRD_PARTY.md` is current |
 | 11 | Generated files | `xtask icons --check` | Whether `icons/generated.rs` matches `assets/icons/*.svg` |
 | 12 | Target build | `cargo check -p fairing --features runner --target aarch64-unknown-linux-gnu` | aarch64 portability — **a compile check, not a binary** |
@@ -291,10 +311,14 @@ library never propagates to the integrator's binary, and `panic = "abort"` break
 [profile.release]
 lto = "fat"
 codegen-units = 1
-panic = "abort"
+panic = "unwind"
 strip = true
 opt-level = 3      # for a UI, 3 beats "s"; strip wins the size back
 ```
+
+Use `panic = "unwind"` for runtime callback containment. `panic = "abort"` bypasses
+recovery and terminates the process on a panic; allocator aborts are not unwinds.
+
 
 ### 10.2 Cross-compiling for aarch64
 

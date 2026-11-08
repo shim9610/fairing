@@ -1410,7 +1410,7 @@ fn edge_to_edge(scrolled: &Rc<Cell<f32>>, pressed: &Rc<Cell<u32>>) -> fairing::s
                     }
                 }
             });
-        scrolled.set(out.state.offset.y);
+        scrolled.set(out.state.clamped_offset().y);
     })
     .chrome(ChromePolicy::fullscreen())
 }
@@ -1505,7 +1505,7 @@ fn a_popup_over_a_strip_leaves_it_to_the_handle() -> fairing::Result<()> {
                 egui::pos2(glass.max.x - 200.0, glass.center().y - 100.0),
                 egui::pos2(glass.max.x, glass.center().y + 100.0),
             );
-            let _ = egui::Area::new(egui::Id::new("menu.popup"))
+            let _ = egui::Area::new(egui::Id::unique("menu.popup"))
                 .order(egui::Order::Foreground)
                 .fixed_pos(rect.min)
                 .show(ui.ctx(), |ui| {

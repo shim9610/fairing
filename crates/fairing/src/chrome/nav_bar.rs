@@ -120,7 +120,7 @@ pub enum NavAction {
 }
 
 /// The closure that draws a nav item.
-pub(super) type NavItemUi = Box<dyn FnMut(&mut egui::Ui, &mut Cx<'_>)>;
+pub(super) type NavItemUi = crate::access::mediation::UiCallback;
 
 /// What a nav bar layout places the items with (rung 4 of the override ladder).
 ///
@@ -250,7 +250,7 @@ pub fn nav_item(
     NavItemDecl {
         gate: Some(Gate::from(&id)),
         id,
-        ui: Box::new(ui),
+        ui: crate::access::mediation::UiCallback::legacy(Box::new(ui)),
         enabled: true,
     }
 }
@@ -438,7 +438,20 @@ impl NavBar {
                     && declared.is_none_or(|d| d.enabled && allowed(parts, d.gate.as_ref(), &d.id)),
             );
         }
-        even_cells(rect, items.len(), &parts.theme.metrics, &mut self.cells);
+        if parts.access.uses_session_tokens() {
+            // Denied custom declarations do not reserve cells. Keep disabled
+            // built-in Back visible, and preserve the configuration's index map.
+            compact_cells(
+                rect,
+                items,
+                custom,
+                &self.live,
+                &parts.theme.metrics,
+                &mut self.cells,
+            );
+        } else {
+            even_cells(rect, items.len(), &parts.theme.metrics, &mut self.cells);
+        }
         if let Some(layout) = layout {
             let bar = NavLayoutCx {
                 rect,
@@ -469,9 +482,14 @@ impl NavBar {
                 NavItem::Custom(id) => custom.iter().position(|d| d.id == *id),
                 _ => None,
             };
-            let live = self.live.get(index).copied().unwrap_or(false);
-            // Where an integrator declaration drops out through its gate or `enabled`, its slot is left
-            // empty and the Rect record cleared (so `item_rect` does not hand back a place that was not drawn).
+            let live = self.live.get(index).copied().unwrap_or(false)
+                && declared.is_none_or(|i| {
+                    custom.get(i).is_some_and(|decl| {
+                        decl.enabled && allowed(parts, decl.gate.as_ref(), &decl.id)
+                    })
+                });
+            // Clear stale hit geometry for declarations omitted by their gate or enabled state.
+            // Token-mode placement already removed these entries before sizing the cells.
             let drawn = declared.is_none() || live;
             if let Some(slot) = self.rects.get_mut(index) {
                 *slot = if drawn { cell } else { Rect::NOTHING };
@@ -578,6 +596,40 @@ fn even_cells(bar: Rect, count: usize, metrics: &crate::theme::Metrics, cells: &
     }));
 }
 
+/// Compact only protected custom entries; cell indices still match the config.
+fn compact_cells(
+    bar: Rect,
+    items: &[NavItem],
+    custom: &[NavItemDecl],
+    live: &[bool],
+    metrics: &crate::theme::Metrics,
+    cells: &mut Vec<Rect>,
+) {
+    let shown = |index: usize, item: &NavItem| {
+        !matches!(item, NavItem::Custom(id) if custom.iter().any(|decl| decl.id == *id)
+            && !live.get(index).copied().unwrap_or(false))
+    };
+    let count = items
+        .iter()
+        .enumerate()
+        .filter(|(index, item)| shown(*index, item))
+        .count();
+    even_cells(bar, count, metrics, cells);
+    cells.resize(items.len(), Rect::NOTHING);
+    let mut source = count;
+    for (index, item) in items.iter().enumerate().rev() {
+        let cell = if shown(index, item) {
+            source = source.saturating_sub(1);
+            cells.get(source).copied().unwrap_or(Rect::NOTHING)
+        } else {
+            Rect::NOTHING
+        };
+        if let Some(target) = cells.get_mut(index) {
+            *target = cell;
+        }
+    }
+}
+
 /// The home indicator: a pill in the middle of the band, `metrics.nav_indicator_length`
 /// long — never more than half the band — and `metrics.nav_indicator_thickness` thick.
 fn paint_indicator(painter: &egui::Painter, band: Rect, theme: &crate::theme::Theme) {
@@ -623,9 +675,16 @@ fn draw_custom(
     custom: &mut [NavItemDecl],
     parts: &mut CxParts<'_>,
 ) -> Option<NavAction> {
-    // It has to be registered first for the widget the closure makes to win the hit test (the same order as the top bar).
-    let response = ui.interact(cell, egui::Id::new(("fairing.nav", index)), Sense::click());
     let decl = custom.get_mut(custom_index)?;
+    if !decl.enabled || !allowed(parts, decl.gate.as_ref(), &decl.id) {
+        return None;
+    }
+    // It has to be registered first for the widget the closure makes to win the hit test (the same order as the top bar).
+    let response = ui.interact(
+        cell,
+        egui::Id::unique(("fairing.nav", index)),
+        Sense::click(),
+    );
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(cell).layout(
         egui::Layout::centered_and_justified(egui::Direction::TopDown),
     ));
@@ -638,7 +697,7 @@ fn draw_custom(
         instance: InstanceId::NONE,
     };
     let mut cx = parts.cx(pane, None);
-    (decl.ui)(&mut child, &mut cx);
+    decl.ui.paint(&mut child, &mut cx);
     response
         .clicked()
         .then(|| NavAction::Custom(decl.id.clone()))
@@ -682,7 +741,7 @@ fn draw_item(
     let tokens = theme.motion;
     let response = ui.interact(
         cell,
-        egui::Id::new(("fairing.nav", index)),
+        egui::Id::unique(("fairing.nav", index)),
         if live { Sense::click() } else { Sense::hover() },
     );
     let down = raw_down || (live && response.is_pointer_button_down_on());
@@ -701,7 +760,7 @@ fn draw_item(
         tokens.press_release
     };
     let scale = parts.animations.animate(
-        egui::Id::new(("fairing.nav.press", index)),
+        egui::Id::unique(("fairing.nav.press", index)),
         target,
         tween,
         parts.frame,

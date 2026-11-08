@@ -70,7 +70,7 @@ pub enum ShellEvent {
     /// The OSK was shown (true) or hidden (false) (M2, measured on the target).
     OskToggled(bool),
     /// A quick-settings tile was **long-pressed** (M2). If the tile carries a
-    /// [`long_press`](crate::overlay::QuickTile::long_press) the shell has already opened it —
+    /// `QuickTile::long_press` (feature `overlay`) the shell has already opened it —
     /// take this event to do anything else (a menu, a dialog).
     TileLongPressed {
         /// The tile id.

@@ -11,6 +11,7 @@
 //! [`crate::overlay::panel::labels::HIDDEN_NOTIFICATION`] instead of the title and body.
 
 use super::model::{Notification, NotificationId};
+use super::{AdmissionError, Rejected, MAX_NOTIFICATION_TEXT_BYTES};
 use crate::access::Access;
 
 /// The result of [`NotificationCenter::push`].
@@ -20,6 +21,8 @@ pub enum CenterChange {
     Added,
     /// The same id updated (no heads-up).
     Updated,
+    /// The item was refused without changing retained notifications.
+    Rejected,
 }
 
 /// Whether the gate lets the **content be shown**. Always `true` with no gate.
@@ -35,24 +38,32 @@ pub fn shows_content(notification: &Notification, access: &Access) -> bool {
 }
 
 /// The notification centre.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct NotificationCenter {
     items: Vec<Notification>,
-    unread: usize,
+    unread: Vec<NotificationId>,
     max_items: usize,
-    /// Whether it has already reported that the cap cannot be met (everything is persistent) — the same warning does not go out every frame.
-    warned_full: bool,
+}
+
+impl Default for NotificationCenter {
+    fn default() -> Self {
+        Self::new(100)
+    }
 }
 
 impl NotificationCenter {
-    /// Keeps at most `max_items`. 0 is unlimited.
+    /// Keeps at most `max_items`, including persistent items. Zero chooses 100.
+    /// New items are refused when every retained item is persistent.
     #[must_use]
     pub fn new(max_items: usize) -> Self {
         Self {
             items: Vec::new(),
-            unread: 0,
-            max_items,
-            warned_full: false,
+            unread: Vec::new(),
+            max_items: if max_items == 0 {
+                100
+            } else {
+                max_items.min(65_536)
+            },
         }
     }
 
@@ -60,6 +71,30 @@ impl NotificationCenter {
     /// at the front of its source group (with the group moving to the front of the list as a
     /// whole). Over the cap, the oldest **non-persistent** ones are dropped first.
     pub fn push(&mut self, notification: Notification) -> CenterChange {
+        self.try_push(notification)
+            .unwrap_or(CenterChange::Rejected)
+    }
+
+    /// Insert with a hard retention bound and recover ownership on refusal.
+    /// Existing persistent entries are never evicted to admit a new entry.
+    ///
+    /// # Errors
+    /// Full, oversized text storage or failed fallible buffer growth.
+    #[allow(
+        clippy::result_large_err,
+        reason = "return rejected ownership inline; boxing an allocation failure would allocate again"
+    )]
+    pub fn try_push(
+        &mut self,
+        notification: Notification,
+    ) -> Result<CenterChange, Rejected<Notification>> {
+        let bytes = super::admission::notification_bytes(&notification);
+        if bytes > MAX_NOTIFICATION_TEXT_BYTES {
+            return Err(Rejected {
+                kind: AdmissionError::TooLarge,
+                value: notification,
+            });
+        }
         if let Some(index) = self.items.iter().position(|n| n.id == notification.id) {
             let same_source = self
                 .items
@@ -74,12 +109,40 @@ impl NotificationCenter {
                 self.items.remove(index);
                 self.insert_grouped(notification);
             }
-            return CenterChange::Updated;
+            self.enforce_cap();
+            return Ok(CenterChange::Updated);
         }
+        let evict = if self.items.len() == self.max_items {
+            let Some(index) = self.items.iter().rposition(|n| !n.persistent) else {
+                return Err(Rejected {
+                    kind: AdmissionError::Full,
+                    value: notification,
+                });
+            };
+            Some(index)
+        } else {
+            None
+        };
+        // Reserve both buffers before modifying any retained notification or unread state.
+        let frees_unread = evict
+            .and_then(|index| self.items.get(index))
+            .is_some_and(|item| self.unread.contains(&item.id));
+        if (evict.is_none() && self.items.try_reserve(1).is_err())
+            || (!frees_unread && self.unread.try_reserve(1).is_err())
+        {
+            return Err(Rejected {
+                kind: AdmissionError::AllocationFailed,
+                value: notification,
+            });
+        }
+        if let Some(index) = evict {
+            let removed = self.items.remove(index);
+            self.unread.retain(|id| *id != removed.id);
+        }
+        self.unread.push(notification.id);
         self.insert_grouped(notification);
-        self.unread += 1;
         self.enforce_cap();
-        CenterChange::Added
+        Ok(CenterChange::Added)
     }
 
     /// Dismiss. A persistent notification refuses (`false`).
@@ -87,7 +150,7 @@ impl NotificationCenter {
         match self.items.iter().position(|n| n.id == id) {
             Some(pos) if !self.items.get(pos).is_some_and(|n| n.persistent) => {
                 self.items.remove(pos);
-                self.unread = self.unread.min(self.items.len());
+                self.unread.retain(|kept| *kept != id);
                 true
             }
             _ => false,
@@ -97,19 +160,18 @@ impl NotificationCenter {
     /// Dismiss every non-persistent one ("clear all").
     pub fn clear(&mut self) {
         self.items.retain(|n| n.persistent);
-        self.unread = 0;
-        self.warned_full = false;
+        self.unread.clear();
     }
 
     /// Opening the shade takes the unread count to zero.
     pub(crate) fn mark_seen(&mut self) {
-        self.unread = 0;
+        self.unread.clear();
     }
 
     /// The unread count (the status bar badge).
     #[must_use]
     pub fn unread(&self) -> usize {
-        self.unread
+        self.unread.len()
     }
 
     /// The total count.
@@ -162,7 +224,7 @@ impl NotificationCenter {
             .count()
     }
 
-    /// The retention cap (0 = unlimited).
+    /// The hard retention cap, including persistent entries.
     #[must_use]
     pub fn max_items(&self) -> usize {
         self.max_items
@@ -194,27 +256,15 @@ impl NotificationCenter {
         Some((start, end))
     }
 
-    /// The cap rule: drop the oldest **non-persistent** ones first. If everything is persistent
-    /// and nothing can be dropped, report it once (overflowing quietly leaves
-    /// nothing but "why does this keep piling up").
+    /// Defensive cleanup; normal admission never exceeds the hard cap.
     fn enforce_cap(&mut self) {
-        if self.max_items == 0 {
-            return;
-        }
         while self.items.len() > self.max_items {
             let Some(pos) = self.items.iter().rposition(|n| !n.persistent) else {
-                if !self.warned_full {
-                    self.warned_full = true;
-                    log::warn!(
-                        "[notify] persistent notifications went past max_items = {} - nothing can be dropped, so they keep piling up",
-                        self.max_items
-                    );
-                }
                 break;
             };
-            self.items.remove(pos);
+            let removed = self.items.remove(pos);
+            self.unread.retain(|id| *id != removed.id);
         }
-        self.unread = self.unread.min(self.items.len());
     }
 }
 
@@ -259,15 +309,15 @@ mod tests {
         assert!(!c.dismiss(NotificationId(1)));
     }
 
-    /// With everything at the cap persistent there is nothing to drop — it stays over and warns once.
+    /// Persistent entries cannot bypass the hard cap; later entries are rejected.
     #[test]
     fn cap_keeps_persistent_and_clamps_unread() {
         let mut c = NotificationCenter::new(2);
         for id in 1..=4 {
             c.push(Notification::new(NotificationId(id), "p").persistent());
         }
-        assert_eq!(c.len(), 4, "there is no non-persistent one to drop");
-        assert_eq!(c.unread(), 4);
+        assert_eq!(c.len(), 2, "persistent inputs must not bypass the hard cap");
+        assert_eq!(c.unread(), 2);
         let mut c = NotificationCenter::new(2);
         for id in 1..=5 {
             c.push(Notification::new(NotificationId(id), "n"));
@@ -335,5 +385,25 @@ mod tests {
         assert_eq!(c.len(), 2);
         assert_eq!(c.hidden(&access), 1);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod contract_regressions {
+    #[test]
+    fn updating_persistence_reapplies_the_cap() {
+        use super::{Notification, NotificationCenter, NotificationId};
+        let mut center = NotificationCenter::new(1);
+        for id in [1, 2] {
+            let mut n = Notification::new(NotificationId(id), "persistent");
+            n.persistent = true;
+            center.push(n);
+        }
+        assert_eq!(center.len(), 1);
+        assert!(center.get(NotificationId(2)).is_none());
+        center.push(Notification::new(NotificationId(1), "dismissible"));
+        center.push(Notification::new(NotificationId(2), "replacement").persistent());
+        assert_eq!(center.len(), 1);
+        assert!(center.get(NotificationId(2)).is_some());
     }
 }

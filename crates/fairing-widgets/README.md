@@ -3,7 +3,7 @@
 **Touch widgets, theme tokens and a physical unit system for
 [egui](https://github.com/emilk/egui).**
 
-The element layer behind the [fairing](https://crates.io/crates/fairing) touchscreen
+The element layer behind the [fairing](https://github.com/shim9610/fairing) touchscreen
 shell, usable on its own in any egui app. Every control is sized for a finger on a
 real panel: sizes resolve through millimetres and the viewing distance, not pixels.
 
@@ -19,6 +19,15 @@ real panel: sizes resolve through millimetres and the viewing distance, not pixe
 | `fonts` | Font installation, including the bold face the weight axis needs |
 
 ## Using a widget
+
+The first crates.io release has not been published. Depend on this repository:
+
+```toml
+[dependencies]
+fairing-widgets = { git = "https://github.com/shim9610/fairing" }
+egui = "0.37"
+```
+
 
 A widget is drawn with a `WidgetCx`: the theme, the icon set and the animation store,
 which your app keeps between frames.
@@ -40,7 +49,7 @@ let mut cx = WidgetCx {
     theme: &theme,
     icons: &mut icons,
     anims: &mut anims,
-    anim_scope: egui::Id::new("my-app"),
+    anim_scope: egui::Id::unique("my-app"),
     frame: 0,
     inset_bottom: 0.0,
     painters: None,
@@ -51,8 +60,14 @@ if Switch::new(&mut on).show(ui, &mut cx).changed() {
 let _ = Stepper::new(&mut count).show(ui, &mut cx);
 ```
 
-The same example runs as a doctest on the crate's front page on
-[docs.rs](https://docs.rs/fairing-widgets).
+The same widget calls run as a doctest in `src/lib.rs`. Build the local API reference
+with `cargo doc -p fairing-widgets --no-deps --open`;
+[docs.rs](https://docs.rs/fairing-widgets) will host it after publication.
+
+These standalone widgets do not authenticate or enforce shell session permissions.
+For library-managed protected measurement and paint, use Fairing's `ElementTree`
+and `ProtectedShell::add_elements`; see the
+[typed integration guide](https://github.com/shim9610/fairing/blob/HEAD/docs/session-tokens.md#typed-permission-requirements).
 
 ## Drawing a widget your way
 

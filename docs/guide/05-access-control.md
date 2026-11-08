@@ -1,5 +1,18 @@
 # 05. Access control
 
+For issuer-owned, continuously checked sessions with independent operation permissions,
+see [session tokens](../session-tokens.md). Enable `access.session_tokens` explicitly;
+the level/PIN behavior below describes the default legacy mode.
+
+For mandatory typed application declarations, use `build_protected` and
+`Protected<P, D>`; see [typed requirements](../session-tokens.md#typed-permission-requirements).
+The facade retains ordinary UI/app/backend references inside admitted callbacks
+and checks the current token before invoking them. The
+[common mediation contract](../protected-contracts.md) describes the shared kernel
+proof and automatic protected-route check. The
+[application metadata checker](../permission-metadata-check.md) checks supported
+permission getters/mappers in an integrator's workspace.
+
 ## 0. The principle, and what exists today
 
 fairing keeps no role names like "guest" and "admin", and no hash function, inside
@@ -27,7 +40,8 @@ Three modes decide how much of that the shell does:
 `prompt` needs something to ask. With no `[access.pin_table]` PINs and no
 `ShellBuilder::authenticator`, there is nothing to draw and it behaves as
 `routing` does — the event, and no prompt with nothing behind it. A single-level
-table never prompts at all.
+table never prompts at all in legacy mode. Token mode requires explicit grants
+even with one level and rejects `mode = "off"`.
 
 ## 1. The level table
 
@@ -47,7 +61,7 @@ caught at start-up.
 |---|---|
 | `levels` is empty | `[access] levels = []` |
 | Two or more levels with no `default_gate` | `levels.len() >= 2` and `default_gate` omitted. With a single level everything passes anyway, so the check is skipped |
-| `default_gate`, `initial` or an `[access.gates]` value is not in `levels` | Typo protection. `"top"` and `"bottom"` are reserved only inside `default_gate`, so a level may safely share the name |
+| `default_gate`, `initial` or an `[access.gates]` value is not in `levels` | Typo protection. `"top"` and `"bottom"` are reserved inside `default_gate`. Gate assignments resolve an actual level name first; without one, those two names are aliases for the highest/lowest level |
 
 All three make `Shell::new` / `Shell::builder(..).build(ctx)` return
 `Err(Error::Config(..))`. The device refuses to start rather than come up with the
@@ -70,8 +84,9 @@ levels = ["viewer", "maintainer"]
 }
 ```
 
-With one level, `Access::allows` returns early and **every gate passes**,
-regardless of `mode`. A device that needs no authentication says so in one line:
+In an operational shell with one level, `Access::allows` returns early and every
+gate passes, regardless of `mode`. Fault quarantine denies gates even in this
+configuration. A device that needs no authentication says so in one line:
 
 ```toml
 [access]
@@ -109,9 +124,10 @@ matching screen or feature exists at all.
 | `desktop.edit` | ✘ (the feature is M6) | ✔ | Desktop editing. Reserved — there is nothing to tap yet |
 | `session.lock`, `session.logout` | ✘ | ✔ | Reserved names. Locking and logging out are always allowed; the controls that do them carry gates of their own (`tile.lock`, `status.lock`). An unlock from the lock screen reports `session.lock` (§8) |
 
-`settings.home` and `settings.about` have no gate on purpose — a list screen shows
-only the entries you may reach anyway, and the about screen carries legal notices,
-so it always opens.
+`settings.home` and `settings.about` use their screen ids as gates. Assign them
+to the lowest level in legacy mode if they should be generally reachable; token
+mode requires their explicit grants too. Their screen contents do not bypass
+the opening gate.
 
 ### 2.2 `Capabilities` and gates are different questions
 
@@ -217,6 +233,13 @@ To use a level table other than the one `fairing.toml` built, just hold your own
 inside the policy — the shell delegates the whole decision, so whether
 `[access.gates]` matters at all is up to you.
 
+Open screen gates are revalidated every frame, before commands and again after backend
+polling. Replacing a policy or changing a dynamic policy can close a screen without
+re-announcing the subject or restarting its session timers. The shade and overview obey
+their opening gates too and disappear immediately on revocation, including during a
+closing animation. A policy that changes while the app is asleep still needs the
+integrator to wake the UI when the change takes effect.
+
 ## 5. The shell's prompt and the `Authenticator`
 
 In `mode = "prompt"` a failed gate opens a modal over the screen. It draws only
@@ -267,16 +290,27 @@ A few rules hold whatever the authenticator does:
   goes without an answer, when the lock screen comes up over it, or when a new
   attempt goes in. The keys are never held for it, so an answer that never comes
   holds nothing: the next attempt is the way past it, on the lock screen too.
-  The shell sets no time limit of its own (see §5.2). Whatever `poll` reports is
-  applied as it comes — the shell follows the authenticator's results — so the
-  answer to a check `cancel` called off is the authenticator's to drop.
+  The shell sets no time limit of its own (see §5.2). `poll` responses must carry
+  the original request token; canceled, superseded and already-consumed responses
+  are rejected. The authenticator should also stop canceled work where possible.
 - **A request behind the lock screen waits for it.** Once the lock screen goes
   (an unlock, Continue, or your own `set_subject`), the request is asked again: it
   runs where the session now passes its gate, and the prompt opens where it does
   not. A new lock starts with nothing waiting.
-- **`begin(gate, now)` comes first.** The shell calls it each time the prompt
+- **`begin(request, gate, now)` comes first.** The shell calls it each time the prompt
   opens — the lock screen's gate is `session.lock` — so an authenticator can start
   listening, and drop whatever a reader picked up while no prompt was up.
+  Retargeting an open prompt to a different gate calls `cancel` and then `begin`
+  for the new gate before polling again. A request for the same gate keeps its
+  pending check. Lockout countdowns survive either case.
+- **A session boundary cancels the previous check.** Logout cancels a pending
+  unlock even when the subject is already the initial one. Explicit relocking
+  starts a fresh lock challenge and discards deferred actions. Logout while locked
+  also discards them and restarts the challenge, preserving the lockout.
+  A timeout or integrator subject replacement invalidates pending authentication
+  even when the old and new subjects have the same numeric level. Direct
+  `access_mut().set_subject` changes are observed before the next frame or launch;
+  use `ShellHandle::set_subject` for the shell's monotonic clock.
 - **An authenticator that offers nothing** (`methods()` empty) behaves as
   `routing` (§6): no prompt and no lock screen, and the lock and logout controls
   are only reported.
@@ -326,8 +360,8 @@ show_path = true                # optional: draw the path as the finger draws it
 - A pattern is its dots in the order drawn, numbered row by row from 1, between
   `-`, `,` or spaces; on the 3 × 3 grid the digits alone do (`"1235789"`). It has to
   be one a finger can draw: a stroke across a dot takes that dot, so `"1-3-6-9"`
-  cannot be drawn — the finger records `"1-2-3-6-9"`, and the start-up error says
-  so. A dot twice, a dot off the grid, fewer than `min_points` dots, or two levels
+  cannot be drawn — the finger records `"1-2-3-6-9"`. The start-up error names the
+  level and the validation rules, without printing the pattern. A dot twice, a dot off the grid, fewer than `min_points` dots, or two levels
   sharing a pattern is an `Error::Config` too.
 - Wrong PINs and wrong patterns count against **one** attempt limit — two ways in
   are not two allowances. A right PIN the shell refuses (an operator PIN typed
@@ -337,6 +371,10 @@ show_path = true                # optional: draw the path as the finger draws it
 - The file holds the secrets in clear text, and the shell says so once at start-up
   with a `log::warn!`. Keeping that file unreadable is yours — or replace the table
   with an authenticator of your own.
+
+Configuration `Debug` output lists the levels that have secrets, without their PINs or
+patterns. TOML syntax/type errors retain a byte offset but omit the source and parser
+message, since either can contain a secret.
 
 The fixed keys — `attempt_limit`, `lock_secs`, `shuffle` and `max_len` in the PIN
 table, `grid`, `min_points`, `show_path`, `attempt_limit` and `lock_secs` in the
@@ -363,7 +401,7 @@ impl Authenticator for Accounts {
         vec![AuthMethod::Password { needs_user: true, keys: Keys::Latin }]
     }
 
-    fn submit(&mut self, credential: Credential, now: Instant) -> AuthOutcome {
+    fn submit(&mut self, _request: fairing::access::AuthRequestId, credential: Credential, now: Instant) -> AuthOutcome {
         let Credential::Password { user: Some(user), secret } = credential else {
             return AuthOutcome::Denied { message: "Enter a user and a password".into() };
         };
@@ -398,9 +436,11 @@ let shell = fairing::Shell::builder(fairing::ShellConfig::default())
 that takes time answers `Pending`, and the shell calls `poll(now)` every frame
 while the prompt is up. It sets no limit on how long that takes: a server that
 ought to answer within ten seconds is yours to time, by answering `Denied` from
-`poll` when the time runs out. Everything here — `submit`, `poll`, `cancel` — is
-called on the UI thread, so there is nothing to race: once `cancel` returns, the
-check it stopped is over. `Shell::set_authenticator` swaps one in while the shell
+`poll` when the time runs out. The authenticator methods run on the UI thread,
+but background work may finish after `cancel` returns. Keep its original request
+token: Fairing rejects responses from canceled, replaced or completed requests.
+Cancellation should still stop unnecessary worker activity and release resources.
+`Shell::set_authenticator` swaps one in while the shell
 runs; a prompt up at the time — the lock screen included — opens again for the new
 one, with its methods and without the old one's lockout or a wait it owed, and the
 old one is told to `cancel` first.
@@ -433,7 +473,8 @@ use std::time::Instant;
 
 struct Badges {
     /// Badge numbers from the reader thread.
-    read: Receiver<String>,
+    read: Receiver<(fairing::access::AuthRequestId, String)>,
+    start: Box<dyn FnMut(fairing::access::AuthRequestId)>,
 }
 
 impl Authenticator for Badges {
@@ -441,21 +482,20 @@ impl Authenticator for Badges {
         vec![AuthMethod::External { label: "Badge".into() }]
     }
 
-    fn begin(&mut self, _gate: &Gate, _now: Instant) {
-        // A badge swiped while nothing asked belongs to nobody: without this, the next
-        // prompt — hours later, someone else's — would open on it.
-        while self.read.try_recv().is_ok() {}
+    fn begin(&mut self, request: fairing::access::AuthRequestId, _gate: &Gate, _now: Instant) {
+        // The worker must retain this token with the operation, including after cancel.
+        (self.start)(request);
     }
 
-    fn submit(&mut self, credential: Credential, _now: Instant) -> AuthOutcome {
+    fn submit(&mut self, _request: fairing::access::AuthRequestId, credential: Credential, _now: Instant) -> AuthOutcome {
         match credential {
             Credential::External(bytes) => check(&String::from_utf8_lossy(&bytes)),
             _ => AuthOutcome::Pending,
         }
     }
 
-    fn poll(&mut self, _now: Instant) -> Option<AuthOutcome> {
-        self.read.try_recv().ok().map(|badge| check(&badge))
+    fn poll(&mut self, _now: Instant) -> Option<fairing::access::AuthResponse> {
+        self.read.try_recv().ok().map(|(request, badge)| request.respond(check(&badge)))
     }
 
     fn attach(&mut self, waker: Waker) {
@@ -465,6 +505,13 @@ impl Authenticator for Badges {
 }
 # fn check(_badge: &str) -> AuthOutcome { AuthOutcome::Pending }
 ```
+
+Authentication implementors receive a Fairing-issued `AuthRequestId` in `begin` and
+`submit`. `poll` returns `Option<AuthResponse>`: retain the request token with the
+original work and return `request.respond(outcome)`. Do not stamp a late result with
+the most recent token. A terminal response consumes its token; if the prompt remains
+open after a refusal, Fairing calls `begin` with a fresh token for the next attempt.
+`PinTable::check` remains available for synchronous use outside a shell.
 
 ### 5.4 `settings.credentials` — when the authenticator manages its entries
 
@@ -574,7 +621,7 @@ tap a locked item
            you: if `then` is Some, handle.launch(then) - it re-enters Shell::launch and is re-checked
 ```
 
-The whole thing, handled wherever you call `poll_events()` each frame (see
+The whole thing, handled when you drain `poll_events()` after UI or logic updates (see
 "When you are not using the runner" in
 [01 §4](01-getting-started.md#4-a-minimal-app) if you host egui yourself):
 
@@ -634,7 +681,7 @@ allow_continue = false      # the lock screen's Continue: leave without a PIN, a
 |---|---|
 | `unlock_mode = "switch"` | A grant **becomes** the session, until a logout, the timeout or `set_subject` lowers it |
 | `unlock_mode = "temporary"` | A grant holds for `temporary_secs` **from the unlock**, then the subject from before comes back by itself (`ChangeReason::ElevationExpired`). Unlocking again on top keeps the first one's way back. For "until the panel is left alone", use `switch` with `session_timeout_secs` instead |
-| `session_timeout_secs` | No input for this long takes the session back to `[access] initial` (`ChangeReason::Timeout`). Any touch, key or pointer movement starts it again |
+| `session_timeout_secs` | No input for this long takes the session back to `[access] initial` (`ChangeReason::Timeout`). A touch, key or pointer movement before expiry starts it again |
 | `idle_lock_secs` | No input for this long locks the panel: the session goes back to its start (`ChangeReason::Lock`), `ShellEvent::LockRequested` goes out, and in `prompt` mode with an authenticator the **lock screen** comes up — the clock beside (or above) the way in. In `routing` mode the event is yours to answer with a lock screen of your own |
 
 On every way down — a temporary unlock running out, the timeout, a lock, a logout,
@@ -649,6 +696,15 @@ nothing moves, and the time it sleeps counts: a five-minute temporary unlock end
 five minutes after the unlock however few frames were drawn in between, and so
 do the timeout, the idle lock and a lockout's countdown. A timer longer than a
 year is a config error at start.
+
+Overdue timers are enforced before the command queue and before input renews activity.
+The first touch after a delayed frame cannot preserve an expired session, and queued
+actions cannot execute with a temporary grant that has already run out. Authenticator
+polling still happens after backend polling.
+
+When a temporary grant and the session timeout are both overdue, the session timeout
+wins: the shell returns directly to the initial subject, with no intermediate restore
+subject available to queued commands or wake-up input.
 
 **Every way up starts the idle stretch again** — an unlock, and an integrator's
 `set_subject`, as a touch would: a badge reader that grants after the panel sat
@@ -679,7 +735,9 @@ above its start; a tap is a logout. Give it a gate everyone passes
 ## 8. Audit logging with `AccessEvent`
 
 ```rust,ignore
+#[non_exhaustive]
 pub enum AccessEvent {
+    SessionRequested { request: AuthRequestId, gate: Gate },      // token-mode host login
     UnlockRequested { gate: Gate, then: Option<LaunchAction> },  // a gate failed (every mode)
     Unlocked { gate: Gate, subject_id: Option<String>, level: Level, mode: UnlockMode },
     Denied { gate: Gate },                                       // the authenticator said no
@@ -687,13 +745,17 @@ pub enum AccessEvent {
     SessionChanged { from: Level, to: Level, reason: ChangeReason },
     LockScreenToggled(bool),                                     // the shell's lock screen came up / went
 }
-pub enum ChangeReason { Unlock, Logout, Timeout, ElevationExpired, Lock, Integrator }
+#[non_exhaustive]
+pub enum ChangeReason { Unlock, Logout, Timeout, ElevationExpired, Lock, Integrator, SessionToken }
 ```
 
 They arrive as `ShellEvent::Access(..)`. The shell only emits; writing to a file
 or shipping to a server is yours. No credential value is ever in an event — only
-`Subject.id` and `Level`. An unlock from the lock screen reports the gate
-`session.lock`.
+identity, level and gate metadata plus the opaque request correlation id.
+`SessionRequested` carries the request needed by `accept_auth_response`; a
+`SessionChanged` reason of `SessionToken` also covers issuer permission publication,
+revocation or expiry, including changes at the same numeric level. An unlock from
+the lock screen reports the gate `session.lock`.
 
 ```rust
 # use fairing::ShellEvent;

@@ -30,7 +30,7 @@ pub(crate) const AREA_ID: &str = "fairing.gesture.shield";
 /// absorbed (usually ignored).
 #[must_use]
 pub(crate) fn show(ctx: &egui::Context, rect: Rect) -> egui::Response {
-    egui::Area::new(egui::Id::new(AREA_ID))
+    egui::Area::new(egui::Id::unique(AREA_ID))
         .order(egui::Order::Foreground)
         .fixed_pos(rect.min)
         .default_size(rect.size())
@@ -93,7 +93,7 @@ mod tests {
         h.ctx.layer_id_at(pos)
             == Some(egui::LayerId::new(
                 egui::Order::Foreground,
-                egui::Id::new(AREA_ID),
+                egui::Id::unique(AREA_ID),
             ))
     }
 

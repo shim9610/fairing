@@ -10,16 +10,21 @@ the links beside each table for that.
 |---|---|
 | The entry point | `ShellConfig::load(path)` — called once, at start-up |
 | No file | Not an error: `ShellConfig::default()` |
-| A file that cannot be read | `Error::Io` |
+| A file that cannot be read, or a path with a non-directory ancestor | `Error::Io`; does not select defaults |
 | Bad syntax or a wrong type | `Error::Config` (`ShellConfig::from_toml` → `toml::from_str` fails) |
 | A value out of range | `Error::Config` from `ShellConfig::validate` — the "Validation" column below |
-| A float that is not a number | `Error::Config`. `nan` and `inf` are valid TOML floats, but every float key must be finite, those whose "Validation" column says "None" included |
+| Non-finite floating-point input | `nan` and `inf` are valid TOML floats. Active bar sizes and the motion/desktop/overlay/keyboard/gesture values checked by `validate_finite` are rejected; a disabled bar's unused `height` is not checked |
 | An unknown section or key | Silently ignored (`#[serde(default)]` plus serde's default behaviour). A typo still boots; only range and cross-reference errors stop start-up |
 | A section behind a feature you turned off (`overlay`, `osk`) | **Still parsed.** A config file with `[overlay]` reads fine with the feature off, so two builds with different feature sets can share one file |
 
 Whether an id in a `Vec<String>` that was never declared warns or silently becomes
 an empty slot differs per section. See
 [08 §2](08-troubleshooting.md#2-referring-to-an-id-that-was-never-declared).
+
+Missing-file defaults include legacy access mode. If device security depends on a
+provisioned file, have the host require that file and propagate read errors before
+calling `ShellConfig::from_toml`. Protected construction separately rejects a
+configuration without `access.session_tokens`.
 
 ## 1. The sections
 
@@ -195,7 +200,7 @@ remove one. See [03 §4.4a](03-chrome.md#44a-removing-reordering-adding).
 |---|---|---|---|---|
 | `heads_up` | `bool` | `true` | Show a new notification briefly as a banner | None |
 | `max_visible` | `u8` | `2` | Toasts on screen at once | `0` is an error |
-| `max_items` | `u16` | `100` | Notification centre capacity; the oldest non-persistent ones drop first | None |
+| `max_items` | `u16` | `100` | Hard retention cap including persistent entries; dismissible items may be replaced, otherwise new overflow is refused; zero selects 100 | None |
 | `toast_ms` | `u64` | `3000` | Default toast duration | None |
 | `dismiss_button` | `bool` | `true` | Draw the `×` on a shade notification row. Turn it off and the only ways to clear are **a left swipe and "Clear all"** | None |
 
@@ -489,7 +494,7 @@ the prompt has a tab for each kind
 | `show_path` | `bool` | `true` | Draw the path as the finger draws it | |
 | `attempt_limit` | `Option<u32>` | `None` | As `[access.pin_table]`'s, and the same count; where both set one, the stricter holds | 0 is an **error** |
 | `lock_secs` | `Option<u64>` | `None` | As `[access.pin_table]`'s; where both set one, the longer holds | 0 is an **error** |
-| Every other key | `String` (flattened) | — | Level name → clear-text pattern: the dots in the order drawn, row by row from 1, between `-`, `,` or spaces (`"1-2-3-6-9"`); on the 3 × 3 grid the digits alone do (`"12369"`) | A key not in `levels`, a dot off the grid or taken twice, fewer than `min_points` dots, a pattern a finger cannot draw as written (a stroke across a dot takes it — the error gives the path a finger would record), or two levels sharing a pattern is an **error** |
+| Every other key | `String` (flattened) | — | Level name → clear-text pattern: the dots in the order drawn, row by row from 1, between `-`, `,` or spaces (`"1-2-3-6-9"`); on the 3 × 3 grid the digits alone do (`"12369"`) | A key not in `levels`, a dot off the grid or taken twice, fewer than `min_points` dots, a pattern a finger cannot draw as written (a stroke across a dot takes it), or two levels sharing a pattern is an **error**. Diagnostics omit both configured and reconstructed secret paths |
 
 ```toml
 [access.pattern_table]
@@ -681,6 +686,7 @@ primary = "#2fe09b"
 on_primary = "#04110b"
 
 [access]
+session_tokens = false                 # true: explicit issuer-controlled gate grants; see session-tokens.md
 mode = "prompt"
 levels = ["viewer", "operator", "maintainer"]
 initial = "viewer"

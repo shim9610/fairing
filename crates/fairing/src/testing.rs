@@ -29,7 +29,7 @@ pub struct Harness {
     pub frames: u64,
     /// Whether an immediate repaint was requested (`ctx.requested_repaint_last_pass`).
     ///
-    /// **It shows up one pass late.** egui 0.36.1 refreshes `prev_pass_paint_delay` in
+    /// **It shows up one pass late.** egui 0.37 refreshes `prev_pass_paint_delay` in
     /// `begin_pass`, so the value read after frame N is what frame N−1 requested. And one
     /// immediate request stays `true` for **two frames** by egui's rule ("each request results in
     /// two repaints", `outstanding = 1`) — so even on the frame E where a transition ends and
@@ -44,6 +44,7 @@ pub struct Harness {
     /// How many `ViewportCommand::Screenshot`s the shell has sent so far — the harness has no
     /// runner to take them; [`Harness::answer_screenshot`] plays its part.
     screenshots: usize,
+    screenshot_callbacks: Vec<egui::ScreenshotCallback>,
 }
 
 /// The default screen size (the reference board).
@@ -84,6 +85,7 @@ impl Harness {
             repaint_requested: false,
             app: Box::new(()),
             screenshots: 0,
+            screenshot_callbacks: Vec::new(),
         })
     }
 
@@ -165,12 +167,12 @@ impl Harness {
             ctx, shell, app, ..
         } = self;
         let output = ctx.run_ui(input, |ui| shell.frame_with(ui, &mut **app));
-        self.screenshots += output
-            .viewport_output
-            .values()
-            .flat_map(|v| v.commands.iter())
-            .filter(|c| matches!(c, egui::ViewportCommand::Screenshot(_)))
-            .count();
+        for command in output.viewport_output.values().flat_map(|v| &v.commands) {
+            if let egui::ViewportCommand::Screenshot(callback) = command {
+                self.screenshots += 1;
+                self.screenshot_callbacks.push(callback.clone());
+            }
+        }
         self.repaint_requested = self.ctx.requested_repaint_last_pass();
         self.time += FRAME_DT;
         self.frames += 1;
@@ -215,14 +217,13 @@ impl Harness {
         self.screenshots
     }
 
-    /// **Answer a screenshot** the way a runner would: `image` arrives on the next frame as
-    /// `Event::Screenshot`. The harness has no framebuffer to read, so a test hands one over.
+    /// **Answer pending screenshot callbacks** the way a runner would. Their images are available
+    /// to the shell on its next frame. The harness has no framebuffer, so a test hands one over.
     pub fn answer_screenshot(&mut self, image: egui::ColorImage) {
-        self.pending.push(Event::Screenshot {
-            viewport_id: egui::ViewportId::ROOT,
-            user_data: egui::UserData::default(),
-            image: std::sync::Arc::new(image),
-        });
+        let image = std::sync::Arc::new(image);
+        for callback in self.screenshot_callbacks.drain(..) {
+            callback.complete(std::sync::Arc::clone(&image));
+        }
     }
 
     /// Press (on the next frame).
@@ -309,6 +310,7 @@ impl Harness {
         self.pending.push(Event::PointerMoved(pos));
         self.pending.push(Event::MouseWheel {
             unit: egui::MouseWheelUnit::Point,
+            source: egui::MouseWheelSource::Wheel,
             delta,
             modifiers: Modifiers::default(),
             phase: egui::TouchPhase::Move,

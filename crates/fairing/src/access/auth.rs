@@ -33,6 +33,43 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::time::{Duration, Instant};
 
+/// Opaque correlation token issued by Fairing before authentication starts.
+/// Retain the token with the original operation, never attach the latest token to a late reply.
+/// This is not a cryptographic nonce or proof of authentication.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AuthRequestId(usize);
+
+impl AuthRequestId {
+    #[allow(deprecated, reason = "fetch_update supports the declared MSRV")]
+    pub(crate) fn issue() -> Option<Self> {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static NEXT: AtomicUsize = AtomicUsize::new(1);
+        NEXT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+            .ok()
+            .map(Self)
+    }
+
+    pub(crate) fn is_active(self, active: Option<Self>) -> bool {
+        super::rules::response_is_current(active.map(|id| id.0), self.0)
+    }
+
+    /// Associate an outcome with the operation which produced it.
+    #[must_use]
+    pub fn respond(self, outcome: AuthOutcome) -> AuthResponse {
+        AuthResponse {
+            request: self,
+            outcome,
+        }
+    }
+}
+
+/// An asynchronous outcome associated with its original authentication request.
+#[derive(Debug)]
+pub struct AuthResponse {
+    pub(crate) request: AuthRequestId,
+    pub(crate) outcome: AuthOutcome,
+}
+
 /// One way of proving who you are — what the prompt draws for it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -175,8 +212,10 @@ impl fmt::Debug for Credential {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum AuthOutcome {
-    /// Who this is. The shell applies it per `[access] unlock_mode`.
+    /// Legacy level-mode grant, applied per `[access] unlock_mode`. Token mode requires `Session`.
     Granted(Subject),
+    /// Issuer-controlled multi-permission session; requires `access.session_tokens = true`.
+    Session(super::SessionToken),
     /// No. The prompt shows `message` **as it is** — whether to say that a user does not exist is
     /// the authenticator's call, so the shell never words a refusal itself.
     Denied {
@@ -216,7 +255,7 @@ pub enum AuthOutcome {
 ///         vec![AuthMethod::Pin { len: 6, max_len: 0, shuffle: true }]
 ///     }
 ///
-///     fn submit(&mut self, credential: Credential, _now: Instant) -> AuthOutcome {
+///     fn submit(&mut self, _request: fairing::access::AuthRequestId, credential: Credential, _now: Instant) -> AuthOutcome {
 ///         match credential {
 ///             Credential::Pin(pin) if my_check(&pin) => AuthOutcome::Granted(Subject {
 ///                 level: Level(1),
@@ -231,37 +270,45 @@ pub enum AuthOutcome {
 pub trait Authenticator {
     /// The ways in, in the order the prompt offers them. Read each time the prompt opens.
     ///
-    /// An empty list leaves the shell nothing to draw: the request then goes out as
-    /// [`AccessEvent::UnlockRequested`](super::AccessEvent::UnlockRequested) only, as in
-    /// `routing` mode.
+    /// An empty list leaves the shell nothing to draw: the request goes out as
+    /// [`AccessEvent::UnlockRequested`](super::AccessEvent::UnlockRequested), as in
+    /// `routing` mode. Token mode also emits
+    /// [`AccessEvent::SessionRequested`](super::AccessEvent::SessionRequested) for a
+    /// request-correlated host response.
     fn methods(&self) -> Vec<AuthMethod>;
 
     /// Check what was entered. **Return at once** — it runs on the UI thread, inside a frame. A
     /// check that takes time answers [`AuthOutcome::Pending`] and finishes through
     /// [`Authenticator::poll`]. Where one is still under way, [`Authenticator::cancel`] comes
-    /// first: a new attempt replaces it.
-    fn submit(&mut self, credential: Credential, now: Instant) -> AuthOutcome;
+    /// first: a new attempt replaces it. Capture `request` with asynchronous work and
+    /// return `request.respond(outcome)` from `poll` when that work completes.
+    fn submit(
+        &mut self,
+        request: AuthRequestId,
+        credential: Credential,
+        now: Instant,
+    ) -> AuthOutcome;
 
     /// Finish what [`AuthOutcome::Pending`] started, or report an external method's result. The
-    /// shell calls it once a frame while the prompt is up; `None` means nothing new.
+    /// shell calls it once per state update while the prompt is up, including
+    /// logic-only updates without a UI pass; `None` means nothing new.
     ///
-    /// Whatever it reports, the shell applies as it comes — it follows the authenticator's
-    /// results and does not second-guess them. So a check [`Authenticator::cancel`] called off must
-    /// not be reported: the request is the authenticator's, and so is dropping its answer.
+    /// Return `request.respond(outcome)` using the token captured when the operation started.
+    /// Fairing rejects responses from cancelled, superseded or completed requests. Cancellation
+    /// should still stop unnecessary work and release backend resources.
     ///
-    /// A frame only comes when something asks for one, so a reader thread that has an answer
-    /// should call the [`Waker`] from [`Authenticator::attach`].
-    fn poll(&mut self, _now: Instant) -> Option<AuthOutcome> {
+    /// Updates depend on scheduling, so a reader thread that has an answer should
+    /// call the [`Waker`] from [`Authenticator::attach`].
+    fn poll(&mut self, _now: Instant) -> Option<AuthResponse> {
         None
     }
 
     /// The check under way is off: the prompt closed without an answer, the lock screen is coming
     /// up over it, or a new attempt is going in. Stop waiting for a card, drop a half-entered
-    /// state — whatever [`Authenticator::poll`] reports after this answers what comes next, never
-    /// the check that was stopped.
+    /// state. A result from work which finishes later must retain its original request token;
+    /// Fairing rejects it after cancellation rather than assigning it to a new check.
     ///
-    /// It is called on the UI thread like everything here, so there is nothing to race: once it
-    /// returns, that check is over. A wait ends with an answer or with `cancel`, never otherwise.
+    /// Cancellation should still stop unnecessary background work and release resources.
     fn cancel(&mut self) {}
 
     /// The shell refused a grant this authenticator gave: on the unlock prompt a level no higher
@@ -276,19 +323,24 @@ pub trait Authenticator {
         None
     }
 
-    /// The prompt opened for `gate` (the lock screen's is `session.lock`) — start listening now.
+    /// The prompt opened or retargeted to `gate` (the lock screen's is `session.lock`) — start
+    /// listening now. A different gate cancels the preceding challenge before this call.
     /// Anything a reader picked up while no prompt was up belongs to nobody and should be dropped
     /// here: a badge swiped at a panel that asked for nothing must not unlock the next person's
     /// prompt hours later.
-    fn begin(&mut self, _gate: &Gate, _now: Instant) {}
+    fn begin(&mut self, _request: AuthRequestId, _gate: &Gate, _now: Instant) {}
 
     /// The handle that wakes the UI thread, given once when the shell takes the authenticator —
     /// the same one every backend receives through
     /// [`Backend::attach`](crate::services::Backend::attach).
     fn attach(&mut self, _waker: Waker) {}
 
-    /// The management side, where the authenticator offers one. With it the shell registers the
-    /// `settings.credentials` screen behind the gate of the same name.
+    /// The shell detached this device session (logout, lock, expiry, replacement or fault).
+    /// Revoke its controller to invalidate other readers. The shell already blocks this token
+    /// locally before calling; return promptly and do not end unrelated web/device sessions.
+    fn session_ended(&mut self, _session: super::SessionId, _now: Instant) {}
+
+    /// Optional credential management, exposed behind the settings.credentials gate.
     fn admin(&mut self) -> Option<&mut dyn CredentialAdmin> {
         None
     }
@@ -302,10 +354,13 @@ pub type AdminResult = std::result::Result<(), String>;
 /// Each one is the authenticator's to carry out: where the entries live and how a secret is
 /// stored do not reach the shell.
 ///
-/// **The shell keeps a change within the level of whoever makes it.** Nobody gives a level above
+/// In legacy level mode, **the shell keeps a change within the actor's level.** Nobody gives a level above
 /// their own, and an entry above their level is not theirs to change or remove — so a maintainer
 /// cannot add an administrator, or set the administrator's PIN and then use it. Those calls are
 /// refused before they get here. Who is making the rest is [`set_actor`](Self::set_actor).
+/// Token mode instead requires the explicit `settings.credentials.set_secret`, `.set_level`,
+/// `.add` or `.remove` operation grant in addition to the screen gate. The authenticator
+/// enforces per-account/role rules using the actor; a numeric display level is not a role ordering.
 pub trait CredentialAdmin {
     /// Who the calls after this one are made by: the session's subject, given before each change
     /// the screen applies. The default ignores it. An authenticator with rules of its own about who
@@ -388,7 +443,7 @@ const DEFAULT_LOCK: Duration = Duration::from_secs(60);
 ///   otherwise its OK key submits, and it takes no more than `max_len` digits.
 /// - A pattern must be one a finger can draw: a stroke from one dot to another across a third
 ///   takes the third, so `"1-3"` cannot be drawn — the finger records `"1-2-3"`, and the table
-///   says so at start-up.
+///   rejects it at start-up without printing the secret.
 /// - Wrong PINs and wrong patterns count against **one** attempt limit — two ways in are not two
 ///   allowances. The count lives **in memory** and a restart clears it. The only input is the
 ///   touchscreen and there is no remote API, so that is as far as a reference goes.
@@ -458,8 +513,8 @@ impl PinTable {
     /// [`Error::Config`] for a key that is not a level; a PIN that is not 1 to `max_len` digits,
     /// or a `max_len` outside 1–16; a pattern that is not dot numbers on the grid, takes a dot
     /// twice, is shorter than `min_points` or cannot be drawn as written (the message gives the
-    /// path a finger would record); a `grid` outside 3–5 or a `min_points` outside the grid; two
-    /// levels sharing one PIN or one pattern (the table could not tell them apart); an
+    /// validation rules without the pattern); a `grid` outside 3–5 or a `min_points` outside
+    /// the grid; two levels sharing one PIN or one pattern (the table could not tell them apart); an
     /// `attempt_limit` or `lock_secs` of 0.
     pub fn from_tables(
         pins_cfg: &PinTableConfig,
@@ -567,59 +622,32 @@ impl PinTable {
     /// A wrong attempt: count it, and lock once the limit is reached. `wrong` is what a refusal
     /// says.
     fn fail(&mut self, now: Instant, wrong: &str) -> AuthOutcome {
-        self.failures += 1;
-        match self.attempt_limit {
-            Some(limit) if self.failures >= limit => {
-                let lock = self.lock.unwrap_or(DEFAULT_LOCK);
-                let until = now.checked_add(lock).unwrap_or(now);
-                self.locked_until = Some(until);
-                // A fresh allowance once the lock runs out, not one more try.
-                self.failures = 0;
-                AuthOutcome::Locked {
-                    until,
-                    message: TOO_MANY.to_owned(),
-                }
+        self.failures = super::rules::next_failure(self.failures);
+        if super::rules::lockout_reached(self.failures, self.attempt_limit) {
+            let lock = self.lock.unwrap_or(DEFAULT_LOCK);
+            let until = now.checked_add(lock).unwrap_or(now);
+            self.locked_until = Some(until);
+            // A fresh allowance once the lock runs out, not one more try.
+            self.failures = 0;
+            AuthOutcome::Locked {
+                until,
+                message: TOO_MANY.to_owned(),
             }
-            _ => AuthOutcome::Denied {
+        } else {
+            AuthOutcome::Denied {
                 message: wrong.to_owned(),
-            },
+            }
         }
     }
 }
 
-impl Authenticator for PinTable {
-    fn methods(&self) -> Vec<AuthMethod> {
-        let mut methods = Vec::new();
-        if !self.pins.is_empty() {
-            methods.push(AuthMethod::Pin {
-                len: self.len,
-                max_len: self.max_len,
-                shuffle: self.shuffle,
-            });
-        }
-        if !self.patterns.is_empty() {
-            methods.push(AuthMethod::Pattern {
-                grid: self.grid,
-                min_points: self.min_points,
-                show_path: self.show_path,
-            });
-        }
-        methods
-    }
-
-    /// A refused grant is a failure like a wrong PIN, on top of the count it cleared; only a
-    /// lockout replaces the shell's words.
-    fn refused(&mut self, now: Instant) -> Option<AuthOutcome> {
-        self.failures = self
-            .failures
-            .saturating_add(std::mem::take(&mut self.cleared));
-        match self.fail(now, "") {
-            locked @ AuthOutcome::Locked { .. } => Some(locked),
-            _ => None,
-        }
-    }
-
-    fn submit(&mut self, credential: Credential, now: Instant) -> AuthOutcome {
+impl PinTable {
+    /// Check a credential synchronously without a shell request. Updates lockout accounting.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "consume credentials at the authentication boundary"
+    )]
+    pub fn check(&mut self, credential: Credential, now: Instant) -> AuthOutcome {
         self.cleared = 0;
         if let Some(until) = self.locked_until {
             if now < until {
@@ -670,6 +698,48 @@ impl Authenticator for PinTable {
     }
 }
 
+impl Authenticator for PinTable {
+    fn methods(&self) -> Vec<AuthMethod> {
+        let mut methods = Vec::new();
+        if !self.pins.is_empty() {
+            methods.push(AuthMethod::Pin {
+                len: self.len,
+                max_len: self.max_len,
+                shuffle: self.shuffle,
+            });
+        }
+        if !self.patterns.is_empty() {
+            methods.push(AuthMethod::Pattern {
+                grid: self.grid,
+                min_points: self.min_points,
+                show_path: self.show_path,
+            });
+        }
+        methods
+    }
+
+    /// A refused grant is a failure like a wrong PIN, on top of the count it cleared; only a
+    /// lockout replaces the shell's words.
+    fn refused(&mut self, now: Instant) -> Option<AuthOutcome> {
+        self.failures = self
+            .failures
+            .saturating_add(std::mem::take(&mut self.cleared));
+        match self.fail(now, "") {
+            locked @ AuthOutcome::Locked { .. } => Some(locked),
+            _ => None,
+        }
+    }
+
+    fn submit(
+        &mut self,
+        _request: AuthRequestId,
+        credential: Credential,
+        now: Instant,
+    ) -> AuthOutcome {
+        self.check(credential, now)
+    }
+}
+
 /// The level `name` stands for in `[access.<section>]`.
 fn level_of(levels: &LevelTable, section: &str, name: &str) -> Result<Level> {
     levels.index_of(name).ok_or_else(|| {
@@ -702,9 +772,10 @@ fn patterns_from(cfg: &PatternTableConfig, levels: &LevelTable) -> Result<Vec<(L
     let mut patterns: Vec<(Level, Vec<u8>)> = Vec::with_capacity(cfg.patterns.len());
     for (name, text) in &cfg.patterns {
         let level = level_of(levels, "pattern_table", name)?;
-        let path = parse_pattern(text, cfg.grid, cfg.min_points).map_err(|why| {
+        let path = parse_pattern(text, cfg.grid, cfg.min_points).map_err(|_| {
             Error::Config(format!(
-                "[access.pattern_table] \"{name}\" = \"{text}\": {why}"
+                "[access.pattern_table] \"{name}\": invalid pattern; check dot range, \
+                 minimum length, repeated dots and dots crossed by each stroke"
             ))
         })?;
         if let Some((other, _)) = patterns.iter().find(|(_, p)| *p == path) {
@@ -790,6 +861,7 @@ fn same(a: &[u8], b: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::AuthRequestId;
     use super::{
         parse_pattern, pattern_text, same, AuthMethod, AuthOutcome, Authenticator, Credential,
         PinTable,
@@ -876,15 +948,15 @@ mod tests {
         )?;
         let now = Instant::now();
         assert_eq!(
-            granted(&pins.submit(Credential::Pin("987654".to_owned()), now)),
+            granted(&pins.submit(AuthRequestId(1), Credential::Pin("987654".to_owned()), now)),
             Some(Level(2))
         );
         assert_eq!(
-            granted(&pins.submit(Credential::Pin("1234".to_owned()), now)),
+            granted(&pins.submit(AuthRequestId(1), Credential::Pin("1234".to_owned()), now)),
             Some(Level(1))
         );
         assert!(matches!(
-            pins.submit(Credential::Pin("0000".to_owned()), now),
+            pins.submit(AuthRequestId(1), Credential::Pin("0000".to_owned()), now),
             AuthOutcome::Denied { .. }
         ));
         Ok(())
@@ -982,11 +1054,15 @@ mod tests {
         );
         let now = Instant::now();
         assert_eq!(
-            granted(&table.submit(Credential::Pattern(vec![0, 1, 2, 4, 6, 7, 8]), now)),
+            granted(&table.submit(
+                AuthRequestId(1),
+                Credential::Pattern(vec![0, 1, 2, 4, 6, 7, 8]),
+                now
+            )),
             Some(Level(2))
         );
         assert!(matches!(
-            table.submit(Credential::Pattern(vec![0, 1, 2, 4]), now),
+            table.submit(AuthRequestId(1), Credential::Pattern(vec![0, 1, 2, 4]), now),
             AuthOutcome::Denied { message } if message == "Wrong pattern"
         ));
         // A pattern table alone is an authenticator too.
@@ -1038,12 +1114,12 @@ mod tests {
         let mut table = PinTable::from_tables(&pins, &dots, &levels())?;
         let now = Instant::now();
         assert!(matches!(
-            table.submit(Credential::Pin("0000".to_owned()), now),
+            table.submit(AuthRequestId(1), Credential::Pin("0000".to_owned()), now),
             AuthOutcome::Denied { .. }
         ));
         // The stricter limit (two) and the longer lockout (90 s) hold.
         assert!(matches!(
-            table.submit(Credential::Pattern(vec![8, 7, 6, 3]), now),
+            table.submit(AuthRequestId(1), Credential::Pattern(vec![8, 7, 6, 3]), now),
             AuthOutcome::Locked { until, .. } if until == now + Duration::from_secs(90)
         ));
         Ok(())
@@ -1058,10 +1134,10 @@ mod tests {
         let start = Instant::now();
         let wrong = || Credential::Pin("9999".to_owned());
         assert!(matches!(
-            pins.submit(wrong(), start),
+            pins.submit(AuthRequestId(1), wrong(), start),
             AuthOutcome::Denied { .. }
         ));
-        let until = match pins.submit(wrong(), start) {
+        let until = match pins.submit(AuthRequestId(1), wrong(), start) {
             AuthOutcome::Locked { until, .. } => until,
             other => return Err(crate::Error::Config(format!("expected a lock: {other:?}"))),
         };
@@ -1069,6 +1145,7 @@ mod tests {
         // Even the right PIN is refused while locked.
         assert!(matches!(
             pins.submit(
+                AuthRequestId(1),
                 Credential::Pin("1234".to_owned()),
                 start + Duration::from_secs(29)
             ),
@@ -1077,11 +1154,11 @@ mod tests {
         // Afterwards there are two fresh tries, not one.
         let later = start + Duration::from_secs(31);
         assert!(matches!(
-            pins.submit(wrong(), later),
+            pins.submit(AuthRequestId(1), wrong(), later),
             AuthOutcome::Denied { .. }
         ));
         assert_eq!(
-            granted(&pins.submit(Credential::Pin("1234".to_owned()), later)),
+            granted(&pins.submit(AuthRequestId(1), Credential::Pin("1234".to_owned()), later)),
             Some(Level(1))
         );
         Ok(())
@@ -1130,5 +1207,21 @@ mod tests {
         assert!(!same(b"1234", b"1235"));
         assert!(!same(b"1234", b"12345"));
         assert!(!same(b"", b"0"));
+    }
+    #[test]
+    fn unlimited_failure_accounting_saturates_including_refused_grants() -> crate::Result<()> {
+        let cfg = table(&[("operator", "7391")]);
+        let mut auth = super::PinTable::from_config(&cfg, &levels())?;
+        auth.failures = u32::MAX;
+        let now = std::time::Instant::now();
+        assert!(matches!(
+            auth.submit(AuthRequestId(1), super::Credential::Pin("0000".into()), now),
+            super::AuthOutcome::Denied { .. }
+        ));
+        assert_eq!(auth.failures, u32::MAX);
+        let _ = auth.submit(AuthRequestId(1), super::Credential::Pin("7391".into()), now);
+        assert!(auth.refused(now).is_none());
+        assert_eq!(auth.failures, u32::MAX);
+        Ok(())
     }
 }

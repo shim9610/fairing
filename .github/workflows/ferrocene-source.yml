@@ -1,0 +1,71 @@
+name: Ferrocene source compatibility
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ferrocene-source-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-compatibility:
+    if: github.repository == 'shim9610/fairing'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      CARGO_BUILD_JOBS: "2"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Prepare compiler build dependencies and disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config libssl-dev zlib1g-dev
+          df -h /
+
+      - name: Check workspace input integrity before compilation
+        run: cargo run -p xtask --locked -- integrity
+
+      # The compiler and LLVM are built from public source, without private CI caches.
+      # A clean compiler build is intentional; no cached compiler binary is trusted.
+      - name: Build the pinned public Ferrocene source
+        run: |
+          set -euo pipefail
+          mkdir -p target/ferrocene-source-report
+          python3 -u tools/ferrocene/run.py build --jobs 2 \
+            2>&1 | tee target/ferrocene-source-report/build.log
+
+      - name: Test fairing and inventory the consumer validation boundary
+        run: python3 -u tools/ferrocene/run.py check
+
+      - name: Release compatibility build outputs before coverage
+        run: cargo clean --target-dir target/ferrocene-source
+
+      - name: Measure product coverage with the source-built compiler and LLVM
+        run: python3 -u tools/ferrocene/run.py coverage
+
+      - name: Upload compiler identities, results and diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ferrocene-source-results
+          path: |
+            target/ferrocene-source-report/*.json
+            target/ferrocene-source-report/*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Show remaining disk
+        if: always()
+        run: df -h /

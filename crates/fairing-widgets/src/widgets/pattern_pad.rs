@@ -237,7 +237,13 @@ impl<'a> PatternPad<'a> {
         let centers = geometry.centers(rect);
         let hit = geometry.cell * HIT_RATIO;
         let trace_id = response.id.with("pattern.trace");
-        let mut trace: Trace = ui.data(|d| d.get_temp(trace_id)).unwrap_or_default();
+        let mut trace: Trace = crate::interaction::load(
+            ui.ctx(),
+            trace_id,
+            self.enabled && ui.is_enabled(),
+            crate::interaction::Lifetime::Press,
+        )
+        .unwrap_or_default();
         let before = self.path.len();
         let mut cleared = false;
         let (mut submitted, mut too_short) = (false, false);
@@ -250,7 +256,7 @@ impl<'a> PatternPad<'a> {
                 .layer_transform_from_global(ui.layer_id())
                 .unwrap_or(TSTransform::IDENTITY);
             let pass = ui.input(Pass::read);
-            if !trace.drawing && (held || response.clicked()) {
+            if !trace.drawing && (pass.press.is_some() || response.clicked()) {
                 let start = pass
                     .press
                     .map(|p| to_local * p)
@@ -259,28 +265,45 @@ impl<'a> PatternPad<'a> {
                     cleared = !self.path.is_empty();
                     self.path.clear();
                     trace = Trace {
-                        drawing: true,
+                        drawing: crate::interaction::rules::step(
+                            crate::interaction::snapshot(false),
+                            crate::interaction::rules::Operation::Start,
+                        )
+                        .active,
                         last: start,
                     };
                     sweep(self.path, start, start, &centers, hit, self.grid);
                 }
             }
             if trace.drawing {
+                trace.drawing = crate::interaction::rules::step(
+                    crate::interaction::snapshot(trace.drawing),
+                    crate::interaction::rules::Operation::Continue,
+                )
+                .active;
                 for point in pass.points.iter().map(|p| to_local * *p) {
                     sweep(self.path, trace.last, point, &centers, hit, self.grid);
                     trace.last = point;
                 }
                 if !held {
-                    trace.drawing = false;
+                    trace.drawing = crate::interaction::rules::step(
+                        crate::interaction::snapshot(trace.drawing),
+                        crate::interaction::rules::Operation::Finish,
+                    )
+                    .active;
                     let len = self.path.len();
                     submitted = len >= self.min_points_in_grid();
                     too_short = !submitted && len > 0;
                 }
             }
         } else {
-            trace.drawing = false;
+            trace.drawing = crate::interaction::rules::step(
+                crate::interaction::snapshot(trace.drawing),
+                crate::interaction::rules::Operation::Cancel,
+            )
+            .active;
         }
-        ui.data_mut(|d| d.insert_temp(trace_id, trace));
+        crate::interaction::store(ui.ctx(), trace_id, trace);
         let changed = cleared || self.path.len() != before;
         self.paint(ui, cx, response.id, (rect, &centers), hit, trace);
         PatternPadResponse {

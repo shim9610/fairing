@@ -101,3 +101,48 @@ fn mock_wifi_scan_completes_via_next_wake() -> fairing::Result<()> {
     );
     Ok(())
 }
+
+/// A bounded backend backlog progresses in logic-only callbacks without a UI frame
+/// or another producer send; one tick still applies only the configured batch.
+#[test]
+fn mock_backlog_continues_in_logic_only_ticks() -> Result<(), Box<dyn std::error::Error>> {
+    use fairing::inbox::{InboxCapacity, InboxConfig};
+    use fairing::services::mock::WifiMsg;
+
+    let wifi = MockWifi::with_inbox(InboxConfig {
+        capacity: InboxCapacity::Bounded(3),
+        batch_limit: 1,
+    })?;
+    let control = wifi.control();
+    for strength in 1..=3 {
+        assert!(control
+            .try_send(WifiMsg::State(WifiState::Connected {
+                ssid: "queued".into(),
+                strength,
+            }))
+            .is_ok());
+    }
+    let ctx = egui::Context::default();
+    let mut shell = fairing::Shell::new(
+        single_level_access(),
+        Services::builder()
+            .clock(fairing::services::null::NullClock)
+            .wifi(wifi)
+            .build(),
+        &ctx,
+    )?;
+    for strength in 1..=3 {
+        shell.logic(&ctx);
+        assert_eq!(
+            shell.services().wifi.snapshot().state,
+            WifiState::Connected {
+                ssid: "queued".into(),
+                strength,
+            }
+        );
+    }
+    assert!(control.try_send(WifiMsg::Enabled(false)).is_ok());
+    shell.logic(&ctx);
+    assert!(!shell.services().wifi.enabled());
+    Ok(())
+}

@@ -1122,7 +1122,7 @@ fn attract(ui: &mut egui::Ui, cx: &mut Cx<'_>, order: &mut Order, art: &Art) {
     let full = ui.available_rect_before_wrap();
     let anywhere = ui.interact(
         full,
-        egui::Id::new("kiosk.attract.any"),
+        egui::Id::unique("kiosk.attract.any"),
         egui::Sense::click(),
     );
 

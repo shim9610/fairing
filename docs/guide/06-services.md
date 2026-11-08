@@ -11,9 +11,9 @@ it. Four rules hold that up.
 2. **Snapshot plus command.** Reads go through `snapshot()` — a cheap clone of a
    cache. Writes are commands that return immediately; the result arrives in the
    next snapshot, and the `Waker` tells the UI to look.
-3. **Channels, never locks.** No `Mutex` or `RwLock` inside a backend. If there is
-   a worker thread, it gets one pair of `mpsc` channels (commands out, results in)
-   and the UI-side `poll()` only ever calls `try_recv`.
+3. **Keep transport waits off the UI thread.** A worker can exchange commands and
+   updates through channels or another application-chosen transport. UI-side polling
+   uses non-waiting operations; it must not wait for a worker, message or capacity.
 4. **Never block the UI thread.** `poll()`, `poll_at()` and every command method
    (`set_enabled`, `scan`, `connect`, …) must return immediately. Anything slow
    belongs to a worker thread or to a state machine inside the backend.
@@ -33,7 +33,7 @@ They live in `fairing::services` and all have `Backend` as a supertrait.
 ```rust,ignore
 pub trait Backend {
     fn attach(&mut self, waker: Waker) {}                 // once, at start-up
-    fn poll(&mut self) {}                                 // every frame
+    fn poll(&mut self) {}                                // every state update, including logic-only
     fn poll_at(&mut self, now: Instant) { self.poll(); }  // what actually gets called
     fn next_wake(&self) -> Option<Instant> { None }       // when to be woken next
     fn capabilities(&self) -> Capabilities { Capabilities::NONE }
@@ -44,6 +44,13 @@ The `now` in `poll_at` is **the shell's monotonic clock** (`Shell::now()`), not
 `Instant::now()`. Headless tests advance that clock virtually, so a time-based
 simulation — a scan delay, say — can be verified with no `sleep`. The flip side:
 a backend that calls `Instant::now()` internally throws that away.
+
+With a shell/state runner, `poll_at` also runs from `App::logic` while the window has
+no UI pass. It stays on the same event-loop thread. A subsequent UI pass reuses the
+update instead of polling a second time. Once `Shell::logic*` is used, its monotonic
+clock advances with wall time; frame-only headless hosts retain virtual input time.
+Use `Waker` or `next_wake` even while hidden: animations and continuous repaint do not
+drive background polling.
 
 Eight traits, one for each kind of hardware the built-in UI shows:
 
@@ -115,7 +122,7 @@ ask with, where the profile is stored and whether a saved network should
 reconnect on a single tap are decisions about your device, not about a shell.
 Nothing stops you from connecting on every tap if that suits the machine.
 
-It also keeps the secret away from the crate entirely. `connect` takes
+The application owns the password buffer. `connect` takes
 `psk: Option<&str>` and [`TextField`](04-customization.md) borrows a
 `&mut String`, so the buffer is yours from end to end — hold it in a zeroizing
 type if you want one, and reserve its capacity up front so growing it does not
@@ -126,11 +133,11 @@ let mut psk = zeroize::Zeroizing::new(String::with_capacity(64)); // WPA2 tops o
 TextField::new(&mut psk).password(true).hint("Password").show(ui, &mut cx.widgets());
 ```
 
-`fairing` does not depend on `zeroize` and does not need to — it never owns the
-string. What it does owe you is that the widget forgets: `TextField::password(true)`
-clears the `TextEdit` undo history every frame, because egui otherwise keeps up
-to a hundred plaintext snapshots in its own memory under the widget's id, where
-no wrapper of yours can reach them. The field also has an eye that shows the
+`fairing` does not depend on `zeroize`. `TextField::password(true)` clears the
+`TextEdit` undo history each pass to avoid retaining plaintext undo snapshots
+under the widget's id. This is separate from clearing the application buffer;
+it does not establish that every renderer or allocator copy is erased.
+The field also has an eye that shows the
 text; `.reveal(false)` takes it away, and a shown field comes back masked once
 it leaves the screen.
 
@@ -230,12 +237,13 @@ fn mixed() -> fairing::Services {
 
 ## 4. Developing against mocks
 
-The `mock` feature (on by default) puts five simulators in
-`fairing::services::mock`: `MockClock`, `MockPower`, `MockWifi`, `MockBluetooth`
-and `MockDisplay`. All of them are **channel-based and lock-free** — each hands
-out a `MockControl<M>` (an `mpsc::Sender` wrapper, `Clone + Send`), a scenario
-thread or a test posts messages to it, and the backend's `poll()` drains them with
-`try_recv`.
+The `mock` feature (on by default) provides clock, power, Wi-Fi, Bluetooth,
+display, audio, network and device-info simulators in `fairing::services::mock`.
+The six message-based simulators expose `MockControl<M>` (`Clone + Send`) and
+use nonblocking channel operations. Display and device info have no input channel.
+Default channels hold at most 1,024 messages and process at most 256 per poll.
+A full batch schedules another poll, so accepted backlog continues without fresh
+input. Transport internals may synchronize; backend code does not acquire locks.
 
 ```rust
 use fairing::services::mock::{MockPower, MockWifi, WifiMsg};
@@ -251,10 +259,12 @@ fn scenario() -> (Services, fairing::services::mock::MockControl<WifiMsg>) {
     let services = Services::builder().wifi(wifi).power(power).build();
 
     // Inject state from anywhere - a test body, a scenario thread.
-    control.send(WifiMsg::State(WifiState::Connected {
+    // This new private queue has room for the initial snapshot.
+    let accepted = control.send(WifiMsg::State(WifiState::Connected {
         ssid: "demo-ap".to_owned(),
         strength: 3,
     }));
+    assert!(accepted);
 
     (services, control)
 }
@@ -279,6 +289,7 @@ a scenario thread that jitters the Wi-Fi strength every four seconds.
 # use std::time::Duration;
 # use fairing::services::mock::{MockWifi, WifiMsg};
 # use fairing::services::WifiState;
+# use fairing::inbox::QueueErrorKind;
 # fn spawn(shell: &fairing::Shell, wifi: &MockWifi) {
 # let wifi_control = wifi.control();
 let waker = shell.handle().waker().clone(); // Clone + Send
@@ -286,10 +297,13 @@ std::thread::spawn(move || loop {
     std::thread::sleep(Duration::from_secs(4));
     // ... work out the new strength ...
 #   let new_state = WifiState::Idle;
-    if !wifi_control.send(WifiMsg::State(new_state)) {
-        break; // the backend is already gone
+    match wifi_control.try_send(WifiMsg::State(new_state)) {
+        Ok(()) => waker.wake(), // ask the UI thread for another frame
+        Err(error) if error.kind() == QueueErrorKind::Full => {
+            // This scenario skips a transient strength sample; the next tick is newer.
+        }
+        Err(_) => break, // the backend is gone
     }
-    waker.wake(); // ask the UI thread for another frame
 });
 # }
 ```
@@ -306,12 +320,16 @@ heavy work — reading device files, shelling out to `nmcli`, calling D-Bus — 
 worker's.
 
 ```rust
-use fairing::services::{
-    Backend, Capabilities, ServiceError, ServiceResult, Waker, WifiBackend, WifiSnapshot, WifiState,
+use fairing::inbox::{
+    ConfiguredInbox, ConfiguredSender, Inbox, InboxConfig, QueueCapacityError, QueueErrorKind,
 };
-use std::sync::mpsc::{self, Receiver, Sender};
+use fairing::services::{
+    Backend, Capabilities, ErrorKind, ServiceError, ServiceResult, Waker,
+    WifiBackend, WifiSnapshot, WifiState,
+};
+use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 enum FromWorker {
     Snapshot(WifiSnapshot),
@@ -327,19 +345,49 @@ enum ToWorker {
 
 pub struct RealWifi {
     latest: WifiSnapshot,
-    from_worker: Receiver<FromWorker>,
-    to_worker: Sender<ToWorker>,
+    from_worker: ConfiguredInbox<FromWorker>,
+    to_worker: SyncSender<ToWorker>,
+    worker: Option<(Receiver<ToWorker>, ConfiguredSender<FromWorker>)>,
+    batch_limit: usize,
+    pending_poll: Option<Instant>,
 }
 
 impl RealWifi {
-    #[must_use]
-    pub fn spawn() -> Self {
-        let (to_worker_tx, to_worker_rx) = mpsc::channel::<ToWorker>();
-        let (from_worker_tx, from_worker_rx) = mpsc::channel::<FromWorker>();
+    pub fn spawn(updates: InboxConfig) -> Result<Self, QueueCapacityError> {
+        // Chosen command capacity for this driver; commands are never evicted.
+        let (to_worker, commands) = mpsc::sync_channel(64);
+        let (sender, from_worker) = Inbox::configured(updates)?;
+        Ok(Self {
+            latest: WifiSnapshot::default(),
+            from_worker,
+            to_worker,
+            worker: Some((commands, sender)),
+            batch_limit: updates.batch_limit,
+            pending_poll: None,
+        })
+    }
 
+    // Call Waker::wake after changing the budget so a paused connection can resume.
+    pub fn set_inbox_batch_limit(&mut self, limit: usize) {
+        self.batch_limit = limit;
+        self.from_worker.set_batch_limit(limit);
+        self.pending_poll = None;
+    }
+
+    fn send(&self, cmd: ToWorker) -> ServiceResult {
+        self.to_worker.try_send(cmd).map_err(|error| match error {
+            TrySendError::Full(_) => ServiceError::new(ErrorKind::Busy, "command queue full"),
+            TrySendError::Disconnected(_) => ServiceError::new(ErrorKind::Io, "worker unavailable"),
+        })
+    }
+}
+
+impl Backend for RealWifi {
+    fn attach(&mut self, waker: Waker) {
+        let Some((commands, updates)) = self.worker.take() else { return; };
         thread::spawn(move || {
-            // This is the one thread allowed to block - nmcli, D-Bus and driver calls go here.
-            while let Ok(cmd) = to_worker_rx.recv() {
+            // Only this worker may block on commands, device I/O or update capacity.
+            while let Ok(cmd) = commands.recv() {
                 let snapshot = match cmd {
                     ToWorker::SetEnabled(on) => WifiSnapshot { enabled: on, ..WifiSnapshot::default() },
                     ToWorker::Scan => WifiSnapshot { state: WifiState::Scanning, ..WifiSnapshot::default() },
@@ -349,41 +397,34 @@ impl RealWifi {
                     },
                     ToWorker::Disconnect | ToWorker::Forget(_) => WifiSnapshot::default(),
                 };
-                if from_worker_tx.send(FromWorker::Snapshot(snapshot)).is_err() {
-                    break; // the UI-side RealWifi was dropped
+                let mut update = FromWorker::Snapshot(snapshot);
+                loop {
+                    match updates.try_send(update) {
+                        Ok(()) => { waker.wake(); break; }
+                        Err(error) if error.kind() == QueueErrorKind::Full => {
+                            update = error.into_inner();
+                            // Keep this update, backpressure commands, and avoid a busy loop.
+                            thread::sleep(Duration::from_millis(20));
+                        }
+                        Err(_) => return, // the UI-side receiver was dropped
+                    }
                 }
-                // In production, also call the Waker::wake() you kept from attach().
             }
         });
+    }
 
-        Self {
-            latest: WifiSnapshot::default(),
-            from_worker: from_worker_rx,
-            to_worker: to_worker_tx,
+    fn poll_at(&mut self, now: Instant) {
+        let mut consumed = 0;
+        for FromWorker::Snapshot(snapshot) in self.from_worker.drain() {
+            self.latest = snapshot;
+            consumed += 1;
         }
+        // One conservative extra poll is allowed when the batch exactly empties the queue.
+        self.pending_poll = (self.batch_limit > 0 && consumed == self.batch_limit).then_some(now);
     }
 
-    fn send(&self, cmd: ToWorker) -> ServiceResult {
-        self.to_worker
-            .send(cmd)
-            .map_err(|_| ServiceError::new(fairing::services::ErrorKind::Io, "the worker died"))
-    }
-}
-
-impl Backend for RealWifi {
-    fn attach(&mut self, _waker: Waker) {
-        // Hand waker.clone() to the worker thread and it can wake the UI the moment
-        // state changes - no polling latency.
-    }
-
-    fn poll(&mut self) {
-        while let Ok(FromWorker::Snapshot(s)) = self.from_worker.try_recv() {
-            self.latest = s;
-        }
-    }
-
-    fn poll_at(&mut self, _now: Instant) {
-        self.poll(); // a backend that ignores time need not implement poll_at at all
+    fn next_wake(&self) -> Option<Instant> {
+        self.pending_poll
     }
 
     fn capabilities(&self) -> Capabilities {
@@ -416,16 +457,22 @@ impl WifiBackend for RealWifi {
 Three rules to keep:
 
 1. **`RealWifi` itself, on the UI thread, has no lock.** `latest` changes only in
-   `poll()`, and only the shell calls that, only on the UI thread.
+   `poll_at()`, and only the shell calls that, only on the UI thread.
 2. **Command methods post to the channel and return.** `connect()` does not wait
    for the connection; completion shows up as a changed `snapshot()` after the
-   next `poll()`.
+   next `poll_at()`.
 3. **When the worker changes state, call `Waker::wake()`.** Without it the screen
    does not refresh until the next input — egui repaints reactively by default
    (see `repaint` in [01 Getting started](01-getting-started.md)).
 
-Plug it in with `Services::builder().wifi(RealWifi::spawn()).build()`. Not one
-line of the Wi-Fi screen changes.
+Plug it in with `Services::builder().wifi(RealWifi::spawn(InboxConfig::default())?).build()`
+from a function returning `Result`. The Wi-Fi screen is unchanged. A full command
+queue returns `Busy` immediately; the application chooses whether to retry. The
+worker retains one pending update and waits for capacity before taking another
+command. Configure update storage and the per-poll budget for that connection;
+`Unbounded` storage remains an explicit option for a trusted producer. To resume a
+zero budget, call `set_inbox_batch_limit` and wake the shell. The snapshot
+construction above stands in for driver I/O, not a complete Wi-Fi driver.
 
 ### 5.1 Anything else: a custom backend
 
@@ -437,22 +484,36 @@ by its type with `cx.services.custom::<T>()` (or `custom_mut` to send it a comma
 One per type — a second of the same type replaces the first.
 
 ```rust
-use fairing::inbox::Inbox;
+use fairing::inbox::{
+    ConfiguredInbox, ConfiguredSender, Inbox, InboxConfig, QueueCapacityError, QueueErrorKind,
+};
 use fairing::services::{Backend, Waker};
 use fairing::{screen, Cx, Services, Shell};
-use std::sync::mpsc::Sender;
+use std::time::{Duration, Instant};
 
 /// A door switch on a GPIO line, watched by a worker thread.
 pub struct DoorSensor {
-    edges: Inbox<bool>,          // the UI side can only `try_recv` — it cannot block
-    worker: Option<Sender<bool>>,
+    edges: ConfiguredInbox<bool>,
+    worker: Option<ConfiguredSender<bool>>,
+    batch_limit: usize,
+    pending_poll: Option<Instant>,
     open: bool,
 }
 
 impl DoorSensor {
-    pub fn new() -> Self {
-        let (worker, edges) = Inbox::pair();
-        Self { edges, worker: Some(worker), open: false }
+    pub fn new(config: InboxConfig) -> Result<Self, QueueCapacityError> {
+        let (worker, edges) = Inbox::configured(config)?;
+        Ok(Self {
+            edges, worker: Some(worker), batch_limit: config.batch_limit,
+            pending_poll: None, open: false,
+        })
+    }
+
+    // Call Waker::wake after changing the budget, including when resuming from zero.
+    pub fn set_inbox_batch_limit(&mut self, limit: usize) {
+        self.batch_limit = limit;
+        self.edges.set_batch_limit(limit);
+        self.pending_poll = None;
     }
 
     pub fn is_open(&self) -> bool {
@@ -461,27 +522,41 @@ impl DoorSensor {
 }
 
 impl Backend for DoorSensor {
-    // The worker starts once there is a Waker to hand it.
     fn attach(&mut self, waker: Waker) {
         if let Some(tx) = self.worker.take() {
             std::thread::spawn(move || {
-                // ... block on the GPIO line here; on each edge:
-                if tx.send(true).is_ok() {
-                    waker.wake(); // ask the UI thread for a frame
+                // Replace this single sample with GPIO I/O. Only the worker may wait.
+                let mut edge = true;
+                loop {
+                    match tx.try_send(edge) {
+                        Ok(()) => { waker.wake(); break; }
+                        Err(error) if error.kind() == QueueErrorKind::Full => {
+                            edge = error.into_inner();
+                            std::thread::sleep(Duration::from_millis(20));
+                        }
+                        Err(_) => break,
+                    }
                 }
             });
         }
     }
 
-    fn poll(&mut self) {
+    fn poll_at(&mut self, now: Instant) {
+        let mut consumed = 0;
         for open in self.edges.drain() {
             self.open = open;
+            consumed += 1;
         }
+        self.pending_poll = (self.batch_limit > 0 && consumed == self.batch_limit).then_some(now);
+    }
+
+    fn next_wake(&self) -> Option<Instant> {
+        self.pending_poll
     }
 }
 
-fn services() -> Services {
-    Services::builder().custom(DoorSensor::new()).build()
+fn services() -> Result<Services, QueueCapacityError> {
+    Ok(Services::builder().custom(DoorSensor::new(InboxConfig::default())?).build())
 }
 
 fn add_door_screen(shell: &mut Shell) {
@@ -564,8 +639,28 @@ instead ([05 §2.3](05-access-control.md#23-where-enforcement-happens)).
 
 A write that passes the gate does three things in order: update the in-memory
 `SettingsView`, call the matching backend if it is a built-in key
-(`apply_setting_to_backend`, the table above), and emit
+(`apply_setting_to_backend`, the table above; queued for an outstanding Bool write), and emit
 `ShellEvent::SettingChanged { key, value }`.
+
+For Wi-Fi, Bluetooth and audio mute, at most one command per key is awaiting a
+confirming snapshot. Subsequent writes update the desired target behind it; `Toggle`
+inverts that target before consulting the snapshot. On confirmation the next target is
+sent if needed. This can take more than one poll; unchanged cached values cannot
+acknowledge later commands ahead of the first. Intermediate queued targets are coalesced,
+and an already satisfied target with no outstanding command is a backend no-op.
+Backends reflecting a write immediately leave no pending request, so a later external
+change is not hidden behind an already completed target.
+Synchronous rejection or a newly entered Wi-Fi failure clears the failed request and queued
+target. With no request pending, external backend changes are the source of truth again.
+An existing cached Wi-Fi failure does not reject a command sent after that failure.
+Audio backends returning `None` from `volume()` cannot confirm a mute target: those writes
+are dispatched in order and toggles use the settings view until feedback is available.
+The UI keeps accepting input while a backend is pending; a backend with feedback must report its
+completion or failure and wake the UI, as for its other asynchronous operations.
+
+Changing `radio.airplane` also updates and emits `SettingChanged` for both radio keys.
+Enabling an individual radio clears airplane mode without enabling the other one.
+Persist every emitted change: the latest values then restore the same coupled state.
 
 Read inside a screen with `cx.settings.get(&key)`; `Cx::settings` is a read-only
 view.
@@ -706,3 +801,96 @@ fn running_2024() -> MockClock {
 follows the shell's monotonic clock. Either one can be jumped to an arbitrary time
 by sending `ClockMsg::Set(WallTime)` to the `MockControl<ClockMsg>` from
 `control()`.
+
+## Bounded service channels
+
+Choose storage and work limits per connection with `Inbox::configured(InboxConfig {
+capacity: InboxCapacity::Bounded(1024), batch_limit: 256 })`. Both worker examples
+above use configured update channels and finite polling. `InboxCapacity::Unbounded`
+selects unlimited storage for a trusted, rate-controlled producer; `drain()` still
+respects the finite `batch_limit`. A zero batch limit pauses consumption. After a
+full batch, schedule another poll through `Backend::next_wake`; this avoids leaving
+backlog asleep once the producer's wake has been consumed. A conservative extra
+empty poll clears that deadline. A paused connection needs an explicit resume path
+if it is expected to consume again.
+
+The message-based mocks use `InboxConfig::default()` (1,024 slots, 256 messages per
+poll). Existing constructors keep their signatures. To choose limits explicitly:
+
+```rust
+use fairing::inbox::{InboxCapacity, InboxConfig};
+use fairing::services::mock::MockWifi;
+let mut wifi = MockWifi::with_inbox(InboxConfig {
+    capacity: InboxCapacity::Bounded(32),
+    batch_limit: 8,
+})?;
+wifi.set_inbox_batch_limit(0); // pause; accepted messages and controls remain valid
+wifi.set_inbox_batch_limit(8); // resume; poll again after changing the budget
+# Ok::<(), fairing::inbox::QueueCapacityError>(())
+```
+
+`MockPower`, `MockBluetooth`, `MockAudio` and `MockNetwork` also have `with_inbox`;
+`MockClock` has `fixed_with_inbox` and `running_with_inbox`. All six expose
+`set_inbox_batch_limit`. Wake the shell when changing the limit outside its normal
+poll cycle, just as after an accepted producer update. A zero queue budget does not
+pause the mock's independent timed simulation.
+
+`MockControl::try_send` and `ConfiguredSender::try_send` return the original message
+on `Full` or `Disconnected`, without evicting accepted messages. The caller chooses
+retry, coalescing or rejection. Compatibility `MockControl::send` returns `false`
+for **either** reason and discards the rejected message; use `try_send` when the
+reason or ownership matters. A full queue is not evidence that the backend died.
+
+For direct bounded admission use `Inbox::bounded(capacity)`, `try_send`/`try_send_with`
+and `drain_up_to(limit)`. Existing `Inbox::pair()` remains an explicitly unbounded
+compatibility API; use `drain_up_to(limit)` to bound its work. Transport internals
+may synchronize, but UI methods never wait for queue capacity. Slot counts do not
+bound payload bytes or guarantee recoverable startup allocation; see
+[memory limits](../memory-limits.md).
+
+## Application-owned UI/business boundary
+
+Use `fairing::bridge::{CommandSink, UpdateSource}` when a screen should submit
+application commands and receive updates through a transport you choose. The two
+traits are independent: a display-only screen can use just `UpdateSource`.
+
+```rust
+use fairing::bridge::{CommandSink, UpdateSource};
+
+fn submit<P: CommandSink<Vec<u8>>>(
+    port: &mut P,
+    bytes: Vec<u8>,
+) -> Result<(), (Vec<u8>, P::Error)> {
+    port.try_send(bytes)
+}
+
+fn receive<P: UpdateSource<Vec<u8>>>(
+    port: &mut P,
+) -> Result<Option<Vec<u8>>, P::Error> {
+    port.try_recv()
+}
+```
+
+`CommandSink::try_send` transfers ownership on acceptance and returns the original
+message together with the adapter's error on refusal. Acceptance does not mean
+business execution or remote acknowledgement. `UpdateSource::try_recv` returns one
+update or `Ok(None)` when none is available now; adapters express disconnection in
+their own error type. These traits support trait objects with specified message
+and error types.
+
+There are no `Clone`, `Send`, `Sync` or `'static` bounds. Owned buffers, shared
+handles and caller-scoped borrows can be used where the adapter supports them.
+Moving a buffer does not require copying its contents at this interface; a
+particular adapter may still allocate, copy or serialize it.
+
+Fairing supplies no default adapter here. Choose ownership-moving channels,
+lock-free queues, shared buffers or a TCP adapter to suit the application. UI-side
+methods must return promptly; the traits do not enforce lock freedom or a time
+bound. For network work, an application-managed outbox/receive buffer can keep the
+UI call independent of network progress. Bound the number of updates consumed in
+one pass and arrange wakeups in the host.
+
+A screen can capture its adapter or use `Cx::app_mut` to reach it. This does not
+replace `ShellHandle`'s internal command queue or restrict callbacks from reaching
+other captured resources. Thread creation, delivery ambiguity, retries, reconnects,
+UI replacement and continued business-worker execution belong to the application.

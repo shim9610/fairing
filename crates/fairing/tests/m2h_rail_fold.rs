@@ -679,7 +679,8 @@ fn a_region_that_keeps_its_drags_is_left_alone_by_the_page_swipe() -> fairing::R
                         );
                         fairing::drag::keep(ui.ctx(), region);
                         // The pad reads its own drag, the way a pan or a scrub would.
-                        let pad = ui.interact(region, ui.id().with("pad"), egui::Sense::drag());
+                        let pad =
+                            ui.interact(region, ui.scope_id().with("pad"), egui::Sense::drag());
                         p.dragged_x += pad.drag_delta().x;
                         p.region = region;
                         layout::note(ui, cx, "page");

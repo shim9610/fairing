@@ -14,7 +14,37 @@
 //! hands out `try_recv` and a non-blocking [`Inbox::drain`], and never lends the receiver out. There
 //! is no expression you can write that blocks.
 
-use std::sync::mpsc::{Sender, TryRecvError};
+#[cfg(fairing_loom)]
+use loom::sync::mpsc;
+use mpsc::Sender;
+#[cfg(not(fairing_loom))]
+use std::sync::mpsc;
+use std::sync::mpsc::TryRecvError;
+
+#[path = "inbox/bounded.rs"]
+mod bounded;
+#[path = "inbox/configured.rs"]
+mod configured;
+pub use bounded::{
+    BoundedInbox, BoundedSender, QueueCapacityError, QueueErrorKind, QueueStats, TryBuildSendError,
+    TrySendError, MAX_BOUNDED_CAPACITY,
+};
+pub use configured::{ConfiguredInbox, ConfiguredSender, InboxCapacity, InboxConfig};
+
+impl<T> Inbox<T> {
+    /// A preallocated bounded transport exposing no blocking send or receive.
+    ///
+    /// A full queue returns the original message; it never evicts another message.
+    /// Use the lazy sender to reserve capacity before constructing a payload.
+    ///
+    /// # Errors
+    /// Zero, excessive capacity, or a slot layout that cannot be represented.
+    pub fn bounded(
+        capacity: usize,
+    ) -> Result<(BoundedSender<T>, BoundedInbox<T>), QueueCapacityError> {
+        bounded::pair(capacity)
+    }
+}
 
 /// The receiving end of an mpsc channel that **cannot block**.
 ///
@@ -45,7 +75,7 @@ use std::sync::mpsc::{Sender, TryRecvError};
 /// let (_tx, inbox) = Inbox::<u8>::pair();
 /// let _ = inbox.recv();  // no such method — `try_recv` and `drain` are the whole of it
 /// ```
-#[derive(Debug)]
+#[cfg_attr(not(fairing_loom), derive(Debug))]
 pub struct Inbox<T> {
     // The one place in the workspace a bare `Receiver` is allowed to live. It is private and never
     // handed out, which is what makes the guarantee above hold.
@@ -53,14 +83,14 @@ pub struct Inbox<T> {
         clippy::disallowed_types,
         reason = "Inbox is the wrapper that makes the blocking half unreachable"
     )]
-    rx: std::sync::mpsc::Receiver<T>,
+    rx: mpsc::Receiver<T>,
 }
 
 impl<T> Inbox<T> {
     /// A channel: the ordinary [`Sender`], and the non-blocking receiving end.
     #[must_use]
     pub fn pair() -> (Sender<T>, Self) {
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = mpsc::channel();
         (tx, Self { rx })
     }
 
@@ -73,14 +103,22 @@ impl<T> Inbox<T> {
         self.rx.try_recv()
     }
 
-    /// Everything that has arrived **so far**, in order. Ends the moment the queue is empty rather
+    /// At most `limit` currently available items. Continued production cannot extend the batch.
+    pub fn drain_up_to(&self, limit: usize) -> impl Iterator<Item = T> + '_ {
+        self.drain().take(limit)
+    }
+
+    /// Available items, in order. This is not a snapshot and has no batch limit.
+    /// Prefer `drain_up_to` or a configured inbox at service boundaries.
+    ///
+    /// Ends the moment the queue is empty rather
     /// than waiting for the next message, which is what separates it from `Receiver::iter`.
     pub fn drain(&self) -> impl Iterator<Item = T> + '_ {
         std::iter::from_fn(|| self.try_recv().ok())
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(fairing_loom)))]
 mod tests {
     use super::Inbox;
 

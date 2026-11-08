@@ -1,0 +1,227 @@
+//! Application-owned permission values with live framework-owned admission.
+//!
+//! ```
+//! use fairing::access::{Gate, Permission, PermissionBound, Protected};
+//! #[derive(Clone, Copy, Debug, PartialEq)]
+//! enum AppPermission { ViewResults, Calibrate }
+//! impl Permission for AppPermission {
+//!     fn gate(self) -> Gate {
+//!         Gate::borrowed(match self {
+//!             Self::ViewResults => "results.view",
+//!             Self::Calibrate => "device.calibrate",
+//!         })
+//!     }
+//! }
+//! let element = Protected::new(AppPermission::ViewResults, fairing::screen("results", |ui, _| {
+//!     ui.label("Results");
+//! }));
+//! assert_eq!(element.required_permission(), AppPermission::ViewResults);
+//! assert_eq!(element.permission().gate().as_str(), "results.view");
+//! ```
+//!
+//! Untyped declarations cannot enter protected registration:
+//! ```compile_fail
+//! fn register(shell: &mut fairing::shell::ProtectedShell) {
+//!     shell.add(fairing::action("unguarded", |_| {}));
+//! }
+//! ```
+//! Missing permission mappings fail compilation:
+//! ```compile_fail
+//! #[derive(Clone, Copy)]
+//! struct Missing;
+//! let _ = fairing::access::Protected::new(Missing, ());
+//! ```
+//! There is no mutable legacy-shell escape:
+//! ```compile_fail
+//! fn escape(shell: &mut fairing::shell::ProtectedShell) -> &mut fairing::Shell {
+//!     &mut shell.inner
+//! }
+//! ```
+//! Bindings contain no writable cached authorization:
+//! ```compile_fail
+//! fn forge<P: fairing::access::Permission>(binding: &mut fairing::access::PermissionBinding<P>) {
+//!     binding.allowed = true;
+//! }
+//! ```
+
+use super::{Gate, Visibility};
+use crate::screen::{Cx, Decl, ScreenSource};
+
+#[cfg(test)]
+#[path = "protected_tests.rs"]
+mod tests;
+
+/// An application-owned permission value and its token-grant identifier.
+///
+/// Implement this for a small enum or value struct. Different values of the same
+/// type may name different grants. Role expansion belongs to the issuer. This
+/// metadata mapping must be deterministic and side-effect-free; it cannot grant
+/// authority. Values with the same identifier intentionally share a requirement.
+pub trait Permission: Copy + 'static {
+    /// Normalize this value to the issuer's grant catalog. Called when binding the
+    /// value, not as a user-defined authorization decision.
+    fn gate(self) -> Gate;
+}
+
+/// Required permission metadata for an application-defined protected element.
+///
+/// The method is mandatory and has no default allow. It must be a side-effect-free
+/// metadata lookup. Registered screens keep a fixed requirement until replacement;
+/// element trees additionally detect a changed value between prepare and paint.
+/// Authorization is always evaluated by Fairing against the current token.
+pub trait PermissionBound {
+    /// The application's enum or value struct, not a Fairing role vocabulary.
+    type Required: Permission;
+    /// Declare the permission required by this element.
+    fn required_permission(&self) -> Self::Required;
+}
+
+/// An immutable permission value and normalized identifier, without cached authority.
+pub struct PermissionBinding<P: Permission> {
+    required: P,
+    gate: Gate,
+}
+
+impl<P: Permission> PermissionBinding<P> {
+    /// Bind metadata. No permission is granted or authorization result retained.
+    pub fn new(required: P) -> Self {
+        Self {
+            gate: required.gate(),
+            required,
+        }
+    }
+
+    /// The application-owned permission value.
+    #[must_use]
+    pub fn required_permission(&self) -> P {
+        self.required
+    }
+
+    /// The immutable normalized grant identifier, without per-call allocation.
+    #[must_use]
+    pub fn gate(&self) -> &Gate {
+        &self.gate
+    }
+
+    pub(super) fn into_gate(self) -> Gate {
+        self.gate
+    }
+
+    /// Observe the calling context's current token and narrowing policy.
+    #[must_use]
+    pub fn allows(&self, cx: &Cx<'_>) -> bool {
+        cx.token_mode() && cx.allows_gate(&self.gate)
+    }
+
+    /// Invoke only after a fresh token-mode check. The callback keeps the ordinary
+    /// app/backend context. Icon/widget extension stores are callback-local; keep an
+    /// application-owned store if it must persist across calls. Arbitrary effects
+    /// inside an admitted callback remain trusted.
+    pub fn run<R>(&self, cx: &mut Cx<'_>, callback: impl FnOnce(&mut Cx<'_>) -> R) -> Option<R> {
+        super::invoke_gate(&self.gate, cx, callback)
+    }
+
+    /// Draw only after a fresh check; denied callbacks receive neither UI nor context.
+    pub fn render<R>(
+        &self,
+        ui: &mut egui::Ui,
+        cx: &mut Cx<'_>,
+        callback: impl FnOnce(&mut egui::Ui, &mut Cx<'_>) -> R,
+    ) -> Option<R> {
+        self.run(cx, |cx| callback(ui, cx))
+    }
+}
+
+protected_contract! { carrier
+/// An element and its mandatory permission binding. The body cannot be extracted.
+#[must_use]
+pub struct Protected<P: Permission, T> : T {
+    binding: PermissionBinding<P>,
+    body: T,
+}
+}
+
+impl<P: Permission, T> Protected<P, T> {
+    /// Declare a requirement. This constructor never grants or tests a permission.
+    pub fn new(required: P, body: T) -> Self {
+        Self {
+            binding: PermissionBinding::new(required),
+            body,
+        }
+    }
+
+    /// Inspect the immutable binding. It contains metadata, not a reusable permit.
+    #[must_use]
+    pub fn permission(&self) -> &PermissionBinding<P> {
+        &self.binding
+    }
+
+    /// Execute a callable element with a new check on every call.
+    pub fn run<R>(&mut self, cx: &mut Cx<'_>) -> Option<R>
+    where
+        T: FnMut(&mut Cx<'_>) -> R,
+    {
+        self.binding.run(cx, &mut self.body)
+    }
+
+    /// Render a callable element with a new check on every call.
+    pub fn render<R>(&mut self, ui: &mut egui::Ui, cx: &mut Cx<'_>) -> Option<R>
+    where
+        T: FnMut(&mut egui::Ui, &mut Cx<'_>) -> R,
+    {
+        self.binding.render(ui, cx, &mut self.body)
+    }
+}
+
+impl<P: Permission, T> PermissionBound for Protected<P, T> {
+    type Required = P;
+    fn required_permission(&self) -> P {
+        self.binding.required_permission()
+    }
+}
+
+/// A framework declaration that can be registered with a typed requirement.
+///
+/// Sealed to the built-in screen/action/status/nav/tile declaration types.
+pub trait ProtectedDeclaration: sealed::Declaration {}
+
+pub(crate) mod sealed {
+    use super::{Decl, Permission, PermissionBinding};
+    pub trait Declaration {
+        fn protect<P: Permission>(self, binding: PermissionBinding<P>) -> Decl;
+    }
+}
+
+impl<P: Permission, T: ProtectedDeclaration> Protected<P, T> {
+    pub(crate) fn into_decl(self) -> Decl {
+        sealed::Declaration::protect(self.body, self.binding)
+    }
+}
+
+protected_contract! { declaration crate::screen::ScreenDecl {
+    fn protect<P: Permission>(mut self, binding: PermissionBinding<P>) -> Decl {
+        self.gate = Some(binding.gate().clone());
+        self.visibility = Visibility::Hidden;
+        self.source = match self.source {
+            ScreenSource::Resident(body) => {
+                ScreenSource::Resident(body.map(|body| body.required(binding)))
+            }
+            ScreenSource::Factory(factory) => ScreenSource::Factory(factory.required(binding)),
+        };
+        Decl::Screen(self)
+    }
+}
+}
+
+protected_contract!(declaration crate::screen::ActionDecl => Action, run, visibility);
+
+protected_contract!(declaration crate::chrome::StatusItemDecl => StatusItem, ui);
+
+protected_contract!(declaration crate::chrome::NavItemDecl => NavItem, ui);
+
+#[cfg(feature = "overlay")]
+protected_contract! { declaration crate::overlay::TileDecl {
+    fn protect<P: Permission>(self, binding: PermissionBinding<P>) -> Decl {
+        Decl::Tile(self.protect_panel(binding))
+    }
+}}
