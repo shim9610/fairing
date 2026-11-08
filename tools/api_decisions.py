@@ -106,7 +106,19 @@ def replacement(key):
     member = path.rsplit('::', 1)[-1]
     if '::Shell::' in path and member in MUTABLE_LOANS:
         return MUTABLE_LOANS[member]
-    if '::Registry' in path or path.endswith('::Shell::registry') or path.endswith('::ProtectedShell::shell'):
+    if '::Registry' in path:
+        if member in {'add', 'remove'}:
+            return 'Shell::' + member + '; protected registration uses ProtectedShell with application permission values'
+        if member == 'screens':
+            return 'ShellView::screen_ids; borrowing the stored declaration collection is removed'
+        if member == 'screen':
+            return 'ShellView::has_screen/screen_is_resident; borrowing a stored ScreenDecl is removed'
+        if member == 'has_screen':
+            return 'ShellView::has_screen'
+        if member == 'new' or kind in {'struct', 'use'}:
+            return 'Shell::builder owns registration; standalone Registry construction is intentionally removed'
+        return 'No raw-store equivalent is retained; keep declared IDs in the host and use supported ShellView queries instead of borrowing implementation collections/kinds'
+    if path.endswith('::Shell::registry') or path.endswith('::ProtectedShell::shell'):
         return 'Shell::observe()/ProtectedShell::observe(): ShellView queries; no registry or shell loan'
     if '::SessionGrant::' in path and kind == 'struct_field':
         return 'SessionGrant::new/base/temporary/inactive and gate/is_base/temporary_until accessors'
@@ -123,6 +135,13 @@ def change_details(key, decision):
                 'reason': 'Keep the grant representation private so adding internal state does not require changing downstream literals; construction and later observation use explicit methods.',
                 'replacement': replacement(key),
                 'compatibility': 'External grant literals and field accesses require the documented constructor/getter migration.',
+            }
+        if '::Registry' in path:
+            return {
+                'current_usage': 'Register through the host and observe supported queries; public Registry construction and collection/declaration loans are removed.',
+                'reason': 'Registry is an implementation store. Keeping its standalone constructor and collection APIs public would preserve coupling even after removing Shell::registry.',
+                'replacement': replacement(key),
+                'compatibility': 'Source migration is required. Registration operations have host replacements; raw collection/kind/definition inspection has no equivalent retained store API.',
             }
         return {
             'current_usage': 'The previous component/store loan is removed; use the named replacement or observer queries.',
