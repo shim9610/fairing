@@ -4,8 +4,12 @@
 [egui](https://github.com/emilk/egui).**
 
 The element layer behind the [fairing](https://github.com/shim9610/fairing) touchscreen
-shell, usable on its own in any egui app. Every control is sized for a finger on a
-real panel: sizes resolve through millimetres and the viewing distance, not pixels.
+shell, also usable without the shell in an egui application. Fairing supplies widget
+appearance, theme tokens and size conversion; egui supplies
+[layout and interaction](https://docs.rs/egui/0.37.0/egui/struct.Ui.html) and
+[painting](https://docs.rs/egui/0.37.0/egui/struct.Painter.html). Millimetre, finger-size
+and viewing-distance parameters resolve into egui points. Physical size depends on
+panel metadata and host scale, and needs checking on the target display.
 
 ## What is in it
 

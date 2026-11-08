@@ -5,9 +5,8 @@
 The status bar, the pull-down shade with quick-settings tiles and notifications, a
 desktop, a screen stack with transitions, a navigation bar, an on-screen keyboard
 (numeric, QWERTY and two-set Hangul with composition), device settings screens and
-access gates: the parts every kiosk, panel and bench instrument rebuilds, in one
-process. Your application owns business state, credential verification and device
-backends. Register screens as egui closures or custom `Screen` implementations;
+access gates run in the host process. Your application owns business state,
+credential verification and device backends. Register screens as egui closures or custom `Screen` implementations;
 Fairing coordinates their layout, lifecycle and dispatch in its runner or your host.
 
 Development toward 0.1.0; the crates have not been published yet. Use a reviewed
@@ -66,23 +65,30 @@ the shell and lends it through `Cx::app` / `app_mut`; use `logic_with` and
 `frame_with` with the same state in a custom host. `run_shell` is the counterpart
 without application state, and the `_with` runner variants deliver shell events.
 
-## What sets it apart
+## Integration model
 
-- **Touch targets are physical.** Sizes resolve through panel millimetres, so the same
-  code lands correctly on a 4-inch panel and a 27-inch one.
-- **One gesture engine.** Edge swipes, flings, long presses and the shade arbitrate in
-  one place, so nested scrolling and hand-off behave.
-- **Non-waiting queue APIs.** UI code does not wait for messages or queue capacity.
-  The audit rejects application-level locks and blocking calls in product UI sources;
-  standard channel internals may synchronize.
-- **Customizable UI.** Use configuration and declarations; ordinary shells also
-  accept global painters. Protected custom UI uses typed elements.
-- **Your hardware, your backends.** The shell reaches clock, power, Wi-Fi, Bluetooth,
-  display, audio, network and device info through traits, and anything else through a
-  custom backend it polls each frame. It ships no system code: you plug in what your
-  board speaks.
-- **Headless tests.** `fairing::testing::Harness` runs frames with no window and no
-  GPU, and reports where things were drawn, so tests tap and drag at real positions.
+- **egui provides UI primitives.** Layout, interaction responses, widget focus,
+  clipping and painting use [egui 0.37](https://docs.rs/egui/0.37.0/egui/struct.Ui.html).
+  Fairing adds screen registration and lifecycle, shell navigation and chrome,
+  theme conventions and permission admission. The optional window runner uses
+  [eframe](https://docs.rs/eframe/0.37.0/eframe/).
+- **Touch sizing uses panel metadata.** Fairing converts millimetre and finger-size
+  parameters into egui points. Physical accuracy depends on the supplied panel
+  dimensions and host scale; verify sizing on the target display.
+- **Gesture coordination builds on egui input.** Fairing coordinates shell edge
+  gestures, shade and navigation with screen interaction. Pointer state and
+  scrolling primitives come from [egui input](https://docs.rs/egui/0.37.0/egui/struct.InputState.html)
+  and [ScrollArea](https://docs.rs/egui/0.37.0/egui/containers/scroll_area/struct.ScrollArea.html).
+- **Command admission is non-waiting.** Shell queue APIs report admission or refusal
+  without waiting for capacity. The source audit rejects application-level locks
+  and blocking calls in product UI sources; standard channel internals may
+  synchronize, and application callbacks and backends must manage their own work.
+- **Backends are supplied by the application.** Clock and device traits connect
+  the shell to application adapters. Ordinary shells accept untyped drawing hooks;
+  protected custom UI uses typed elements.
+- **Headless tests drive egui.** `fairing::testing::Harness` supplies virtual input
+  and time to an `egui::Context`, without a window or GPU. Recorded widget positions
+  support tap and drag tests; these tests do not validate physical presentation.
 
 ## Sessions and protected UI
 

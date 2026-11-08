@@ -1,5 +1,9 @@
 # 01. Getting started
 
+The optional runner adapts [eframe `App`](https://docs.rs/eframe/0.37.0/eframe/trait.App.html)
+to Fairing's shell update methods. egui/eframe provide the UI context, window and
+rendering integration; Fairing supplies shell state and callback coordination.
+
 From installation to your first screen. Follow this page to the end and you have a
 desktop with two icons and a shell that moves between them.
 
@@ -286,10 +290,10 @@ wins over it. With neither, the shell assumes about 6.3 pixels per millimetre an
 a touch target is then 57 px on every panel — oversized on a coarse one, under a fingertip on a
 dense one.
 
-The finger is a bare one by default, and the text is sized for a panel read at hand-held
-distance — a phone's density, where a row is one finger tall. A device worked with gloves or a
-stylus says so, and every touch target, row and bar grows with it; a panel read standing up
-moves the text on its own:
+The defaults use a 9 mm finger diameter and 360 mm viewing distance. Controls
+that use these metrics scale with the policy; fixed-size or custom content may
+need separate adjustment. For example, select a larger target-size policy and
+increase text size for a greater viewing distance:
 
 ```rust
 # fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {

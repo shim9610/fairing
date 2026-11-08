@@ -46,16 +46,19 @@ tables in [03 Chrome](03-chrome.md) first. To reproduce it headless, use the
 harness from [01 §6](01-getting-started.md#6-testing-your-ui-headless) and check
 whether `shell.status_bar().item_rect("status.xxx")` is `None`.
 
-## 3. Confirming 0 fps when idle
+## 3. Checking idle repaint behavior
 
-With `[shell] repaint = "reactive"` (the default), the shell never calls
-`ctx.request_repaint()` when nothing is animating and no backend needs waking
-(`Shell::schedule_repaint`). Three ways to check.
+With `[shell] repaint = "reactive"` (the default), `Shell::schedule_repaint`
+requests immediate updates for active work and delayed updates for known wakes.
+These use egui's [`request_repaint`](https://docs.rs/egui/0.37.0/egui/struct.Context.html#method.request_repaint)
+and [`request_repaint_after`](https://docs.rs/egui/0.37.0/egui/struct.Context.html#method.request_repaint_after).
+egui input, application code and the host can also trigger updates. The OS and
+presentation host determine the delivered frame cadence. Three ways to investigate:
 
 1. **Look at the device.** Leave it alone for a few seconds and watch the process
-   in `top` or `htop`. CPU should fall to roughly zero. If it keeps a core busy,
-   something is asking for a repaint every frame.
-2. **Compare.** Switch to `[shell] repaint = "continuous"` for a forced 60 fps and
+   in `top` or `htop`. CPU use should decrease when application workers are also idle. If it stays high,
+   inspect repaint requests as well as background work.
+2. **Compare.** Switch to `[shell] repaint = "continuous"` for continuous repaint requests and
    compare CPU and repaint requests. Similar CPU use alone does not distinguish
    continuous repaint from other background work.
 3. **Read the log.** If a backend keeps returning a `next_wake()` in the past —

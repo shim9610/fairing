@@ -1,5 +1,10 @@
 # 09. Product branding — giving the shell your machine's character
 
+Fonts and images use egui's [font configuration](https://docs.rs/egui/0.37.0/egui/struct.FontDefinitions.html)
+and [texture API](https://docs.rs/egui/0.37.0/egui/struct.Context.html#method.load_texture).
+Fairing adds installation helpers and theme/branding hooks; image decoding and
+asset selection belong to the application.
+
 This page collects, in one place, what a manufacturer touches and what they have to prepare in
 order to make a product look like their own. The optional Abyss styling (the manta and
 the abyss) can be changed — override one colour, or replace the background, the mark and the icons
@@ -853,23 +858,40 @@ When the branding is done, check these four. **Looking at it is not enough.**
 
 ### 9.1 The contrast floor
 
+Check opaque palette colour pairs using the
+[WCAG relative-luminance formula](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html).
+This example includes the helper rather than calling a public Fairing API:
+
 ```rust
-# fn main() {}
-# fn my_dark_palette() -> fairing::theme::Palette { fairing::theme::Palette::dark() }
-# fn contrast(_a: egui::Color32, _b: egui::Color32) -> f32 { 21.0 }
-#[test]
-fn my_palette_is_legible() {
-    let p = my_dark_palette();
-    // WCAG relative luminance. on_surface/surface >= 7.0, muted/surface >= 4.5,
-    // on_primary/primary >= 4.5, primary/background >= 3.0
-    assert!(contrast(p.on_surface, p.surface) >= 7.0);
-    assert!(contrast(p.on_primary, p.primary) >= 4.5);
+fn contrast(a: egui::Color32, b: egui::Color32) -> f32 {
+    fn luminance(c: egui::Color32) -> f32 {
+        fn channel(v: u8) -> f32 {
+            let v = f32::from(v) / 255.0;
+            if v <= 0.040_45 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        }
+        0.2126f32.mul_add(
+            channel(c.r()),
+            0.7152f32.mul_add(channel(c.g()), 0.0722 * channel(c.b())),
+        )
+    }
+    let (x, y) = (luminance(a), luminance(b));
+    let (hi, lo) = if x > y { (x, y) } else { (y, x) };
+    (hi + 0.05) / (lo + 0.05)
 }
+
+// Replace this with the palette used by your product.
+let p = fairing::theme::Palette::dark();
+assert!(contrast(p.on_surface, p.surface) >= 7.0);
+assert!(contrast(p.on_primary, p.primary) >= 4.5);
 ```
 
-> `contrast` and `luminance` are **not public API** — they live in `#[cfg(test)] mod tests` in
-> `theme/mod.rs`. To use the code above, **copy** those two functions into your own tests (they
-> are the WCAG 2.x relative luminance formula, under ten lines).
+The crate uses the same calculation in its test-only `theme::contrast` helper.
+These pair checks do not assess font size, composited transparency, background
+images or overall accessibility conformance.
 
 The crate's `every_preset_meets_the_contrast_floor` (`theme/mod.rs`) is the worked example.
 Check the actual `on_primary`/`primary` pair against the stated contrast floor.

@@ -60,6 +60,12 @@ elements for separately mediated measurement and painting. Permission metadata
 is trusted classification; the [application checker](permission-metadata-check.md)
 checks its supported source patterns separately from runtime admission.
 
+Once a body is admitted, layout, interaction responses and shape submission use
+[egui `Ui`](https://docs.rs/egui/0.37.0/egui/struct.Ui.html) and
+[`Painter`](https://docs.rs/egui/0.37.0/egui/struct.Painter.html).
+Fairing's admission checks govern entry to managed bodies; egui clipping is a
+drawing mechanism, not an additional permission boundary.
+
 ## 3. Authentication and session publication
 
 After verifying credentials, the issuer creates a `(SessionController,

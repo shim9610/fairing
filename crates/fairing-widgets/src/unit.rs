@@ -1,15 +1,16 @@
 //! Length units and screen scale.
 //!
-//! This crate has **no fixed list of target devices**. Arbitrary specialised
-//! touchscreen machines are the target, so there is no such thing as "a value tuned to the
-//! representative device". Lengths are therefore not written as one logical pixel but as **a sum
-//! of terms that mean different things** — the same 8 as "8 relative to the field of view", "8
-//! physical mm" and "one finger" all have to move differently when the panel changes.
+//! Lengths can combine logical units, physical millimetres, finger-size parameters
+//! and container-relative fractions. Their resolution depends on the supplied
+//! scale and panel metadata.
 //!
 //! # The anchor
 //!
-//! `1 du = 1 egui point = 1/160 in`. That value is fixed — changing it would make every `du` value
-//! in the design and `theme`'s promoted-constant tests meaningless in one go.
+//! Fairing uses the design anchor `1 du = 1 egui point` and assigns it a nominal
+//! physical length of `1/160 in` for unit conversion. This is a Fairing convention,
+//! not a physical-size guarantee from egui. Actual display size depends on supplied
+//! panel dimensions and the host's point-to-pixel scale; see
+//! [egui's coordinate system](https://docs.rs/egui/0.37.0/egui/#coordinate-system).
 //!
 //! # Resolution
 //!
@@ -54,35 +55,24 @@ pub const MM_PER_DU: f32 = 0.158_750;
 /// How many du are in 1 mm (the anchor density). `1 / MM_PER_DU ≈ 6.299213`.
 pub const DU_PER_MM: f32 = 6.299_213;
 
-/// The contact diameter of a bare finger (mm). The middle of the 8–10 mm found in contact-area studies.
+/// The default finger-size parameter (mm), used to resolve touch-target dimensions.
 pub const FINGER_BARE_MM: f32 = 9.0;
 
-/// The finger diameter allowing for gloves or a stylus (mm).
+/// The larger finger-size parameter (mm), selected by the gloved scale policy.
 pub const FINGER_GLOVED_MM: f32 = 13.0;
 
-/// **How far the operator stands from the glass** (mm), when nothing says otherwise.
+/// Default viewing-distance parameter (mm).
 ///
-/// The hand and the eye are two different facts about a panel and they need two different knobs.
-/// Until this one existed there was only [`ScalePolicy::finger_mm`], so the type scale had to hang
-/// off the *finger* — and a screen read standing at a metre had no way to say so except to rewrite
-/// `MetricsSpec::type_scale` in millimetres, which is rung 2 of the ladder and silently unhooks the
-/// text from everything sized beside it. Measured on the shipped kiosk example, that is exactly
-/// what happened: the text grew 2.30x and every control stayed at one finger.
-///
-/// 360 mm is a hand-held panel or one at a desk — where a phone or a tablet is read. It puts the
-/// body em at 3.13 mm, which is what One UI draws on a Galaxy Fold's main screen, so a shell that
-/// declares nothing comes out at the density people already read every day. A panel read from
-/// further away raises this, and its text grows in proportion.
+/// Text sizing uses this independently of the finger-size parameter. A larger
+/// configured viewing distance increases text size; integrators should check
+/// readability at the intended operating distance.
 pub const VIEWING_DEFAULT_MM: f32 = 360.0;
 
-/// **The body em as a fraction of the viewing distance** — the one number that turns "how far away
-/// is the reader" into "how big is the text".
+/// Body-em size as a fraction of the configured viewing distance.
 ///
-/// It is not a taste. It is the value it is because of what the em subtends: an em of 0.008684 of
-/// the distance is 29.85 arcmin, and a cap is 0.70 of an em, so the **capital subtends 20.9
-/// arcmin** — ISO 9241-303's 20 arcmin floor for comfortable reading, one tenth of a percent above
-/// it. At [`VIEWING_DEFAULT_MM`] that is a 3.126 mm em (19.69 du). Doubling the distance doubles
-/// the text and the angle is unchanged, which is the whole point.
+/// At [`VIEWING_DEFAULT_MM`] this produces a 3.126 mm em. This design parameter
+/// controls the size calculation; it does not establish ergonomic conformance
+/// or account for the actual font's cap height and the operator's visual acuity.
 pub const BODY_PER_VIEWING: f32 = 0.008_684;
 
 /// Fold a non-finite value onto a fallback. `Dim::px` goes to infinity when `pixels_per_point`

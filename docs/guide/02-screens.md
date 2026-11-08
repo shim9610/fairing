@@ -656,13 +656,14 @@ fn main() -> fairing::Result<()> {
 
 ## 8. Building the inside of a screen with `layout`
 
-Everything so far was about **declaring** a screen. The **inside** of one is built with
-`fairing::layout` — the crate's own settings screens are, and so are `examples/demo.rs`
-and `examples/kiosk.rs`.
+Screen bodies use [egui `Ui`](https://docs.rs/egui/0.37.0/egui/struct.Ui.html).
+Use egui directly or use `fairing::layout` for the theme and spacing conventions
+used by the built-in settings screens and `examples/demo.rs` / `examples/kiosk.rs`.
 
-Stacking `ui.heading` · `ui.button` · `egui::ScrollArea` by hand does work. It also means
-re-deciding touch targets, card backgrounds, role colours, scrolling and side
-margins on every screen — and the one screen that misses a decision just quietly looks different.
+The helpers build on egui layout and
+[`ScrollArea`](https://docs.rs/egui/0.37.0/egui/containers/scroll_area/struct.ScrollArea.html).
+Fairing adds shared margins, touch-size parameters, card styling and theme roles;
+scrolling itself is provided by egui.
 
 ### 8.1 Three layers
 
@@ -679,7 +680,7 @@ the row helpers are usually all you need.
 
 ### 8.2 One page
 
-`page` gives you vertical scrolling and side margins in one call — no per-screen `ScrollArea`.
+`page` wraps an egui `ScrollArea` with Fairing side margins and page styling.
 
 ```rust
 # fn add(shell: &mut fairing::Shell) {

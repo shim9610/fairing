@@ -1,5 +1,10 @@
 # 04. Customization
 
+Drawing hooks use [egui `Painter`](https://docs.rs/egui/0.37.0/egui/struct.Painter.html).
+Fairing supplies theme values, widget look data and callback regions; egui supplies
+shape submission and [clipping](https://docs.rs/egui/0.37.0/egui/struct.Ui.html#method.set_clip_rect).
+The visual result also depends on the host renderer and installed fonts.
+
 ## 0. Principle
 
 Drawing and layout implementations are Rust extension points selected by the

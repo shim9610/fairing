@@ -18,8 +18,12 @@ Fairing provides the UI around your device application: status and navigation ba
 a desktop, screen stacks, quick settings, notifications, an on-screen keyboard and
 device settings. Your application owns business state, credential verification and
 device backends. Fairing invokes registered screens and backend adapters through
-its runners or your egui host. Touch sizes resolve from physical panel dimensions;
-screens, chrome and widgets share theme and motion tokens.
+its runners or your egui host. Fairing adds shell coordination, touch-size conversion,
+and shared theme and motion tokens. egui supplies the underlying
+[UI layout and interaction](https://docs.rs/egui/0.37.0/egui/struct.Ui.html) and
+[painting primitives](https://docs.rs/egui/0.37.0/egui/struct.Painter.html); the optional
+runner uses [eframe](https://docs.rs/eframe/0.37.0/eframe/). See the
+[responsibility map](docs/architecture.md#egui-and-eframe-responsibilities) for the boundary.
 
 **Development toward 0.1.0; the crates are not published yet.** This documentation
 describes the current checkout. Start with the [integrator guide](docs/guide/README.md),
@@ -40,7 +44,7 @@ or read the [migration guide](docs/guide/10-migration.md) when updating an exist
   </tr>
   <tr>
     <td>The same shade as a curtain: tiles, notifications, a footer (<code>demo</code>)</td>
-    <td>A bench console built from <code>layout</code> and <code>widgets</code> calls only (<code>console</code>)</td>
+    <td>A bench console built with <code>layout</code> and <code>widgets</code> (<code>console</code>)</td>
   </tr>
   <tr>
     <td><img src="docs/images/hangul-keyboard.png" alt="The on-screen keyboard's two-set Hangul layout composing a syllable in a text field"></td>
@@ -128,7 +132,8 @@ state to admitted callbacks through `Cx::app::<T>()` / `Cx::app_mut::<T>()`.
 Use `run_shell` when no application state is needed; `run_app_with` and
 `run_shell_with` deliver `ShellEvent`s to the host.
 
-Set `physical_mm` to the panel's visible dimensions for calibrated touch targets.
+Set `physical_mm` to the panel's visible dimensions. Physical touch sizes depend on
+that metadata and the host's pixel scale; check them on the target display.
 Load your product fonts with `ShellBuilder::fonts` or `font`; egui's fallback faces
 do not contain Hangul. Without the runner, connect `logic`/`logic_with` and
 `frame`/`frame_with` in your own host, then drain `poll_events` after either update.

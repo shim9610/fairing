@@ -20,6 +20,24 @@ they are not separate operating-system processes. `runner` is an optional host
 adapter inside `fairing`, not a required layer below the widgets. An existing egui
 application can host either shell mode directly.
 
+### egui and eframe responsibilities
+
+The dependency APIs cited here are version 0.37.0. Fairing uses these mechanisms;
+its shell abstractions do not replace them.
+
+| Upstream mechanism | Fairing integration | Upstream reference |
+|---|---|---|
+| Immediate-mode layout, rectangle allocation and widget interaction | Screen containers, chrome regions, themed controls and shell gesture coordination | [egui `Ui`](https://docs.rs/egui/0.37.0/egui/struct.Ui.html), [`Response`](https://docs.rs/egui/0.37.0/egui/response/struct.Response.html) |
+| Pointer/keyboard state and scroll areas | Shell gestures, keyboard routing and themed page helpers | [`InputState`](https://docs.rs/egui/0.37.0/egui/struct.InputState.html), [`ScrollArea`](https://docs.rs/egui/0.37.0/egui/containers/scroll_area/struct.ScrollArea.html) |
+| Per-widget focus, clipping and shape submission | Fairing chooses shell pane focus, callback regions and admission; admitted UI uses egui | [`Response::request_focus`](https://docs.rs/egui/0.37.0/egui/response/struct.Response.html#method.request_focus), [`Ui::set_clip_rect`](https://docs.rs/egui/0.37.0/egui/struct.Ui.html#method.set_clip_rect), [`Painter`](https://docs.rs/egui/0.37.0/egui/struct.Painter.html) |
+| Point-to-pixel scale and texture allocation | Fairing converts its physical-size parameters and installs product fonts/images | [`Context::set_pixels_per_point`](https://docs.rs/egui/0.37.0/egui/struct.Context.html#method.set_pixels_per_point), [`Context::load_texture`](https://docs.rs/egui/0.37.0/egui/struct.Context.html#method.load_texture) |
+| Repaint requests | Fairing requests updates for pending work and animation; the host schedules execution | [`Context::request_repaint`](https://docs.rs/egui/0.37.0/egui/struct.Context.html#method.request_repaint), [`request_repaint_after`](https://docs.rs/egui/0.37.0/egui/struct.Context.html#method.request_repaint_after) |
+| Window/event-loop integration and renderer | The optional Fairing runner connects shell logic and UI to eframe; custom hosts provide their own integration | [eframe `App`](https://docs.rs/eframe/0.37.0/eframe/trait.App.html) |
+
+Physical-size conversion uses the supplied panel dimensions and host scale. It is
+not automatic display calibration. Presentation timing, hardware input quality
+and device usability require validation in the integrating product.
+
 ### State and implementation ownership
 
 | Object | Concrete ownership and access |
@@ -291,34 +309,40 @@ SVGs and their editable DOT sources are kept together in
 [`diagrams/`](diagrams/README.md); regenerate them with
 `python3 tools/render_architecture.py` from the repository root.
 
-## 10. Principles
+## 10. Design constraints
 
-These are the rules the design keeps coming back to.
-
-1. **Any touchscreen device is a target.** There is no list of target devices, so no default
-   assumes one.
-2. **Every way of touching is a target:** capacitive and resistive panels, bare fingers and
-   gloves. Sizes are set in millimetres. The default is a bare 9 mm finger and text read at
-   hand-held distance, the density of a phone or a tablet; a device worked with gloves says so,
-   and every target grows with it.
-3. **Backends belong to the integrator.** The crate defines the traits and ships no system code.
+1. **Device integration is explicit.** Applications supply panel dimensions,
+   scale policy and backend adapters. Defaults do not establish compatibility
+   with every panel, input technology or glove configuration.
+2. **Touch and text sizing are configurable.** Millimetre, finger-size and
+   viewing-distance parameters are converted to egui points. The default finger
+   diameter is 9 mm; integrators must check target sizes and readability on-device.
+3. **Backends belong to the integrator.** The crate defines the device traits;
+   platform I/O is implemented by application adapters.
 4. **Customization uses configuration and declarations.** Ordinary hosts can install
    untyped drawing hooks; protected custom UI uses permission-bound elements.
-5. **Non-waiting UI APIs.** Threads exchange messages; UI code does not wait for messages or capacity.
+5. **Queue admission does not wait for capacity.** Calls report admission or
+   refusal. This does not make application callbacks, backend code or standard
+   channel internals wait-free.
 6. **Common mechanisms own coordination.** Backend and UI traits expose integration
    points; protected contracts connect managed payloads to shared admission.
 7. **Review the public surface.** Reachability lints reject unreachable public items;
    compatibility also depends on public fields, exhaustive enums and exposed concrete
    types. See [API evolution](api-contracts.md#public-surface-and-evolution).
-8. **Defaults are chosen with care and stay adjustable** through the API.
-9. **The crate writes no files of its own.**
+8. **Configuration controls the defaults.** Theme, metrics and layout settings
+   provide the documented adjustment points.
+9. **Persistence belongs to the host.** Settings snapshots can be encoded by the
+   library; the application chooses storage and performs file writes.
 10. **Executable documentation examples are checked.** Ignored integration outlines
     and platform-dependent examples need their stated external setup; compilation
     alone does not establish their visible behavior.
 
-## 11. The control rules
+## 11. Control implementation conventions
 
-Every built-in control keeps these. The widget sources cite them by number.
+Widget sources cite these design rules by number. They describe the intended
+built-in control behavior; custom painters and product screens need their own
+review. Layout, interaction responses and clipping use the egui mechanisms above.
+The contrast rule concerns control boundaries, not overall WCAG conformance.
 
 | Rule | What it says |
 |---|---|
@@ -326,6 +350,6 @@ Every built-in control keeps these. The widget sources cite them by number.
 | 1.3 | Inside a row, the row owns the hit rect. A control drawn into it senses nothing of its own |
 | 1.4 | A disabled control lets the tap through to whatever is beneath it |
 | 1.5 | A press only ever grows the painted shape. The allocated rect never moves |
-| 3.1 | A control's identifying boundary meets the 3.0 contrast floor of WCAG 1.4.11. `Outline` is a divider, never a control's edge |
+| 3.1 | Use a contrast ratio of at least 3:1 for identifying control boundaries, following [WCAG 1.4.11](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html). `Outline` is a divider, never a control's edge |
 | 4.1 | The pill shape is kept for movers that ride a track, so it stays the cue that something travels |
 | 7.1 | Colour alone is never the channel. A state also shows in shape or fill |
