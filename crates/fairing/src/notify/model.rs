@@ -350,9 +350,7 @@ mod tests {
         assert_eq!(note("a").icon, None);
     }
 
-    /// The shade and the toast read severity off one table. They disagreed: the shade painted an
-    /// `Info` row in the accent — the loudest colour on screen on the least urgent row — while the
-    /// toast kept it at body colour. `Level::role` is now the only table.
+    /// Check the shared severity-to-colour mapping used by shade and toast views.
     #[test]
     fn info_carries_no_accent() {
         use crate::theme::ColorRole;

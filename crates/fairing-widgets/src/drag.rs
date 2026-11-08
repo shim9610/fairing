@@ -8,13 +8,8 @@
 //! under a finger — a button, a tile, a page scrolling under it — has no meaning of its own for
 //! a sideways swipe to take, and the gesture goes ahead.
 //!
-//! The first build asked egui instead: which widget held the drag, and how tall it was. A dragged
-//! widget no taller than two rows was taken for a control and left its drag; a taller one for a
-//! scroll area, and swiped over. The guess was wrong both ways. A button senses drags too — its
-//! long-press ring has to know the finger moved — and is one row tall, so a swipe that began on
-//! a button never folded the rail; a wheel is three rows tall and would have been folded over
-//! mid-turn. Only the control knows whether the finger on it means something, so the control
-//! says.
+//! Controls explicitly claim active drags rather than classifying them from
+//! widget geometry. A shell gesture checks that claim before taking the drag.
 //!
 //! The claim is a pass number in egui's temporary data. It counts for this pass and the next:
 //! a gesture read before the page draws sees the page's claim a frame late, and a claim older

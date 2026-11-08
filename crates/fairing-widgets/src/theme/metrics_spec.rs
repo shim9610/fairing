@@ -1,30 +1,9 @@
-//! The dimension spec in physical units.
+//! Configurable size specifications resolved into [`Metrics`].
 //!
-//! [`Metrics`](super::Metrics) keeps its `f32` fields — none of the 71 places inside the crate
-//! that read `metrics.*` change, and no branch appears in the paint loop. What changes is **how
-//! those values are obtained**: today they were logical-pixel constants, and now they are
-//! [`Span`]s resolved with the frame's [`Scale`].
-//!
-//! # Why only these fields
-//!
-//! Dimensions split three ways.
-//!
-//! - **Those that must scale with the finger** — touch targets, bar thickness, icon cells, the
-//!   dock. They use `Dim::finger`. With gloves on, they have to grow.
-//! - **Those that must keep a physical size** — status bar text and icons, label text. They use
-//!   `Dim::mm`. Unrelated to the finger, but they are only legible if they are the same physical
-//!   size at 7 inches and at 24.
-//! - **Those relative to the field of view** — corner radii, padding, stroke widths. They stay
-//!   `du`. The density correction (`ppp`) is enough, and pinning them physically makes them look
-//!   fussy on a large screen.
-//!
-//! The third group keeps the values from [`Metrics::default`](super::Metrics::default).
-//!
-//! # Why there are floors
-//!
-//! Every `Span` has a `du` floor. It stops the physical terms going absurdly small on a panel
-//! whose density is unknown (`ScaleConfidence::Assumed`), and at the same time holds them
-//! **close to today's render**.
+//! [`Span`] values combine text-relative, finger-relative, physical, logical and
+//! pixel-based dimensions. Resolution uses the frame's [`Scale`]. du floors retain
+//! fallback sizes when physical density is unknown. Resolution and validation check
+//! numeric constraints; target sizes and readability require on-device review.
 
 use super::Metrics;
 use crate::unit::{Dim, Eye, Free, Hand, Rigid, Scale, Span};

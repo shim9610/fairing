@@ -1,47 +1,10 @@
-//! `SegmentedControl` — two to four mutually exclusive options in one track, the chosen one
-//! carried by a filled face that **travels** to it (control vocabulary).
+//! `SegmentedControl` selects one of a small set of alternatives.
 //!
-//! # Why the face travels instead of crossfading
-//!
-//! A segmented control's selection *is* a position among known ends, exactly like the switch
-//! knob's, so it takes the switch's tween (`motion.switch`, 140 ms `CubicOut`) and the same
-//! mechanism. A crossfade was the alternative and it loses the one thing the shape is for: with
-//! two faces dissolving into each other there is no moment at which the eye is told *which way*
-//! the selection went, and on a panel in bad light a dissolve at 140 ms is simply a flicker. A
-//! face that slides leaves a direction behind, which is also what makes the change legible with
-//! hue removed.
-//!
-//! The travelling face is a rounded rect at `control_radius − mark_radius`, never a pill: Rule 4.1
-//! reserves the pill for movers that ride a track, and spending it here would cost the one shape
-//! cue that tells a slider from everything else.
-//!
-//! # Why it stacks into rows rather than shrinking or eliding its labels
-//!
-//! When the track cannot hold the options the control **becomes a vertical stack of
-//! [`ListRow`] choice rows**, the same shape `layout::choice_rows` builds, with a trailing `check`
-//! on the selected one. The two alternatives were both rejected:
-//!
-//! * *Shrink the text.* The type scale tracks the viewing distance and the contrast gate is
-//!   argued from the size the label actually resolves to. A control that quietly drops below
-//!   `type_scale.button` would be the one place in the crate where text size depends on the width
-//!   of the container, so the same label would be legible on one panel and not on another with no
-//!   token to explain it.
-//! * *Elide the labels.* A truncated row title is merely terse; a truncated *segment* is broken,
-//!   because two neighbouring options can elide to the same string and the control then shows two
-//!   identical choices. The whole point of putting alternatives side by side is that they are
-//!   compared, and you cannot compare `Automa…` with `Automa…`.
-//!
-//! Stacking is also not a new layout mode — it is the shape this choice already has elsewhere in
-//! the shell, so a screen that outgrows its strip lands on something the user has already seen.
-//!
-//! # Why a cell's minimum width comes from the touch target and not from the text
-//!
-//! Every segment is independently interactive, so by Rule 1.1 every segment — not just the strip
-//! — is a target, and `metrics.touch_target` is the floor on its width however short its label is.
-//! Sizing cells to their text is what produces a two-character segment that a gloved hand cannot
-//! hit between two long ones; it also makes the control's geometry depend on the caller's wording,
-//! which is not a thing a token can govern. Cells are therefore equal in width and floored at `T`,
-//! and when the width to do that is not there the control stacks rather than cheating the floor.
+//! The selected face moves between cells using `motion.switch`. Cells share a
+//! width and use `metrics.touch_target` as a minimum. When the options do not fit
+//! the available strip, the control uses stacked `ListRow` choice rows instead of
+//! shrinking or truncating the labels. Check the resulting layout in the available
+//! pane, with the actual translated labels.
 
 // UI geometry: a segment count of at most four and pixel values crossing to f32. The loss is
 // meaningless in this range, so the cast lints are lifted for the whole file (the rest of the pedantic set stays).
@@ -494,10 +457,7 @@ impl Ink {
         let ink = Self {
             // One step back from the card, not the card's own colour - see `paint_strip`.
             strip_face: cx.theme.color(ColorRole::Surface),
-            // `ControlEdge`, never `Outline`: measured against the card, `Outline` is 1.15–1.65
-            // and a strip edged in it is a ghost (Rule 3.1). Nor `Muted` - that is text at 4.5, and
-            // an outline drawn as loud as the label is what made a card of controls read as a
-            // handful of bright boxes. `Outline` keeps the divider and nothing else.
+            // Use ControlEdge for the strip boundary and Outline for internal dividers.
             strip_edge: cx.theme.color(ColorRole::ControlEdge),
             face: cx.theme.color(ColorRole::Primary),
             label: cx.theme.color(ColorRole::Muted),
@@ -544,14 +504,8 @@ fn paint_strip(painter: &egui::Painter, cx: &Cx<'_>, rect: Rect, ink: Ink) {
     );
 }
 
-/// The focus ring, **outside** the strip and never around one segment.
-///
-/// Outside is a contrast decision, not a styling one: `Focus` measured against `Primary` is
-/// 1.00–1.62 in the shipped palettes, so a ring drawn on a selected segment's own edge is
-/// invisible in every one of them, while against the container behind the strip the same colour
-/// clears 3.0 everywhere. Around the **strip** rather than the segment because focus says "this
-/// control has the encoder", and the selection — which segment — is already carried by the fill;
-/// two rings for two different questions would be read as one.
+/// Paint the focus outline outside the control's painted boundary.
+/// Check the focus colour against the surrounding background for custom palettes.
 fn paint_focus_ring(painter: &egui::Painter, cx: &Cx<'_>, rect: Rect, color: Color32) {
     let width = cx.theme.control.stroke_mark;
     let out = cx.theme.control.focus_gap + width * 0.5;

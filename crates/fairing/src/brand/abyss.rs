@@ -351,9 +351,7 @@ impl Abyss {
             .params
             .colors
             .unwrap_or_else(|| AbyssColors::from_palette(&theme.palette));
-        // The legibility veil pushes towards **the UI's ground colour** rather than the water's —
-        // that is the direction the labels are designed to contrast against, and under a light preset a
-        // black veil is simply wrong.
+        // Tint toward the palette background so the veil follows light/dark mode.
         let ground = theme.color(crate::theme::ColorRole::Background);
         let key = BakeKey::new(rect, ppp, colors, ground, &theme.metrics, self.params);
 

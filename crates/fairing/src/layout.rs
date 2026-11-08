@@ -1,74 +1,21 @@
-//! **Laying out a screen's body** — helpers for dividing up the Rect a screen is handed.
+//! Screen-body layout helpers built on egui.
 //!
-//! # What is different from [`shell::Layout`](crate::shell::Layout)
+//! [`shell::Layout`](crate::shell::Layout) describes the shell's content and chrome
+//! regions. This module places content within the `Ui` handed to a screen.
+//! The application supplies domain content and callback behavior.
 //!
-//! [`shell::Layout`](crate::shell::Layout) is **the result of the shell dividing the screen** — it
-//! takes the status bar, the nav bar, the OSK, the edge zones and the rail off and hands the
-//! `content` that is left to the screen. Up to there, an integrator has nothing to do.
+//! - Containers: [`page`], [`group`], [`Grid`], [`action_bar`], [`split_width`],
+//!   [`split_height`], [`title`], [`section`] and [`note`].
+//! - Rows: [`switch_row`], [`slider_row`], [`choice_rows`], [`info_row`],
+//!   [`nav_row`], [`icon_row`], [`list_item`], [`ExpandableRow`], [`accordion`],
+//!   [`advanced_rows`] and [`status_card`].
+//! - Fitting: [`fit_text`], [`fit_size`], [`contain`] and [`cover_uv`].
 //!
-//! This module is what comes next. A screen is one egui closure and asks for nothing more — it
-//! receives one `Ui`, and **dividing the inside of it is the integrator's**. Yet the layouts a
-//! device UI needs over and over are a settled few — a
-//! scrolling body with an action bar pinned at the bottom, a list grouped into cards, a list and a
-//! body that split left and right where there is width to spare, a grid whose column count comes
-//! from a minimum cell size. They are gathered here.
-//!
-//! # The boundary — layout and styling, and no further
-//!
-//! What this module decides is **what goes where, in how many columns** and **how it looks** (the
-//! cards, the padding, the role colours, the touch targets). What goes inside is the callback's.
-//!
-//! So **no screen-content components are made** — a cart line, a star rating, a price format, an
-//! allergen mark look different in every trade and the crate cannot guess. Open one and unit
-//! pickers follow it in, each asking for options of its own.
-//!
-//! **This line moved once, and the move is worth recording.** It used to name "a quantity stepper"
-//! first among those, and that was wrong: a stepper is not trade content, it is a *scalar editor*,
-//! the same `−  n  +` in a kiosk, on a thermostat and on an oven timer. It belongs with
-//! [`Switch`](crate::widgets::Switch) and [`TouchSlider`], which edit
-//! a value the caller owns, and it is now [`Stepper`](crate::widgets::Stepper). The test that
-//! sorted the three was not "does a shop use it" but **"is it the same object in every trade"** —
-//! a cart line is not, a stepper is.
-//!
-//! Layout, by contrast, has nothing to do with the trade — a bar pinned at the bottom is the same
-//! problem on a payment screen and on a process-confirmation screen. That line is where this ends.
-//!
-//! The built-in settings screens are this module's first consumer — all of them are
-//! written with these helpers.
-//!
-//! # Two layers — vessels and rows
-//!
-//! The helpers here come in two layers. By name they look mixed together, but they do different
-//! things.
-//!
-//! * **Vessels** — they divide up the space. [`page`] · [`group`] · [`Grid`] · [`action_bar`] ·
-//!   [`split_width`] · [`split_height`] · [`title`] · [`section`] · [`note`]. They know nothing of
-//!   what goes inside and hand the callback only a place.
-//! * **Rows** — they lay out one row inside a vessel. [`switch_row`] · [`slider_row`] ·
-//!   [`choice_rows`] · [`info_row`] · [`nav_row`] · [`icon_row`] · [`list_item`] ·
-//!   [`ExpandableRow`] (with [`accordion`]) · [`advanced_rows`] ·
-//!   [`status_card`]. The label on the left, the control on the right — that **placing** is all
-//!   they do.
-//! * **Fitting** — they fit something into a place. Text through [`fit_text`] · [`fit_size`],
-//!   pictures through [`contain`] · [`cover_uv`]. They take no `Ui` and deal only in a `Painter` or
-//!   in numbers, so they work where there is no `Ui` to hand — inside a grid cell, say.
-//!
-//! That is why the row helpers were not sent to [`widgets`](crate::widgets). `widgets` are **the
-//! things drawn** (one switch, one track), and a row helper is **the layout** deciding where beside
-//! the label that thing goes. Making someone writing one settings screen alternate between
-//! `layout::group` and `widgets::switch_row` is not drawing a boundary; it is splitting the import
-//! list in two.
-//!
-//! # Grouped into cards, divided by space
-//!
-//! Stack rows flat and divide them with nothing but thin lines and a twenty-row screen reads as one
-//! block. Instead, related rows are grouped into a **rounded card** ([`group`]) and the cards are
-//! spaced apart — then a scan breaks card by card and where one thing ends is clear without looking
-//! for a line.
-//!
-//! Which is why **there are no separators inside a card.** The card's boundary already expresses the
-//! group, and a line on top of that makes one card look divided again.
-//!
+//! These helpers apply Fairing theme roles, margins and grouping conventions.
+//! Layout, scrolling, interaction and clipping use
+//! [egui `Ui`](https://docs.rs/egui/0.37.0/egui/struct.Ui.html) and its containers.
+//! A grouped settings layout can be arranged as follows:
+
 //! ```text
 //!   Connection            ← title: the screen's name, large
 //!
@@ -82,9 +29,8 @@
 //!
 //! # That shape, on a screen of your own
 //!
-//! The picture above is not the settings module's — it is this module's, and it declares for any
-//! screen in one call. [`page_screen`] gives the body a scrolling page and writes the id once;
-//! [`section_card`] is the heading-and-card pair the picture shows.
+//! [`page_screen`] creates a scrolling page for the body; [`section_card`] groups
+//! a section heading with a card.
 //!
 //! ```no_run
 //! # fn main() {
@@ -110,25 +56,14 @@
 //! # }
 //! ```
 //!
-//! Nothing in there is the settings module's to lend. A built-in screen is the same call with a
-//! body that happens to read [`Cx::settings`](crate::Cx) — which is why
-//! `settings::screens` (feature `settings`) exports its bodies: to be dropped into a page of
-//! yours, or cloned under an id of yours with
+//! Built-in settings bodies can also be used in application-owned pages through
+//! `settings::screens` (feature `settings`) or registered under another ID with
 //! [`ScreenDecl::with_id`](crate::screen::ScreenDecl::with_id).
 //!
-//! # Every colour is a role
-//!
-//! There is not one `Color32` literal in this file. Every colour goes through a [`ColorRole`], so
-//! when a manufacturer swaps the colour system out through `[theme.palette]` or
-//! [`ShellBuilder::palettes`](crate::shell::ShellBuilder::palettes), **the settings screens follow
-//! whole.** Guide 09 §8 is that table.
-//!
-//! # Every dimension is a token too
-//!
-//! The row height derives from `metrics.row_height`, the padding from `metrics.screen_inset` and the
-//! corners from `metrics.corner_radius`. They sit on the `1 du = 1 egui point` anchor, so
-//! changing the finger policy (a gloved 13 mm in place of the bare 9 mm default) grows the
-//! settings screens with it — which is why the numbers are not written down again here.
+//! Colours use theme roles. Row height, padding and corners use resolved metrics;
+//! custom content can supply additional geometry and drawing. Review the complete
+//! screen after changing palettes, sizing policy or content.
+
 mod containers;
 pub use containers::{
     action_bar, action_bar_with, chip_row, grid, group, group_with, header, note, page,
@@ -199,17 +134,8 @@ pub enum Container {
     Outlined,
     /// No box: the rows run full width and a rule closes the group.
     Divided,
-    /// **A wash of the accent** at `control.fill_alpha`, with no edge — the same tint a lit
-    /// `FeatureCard` carries, as a container.
-    ///
-    /// For a group that should read as **lit** rather than merely raised — a selection, a live
-    /// section — or on a panel where neither surface step is wanted. (A [`Self::Filled`] card on
-    /// a `SurfaceVariant` panel takes `Surface` of its own accord, so this is no longer the only
-    /// way to put a card on a rail's page.)
-    ///
-    /// It is the accent and not a grey because the accent is the one colour a palette guarantees
-    /// stands off every surface role — a grey a shade from `SurfaceVariant` works in the palette it
-    /// was picked in and nowhere else.
+    /// Tint the group using the accent role.
+    /// Check the result against the configured background and content colours.
     Tinted,
 }
 

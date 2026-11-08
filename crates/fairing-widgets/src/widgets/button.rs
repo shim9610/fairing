@@ -1,39 +1,9 @@
-//! `BigButton` — the touch button: one filled kind, two outlined ones, and an optional
-//! long-press ring (control vocabulary).
+//! `BigButton` is a text button with an optional icon and long-press interaction.
 //!
-//! # Why only `Primary` is filled
-//!
-//! A filled face is the loudest thing a screen can put in front of an operator, so exactly one
-//! kind gets it. [`ButtonKind::Normal`] and [`ButtonKind::Danger`] are the same silhouette with an
-//! edge instead of a fill, which is a *fill versus no fill* difference — it survives greyscale and
-//! it survives glare, where "the blue one versus the red one" survives neither.
-//!
-//! For `Danger` that is not a preference, it is arithmetic. On the darkest shipped palette
-//! `surface` has a relative luminance of 0.00706, so a `danger` light enough to be read **as text
-//! on a card** (4.5 : 1 wants L ≥ 0.2068) can never also be dark enough to **carry a white label**
-//! (4.5 : 1 wants L ≤ 0.1833). The two constraints do not overlap, and the way out that was
-//! rejected — adding an `on_danger` role — would put a migration on every integrator's palette
-//! file for one button. So the red goes on the edge and the label, never in the face.
-//!
-//! # Why the press grows
-//!
-//! It used to shrink `1 → press_scale`. A gloved contact patch is 13 mm across and this button is
-//! about 14 mm tall, so the finger covers substantially all of it: an inward move of 0.4 mm
-//! happens *under the fingertip* and is seen only after release, which is the one moment feedback
-//! is no longer wanted. The painted silhouette now grows by `control.press_grow` on every side
-//! (the allocated rect never moves, so nothing reflows), and the tint is composited the right way
-//! round — `face.blend(pressed)`, because `blend`'s **receiver is the layer behind**, and the old
-//! `pressed.blend(face)` over an opaque face multiplied the tint by `255 − 255` and painted
-//! nothing at all.
-//!
-//! # Why the long-press ring moved to the corner
-//!
-//! It sat on `right_center()`, which on a button 19.5 mm wide is dead centre under the finger that
-//! is holding it down — the one piece of feedback in the crate guaranteed to be invisible while it
-//! matters. It is now inset from the top-right corner by `control.gap`, clear of the contact patch.
-//! Its progress is **linear** `0 → 1` while held, an 80 ms reverse on release, and on the
-//! completing frame [`LongPressResponse::completed`] rises once while the ring pops
-//! `0.9 → 1.1 → 1` over 120 ms (A7).
+//! Button kinds select filled, outlined or text-only styling from theme roles.
+//! Press feedback changes the painted shape without moving the allocated rectangle.
+//! Long-press feedback is painted around the button; focus is painted outside it.
+//! The caller supplies the label, enabled state and action handling.
 
 use super::{ButtonLook, HoldLook};
 use crate::cx::WidgetCx as Cx;
@@ -59,13 +29,9 @@ use std::time::Duration;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum ButtonKind {
-    /// The ordinary button: `SurfaceVariant` face, `Muted` edge, `OnSurface` label.
+    /// Ordinary button: `SurfaceVariant` face, `Muted` edge and `OnSurface` label.
     ///
-    /// The edge is what identifies it. Its face is the same role a card is drawn in, so inside a
-    /// card the fill contributes nothing and only the edge says where the button is — the failure
-    /// that two integrators worked around independently before the edge existed. `Muted` and not
-    /// `Outline`: `Outline` measures 1.15–1.65 against the two grounds a button sits on, which is
-    /// a ghost, and it keeps exactly one job — decoration between two containers.
+    /// The edge distinguishes the button when its face matches its container.
     #[default]
     Normal,
     /// The one filled kind: `Primary` face, no edge, `OnPrimary` label.
@@ -510,13 +476,8 @@ fn paint_face(painter: &egui::Painter, rect: Rect, t: Tokens, ink: Ink) {
     }
 }
 
-/// The focus ring, **outside** the silhouette.
-///
-/// Outside is a contrast decision rather than a styling one: `Focus` against `Primary` measures
-/// 1.00–1.62 across the shipped palettes, so a ring drawn on a filled button's own edge is
-/// invisible in every one of them and no repaint of `focus` can fix it. Outside, its neighbour is
-/// the card, where the same colour clears 3.0 everywhere. It is measured from the **painted** rect
-/// so that a pressed button grows with its ring instead of through it.
+/// Paint the focus outline outside the control's painted boundary.
+/// Check the focus colour against the surrounding background for custom palettes.
 fn paint_focus_ring(painter: &egui::Painter, silhouette: Rect, t: Tokens, color: Color32) {
     let out = t.focus_gap + t.stroke_mark * 0.5;
     painter.rect_stroke(

@@ -1,44 +1,13 @@
-//! `Meter` — a measured value against its normal range: the range band of a high-performance HMI.
+//! `Meter` displays a measurement against a configured range, normal band and limits.
 //!
-//! # Why it is not a `ProgressBar`
+//! The pointer is animated over `motion.switch`. Verdict and read-out colour use
+//! the reported value rather than the intermediate animated pointer position.
+//! With no limit on a side, a value outside the normal band is classified as a
+//! warning; configured limits determine classification on their respective sides.
 //!
-//! A bar answers "how much of the job is done": 0 to 1, monotone, trusted only while it behaves
-//! like a clock. A meter answers "is this value normal": it has a unit, it goes up and
-//! down all day, and the question is not where the pointer is but whether it is **inside the
-//! band**. The bar's contract — ease towards the value, hold the high-water mark, never rewind —
-//! is exactly wrong for it, and what it needs instead (a normal range, alarm limits, a setpoint,
-//! a verdict) the bar has no place for. So it is its own element: a measurement,
-//! not progress.
-//!
-//! # Why the base is grey and colour is kept for a verdict
-//!
-//! ISA-101 and the High Performance HMI practice behind it: the panel is grey, and colour is
-//! reserved for what is *wrong*, so an abnormal reading is the only coloured thing on the screen
-//! and the eye goes to it. In the band the pointer is `OnSurface`, the ink the labels are in.
-//! Past a limit it takes the limit's own verdict — `Warning` or `Danger` — and so does the
-//! read-out. A reading outside the band with no limit on that side is `Warn`: the band's edge is
-//! then the only threshold the caller gave, so it is the warning. With a limit on that side the
-//! band's edge is only where *normal* ends and the pointer's offset says so; the colour waits for
-//! the limit, because that is where the caller said the alarm is.
-//!
-//! # Why the pointer is eased and the verdict is not
-//!
-//! The pointer glides over `motion.switch` so a noisy signal does not jitter across the band. The
-//! verdict judges the **reported** value the moment it arrives: a reading past an alarm limit is
-//! coloured on the frame it is reported, not when the pointer gets there.
-//!
-//! # Why the number is beside the track and not on it
-//!
-//! Also ISA-101: the analogue shape is what is read from across the room, and the digit confirms
-//! it up close. The string is the caller's, like the bar's read-out, and it is coloured with
-//! the verdict so the two cannot disagree.
-//!
-//! # Why stale means dim, and not a pulse
-//!
-//! A stalled *job* breathes, because a job is a thing that is working. A stale *measurement* is
-//! a number that is old: it is greyed, the way a bad-quality value is on an HMI, and it does not
-//! move, because movement on a meter reads as the value moving. [`Meter::stale_after`] and
-//! [`Meter::heartbeat`] are the bar's, with that treatment.
+//! The caller supplies the display string, unit and thresholds. `stale_after` and
+//! `heartbeat` control stale-data presentation. Classification and styling do not
+//! validate the sensor, the supplied string or the product's alarm policy.
 
 use super::MeterLook;
 use crate::cx::WidgetCx as Cx;

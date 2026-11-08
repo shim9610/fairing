@@ -418,13 +418,11 @@ pub enum RepaintMode {
     Continuous,
 }
 
-/// The Abyss background quality tier (`[desktop.abyss] tier`). **Outside the
-/// feature gate** (rule G) — the config parses with `brand` off.
+/// Abyss background quality tier (`[desktop.abyss] tier`).
 ///
-/// **Quality is not derived from the resolution.** Fill rate scales with resolution, but on this
-/// crate's target hardware GPU performance does not — the smaller the industrial panel, the
-/// weaker its GPU. Choosing by resolution would hand an 800×480 software renderer the heaviest
-/// tier. The right answer is the integrator, not an automatic one.
+/// This type remains available with `brand` disabled so configuration can parse.
+/// Choose the tier based on measured rendering cost on the target hardware;
+/// resolution alone does not determine GPU or software-renderer throughput.
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AbyssTier {

@@ -1,48 +1,13 @@
-//! `TouchSlider` — a thick pill track with a mover that stands proud of it. The value follows the
-//! finger 1:1 (no easing), and pressing swells the track, tints it and raises a value label
-//! (A7, vocabulary).
+//! `TouchSlider` edits a numeric value by pointer interaction.
 //!
-//! # The thick track: the original argument, and what vindicated it
+//! The track, filled area and mover use theme and control tokens. `HandleStyle`
+//! selects a bar, circular knob, inset mover or hidden mover. The style changes
+//! painting, not whether the slider is interactive. Use `ProgressBar` for a
+//! read-only progress indicator.
 //!
-//! A thin line track with a large round knob is **a shape from the mouse era**. The knob is much
-//! bigger than the track, so a finger on it hides the very place it is holding, and a thin track
-//! does not tell a gloved hand where to press.
-//!
-//! A thick track solves three things at once.
-//!
-//! - **You can see where to press.** The track itself looks like a touch target.
-//! - **The value reads as an area.** The filled length is a bar chart, so a glance gives you the
-//!   rough value — which matters on an instrument panel.
-//! - **A finger does not hide it.** The mover overhangs the track by
-//!   `(metrics.slider_thumb − control.slider_track) / 2` — 8.60 du, 1.365 mm, on each side. That
-//!   is a small fraction of a 13 mm contact patch, so the finger still does not eat the view, and
-//!   when the finger lifts the mover still has a silhouette against the container's ground.
-//!
-//! Material 3 Expressive reached the same thick-track conclusion independently. What it got right
-//! and this module originally got wrong is one number: M3 Expressive makes its bar **2.75×** the
-//! track height, so the bar overhangs and can be found; the shipped fairing bar was **0.72×** and
-//! buried **inside** the track. Same shape, opposite proportion — and a mover buried in a track is
-//! a notch whose edges run parallel to the track's own edges a few du away, which is exactly the
-//! gap-closing that disappears under glare. So the sentence that used to stand here ("the handle
-//! is inside the track, so no knob eats the view") is wrong in its second half and has been
-//! replaced by the overhang above: containment was never what stopped the finger hiding the value
-//! — the small size of the mover is.
-//!
-//! # Which handle suits which panel
-//!
-//! [`HandleStyle`] changes the visible mover, not the interaction contract:
-//!
-//! - [`HandleStyle::Bar`] is the default, a narrow bar extending beyond the track.
-//! - [`HandleStyle::Knob`] uses a circular mover.
-//! - [`HandleStyle::Inset`] keeps the mover inside the track.
-//! - [`HandleStyle::None`] hides the mover. The slider remains interactive; use
-//!   [`super::ProgressBar`] for a read-only progress indicator.
-//!
-//! Choose the shape after checking visibility, spacing and operation on the
-//! target panel, including the intended gloves or pointing device.
-//!
-//! The hit area is a whole `metrics.touch_target` row whichever style is chosen — what changes is
-//! what you see, not what you press (vocabulary Rule 1.1).
+//! The hit area uses the configured touch-target height. Choose a handle style
+//! and dimensions after checking visibility, spacing and operation on the target
+//! panel, including the intended gloves or pointing device.
 
 use super::SliderLook;
 use crate::cx::WidgetCx as Cx;
@@ -548,10 +513,8 @@ pub fn paint_track(painter: &egui::Painter, rect: Rect, t: f32, p: TrackPaint) -
         Stroke::NONE,
     ));
     if p.edge.width > 0.0 {
-        // The identifying boundary of the empty side. `Outline` is never a control's edge — it is
-        // 1.15–1.65 against both grounds, a ghost — and `Muted` is text at 4.5, which drew this
-        // line as loud as the label beside it. `ControlEdge` is the same job at WCAG 1.4.11's own
-        // 3.0 floor (Rule 3.1).
+        // Use ControlEdge for the empty-track boundary rather than the decorative
+        // Outline or text-oriented Muted role.
         painter.rect_stroke(full, radius, p.edge, StrokeKind::Inside);
     }
     paint_mover(painter, egui::pos2(x, y), &p, rect);

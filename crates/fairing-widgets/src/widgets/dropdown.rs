@@ -1,130 +1,22 @@
-//! `Dropdown` — a closed list, and the one hard question about where it draws.
+//! `Dropdown` selects an option from a list.
 //!
-//! # The gap
+//! `Trigger` selects the closed control's appearance; `Opener` selects how the
+//! options are presented. These are independent settings. Supported openers include
+//! an anchored list, grid, sheet and searchable list.
 //!
-//! Searching this crate for "dropdown" or "combo" returned nothing. The only route to a choice was
-//! `layout::choice_rows` on a pushed screen — which costs a **whole navigation** for a three-item
-//! setting, and the instrument-panel reference has two of them side by side on one card.
+//! The open panel is placed within the calling `Ui`'s clip rectangle and accounts
+//! for `WidgetCx::inset_bottom`. Anchored panels can open above the trigger when
+//! space below is insufficient. Long lists scroll and long labels are truncated.
+//! An outside press dismisses the panel and is consumed within its bound.
 //!
-//! # Where the list draws, and why
-//!
-//! This is a shell: something else already owns the status bar, the nav bar, the on-screen
-//! keyboard, a shade that pulls down and the gesture edge zones. A popup is a layering decision
-//! before it is a widget decision, and there were three candidates.
-//!
-//! **An in-place expansion** that pushes the rows below it down is what a settings list does, and
-//! it is the cheapest — no new layer, nothing to clip. It loses because the list lives in a scroll
-//! area: opening a six-option list shoves everything under it off a seven-inch panel, and the
-//! operator loses the row they were reading.
-//!
-//! **A sheet rising from the bottom edge** is what a phone does, and it is the most comfortable for
-//! a gloved hand. It lost the first round on machinery — it needs a surface of its own, and it has
-//! to negotiate with the keyboard, the shade and the edge zones — and came back as
-//! [`Opener::Sheet`] once the bound it rises in was settled: the caller's own pane, under the bars
-//! and out of the edge zones by construction.
-//!
-//! **An area anchored to the trigger** is the default, with two rules that make it safe on a
-//! small panel. It **flips above** the trigger when there is not room below, so a dropdown on the
-//! last row of a screen does not open off the bottom. And it is clipped to — and placed inside —
-//! **the calling `Ui`'s own clip rect**, which inside a screen is the screen's pane: so the list
-//! cannot draw over the nav bar or the status bar, and the widget needs to know nothing about
-//! either. The bound comes from where it was called, not from the window.
-//!
-//! # Why the list still scrolls, and when to stop using this
-//!
-//! Every row is a full `touch_target`, which on a gloved panel is about 13 mm — so a 480 du pane
-//! holds about eight of them and no more. The list caps itself at `LIST_FRACTION` of the bound and
-//! scrolls past that, but a list you have to scroll is a list you cannot see, and **past about eight
-//! options the control wanted was `choice_rows` on a screen of its own** — or [`Opener::Search`].
-//! The docs say so rather than the type refusing, because the caller knows their panel and this
-//! does not.
-//!
-//! # Two axes, not one enum
-//!
-//! A survey of the shipped systems (Material 3's exposed dropdown and menus, Apple's pop-up
-//! buttons and pickers, Ant's four `Select` variants, Carbon's inline and fluid dropdowns) gave
-//! eight closed forms and six ways of opening, and every pairing of the two is a thing somebody
-//! ships. So the closed control and the open one are chosen **separately**:
-//!
-//! | [`Trigger`] | Where it belongs |
-//! |---|---|
-//! | `Button` (default) | A toolbar, a card — the value on a button face |
-//! | `Field(Outlined · Filled · Underlined)` | A form, beside `TextField` and `NumberField`: a floating label over the value |
-//! | `Inline` | The value in running text — "Lock mode PDH ▾" — with no box of its own |
-//! | `Tile` | The middle of a lying-L console: a small caption over a value read from across the bench |
-//! | `Chip` | A filter in a toolbar |
-//!
-//! | [`Opener`] | Where it belongs |
-//! |---|---|
-//! | `Anchored` (default) | Five to about twelve options |
-//! | `Grid` | Up to about nine **short** options — units, presets — as finger-sized cells: the best for a glove |
-//! | `Sheet` | A phone's habit: rises from the bottom of the pane behind a scrim |
-//! | `Search` | Past about twelve: the trigger becomes a search field, the matches under it |
-//!
-//! The count rule that came out of the survey, for the caller: up to four is a
-//! [`SegmentedControl`](super::SegmentedControl); up to six a radio list or `choice_rows`; five
-//! to twelve this; past that `Search` or a screen of its own. A value with an **order** — a
-//! quantity, an hour — is not a dropdown at all but a drum, and that is its own widget.
-//!
-//! # The hint at the right of a row
-//!
-//! A row may carry a second, right-aligned text in the `Muted` role — a keyboard shortcut is the
-//! usual thing, a unit or a count the next — set by [`Dropdown::hints`]. On a bench with a keypad
-//! it is the difference between a list you read and a list you learn: macOS draws its key
-//! equivalents there, Material 3 its trailing supporting text. The hint is **shown, not bound**:
-//! which key does what is the shell's, and a hint that lied about it would be worse than none. A
-//! grid cell has no room for one and leaves it out.
-//!
-//! # The open panel is the trigger, unrolled
-//!
-//! The first build gave every opener a panel of its own — an opaque card in the list ground, the
-//! card radius, a floating shadow — whatever the trigger looked like, and set it under the trigger
-//! as a second shape. A filled field opened into a card; a chip opened into the same card; a
-//! search opened into that card docked to the top of the pane, nowhere near the chip that was
-//! tapped. Each open control read as a different widget laid over the page (user report).
-//!
-//! Now the panel **wears the trigger's own container** and the two make **one silhouette**: the
-//! trigger's ground, its edge, its radius and its underline run round the whole of it, the
-//! trigger is drawn again as the panel's first row — the same words, the chevron turned over, a
-//! tap on it closing the panel as a tap on the trigger always did — and the rows unroll under it
-//! (or over it, where there is no room below) inside that one outline. A button opens into an
-//! edged list in its own radius; an outlined field into its focus ring, grown; a filled field
-//! keeps its rounded top and its line, now under the last row; a chip stays the accent-filled
-//! head of a plain list; a tile's card holds the grid.
-//!
-//! `Search` is the same panel with the head turned into the field: the label stays where the
-//! style keeps it, the query is typed where the value was — the value itself is the field's
-//! hint, so what is chosen now stays readable while another is looked for — and the search glyph
-//! takes the chevron's place. The field takes no focus on opening: the list is there
-//! to be read first, and the keyboard comes when the field is tapped. The keyboard lies over the bottom of the pane and is not pushed,
-//! so the bound the list is placed in stops at the keyboard's top
-//! ([`WidgetCx::inset_bottom`](crate::WidgetCx::inset_bottom)): the list opens above the trigger
-//! where the keys leave no room below, and a trigger the keys would cover is scrolled clear of
-//! them by its own page. Docking the search to the top edge kept it clear of the keys too, but as
-//! a different thing in a different place; this keeps it the control that was tapped.
-//!
-//! # What the second look found
-//!
-//! Rendered on the seven-inch demo and driven from the headless harness, the first build had
-//! five faults. The list could not be scrolled by a pointer at all — egui's `ScrollArea`
-//! drag-scrolls on touch alone by default, and the crate's own page had already chosen
-//! `ScrollSource::ALL` for a device driven by a trackball; the list now does the same.
-//! A long option ran over the chevron on a narrow trigger, and over the list's edge: both are
-//! truncated with an ellipsis now, and the list takes the width of its **widest option** (never
-//! narrower than the trigger, never wider than the bound) so the truncation is the last resort.
-//! A tap outside the list closed it *and* landed on whatever was under the finger — on a bench
-//! that is a "Start" button — so an invisible shield now lies under the open list across the
-//! bound and eats that tap, the way a scrim does without the dimming. The pressed row's square
-//! fill poked out of the list's rounded corners; the first and last rows round theirs. And a cut
-//! list said nothing about being cut: it fades at the edge that has more behind it. The list also
-//! unrolls from the trigger over `motion.switch` rather than appearing whole.
-//!
-//! # Why the open list is `Elevation::Floating`
-//!
-//! It is the crate's first genuine floating thing: content scrolls under it, and the elevation
-//! token's own doc reserves that level for exactly this. It is also the only level that is
-//! *identified* — the rim clears WCAG 1.4.11's 3.0 against the page, where a card's stays
-//! decorative — which is right, because a list lying over content has to be told from it.
+//! The panel uses the trigger's styling and opens over `motion.switch`.
+//! `Dropdown::hints` adds display-only trailing text; it does not bind shortcuts.
+//! Search input takes focus when the field is tapped. Choose the presentation and
+//! option count after checking the available pane size and intended input device.
+//! Layout, input handling and scrolling build on
+//! [egui `Ui`](https://docs.rs/egui/0.37.0/egui/struct.Ui.html) and
+//! [`ScrollArea`](https://docs.rs/egui/0.37.0/egui/containers/scroll_area/struct.ScrollArea.html).
+
 mod painting;
 use painting::{
     bottom_corners, chevron, chevron_at, divider, edge_fades, icon_at, paint_panel, paint_skin,

@@ -436,16 +436,16 @@ package carries the Lucide icon licence (`LICENSE-lucide`) next to the icon geom
   bar item and a nav bar item — standing alone, so it can be copied into a new project.
 - Backends through traits only — clock, power, Wi-Fi, Bluetooth, display, audio, network and
   device info — with `Null` defaults and a `Mock` simulator, and custom backends for anything
-  else, polled every frame and reached from screens by type. The crates ship no system code;
-  the device plugs in its own.
+  else, polled during shell updates and reached from screens by type. Device I/O
+  adapters are application-supplied; clock implementations are included.
 
 ### `fairing-widgets` — the element layer
 
-- **Phone density by default.** `ScalePolicy::default()` is a bare 9 mm finger
+- **Default size policy.** `ScalePolicy::default()` uses a 9 mm finger parameter
   (`ScalePolicy::gloved()` is 13 mm) and text read at 360 mm, a 3.1 mm body em. A row
   (`metrics.row_height`, `widget_height`) is one touch target with its padding inside, rather
   than three body ems plus a margin, and grows only when its own text needs more. A settings row
-  is now about 9 mm tall where it was 14–16 mm, close to One UI on a Galaxy Fold.
+  uses the configured size policy; check physical size with panel metadata and host scale.
 - 23 touch widgets, from buttons, switches and sliders to a dropdown, a wheel picker, a
   progress ring, a PIN pad and a pattern pad. `ProgressRing::repaint_every` keeps a ring that
   may go round for hours from asking for every frame. `Dropdown::no_match` takes the words a

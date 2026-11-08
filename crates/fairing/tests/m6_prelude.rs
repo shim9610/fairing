@@ -1,4 +1,4 @@
-//! **One import is enough for an ordinary app**. Before the prelude, matching
+//! Check the prelude imports used by an ordinary shell example. Before the prelude, matching
 //! `ShellEvent` meant finding `InstanceId` in `workspace`, `SettingKey` in `settings` and
 //! `PowerRequest` in `services`; a helper returning a declaration had to find `ScreenDecl` in
 //! `screen`. This file uses nothing but the prelude and the test harness.

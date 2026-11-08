@@ -77,7 +77,7 @@ fairing = { git = "https://github.com/shim9610/fairing", features = ["runner"] }
 # fairing = { path = "../fairing/crates/fairing", features = ["runner"] }
 
 # egui itself is optional.
-# Leave it out and use `fairing::egui` - a version mismatch becomes impossible.
+# Use `fairing::egui` to use the egui version selected by Fairing.
 # Put it in and it must be the same minor as fairing's, or you link two copies
 # of egui and the types stop matching.
 # egui = "0.37"
@@ -129,7 +129,7 @@ lto = "fat"
 codegen-units = 1
 panic = "unwind"
 strip = true
-opt-level = 3      # for a UI, 3 beats "s"; strip wins the size back
+opt-level = 3      # optimize for execution speed; measure speed/size on the target
 ```
 
 Use `panic = "unwind"` for runtime callback containment. `panic = "abort"` bypasses
@@ -385,7 +385,7 @@ None of them needs real hardware: `hello` and `protected` run on the null backen
 | `protected` | `cargo run -p fairing --features runner-x11 --example protected -- --tour target/protected` | ProtectedShell login with a public development marker, an admitted operation, logout with protected content hidden and a stale button click blocked, then reauthentication. The smoke tour is included in `tools/tours.sh`; this marker is not production authentication |
 | `demo` | `cargo run -p fairing --features runner-x11 --example demo -- --size=1024x600` | The whole shell: twelve icons over two pages, the status bar, the shade, a `Form` screen that raises the OSK, the `Widgets` and `Notify` galleries, edge-swipe back, and a scenario thread waking the UI through the `Waker` |
 | `console` | `cargo run -p fairing --features runner-x11,mock --example console -- --size=1280x800` | A bench instrument rather than a phone: a rail down the left joined to the status bar, five pages with their own transitions, and the shade split into two floating cards |
-| `kiosk` | `cargo run -p fairing --features runner-x11,mock --example kiosk -- --size=1080x2560 --panel-mm=380x900` | A production-shaped café ordering flow, laid out and styled almost entirely by the crate — what it still draws itself is listed in its header. `--layout=portrait\|counter\|compact` puts the same code on three devices, and a switch on its attract screen changes the language of every screen at run time (`--lang=ko` starts it in Korean) |
+| `kiosk` | `cargo run -p fairing --features runner-x11,mock --example kiosk -- --size=1080x2560 --panel-mm=380x900` | A café-ordering example using Fairing layouts, widgets and application-specific drawing. `--layout=portrait\|counter\|compact` puts the same code on three devices, and a switch on its attract screen changes the language of every screen at run time (`--lang=ko` starts it in Korean) |
 | `custom_chrome` | `cargo run -p fairing --features runner-x11 --example custom_chrome -- --size=1024x600` | Replacing the chrome without touching the crate: a `Theme` built in code, a hand-drawn status bar, circular desktop badges, a procedural wallpaper, no nav bar, a gauges tile the crate draws from a declaration, and a jog-pad tile it knows nothing about |
 | `motion_lab` | `cargo run -p fairing --features runner-x11 --example motion_lab -- --size=1024x600` | Every `[motion]` token on a slider, replaying the shade, page swipes, push/pop and icon zoom. A frame-time graph sits top right (p50, p95, a 33 ms rule) and the tuned values export as TOML |
 | `palette_sheet` | `cargo run -p fairing --release --features runner-x11,mock --example palette_sheet -- --tour out/ --panel-mm=305x381` | One frame with every control on it, for comparing palettes (`--preset=base\|abyss\|linen`, `--theme=dark\|light`) |

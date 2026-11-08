@@ -1076,20 +1076,10 @@ impl DesktopView {
     }
 }
 
-/// **The label veil's colour** — the ground colour at the scrim's alpha.
+/// Label-veil colour: the theme background RGB with the scrim alpha.
 ///
-/// It used to be `Scrim` itself, which is a **black alpha in every preset**. Over a dark wallpaper
-/// that is right by accident: the labels are light, so darkening the picture is the direction that
-/// helps them. Over a light one it is simply wrong — it greys a pale picture down and the dark
-/// labels it was meant to serve gain nothing, which is what the light manta plate showed the moment
-/// it was laid in.
-///
-/// So it pushes towards whatever the labels contrast *against*: `Background`, dark on a dark
-/// palette and pale on a light one. The brand art already reasoned this way for its own veil ("under
-/// a light preset a black veil is simply wrong", `brand::abyss`); this is the desktop catching up.
-/// The alpha stays the scrim's. On a dark palette the colour moves from pure black to that
-/// palette's own near-black ground — `#04121F` on Abyss — which is a small, deliberate shift: the
-/// veil now tints towards the page the labels sit on rather than towards nothing in particular.
+/// This tints the wallpaper toward the background used by the label palette.
+/// Check composited label contrast when changing the wallpaper or palette.
 fn veil(theme: &Theme) -> egui::Color32 {
     let alpha = theme.color(ColorRole::Scrim).a();
     let ground = theme.color(ColorRole::Background);

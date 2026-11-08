@@ -1,51 +1,9 @@
-//! `StatusLamp` — a lit disc and the word beside it. The instrument panel's one missing element.
+//! `StatusLamp` displays a named status without editing it.
 //!
-//! # Why a lamp is sized off its word and not off the touch target
-//!
-//! The instrument-panel reference draws a 40 px lamp against an 18 px cap height — 2.22 cap heights
-//! — and against that panel's own 63 px control height the same lamp is 0.635 T, where this crate's
-//! would be 0.525 T. The two anchors disagree by 21 %, and the disagreement vanishes when both are
-//! measured against the word beside them, which is how a lamp is actually read: as a pair. So
-//! `control.lamp_ratio` hangs off `type_scale.body` and a lamp beside a larger label grows with it.
-//!
-//! # Why the mark is `Surface` — the opposite colour the switch reached for
-//!
-//! The switch's knob rejected `Surface` and was right to: a knob has to be seen over the on track
-//! *and* the off one, and only one of those flips with the theme. A lamp's mark sits over the lit
-//! fill and nothing else, and **the lit fills flip with the theme exactly as `Surface` does** — a
-//! dark palette gets bright severities and a light one gets dark ones — so the ground colour tracks
-//! them in both directions. Measured over all four states in all four palettes the mark runs
-//! 3.81–10.52 against a 3.0 floor, where `OnPrimary` bottoms out at 1.97 and `OnSurface` at 1.41.
-//!
-//! Same rule, opposite answer, because the question is not the same one.
-//!
-//! # Why every state carries a shape
-//!
-//! Colour alone is never the channel (Rule 7.1, and the reason notifications were given severity
-//! *shapes*). `Ok` is a tick, `Warn` a bang, `Fault` a cross, `Active` a bullseye, `Unknown` a bar —
-//! and `Off` and `Unknown` are **hollow**, a heavier ring around nothing, which reads as an empty
-//! socket at a glance. In greyscale the five are still five.
-//!
-//! Three of the marks are the crate's own, reused rather than redrawn: the tick is
-//! [`Checkbox`](super::Checkbox)'s, the bar is its indeterminate mark, and the bullseye is the
-//! radio's dot at the radio's own ratio. "This one is live" ought to be the same mark the crate
-//! already means by a filled centre.
-//!
-//! # Why a lamp is never `enabled(false)`
-//!
-//! Disabled means *this control is unavailable*, and a lamp is never unavailable — it is unlit, or
-//! the reading has not arrived. Those are [`LampState::Off`] and [`LampState::Unknown`], and they
-//! are states of the instrument rather than of the widget. The flag exists for a lamp inside a
-//! panel the operator has no rights to, and it costs what the crate's disabled policy costs
-//! everywhere: one `gamma_multiply`, which drops the fill to 1.98–3.99 and the mark under it. A
-//! reading you do not have is `Unknown`, not `enabled(false)`.
-//!
-//! # Why the bezel radius is pulled in by the whole stroke
-//!
-//! epaint 0.36.1 forces `PathStroke::outside()` on a circle (`tessellate_circle`), so a stroke
-//! occupies `[r, r + w]`. To land the lamp's outer extent exactly on the diameter the token asks
-//! for, the radius is `d / 2 − w` and not `d / 2 − w / 2`. Half would put the silhouette a stroke
-//! over budget, and a row of lamps would no longer sit on the text's rhythm.
+//! States select a fill and mark shape; `Off` and `Unknown` use hollow silhouettes.
+//! The mark and fill use separate theme roles. This provides shape differences in
+//! addition to colour differences. The application supplies the state; the lamp
+//! does not query hardware or enforce an interlock.
 
 use super::LampLook;
 use crate::cx::WidgetCx as Cx;

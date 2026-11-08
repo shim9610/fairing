@@ -1296,9 +1296,9 @@ impl Shell {
         // `shows_seconds`, not `== Hms`: the 12-hour spelling of the same shape needs waking just as
         // often. The `ui.clock_12h` setting never changes which of the two it is.
         if self.status_bar.drawn_clock()?.shows_seconds() {
-            // `WallTime` has no fractional seconds, so the phase cannot be matched to the second
-            // boundary (M4). Scheduling at 500 ms guarantees each second is drawn at least once — fixed
-            // at 1 s, frame delays accumulate and the seconds digit skips.
+            // WallTime has no fractional-second phase. Request a 500 ms wake to
+            // reduce skipped seconds when updates are delayed; host scheduling can
+            // still postpone a UI pass.
             return Some(Duration::from_millis(500));
         }
         Some(Duration::from_secs(

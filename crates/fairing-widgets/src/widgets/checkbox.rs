@@ -1,30 +1,8 @@
-//! `Checkbox` — a `control.mark_size` box inside a full `touch_target` slot, carrying a tick that
-//! is **drawn, not typed** (control vocabulary).
+//! `Checkbox` edits a Boolean value and supports an indeterminate display state.
 //!
-//! # Why the box is smaller than the thing you press
-//!
-//! The slot is a whole `metrics.touch_target` on both axes and the box is `control.mark_size`
-//! (0.600 T) centred in it. Drawing the box at the size of the target was the alternative, and it
-//! is worse in both directions: at 13 mm the box becomes a slab that reads as a card rather than a
-//! control, and shrinking the target to the box is what made the switch's hit rect 0.60 T on its
-//! short axis — a miss a gloved hand makes on a moving vehicle. What you press and what you see
-//! are two rects, and only the drawn one is allowed to be small.
-//!
-//! # Why the tick is two line segments and not a glyph or an icon
-//!
-//! A glyph (`"✓"`) comes out as tofu (□) the moment an integrator installs a typeface without it —
-//! the same reason [`ListRow::trailing_icon`](super::ListRow::trailing_icon) exists instead of a
-//! text mark. Routing it through the icon painter is rejected for a different reason: a tick's
-//! vertex is a sharp corner, and epaint's path strokes miter it (`PathShape::line` bevels only
-//! below 90°, `closed_line` does not cut at all), so the corner grows a spike or a flat depending
-//! on the angle. Two `line_segment`s plus a filled circle at the vertex and at each free end give
-//! a round join whose radius is exactly half the stroke, at every scale, with no path code.
-//!
-//! # Why the same size as the radio
-//!
-//! Checkbox and radio share `control.mark_size`, so "one of these" and "any of these" are told
-//! apart by **shape alone** — square versus circle — at a glance and in greyscale. Making the
-//! checkbox its own size would leave shape *and* size differing, and neither difference readable.
+//! The allocated touch target and the painted mark use separate metrics. The tick
+//! uses line geometry rather than a font glyph. Press and focus feedback use theme
+//! and control tokens; the focus outline is outside the mark.
 
 use super::CheckboxLook;
 use crate::cx::WidgetCx as Cx;
@@ -270,14 +248,8 @@ pub(crate) fn paint_mixed(painter: &egui::Painter, at: Rect, width: f32, color: 
     painter.rect_filled(bar, CornerRadius::same(round_u8(width * 0.5)), color);
 }
 
-/// The focus ring, **outside** the silhouette.
-///
-/// Outside is a contrast decision, not a styling one: `Focus` measured against `Primary` is
-/// 1.00–1.62 in the shipped palettes, so a ring on the box's own edge is invisible on a checked
-/// box in every one of them, while against the container behind it the same colour clears 3.0
-/// everywhere. It is measured from the **painted** rect rather than the resting one, because
-/// `press_grow` is larger than `focus_gap` — from the resting rect a pressed box would grow
-/// through its own ring.
+/// Paint the focus outline outside the control's painted boundary.
+/// Check the focus colour against the surrounding background for custom palettes.
 fn paint_focus_ring(painter: &egui::Painter, cx: &Cx<'_>, silhouette: Rect, color: Color32) {
     let gap = cx.theme.control.focus_gap;
     let width = cx.theme.control.stroke_mark;

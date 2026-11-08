@@ -1,28 +1,8 @@
-//! **The component tokens** — the twenty visual dimensions of the widgets and notifications.
+//! Component-specific dimensions.
 //!
-//! # Why they are kept apart from the global [`Metrics`](super::Metrics)
-//!
-//! The global tokens are **what the shell divides the screen with**: bar thickness, touch
-//! targets, row heights. These twenty are what one widget draws itself with, inside that. In one
-//! bucket, `Metrics` would pass sixty fields and "does touching this move the layout" would not
-//! be answerable from the name.
-//!
-//! # Why they were promoted from constants
-//!
-//! Until they were, these twenty were `const`s inside their files. That leaves **rung 2 (the
-//! tokens) of the override ladder shut for the whole widget area** — an
-//! integrator changing one button's padding had to climb to rung 5 (the painter) and take over
-//! the drawing. A cliff.
-//!
-//! The values are held as [`Span`]s by [`ComponentSpec`] and resolved with a [`Scale`] each
-//! frame. So a device that knows its physical size can write them in mm or finger multiples, and
-//! one that does not gets exactly today's values.
-//!
-//! # What does not come here
-//!
-//! **Purely visual ratios** like `THUMB_SCALE` and `PRESS_SWELL`, and **times and velocities**
-//! like `POP_MS` and `FLING_UP`, do not. The former derive from other tokens and the latter
-//! belong to `[motion]`.
+//! [`ComponentSpec`] stores [`Span`] values for toast, shade, bar and other component
+//! geometry. Resolution with a [`Scale`] produces [`ComponentMetrics`]. These tokens
+//! complement the shared control metrics and motion configuration.
 
 use crate::unit::{Dim, Free, Hand, Rigid, Scale, Span};
 use crate::Result;

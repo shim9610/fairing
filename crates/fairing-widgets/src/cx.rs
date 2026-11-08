@@ -1,4 +1,4 @@
-//! [`WidgetCx`] — what a control needs, and nothing else.
+//! [`WidgetCx`] supplies theme, icon, animation and painting context to controls.
 
 use crate::icons::IconSet;
 use crate::motion::{AnimationStore, Tween};

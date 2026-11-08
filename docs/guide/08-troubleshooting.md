@@ -318,7 +318,7 @@ lto = "fat"
 codegen-units = 1
 panic = "unwind"
 strip = true
-opt-level = 3      # for a UI, 3 beats "s"; strip wins the size back
+opt-level = 3      # optimize for execution speed; measure speed/size on the target
 ```
 
 Use `panic = "unwind"` for runtime callback containment. `panic = "abort"` bypasses

@@ -59,11 +59,8 @@ fn install(ctx: &egui::Context) {
     ctx.data_mut(|data| data.insert_temp(installed_id(), true));
 }
 
-/// Inject one key action into the next pass. `Face` and `Hide` have nothing to inject, so
-/// `false`.
-///
-/// The events are seen on **the next pass** (see the module docs) — which is why
-/// `request_repaint()` goes with them. Even at rest, the next frame is guaranteed to run.
+/// Forward queued input events and request an egui repaint.
+/// The host determines when another UI pass is delivered.
 #[must_use]
 pub fn inject(ctx: &egui::Context, action: &KeyAction) -> bool {
     let events: [Option<Event>; 2] = match action {

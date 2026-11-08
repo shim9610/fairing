@@ -1163,7 +1163,7 @@ impl Shell {
         self.theme_fade.start(target, self.theme.motion.theme_fade);
     }
 
-    /// **Register a hidden entry point**. The invisible door into the service menu.
+    /// Register a triggered entry point, such as a service-menu shortcut.
     ///
     /// An id already there is swapped out (its progress is reset).
     ///

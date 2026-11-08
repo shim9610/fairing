@@ -1,59 +1,8 @@
-//! `Chip` and `ChipRow` — an icon over a word, in a lane that scrolls.
+//! `Chip` and `ChipRow` display selectable items with optional icons.
 //!
-//! # Why this is not a `SegmentedControl`
-//!
-//! They look alike and they are different objects, and the docs have to say which to reach for or
-//! callers will guess.
-//!
-//! A [`SegmentedControl`](super::SegmentedControl) is **one track** holding two to four cells of
-//! equal width, capped at `control.segment_max` because past four every cell is narrower than a
-//! touch target on the smallest panel. It is a setting with a handful of values — Auto / On / Off.
-//!
-//! A chip row is **five to eight separate objects** of unequal width that scroll sideways, each
-//! with an icon over its label. It is a filter over a list: Starters · Main Dishes · Salads ·
-//! Desserts · Drinks. Cramming that into a segmented strip gives eight 6 mm cells; laying a
-//! three-value setting out as chips loses the fact that the three belong to one control.
-//!
-//! The rule: **a setting is segmented, a filter is chips.**
-//!
-//! # Why a chip is not a pill
-//!
-//! `metrics.control_radius`, which is 0.207 of the chip's height — the reference row measures
-//! 0.112–0.135 and Material 3's chip is 0.25, so this sits between them. A pill (half the height)
-//! is reserved for the things a mover rides along, which a chip is not; `card_radius` is for
-//! containers, and a chip is content.
-//!
-//! The side padding is the **same** `control_radius`, so the label clears the corner by exactly one
-//! radius. That is the concentric rule the crate adopted for cards, applied inside a control.
-//!
-//! # Why the minimum width is an aspect and not the content
-//!
-//! Measured: six of the reference row's eight chips sit at 1.230 of their own height while their
-//! labels vary by 2.7×, from "All" to "Salads". A row floored on content alone staggers — one
-//! stub, one slab — and a row of fixed cells is a segmented control again.
-//! `control.chip_min_aspect` is 1.25, which is Windows 11's own 40 epx target on a 32 px control
-//! and 1.6 % off the measurement.
-//!
-//! # Why an unselected chip is a tinted fill rather than `SurfaceVariant`
-//!
-//! `SurfaceVariant` would match the references pixel for pixel in base light, where it is white on
-//! an `#ECECF1` page. It also measures **1.00** against a card, where `SurfaceVariant` *is* the
-//! card — so a chip row inside a card would exist only as its hairline, which is exactly the
-//! failure `BigButton::Normal` was rebuilt to fix. An ink tint at `control.fill_alpha` composites
-//! over a page, a card and a photograph alike.
-//!
-//! The cost is named: in a light palette the references' chips are a step *lighter* than the page
-//! and these are a step darker.
-//!
-//! # Why selection is three channels and not one
-//!
-//! The face goes to `Primary`, the label flips `OnSurface` → `OnPrimary`, and the identifying
-//! hairline **leaves** — because on a filled chip the fill is its own boundary. Colour is never
-//! alone (Rule 7.1), and a greyscale render still tells a picked chip from its neighbours.
-//!
-//! Selected against unselected measures 2.97 in base dark, which is quoted rather than hidden: it
-//! is not the gating number, because the two chips never touch — a `control.gap` of page runs
-//! between them — so each one's contrast is against the ground, where they measure 3.81 and 3.76.
+//! `ChipRow` manages the selected index and lays out items in a scrolling lane.
+//! Selected and unselected items use different theme roles and boundary treatments.
+//! Overflow edges are faded to indicate additional lane content.
 
 use super::ChipLook;
 use crate::cx::WidgetCx as Cx;

@@ -246,10 +246,9 @@ A background cannot only be pretty. **Icon labels sit on top of it with no shado
 
 #### 2.2a When you cannot change the artwork — `label_legibility`
 
-Photo and artwork backgrounds routinely put a bright area right where the icon grid is. The
-manta reference art does exactly that — **the white belly crosses the middle of the grid** and
-swallows that row's labels and white-stroke icons. Redrawing the background is the real answer,
-but for integrators who cannot, there are two prescriptions.
+Bright image regions can reduce the contrast of overlaid labels and icons.
+Change the artwork or select a label-legibility treatment, then inspect the
+composited result. The reference manta's pale belly is one such region.
 
 ```toml
 [desktop]
@@ -610,7 +609,7 @@ let shell = fairing::Shell::builder(config)
 > `IconRef` cannot point at them (nor can the painter registration in §4.2). The only way to make
 > those four yours is `status_bar_painter`.
 
-### 6.3 Dock placement — the biggest change of impression for zero images
+### 6.3 Dock placement
 
 ```rust
 # fn f(shell: &mut fairing::Shell) {
@@ -662,10 +661,10 @@ code. Then a change of locale, resolution or theme does not mean remaking the as
 
 ---
 
-## 8. Overriding everything — what is ours, and how deep
+## 8. Branding customization scope
 
-This section is the page's **audit table**. It counts everything the crate leaves on screen and
-says what replaces each one. It gets deeper as it goes down.
+The tables below describe configuration, registration and painting hooks for
+built-in surfaces. Protected-shell restrictions still apply to these hooks.
 
 ### 8.1 One line on, one line off
 
@@ -825,10 +824,9 @@ features = ["mock", "overlay", "osk", "runner"]
 | `overlay` | The shade and quick-settings tiles | — |
 | `osk` | The on-screen keyboard | — |
 
-> **One side fails to boot, the other falls back quietly.** When you sweep the brand keys out of
-> your TOML, a typo in `[theme] preset` is an **`Error::Config` at startup** (fail-closed —
-> better than hunting for why the brand did not come on), while a typo in `[desktop] wallpaper`
-> **warns and falls back to `background`** (fail-open — one image should not stop the shell).
+> An unknown `[theme] preset` returns `Error::Config` during startup. An
+> unrecognized `[desktop] wallpaper` value logs a warning and falls back to the
+> `background` colour.
 
 Turning `brand` off removes `brand::*` entirely. The `[desktop.abyss]` section is parsed and
 ignored, and `wallpaper = "abyss"` warns and falls back to the `background` role colour — the
@@ -900,29 +898,29 @@ The default dark palette uses a dark `on_primary` rather than white.
 
 ### 9.2 Label legibility over the background
 
-**The headless harness cannot measure this.** The strongest thing `testing::Harness` gives you is
-`frame_shapes()` (a shape list); there is no pixel readback. And for a raster background the
-shell does not even hold the pixels (it has no decoder). So this check goes through **an actual
-window, captured**.
+`testing::Harness::frame_shapes()` returns shapes rather than rendered pixels.
+To assess composited label contrast over a raster background, capture a rendered
+window or obtain pixel output from the integrating host.
 
 - In this repository, `examples/demo.rs --tour <dir>` does exactly that — it opens a window on
   Xvfb with a software renderer and dumps frames as PNGs (the encoder uses std only).
 - On your side, bring your own `eframe` app up the same way once, capture it, and measure the
   luminance of the pixels under the label rects (`Desktop::icon_rect(id)` gives you those).
-- Two resolutions × dark/light, four combinations, is enough.
+- Include the supported display profiles, palettes, label lengths and image
+  backgrounds in the product review; two resolutions in dark/light mode are
+  a starting sample, not an exhaustive set.
 
-### 9.3 Zero fps at rest
+### 9.3 Idle repaint behavior
 
-If branding drags animation in with it, the machine never sleeps. Run N frames with no input and
-check that no repaint was requested.
-
-There are three switches that wake it, and **all three have names.**
+Animations and application callbacks can keep requesting updates. In an idle
+scenario, inspect repaint requests as well as backend wakes and host input.
+Common sources include:
 
 | Switch | What it does |
 |---|---|
 | `[desktop.abyss] animate = true` | Moves the mantas every frame. Turning it on logs a warning at startup |
-| `[shell] repaint = "continuous"` | For debugging. Draws every frame |
-| A `ctx.request_repaint()` inside your own background callback | No warning at all. This one is the hardest to find |
+| `[shell] repaint = "continuous"` | Requests continuous updates; the host controls the delivered frame cadence |
+| A `ctx.request_repaint()` inside your own background callback | Requests an update whenever that callback executes |
 
 ### 9.4 Draw calls and allocations
 
@@ -993,7 +991,7 @@ when `wallpaper = "abyss"`.
 | `ShellBuilder::status_bar_painter` / `nav_bar_painter` | A whole bar (§6.2) |
 | `ShellBuilder::slot_painter` | A whole **desktop cell** (`FnMut`; `SlotCx` brings press state and gates) |
 | `ShellBuilder::image_loader` | The file → texture decoder (§1). With it installed, `wallpaper = "file:…"` works |
-| `ShellBuilder::wallpaper(..)` | The background, from code. Beats `[desktop] wallpaper` |
+| `ShellBuilder::wallpaper(..)` | The background from code; takes precedence over `[desktop] wallpaper` |
 | `ShellBuilder::preset(Preset)` | **A crate default set** (palette + background) in one line (§8.1) |
 | `Shell::set_palettes` / `apply_palette` / `set_theme_dark` | Palettes at runtime |
 | `Shell::set_motion` | Motion tokens |

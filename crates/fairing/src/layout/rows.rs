@@ -253,10 +253,8 @@ pub fn tab_bar(
 ///
 /// # Why the value is not the accent
 ///
-/// All three references make the total the loudest text on the screen, and one paints it in its
-/// brand red. `Primary` measures 3.81 on `surface` in base dark, under the 4.5 a word needs, so
-/// **the accent is never a text colour** — the loudness here is size and weight, which is what the
-/// other two references use and what survives a palette swap.
+/// The total uses text colour rather than the accent role. Size and weight
+/// distinguish it from supporting rows. Review contrast after palette changes.
 ///
 /// # Why it is not `info_row` with a flag
 ///

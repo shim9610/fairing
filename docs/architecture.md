@@ -61,7 +61,7 @@ devices for development ([guide 06](guide/06-services.md)).
 
 | Crate | Release role | What it holds |
 |---|---|---|
-| `fairing` | Planned public crate | The shell. It re-exports `fairing-widgets` and `egui`, so one dependency is enough |
+| `fairing` | Planned public crate | The shell, including re-exports of `fairing-widgets` and `egui`; application adapters may need other dependencies |
 | `fairing-widgets` | Planned public crate | Units, the theme, motion, icons, fonts and the touch widgets. A control can be worked on here without the shell |
 | `fairing-fixed-heap` | Unpublished diagnostic | Isolated allocation-failure diagnostic; no product dependency; one scoped unsafe arena claim |
 | `xtask` | Unpublished tool | The audit gate, the icon compiler, the license report and the other maintenance commands |

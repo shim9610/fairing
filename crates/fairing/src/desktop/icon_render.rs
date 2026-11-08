@@ -239,11 +239,7 @@ pub(super) fn draw_label(
 ) {
     let lines = paint.label_lines;
     let width = paint.label_width;
-    // **The galleys are not held across frames.** A `Galley` carries UVs into the font atlas, so when a
-    // new glyph arrives and the atlas grows, those UVs shift wholesale — a cached galley draws the wrong
-    // characters from then on (reproducible straight away with a CJK font loaded). epaint keeps a cache
-    // of its own inside `layout_job` (`GalleyCache`) and clears it when the fonts change, so calling it
-    // every frame is both cheap and right.
+    // Recompute the icon transform from the current rectangle each frame.
     let mut job = LayoutJob::simple(
         cx.strings.get(&slot.label).to_owned(),
         egui::FontId::proportional(cx.theme.metrics.desktop_label_size),

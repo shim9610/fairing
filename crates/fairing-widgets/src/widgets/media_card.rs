@@ -1,50 +1,8 @@
-//! `MediaCard` — a picture with a text block under it, and the boundary argument that let it in.
+//! `MediaCard` combines an image and text in a selectable card.
 //!
-//! # Why this is not "a product card"
-//!
-//! `layout`'s refusal list says a product card "looks different in every trade and the crate cannot
-//! guess". Measured against the seven screens this element set was designed from, that is not what
-//! the screens do. **Six of them draw one structure across four trades** — a European restaurant, a
-//! Chinese restaurant, a fast-food chain and an e-book reader — and the structure is: a fixed-aspect
-//! picture, a left-aligned title, a muted line or two under it, and a figure.
-//!
-//! What *is* trade-specific is real and stays out: the price format, the spice pips, the allergen
-//! marks, the star rating. Those are the caller's, and this takes them as strings and slots it has
-//! no opinion about. The test for what the crate builds was never "does a shop use it" but **"is it
-//! the same object in every trade"**, and the measurement says this one is.
-//!
-//! # Why the corners are asymmetric
-//!
-//! The picture is full-bleed: it runs to the card's own edge on three sides. So its outer corners
-//! must be the **card's** radius and its inner ones must be square — a rounded corner where the
-//! picture meets the text block would cut a notch out of the middle of the card.
-//!
-//! That is the concentric rule the crate adopted for cards (`inner = outer − gap`) at its
-//! degenerate case: the gap is zero, so the radii are equal.
-//!
-//! # Why the image box's aspect is a number and the default is 4:3
-//!
-//! Measured: 1.314 (Bella Tavola), 1.310 (the Sichuan kiosk), 1.032 (the `McDonald's` kiosk) — two
-//! of three at 4:3 and one square, with the e-reader's covers portrait at about 2:3. A trade does
-//! not pick that; a *photographer* does, and the caller knows which they have. So it is one `f32`
-//! with named constants beside it rather than an enum the crate would have to keep guessing at.
-//!
-//! # Why selection is a ring and not a fill
-//!
-//! **Not one of the seven references fills a card to say it is chosen.** The crate's own kiosk did,
-//! and it is the single thing that made it read as a vending machine rather than a menu: an accent
-//! that floods a photograph destroys the photograph, which was the reason to have a card at all.
-//!
-//! Selection here is a `Primary` ring inside the card's edge, and the count lives on the corner
-//! action's badge, which is what every reference does. The rule is the one task #5 settled for the
-//! quick tiles, applied where it matters most.
-//!
-//! # Why the corner action is a slot and not a button the card owns
-//!
-//! A card reports two different presses — "open this" and "add one of these" — and a widget that
-//! collapsed them would make the commonest kiosk interaction impossible. [`MediaPick`] carries both
-//! and the caller decides; the action itself is an [`IconButton`], so a `+` on a
-//! card and a `+` anywhere else are the same object.
+//! The image region follows the card's outer corners. Selection is shown with an
+//! outline, and an optional corner-action slot can handle a separate interaction.
+//! The caller supplies image resources, content and action handling.
 
 use crate::cx::WidgetCx as Cx;
 use crate::fit::cover_uv;

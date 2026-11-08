@@ -1,31 +1,13 @@
-//! `PatternPad` — a path drawn through a grid of dots, the other way into the unlock prompt.
+//! `PatternPad` collects a path through a grid of dots.
 //!
-//! # The crate owns no secret
+//! The caller owns the `Vec<u8>` path buffer; dots are indexed row by row from zero
+//! at the top left. Retained gesture state records whether drawing is active and
+//! the last pointer position, not a second copy of the path.
 //!
-//! Like [`PinPad`](super::PinPad) it borrows the caller's buffer — a `&mut Vec<u8>` of dot
-//! numbers, counted row by row from 0 at the top left. The path goes there and nowhere else:
-//! between frames the widget remembers whether a finger is drawing and where it last was, never
-//! which dots it took.
-//!
-//! # A dot passed over is a dot taken
-//!
-//! A straight stroke from one dot to another through a third takes the third on the way, as every
-//! pattern lock does — a finger cannot jump a dot it is dragged across
-//! ([`PatternPad::passed_over`]). The stroke is followed through **every pointer position the
-//! frame carried**, not the last one alone, so a quick stroke on a slow frame takes the dots it
-//! crossed rather than the chord between two samples.
-//!
-//! # Too short is not wrong
-//!
-//! A path under [`PatternPad::min_points`] is not submitted: the response says `too_short`, and
-//! the caller asks for more dots without spending an attempt on it.
-//!
-//! # Why the cells are as big as they are
-//!
-//! A cell — the square round one dot — is never under a touch target, and grows to `CELL_MAX`
-//! targets where there is room. A dot takes the finger `HIT_RATIO` of a cell from its centre:
-//! room for a glove, and still narrow enough that a stroke between two dots past a third's side
-//! leaves the third alone.
+//! Segments between recorded pointer positions are checked for crossed dots using
+//! `passed_over`. This uses the samples supplied by egui; it cannot recover
+//! unreported physical motion. Paths below `min_points` report `too_short` instead
+//! of submission. Cell and hit-area dimensions use the configured touch metrics.
 
 use super::PatternPadLook;
 use crate::cx::WidgetCx as Cx;

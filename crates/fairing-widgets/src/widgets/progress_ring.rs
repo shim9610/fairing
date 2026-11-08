@@ -1,45 +1,13 @@
-//! `ProgressRing` — a ring that reports, determinate or not, with room in the middle for the
-//! number.
+//! `ProgressRing` displays determinate or indeterminate progress in a circular track.
 //!
-//! # Why a ring is not the bar bent round
+//! The centre can hold caller-supplied content. `RingStyle::Sweep` uses a colour
+//! gradient and `RingStyle::Flat` uses a flat arc. Gradient bands use mesh vertex
+//! colours interpolated by egui/epaint.
 //!
-//! `ProgressBar` is a strip beside a label, read in a list. A ring is read **from across the
-//! bench**: it sits alone in a tile or a hero, the number sits inside it, and the band has to be
-//! thick enough that the eye takes the fraction in without stopping. So it has its own stroke
-//! token (`control.ring_ratio`, over its own diameter), its own centre slot, and its own
-//! way of saying "still going".
-//!
-//! # Why the fill is a sweep of colour and not a flat arc
-//!
-//! On a flat arc the only thing that says which end is the *head* is the position of the cut,
-//! and at 63 % that is a matter of remembering where twelve o'clock was. The reference draws the
-//! band from a pale tint at the start to the full accent at the head, and a soft halo around the
-//! filled part, so the direction of travel is in the colour: the eye finds the head first. That is
-//! [`RingStyle::Sweep`], the default. [`RingStyle::Flat`] is the Material shape, for a panel that
-//! wants the quieter one.
-//!
-//! A gradient along an arc is not something a stroke can draw. The band is a **mesh** with a
-//! colour on every vertex, which epaint interpolates — the same way the desktop paints its
-//! gradient wallpaper. The mesh is cached against the ring's geometry and its quantised value, so
-//! a ring that is not moving costs no allocation and a moving one costs one rebuild per frame.
-//!
-//! # Why the shown value is eased, and never goes backwards
-//!
-//! Apple's guidance is to *even out* the pace of a determinate indicator, and Fluent's is never to
-//! let one rewind; both are about the same thing, which is that a bar is trusted only while it
-//! behaves like a clock. A worker reporting in bursts would have the ring jump; a worker that
-//! restarts a phase would have it snap back. So the ring eases towards each reported value over
-//! `motion.switch`, and holds the highest value it has shown unless the caller says a rewind is
-//! meant ([`ProgressRing::allow_rewind`]) — a *new run* is a rewind that is meant.
-//!
-//! And it reports silence the way the bar does: past [`ProgressRing::stale_after`]
-//! with no new value and no [`ProgressRing::heartbeat`], the band breathes and the centre value
-//! dims. The stall does not change the tone — that is the caller's judgement to make.
-//!
-//! # Why the read-out is the caller's string
-//!
-//! As for the bar: `63 %`, `63%`, `12.4 L`, `3 / 4` — the crate lays the number out and
-//! does not decide what it is.
+//! The widget animates reported progress and supports an explicit rewind policy,
+//! stale indication and reduced-motion presentation. The application supplies the
+//! reported value and operation status; visual animation is not a backend liveness
+//! check.
 
 use super::{ProgressFill as Fill, ProgressRingLook};
 use crate::cx::WidgetCx as Cx;

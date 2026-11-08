@@ -690,14 +690,13 @@ On every way down — a temporary unlock running out, the timeout, a lock, a log
 `set_subject` to a lower level — screens that no longer pass their gate close,
 the rest get `Lifecycle::AccessChanged`, and the shade and an unlock prompt close
 too, and so do the recent screens where the session no longer passes the gate
-they came up behind. The timers wake the shell on time on a panel nobody touches;
-nothing has to repaint to notice them.
+they came up behind. Timers request a host update for their deadlines; enforcement
+occurs when the host supplies a logic or UI update.
 
-**The timers run on the wall clock.** A reactive panel draws nothing while
-nothing moves, and the time it sleeps counts: a five-minute temporary unlock ends
-five minutes after the unlock however few frames were drawn in between, and so
-do the timeout, the idle lock and a lockout's countdown. A timer longer than a
-year is a config error at start.
+Shell/state runners use monotonic elapsed time through `Shell::logic*`, so
+deadlines advance between UI passes. Frame-only custom hosts use the egui input
+timeline. Expiry is checked at the next supplied update; presentation timing is
+host-controlled. A timer longer than a year is a config error.
 
 Overdue timers are enforced before the command queue and before input renews activity.
 The first touch after a delayed frame cannot preserve an expired session, and queued

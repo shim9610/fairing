@@ -1,72 +1,9 @@
-//! `Switch` — a `mark_size × switch_aspect` track inside a full `touch_target` slot, carrying a
-//! two-tone mover that travels on the 140 ms `CubicOut` switch tween and follows the finger 1:1
-//! (control vocabulary).
+//! `Switch` edits a Boolean value by tapping or dragging its knob.
 //!
-//! A tap flips it; grab the knob and it follows the finger 1:1. On release, **position past 50 %
-//! or velocity** decides — past halfway, or thrown faster than `[motion] fling_px_s`, and it lands
-//! that side. During a drag the tween store is overwritten with the finger's value, so the tween
-//! continues from exactly where you let go. That behaviour is unchanged; everything the switch
-//! *draws* now comes from the shared control tokens instead of from this file.
-//!
-//! # Why the slot is taller than the track
-//!
-//! The track is `control.mark_size` high (0.600 T) and the slot is a full `metrics.touch_target`
-//! on **both** axes (Rule 1.1). Until now the switch sensed exactly what it drew, so its short axis
-//! was 0.60 T — about 7.8 mm against a 13 mm gloved fingertip, a miss on a moving vehicle. What you
-//! press and what you see are two rects, and only the drawn one is allowed to be small.
-//!
-//! # Why the knob is the ink of the face it rests on
-//!
-//! It is a **mover**: no single role clears 3.0 against both the on track and the off one, so one
-//! flat colour cannot carry it (measured: `on_primary` on the off track is 1.00 / 15.46 / 1.26 /
-//! 1.39 across the four palettes — in base light `on_primary` and `surface_variant` are the same
-//! colour, so half the time the knob was simply not there).
-//!
-//! The knob was a `Surface` body inside an `OnSurface` edge — the container's own ground punched
-//! through the track. That reads correctly in a light palette, where `Surface` is near-white, and
-//! **inverts in a dark one**, where it becomes a near-black disc inside a white ring: a hole, not a
-//! knob. Measured from a render, the base-dark knob was `(20, 20, 22)` inside `(240, 240, 243)`.
-//!
-//! The mover is still two-tone, but along the axis that means something: it is the **ink of the
-//! face it rests on**, cross-faded on the same tween the track itself uses — `OnPrimary` over the
-//! on track, `Muted` over the off one.
-//!
-//! `OnSurface` was the first off ink and it was wrong in the other direction. It is the *full
-//! strength* ink, near-white in a dark palette and near-black in a light one, so a light-theme off
-//! switch drew a black disc on a white track: a heavy blot where the dark theme had a clean cap.
-//! `Muted` is the same ink one step quieter, and it is the one grey that stays a mid-tone in
-//! **both** directions — 4.31 / 3.96 / 4.28 / 3.52 on the off track across the four palettes,
-//! against 3.0. Material 3's switch handle does exactly this, for the same reason.
-//!
-//! The pair also buys a second state channel. Off the cap is grey, on it is `OnPrimary`; so the
-//! knob **brightens** as it travels, and position, track colour and cap brightness all say the same
-//! thing. Colour alone was never enough (Rule 7.1).
-//!
-//! Carrying its own contrast means the knob no longer needs a separate edge to be seen, and the
-//! ring that used to make it read as a washer is gone.
-//!
-//! # Why the off track is an `Outline` face with a `ControlEdge` edge
-//!
-//! An off switch has to read as **a filled object**, not as an outline around nothing (Rule 3.1's
-//! companion: a control is identified by its fill). `SurfaceVariant` cannot do that, because in
-//! base light `SurfaceVariant` **is** the card — an off switch measured 1.00 against the surface it
-//! sat on and existed only as its hairline.
-//!
-//! `Outline` is the palette's quietest neutral fill, and against the card it measures 1.50 / 1.18 /
-//! 1.31 / 1.15 — a pill you can see in a light palette, a lift you can see in a dark one. It was
-//! rejected for this job once before, when it was used at full alpha *with a `Surface` knob and a
-//! `Muted` edge*, and the slab that produced was the knob and the edge, not the fill.
-//!
-//! The boundary that identifies a control was then `Muted` — but `Muted` is *text*, gated at 4.5,
-//! and a boundary only has to clear WCAG 1.4.11's 3.0. Every control borrowing the text grey drew
-//! its edge as loud as the label beside it. `ControlEdge` is the same job at the rule's own floor
-//! (3.10–3.66 across the shipped palettes, against 4.59–5.95 for `Muted`).
-//!
-//! # Why the knob inset is a ratio and not a length
-//!
-//! `knob_ratio` (0.875) reproduces the old fixed 3 du inset to within 0.14 du at the shipped
-//! default, and unlike the fixed value it keeps that proportion when the finger — and with it the
-//! track — changes size. A `du` inset on a small-finger panel ate a third of the knob.
+//! The knob follows an active drag and animates to the selected endpoint after
+//! release. Track, knob, press feedback and focus outline use separate theme and
+//! control tokens. Disabled presentation retains the selected-state distinction.
+//! The caller owns the value and handles any associated device command.
 
 use super::SwitchLook;
 use crate::cx::WidgetCx as Cx;
@@ -423,12 +360,8 @@ fn geometry(track: Rect, knob_ratio: f32, grow: f32, t: f32) -> Geometry {
     }
 }
 
-/// The focus ring, **outside** the silhouette.
-///
-/// Outside is a contrast decision, not a styling one: `Focus` measured against `Primary` is
-/// 1.00–1.62 in the shipped palettes, so a ring laid on the track's own edge is invisible on an on
-/// switch in every one of them, while against the container behind it the same colour clears 3.0
-/// everywhere. It also puts the ring outside the press growth, and outside the finger.
+/// Paint the focus outline outside the control's painted boundary.
+/// Check the focus colour against the surrounding background for custom palettes.
 fn paint_focus_ring(painter: &egui::Painter, theme: &Theme, silhouette: Rect, color: Color32) {
     let width = theme.control.stroke_mark;
     // `+ width / 2` because the stroke straddles its path: the ring's inner face then sits exactly

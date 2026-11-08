@@ -1,4 +1,4 @@
-//! The hidden entry point. The **invisible** door into a device's service menu.
+//! Triggered entry points for service menus and other non-desktop destinations.
 //!
 //! # The crate does not decide the trigger
 //!

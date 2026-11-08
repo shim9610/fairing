@@ -1,29 +1,12 @@
-//! **The card reveal** — the shade as a floating card that *materialises*, the way One
-//! UI 7 and 8 open the quick panel.
+//! Floating-card shade geometry and reveal animation.
 //!
-//! A curtain ([`super::Overlay::ui`]'s first mapping, A1) hangs the panel from the top
-//! edge and draws it down: the content is pinned to the top and the pull reveals it. Nothing in
-//! it moves except the edge, so the eye reads "a cloth being lifted off something that was
-//! already there". A card is the opposite: it is already its final size at its final place, and
-//! what the pull drives is **how far it has arrived** —
+//! Pull progress controls plate/content opacity, a short vertical offset and edge
+//! feathering. Geometry is parameterized through shade metrics and overlay config,
+//! including `card_width_ratio`. An outside-tap catch handles dismissal.
 //!
-//! - it **fades in** from nothing (the plate and, lagging behind, the content);
-//! - it **comes down** a short way ([`crate::theme::ShadeMetrics::card_drop`]) — a direction, not a
-//!   journey;
-//! - its **edge sharpens**: the plate starts as a soft blob (an [`egui::epaint::Shadow`]-feathered
-//!   silhouette as wide as its corner) and tightens to a corner as it lands.
-//!
-//! Those three together are what reads as "it came down fast from above" — the blur standing in
-//! for motion blur, the drop giving the direction, the fade making it an arrival rather than a
-//! reveal. The page behind is not dimmed: there is no scrim, only a catch for the tap outside.
-//!
-//! The numbers were measured off a One UI 8 recording at 1432 × 1080: a card 0.445 of the width,
-//! corners at 9 % of the card's width, content inset 6 %, side inset 1 %, a top gap of about one
-//! corner radius under the status bar, a drop of 4–6 % of the height, the open 0.34 s and the close
-//! 0.04 s. The proportions are the tokens' defaults; the width is `[overlay] card_width_ratio`.
-//!
-//! The geometry and the arrival curve live here as plain functions so they can be tested without a
-//! shell; the drawing is [`super::Overlay::ui`]'s.
+//! The geometry and animation curves are plain functions; `Overlay::ui` performs
+//! the drawing using egui/epaint shapes.
+
 // UI geometry: pixel values crossing to u8 corner radii. The loss is meaningless in this range, so
 // the cast lints are lifted for the whole file (the workspace's pedantic lints stay).
 #![allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]

@@ -1,13 +1,4 @@
-//! **Fitting a picture into a place** — the two ways, and nothing else.
-//!
-//! [`contain`] gives the whole picture and leaves bars; [`cover_uv`] fills the place and crops. They
-//! take no `Ui` and deal only in numbers, so they work where there is no `Ui` to hand — inside a
-//! grid cell, inside a card's image box, or against a bare `Painter`.
-//!
-//! They live here rather than in `fairing::layout` because a widget needs them too: a
-//! [`MediaCard`](crate::widgets::MediaCard)'s image box is a cover, and a second copy of this
-//! arithmetic beside it is how this crate once ended up with five uncoordinated stroke widths.
-//! `fairing::layout` re-exports both, so nothing moved for a caller.
+//! Aspect-preserving image fitting: containment and cropped coverage.
 
 /// The Rect fitted **inside** `into` keeping the aspect ratio — CSS's `object-fit: contain`.
 ///

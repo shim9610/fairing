@@ -1,11 +1,9 @@
-//! `TextField` — a single- or multi-line input field that follows the theme.
+//! `TextField` wraps egui text editing with Fairing sizing and styling.
 //!
-//! It wraps `egui::TextEdit`, for one reason: **egui's field height comes from the text line
-//! height and has nothing to do with a touch target.** Left at the default it is a 25 du field
-//! against 16 du body text, and a gloved 13 mm finger is twice that. Putting
-//! [`crate::theme::Metrics::touch_target`] under it as a floor is all this widget does; the
-//! colours, corners, hint text and focus ring are whatever
-//! [`Theme::egui_style`](crate::theme::Theme::egui_style) already painted.
+//! Its height has a floor from [`crate::theme::Metrics::touch_target`]. Colours,
+//! corners, hint text and focus styling use
+//! [`Theme::egui_style`](crate::theme::Theme::egui_style). The application supplies
+//! the text buffer and validates its contents.
 //!
 //! ```no_run
 //! # use fairing_widgets::{widgets::TextField, WidgetCx};

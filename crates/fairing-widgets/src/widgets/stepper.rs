@@ -1,59 +1,9 @@
-//! `Stepper` — `−  n  +`, one track with three cells.
+//! `Stepper` edits an integer through decrement and increment controls.
 //!
-//! # Why this is a control and not screen content
-//!
-//! `layout`'s module doc used to list "a quantity stepper" among the things the crate deliberately
-//! does not make, beside a cart line and a star rating. That line is right about two of the three
-//! and wrong about this one, and the crate's own kiosk is the evidence: it wrote 55 lines of
-//! stepper by hand.
-//!
-//! A cart line and a star rating are **trade content** — what they hold differs in every shop. A
-//! stepper is a **scalar editor**, and it is the same object in a kiosk (how many coffees), on a
-//! thermostat (what temperature), on an oven (how many minutes) and on a press (how many parts).
-//! It belongs beside [`Switch`](super::Switch), [`Checkbox`](super::Checkbox) and
-//! [`TouchSlider`](super::TouchSlider), all three of which edit a value the caller owns. iOS ships
-//! `UIStepper` and Windows ships `NumberBox` for the same reason.
-//!
-//! # What the crate's own stepper got wrong
-//!
-//! Three things, each of which this fixes:
-//!
-//! 1. It drew `"+"` and `"−"` as **text**. The checkbox's doc already forbids exactly that — a
-//!    typeface an integrator supplies may not carry the glyph, and tofu in a control is worse than
-//!    no control. The crate has `plus` and `minus` icons; this draws those.
-//! 2. Its radius, its digit size and its value cell were eyeballed multiples of a local `step`
-//!    (`0.34`, `0.46`, `0.9`), so a panel that retuned its metrics retuned nothing here.
-//! 3. It used [`BigButton`](super::BigButton) for each end, which senses and grows as a *button*
-//!    inside a track it does not know about.
-//!
-//! # Why one track and not three buttons
-//!
-//! Both reference kiosks draw one pill with three cells — a faint disc at each end and the figure
-//! between — and not three separate objects. One track says "these two ends change this number";
-//! three buttons say "here are three things".
-//!
-//! The track's corner is **half its height**, and that is concentricity rather than decoration:
-//! the end discs are circles of `control.icon_button` inside a track of `metrics.touch_target`, so
-//! a half-height corner makes the cap and the disc concentric and the inset reads as even. It is
-//! the argument the switch's own geometry makes for its knob, applied to a wider track.
-//!
-//! Measured, the references' end disc is 0.68 of their track's height; `control.icon_button` is
-//! 0.68 of a touch target, and the track here is one touch target tall — so the proportion comes
-//! out at the reference's exactly, from tokens that were derived somewhere else.
-//!
-//! # Why there is no press-and-hold repeat
-//!
-//! A repeat needs a rate, a rate needs a token, and a token needs a reason. A quantity a finger
-//! walks to is a quantity under about a dozen; past that the control wanted was a field with a
-//! keypad, not a button pressed forty times. If a range really needs repeating, that is the
-//! argument for a number field, and it is a different element.
-//!
-//! # Why the exhausted end fades rather than disappearing
-//!
-//! At the bottom of the range the `−` is unavailable, and it goes to `control.disabled_alpha` and
-//! stops sensing — the crate's one disabled mechanism. Removing it would reflow the track under
-//! the finger, which is Rule 1.5 read the other way round: the drawing may change, the places may
-//! not.
+//! The value is displayed between the two controls. The configured range clamps
+//! updates, and an end control is unavailable when its next step would exceed the
+//! range. Geometry and press feedback use theme and control tokens. The caller
+//! owns the value and decides how changes affect application or device state.
 
 use super::{StepEnd, StepperLook};
 use crate::cx::WidgetCx as Cx;

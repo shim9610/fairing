@@ -571,7 +571,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
     apply_legibility(&mut shell);
 
     // The scenario thread: it takes the Wi-Fi strength round 4 → 0 → 4 every 4 seconds. It sends
-    // through the backend channel (`MockControl`) and wakes the UI with `Waker::wake` — no locks.
+    // through the backend channel (`MockControl`) and requests an update with `Waker::wake`.
     let waker = shell.handle().waker().clone();
     std::thread::spawn(move || {
         let mut strength = 4u8;

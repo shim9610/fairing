@@ -634,12 +634,7 @@ impl Tile {
     }
 }
 
-/// The overview: the run in progress, then the six things a hand reaches for.
-///
-/// The run block is the console reference's: a thick ring with the number inside it, and the
-/// readings in a column beside it — label small and muted, value in the display face. The ring
-/// carries the sweep, so the eye finds the head by colour rather than by remembering where twelve
-/// o'clock was.
+/// Gradient colours distinguish the start and end of the sweep.
 fn overview(ui: &mut egui::Ui, cx: &mut Cx<'_>) {
     let tiles = [
         Tile::new("Start run", icon::ACTIVITY),

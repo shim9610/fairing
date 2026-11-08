@@ -1011,8 +1011,7 @@ The list handles gestures like this.
 
 **Direction carries the meaning.** Left discards, right opens. While you drag, the outcome shows
 in the space you uncover — a bin on a red ground going left, an arrow on an accent ground going
-right. A notification with nowhere to go (`action` is `None`) **does not drag right at all**:
-better than looking like it will do something and then doing nothing.
+right. A notification with no action (`action` is `None`) does not drag right.
 
 The commit threshold is a third of the list's width, or a fling in the same direction — the same as pulling the shade.
 

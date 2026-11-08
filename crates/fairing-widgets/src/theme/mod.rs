@@ -65,14 +65,10 @@ pub enum ColorRole {
     /// Borders — the decorative line between two containers: a divider inside a card, the hairline
     /// where one surface meets another. It measures 1.15–1.65 against the grounds on purpose.
     Outline,
-    /// **A control's own boundary** — the ring of an unticked checkbox, an unselected radio, an off
-    /// switch's track, a slider's empty side.
+    /// Control-boundary colour, distinct from decorative `Outline` and text `Muted`.
     ///
-    /// It is separate from both of its neighbours because it answers a different rule. `Outline` is
-    /// decoration and is allowed to be a ghost; this is what identifies a control at all, so it is
-    /// gated at WCAG 1.4.11's **3.0**. `Muted` is *text*, gated at 4.5 — borrowing it, as every
-    /// control did, drew each boundary as loud as the label beside it, and a card holding a
-    /// checkbox, a radio, a segmented strip and a slider came out as four bright outlines.
+    /// Palette tests check this role against the supported control backgrounds at a
+    /// contrast ratio of at least 3:1. Custom palettes and backgrounds need review.
     ControlEdge,
     /// The press tint.
     Pressed,
@@ -250,16 +246,9 @@ impl Palette {
         }
     }
 
-    /// **Linen light — the one this preset is for**.
+    /// Warm neutral palette with off-white surfaces.
     ///
-    /// Warm neutrals rather than neutral ones: every grey here carries a little red and yellow, so
-    /// the page sits beside oak and wool instead of against them. Nothing is pure white — the
-    /// lightest surface is `#FAF8F4`, because a white card in a room with daylight in it reads as a
-    /// hole rather than as paper.
-    ///
-    /// The accent is a **sage at 4.74 against the page**, deliberately quieter than its own
-    /// `danger` at 5.56. An appliance's accent marks what you chose; the alarm has to be able to
-    /// outrank it, and on a palette this soft that only happens if the accent gives way first.
+    /// The application can override its colour roles.
     fn linen_light() -> Self {
         Self {
             background: Color32::from_rgb(0xe4, 0xde, 0xd4),
@@ -326,20 +315,9 @@ impl Palette {
             surface_variant: Color32::from_rgb(0x12, 0x30, 0x49),
             on_surface: Color32::from_rgb(0xe6, 0xf2, 0xfa),
             muted: Color32::from_rgb(0x7f, 0xa0, 0xb8),
-            // **Deep enough to let an alarm be louder than it.** `#38C6E8` measured **8.38** against
-            // this preset's page while its own `danger` measured 6.09 — so on the deep-sea preset
-            // the accent shouted over the error colour, and an error had nothing left to say with.
-            // `#00A2CA` is the same hue (192°) at the same full saturation, two steps down: 5.65 on
-            // the page, under danger's 6.09 and well under warning's 10.52 and success's 10.03.
-            //
-            // The order this restores is the one base dark already had, and it is the order a
-            // machine panel wants: the accent marks what is *chosen*, and the four severity colours
-            // are the only things allowed to interrupt.
+            // Keep the accent distinct from the severity colour roles.
             primary: Color32::from_rgb(0x00, 0xa2, 0xca),
-            // Not white — the contrast over `primary` falls to 3.4:1, under the 4.5 a label needs.
-            // The dark ink reads at 6.32, and unlike base dark this preset can afford it: a bright
-            // cyan is what the reference art *is*, and deepening it far enough to carry white would
-            // have cost the preset its identity rather than its loudness.
+            // Use dark foreground ink on the cyan accent; palette tests check contrast.
             on_primary: Color32::from_rgb(0x04, 0x12, 0x1f),
             danger: Color32::from_rgb(0xff, 0x6b, 0x6b),
             warning: Color32::from_rgb(0xff, 0xc2, 0x4d),
@@ -404,23 +382,7 @@ impl Palette {
             on_surface: Color32::from_rgb(0xf0, 0xf0, 0xf3),
             muted: Color32::from_rgb(0x93, 0x93, 0x9d),
             primary: Color32::from_rgb(0x28, 0x78, 0xa9),
-            // **White, and the accent moved to meet it.** The rule used to be that a dark ground
-            // forces a light accent and therefore dark label text, and that is what produced a
-            // pastel `#57A9FF` with near-black on it — read, correctly, as toy plastic. The way out
-            // is not a lower floor but a deeper accent: `#2878A9` carries white at 4.83:1, clearing
-            // the 4.5 text floor outright. Its own contrast against the surfaces is 4.07 / 3.81 /
-            // 3.20, over the 3.0 a filled shape needs.
-            //
-            // It is a **steel** blue and not a pure one, and that is the second thing this value
-            // fixes. A fully saturated accent — `#1B6EF3`, which this replaces — is the one every
-            // stock panel ships, and at the sizes a device UI fills it with (a whole switch track,
-            // a whole slider) the saturation is what reads as cheap. Rotating the hue toward cyan
-            // and dropping the chroma keeps the job and leaves the four severity colours louder
-            // than the accent, which is the order a machine panel wants.
-            //
-            // The consequence has to be said: `Primary` is now **never** a text colour. 3.81 on
-            // `surface` clears the non-text floor and not the text one, so an accent tick, an
-            // accent fill and an accent icon are all fine and accent *words* are not.
+            // Use a less saturated accent for large filled areas.
             on_primary: Color32::WHITE,
             danger: Color32::from_rgb(0xff, 0x6b, 0x5e),
             warning: Color32::from_rgb(0xe9, 0xa8, 0x3b),
@@ -441,34 +403,9 @@ impl Palette {
         Self::base_light()
     }
 
-    /// Base light — **a grey page, white cards, one system blue**.
+    /// Light Base palette with a blue accent and neutral surfaces.
     ///
-    /// # Where the values come from
-    ///
-    /// The reference is the family this shell stands beside on real hardware — iOS, One UI and
-    /// Windows 11 — because a device shell's *default* has to read as a competent system UI, not as
-    /// a point of view. All three agree on three things and this preset takes all three:
-    ///
-    /// 1. **The page is a light grey and the card on it is white**, not the other way round. iOS
-    ///    groups `#FFFFFF` cards on a `#F2F2F7` page; Windows 11 puts `#FBFBFB` cards on `#F3F3F3`.
-    ///    So [`ColorRole::Surface`] (the screen ground and the bars) is the grey and
-    ///    [`ColorRole::SurfaceVariant`] (cards, tiles, plain buttons) is the white — a card is
-    ///    **lifted**, not recessed. [`ColorRole::Background`] is a step deeper again, which is what
-    ///    makes a text field read as a hole to write in.
-    /// 2. **The neutrals are neutral** — neither a warm tint nor the blue-grey ramp every UI kit
-    ///    ships. The three channels stay within a few points of each other.
-    /// 3. **The accent is a system blue.** Green, amber and red are already
-    ///    [`Success`](ColorRole::Success), [`Warning`](ColorRole::Warning) and
-    ///    [`Danger`](ColorRole::Danger), which is why every platform lands in the blue arc.
-    ///    `#106AA2` is a steel blue: deeper than Windows 11's `#0078D4`, and rotated off the pure
-    ///    arc those three sit on. Depth is the accessibility half — `#0078D4` is 4.53:1 against
-    ///    white text, clearing the 4.5 floor by 0.03 with no headroom, and iOS `#007AFF` (4.02) and
-    ///    One UI `#0381FE` (3.77) do not clear it at all, while `#106AA2` is 5.82:1. The rotation
-    ///    is the other half: a fully saturated blue filling a whole slider reads as cheap, and a
-    ///    device shell fills large areas with its accent.
-    ///
-    /// [`ColorRole::Focus`] is deliberately **not** `primary`: a focus ring drawn on top of a
-    /// pressed control has to be visible against the press.
+    /// Focus uses a separate role from the primary accent.
     fn base_light() -> Self {
         Self {
             background: Color32::from_rgb(0xe1, 0xe1, 0xe8),
@@ -1162,8 +1099,8 @@ impl Theme {
     /// Built from the config sections that describe a theme ([`ThemeInputs`]).
     ///
     /// The shell's own `ShellConfig` gathers these — `fairing_widgets::ShellConfig::build_theme` is the
-    /// one-argument form. This takes the five pieces directly, because a theme has no business
-    /// knowing what else is in the shell's config file.
+    /// one-argument form. This method accepts only the theme-related sections, without
+    /// depending on the rest of the shell configuration.
     ///
     /// # Errors
     /// [`Error::Config`] if `[theme] preset` is an unknown name, or a `[theme.palette]` role
