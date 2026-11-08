@@ -194,6 +194,19 @@ DEMO marker demonstrates session wiring and must be replaced by a real verifier.
 Protected construction rejects untyped global painters/layouts, image loaders and
 procedural wallpapers; put custom protected UI in typed declarations or elements.
 
+From a repository checkout, run the protected example's GUI smoke tour with:
+
+```sh
+cargo run --locked -p fairing --example protected --features runner-x11 -- --tour target/tours/protected --size=1024x600
+```
+
+It checks a rejected development marker, login, an authorized operation, logout
+with protected content hidden and a stale button click blocked, then reauthentication.
+It writes four screenshots and exits nonzero on a failed check. `tools/tours.sh`
+includes this flow alongside the gallery tours. This smoke test complements the
+kernel proofs and headless tests; it does not cover every role change, revocation
+or expiry history.
+
 The [common mediation contract](docs/protected-contracts.md) proves the shared
 admission kernel and automatically checks compiler-discovered protected entry
 routes. An admitted callback retains raw egui, app and backend access; credential
@@ -254,6 +267,8 @@ reports rendered geometry for pointer-driven tests. The repository also checks:
 |---|---|
 | Strict audit | Formatting, Clippy, workspace/guide doctests, API docs, dependency approvals, generated files, aarch64 type-check and blocking-call scan |
 | API and UI regressions | Native/generated histories, retained widget state, independent expectations and production mutation controls |
+| Feature profiles | Complete workspace tests and strict Clippy with minimal, default, default UI without Mock and all features |
+| Graphical tours | Real-window gallery flows and the protected login/operation/logout/reauthentication smoke tour |
 | Protected execution | Source-bound Kani/Verus kernel proofs, compiler-derived routing checks and extension/bypass controls |
 | Additional assurance | Miri, Loom concurrency scenarios, sanitizer fuzzing, coverage and dependency inventories |
 | Release archives | Extracted-package tests and an external consumer for minimal/default/all features |

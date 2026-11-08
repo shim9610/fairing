@@ -101,6 +101,20 @@ connects the proved admission kernel to compiler-discovered protected entries.
 Credential verification, metadata classification and arbitrary admitted callback
 effects remain integration responsibilities.
 
+From the repository checkout, run the protected GUI smoke tour with:
+
+```sh
+cargo run --locked -p fairing --example protected --features runner-x11 -- --tour target/tours/protected --size=1024x600
+```
+
+It uses the public development marker `DEMO` to check session wiring, not production
+credential verification. It exercises a rejected marker, login, an authorized
+operation, logout with protected content hidden and a stale button click blocked,
+then reauthentication. It writes four screenshots and exits nonzero on a failed
+check. The repository's `tools/tours.sh` includes this smoke tour; headless tests
+and source-bound proofs cover separate obligations, and this GUI flow is not an
+exhaustive role-change, revocation or expiry test.
+
 ## Features
 
 | Feature | Default | What it adds |
