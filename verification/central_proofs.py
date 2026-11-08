@@ -9,6 +9,7 @@ import subprocess
 import sys
 
 import install
+from validation import KERNEL_INPUTS, require
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'verus'))
 from mediation_path import function
 
@@ -138,7 +139,7 @@ def execute(path, env, kani):
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     receipt = OUT / 'kernel-proof.json'; receipt.unlink(missing_ok=True)
-    paths = [ROOT / p for p in ['crates/fairing/src/access/mediation.rs', 'crates/fairing/src/access/mediation/contract.rs', 'crates/fairing/src/access/protected_dispatch.rs', 'verification/central_proofs.py', 'verification/verus/mediation_path.py', 'verification/tools.json']]
+    paths = [ROOT / p for p in KERNEL_INPUTS]
     def hashes(): return {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
     before = hashes()
     subprocess.run([sys.executable, ROOT / 'verification/verus/mediation_path.py'], cwd=ROOT, check=True)
@@ -159,15 +160,15 @@ def main():
         ('skip-resource-isolation', 'cx.with_protected_resources(path, operation)', 'operation(cx)', 'protected resources were bypassed'),
         ('discard-parent-at-entry', 'AuthorityPath::new(gate, stamp, cx.authority_path())', 'AuthorityPath::new(gate, stamp, None)', 'ancestor context was not inherited'),
     ]:
-        assert source.count(old) == 1
+        require(source.count(old) == 1, 'Assurance condition failed: source.count(old) == 1')
         result = execute(generate(source.replace(old, new, 1), OUT / (label + '-kani.rs')), env, kani)
         content = result.stdout + result.stderr
         # The security assertion itself must be FAILURE, not merely mentioned in
         # a proof summary after an unrelated failure/undetermined result.
         failed = re.findall(r'Status: FAILURE\n\s*- Description: ([^\n]*)', content)
-        assert result.returncode and any(text.strip('"') == assertion for text in failed), 'Mutation did not fail its security assertion: ' + label
+        require(result.returncode and any(text.strip('"') == assertion for text in failed), 'Mutation did not fail its security assertion: ' + label)
         controls.append({'case': label, 'status': 'security-assertion-rejected'})
-    assert before == hashes(), 'Proof inputs changed during checking'
+    require(before == hashes(), 'Proof inputs changed during checking')
     receipt.write_text(json.dumps({'status': 'shared-production-admission-kernel-verified', 'inputs': before, 'controls': controls,
         'assumptions': 'Cx methods satisfy their observation and invocation-resource contracts; AuthorityPath is abstracted by its separately verified boolean decision. Kernel source bodies and branch predicates are unchanged. Concrete Cx resource storage, atomic trace refinement and whole-library routing are separate obligations.',
         'role': 'kernel-contract'}, indent=2) + '\n')

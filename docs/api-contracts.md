@@ -143,11 +143,17 @@ an admitted callback or establish complete information-flow confinement.
 
 ## Controls and coverage
 
-`verification/proofs.py` requires both verifiers to reject twenty-one mutations:
+`verification/proofs.py` defines 37 production mutations: 33 checked by both
+Kani and Verus, and four checked by Kani alone (70 expected-rejection runs).
+The shared-verifier set includes these 21 component mutations:
 reversed ACK condition, stale-response acceptance, reversed level order, accepting
 an unknown grant, wrapping failure count, excluding lockout equality, wrapping a
 pool generation, broken display clipping, excessive input deferral, modal capture, a missing Back group, ignoring a permitted Back operation, accepting future owner timestamps, retaining an expired owner, refusing a new start due to stale ownership, retaining activity after completion, ignoring concrete disablement, confusing cached/active holds, reusing capture on a fresh unowned press, losing the completion latch, and treating arbitrary cached animation as capture.
-The controls require a semantic verification error; compilation errors fail
+It also includes ten session decision mutations and two protected-admission
+predicate mutations. The Kani-only set checks three concrete atomic-storage
+mutations and one protected callback-invocation mutation. The common mediation
+pipeline has its own kernel/path and compiled-routing controls; those are not
+included in these 37. The controls require a semantic verification error; compilation errors fail
 the control instead of counting as a successful rejection.
 
 `verification/controls.py` copies the sources into a disposable directory,
@@ -249,3 +255,37 @@ witnesses. A missing edge witness, sticky deferral or stale guard covering a mod
 fails the suite. The latter two defects are deliberate negative controls in CI.
 [Scope, fairness conditions and extension rules](ui-reachability.md) describe which
 progress properties are proved and which widget paths are checked dynamically.
+
+## Public surface and evolution
+
+The current checkout is pre-release. Encapsulation is strongest around
+`SessionController`, `SessionToken`, `SessionSnapshot`, `PermissionBinding` and
+`ProtectedShell`: their private storage permits implementation changes without
+exposing a mutable token or a mutable legacy-shell conversion. External
+permission enums remain application-owned. Admitted callbacks intentionally
+retain raw UI/app/backend access; removing that is a contract change.
+
+Other public APIs have concrete compatibility costs:
+
+| Surface | Current commitment | Maintenance consequence |
+| --- | --- | --- |
+| `ShellConfig`, its section structs and `SessionGrant` | Public fields; external struct literals are permitted | Adding fields breaks complete literals. Prefer `Default` plus field assignment for configs and the grant constructors; this is usage guidance, not enforced extensibility |
+| `SessionError`, `SessionReadError`, `Decl` and `DeclKind` | Exhaustive public enums | Adding variants breaks exhaustive downstream matches. Review whether each enum needs an extension policy before the first release |
+| `Shell::*_mut` component accessors | Concrete mutable component APIs for trusted legacy hosts | Replacing component types or their invariants can affect callers. New host operations should prefer focused methods when unrestricted mutation is unnecessary |
+| `Shell::registry` and other `#[doc(hidden)]` diagnostics | Public and callable despite being omitted from rendered API docs | Hiding documentation does not remove compatibility obligations. A future diagnostic feature or snapshot API requires a migration decision |
+| `ProtectedShell::shell() -> &Shell` | Broad shared observation access | No mutable conversion is provided, but future shared/interior-mutable `Shell` APIs must be reviewed for their effect on the protected facade |
+| Public implementable traits | Downstream implementations are allowed | New required methods are source-breaking. Default methods need behavior/security review; sealed registration contracts can evolve internally |
+| Re-exported `egui` types | UI signatures use the selected egui version | An incompatible egui upgrade remains a public API migration even when Fairing's method names do not change |
+
+The audit does not retroactively mark these types `non_exhaustive` or privatize
+fields: either action itself breaks existing callers. Before freezing a release,
+choose extension points explicitly and check an external consumer against the
+chosen baseline. Source reachability lints and passing doctests do not prove
+semantic-version compatibility.
+
+Protected hosting currently requires a custom loop. Runner, harness and built-in
+settings helpers take ordinary `Shell`; the facade also has no `restart_with`,
+`set_recovery_ui` or `take_restart_request` forwarding methods. A host can own and
+replace the complete `ProtectedShell`, but the ordinary shell's recovery helpers
+are not automatically available through its shared observer. Future helpers must
+preserve protected construction rather than exposing `&mut Shell`.

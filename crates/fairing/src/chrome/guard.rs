@@ -398,8 +398,25 @@ mod tests {
     /// It reaches the backend only on the frame it changed.
     #[test]
     fn keep_awake_only_on_change() {
+        #[derive(Default)]
+        struct Display(Vec<bool>);
+        impl crate::services::Backend for Display {}
+        impl crate::services::DisplayBackend for Display {
+            fn brightness(&self) -> Option<u8> {
+                None
+            }
+            fn set_brightness(&mut self, _: u8) -> crate::services::ServiceResult {
+                Err(crate::services::ServiceError::unsupported())
+            }
+            fn set_idle_inhibit(&mut self, on: bool) {
+                self.0.push(on);
+            }
+            fn set_power(&mut self, _: bool) -> crate::services::ServiceResult {
+                Err(crate::services::ServiceError::unsupported())
+            }
+        }
         let mut guard = driver();
-        let mut display = crate::services::mock::MockDisplay::default();
+        let mut display = Display::default();
         let awake = ChromePolicy {
             keep_awake: true,
             ..ChromePolicy::default()
@@ -412,5 +429,6 @@ mod tests {
             Some(false)
         );
         assert_eq!(guard.keep_awake(), Some(false));
+        assert_eq!(display.0, [true, false]);
     }
 }

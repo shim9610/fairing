@@ -97,6 +97,9 @@ jobs:
       - name: Audit
         run: cargo run -p xtask --locked -- audit --strict
 
+      - name: Test minimal-feature library units
+        run: cargo test --locked -p fairing --no-default-features --lib
+
       - name: Test release archives and an external consumer
         run: python3 tools/package_check.py
 

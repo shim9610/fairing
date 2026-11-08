@@ -10,16 +10,21 @@ the links beside each table for that.
 |---|---|
 | The entry point | `ShellConfig::load(path)` — called once, at start-up |
 | No file | Not an error: `ShellConfig::default()` |
-| A file that cannot be read | `Error::Io` |
+| A file that cannot be read, or a path with a non-directory ancestor | `Error::Io`; does not select defaults |
 | Bad syntax or a wrong type | `Error::Config` (`ShellConfig::from_toml` → `toml::from_str` fails) |
 | A value out of range | `Error::Config` from `ShellConfig::validate` — the "Validation" column below |
-| A float that is not a number | `Error::Config`. `nan` and `inf` are valid TOML floats, but every float key must be finite, those whose "Validation" column says "None" included |
+| Non-finite floating-point input | `nan` and `inf` are valid TOML floats. Active bar sizes and the motion/desktop/overlay/keyboard/gesture values checked by `validate_finite` are rejected; a disabled bar's unused `height` is not checked |
 | An unknown section or key | Silently ignored (`#[serde(default)]` plus serde's default behaviour). A typo still boots; only range and cross-reference errors stop start-up |
 | A section behind a feature you turned off (`overlay`, `osk`) | **Still parsed.** A config file with `[overlay]` reads fine with the feature off, so two builds with different feature sets can share one file |
 
 Whether an id in a `Vec<String>` that was never declared warns or silently becomes
 an empty slot differs per section. See
 [08 §2](08-troubleshooting.md#2-referring-to-an-id-that-was-never-declared).
+
+Missing-file defaults include legacy access mode. If device security depends on a
+provisioned file, have the host require that file and propagate read errors before
+calling `ShellConfig::from_toml`. Protected construction separately rejects a
+configuration without `access.session_tokens`.
 
 ## 1. The sections
 

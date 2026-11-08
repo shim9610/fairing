@@ -124,6 +124,14 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Fixed
 
+- Assurance acceptance checks remain active with optimized Python. Kernel receipts
+  reject incomplete input manifests, and empty/invalid profile selections cannot
+  certify protected coverage.
+- Configuration loading falls back only on `NotFound`; other filesystem errors
+  propagate instead of silently selecting defaults.
+- Minimal-feature unit tests no longer require the optional mock display backend.
+- The protected README example supplies the icon required for desktop placement.
+
 - Keep repository-only guide doctests behind an explicit audit cfg so all-feature
   archive doctests do not reference excluded files. Font-warning tests use valid
   egui-bundled data instead of a repository-external font asset.

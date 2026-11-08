@@ -5,18 +5,21 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+from validation import PROOF_INPUTS, require
 import central_mediation as c
 import mediation as m
 
 
 def receipt(path,status):
     data=json.loads(path.read_text())
-    assert data['status']==status,(path,data.get('status'))
-    assert data['inputs'] and all((m.ROOT/name).is_file() and m.digest(m.ROOT/name)==value for name,value in data['inputs'].items()),'Stale kernel proof: '+str(path)
+    require(data['status']==status, (path,data.get('status')))
+    require(set(data['inputs']) == set(PROOF_INPUTS[status]), 'Incomplete proof inputs: '+str(path))
+    require(data['inputs'] and all((m.ROOT/name).is_file() and m.digest(m.ROOT/name)==value for name,value in data['inputs'].items()), 'Stale kernel proof: '+str(path))
     return {'path':str(path.relative_to(m.ROOT)),'sha256':m.digest(path),'status':status}
 
 
 def verify(skip_build=False,prove=True,profiles=('all','minimal')):
+    require(bool(profiles) and len(set(profiles)) == len(profiles) and set(profiles) <= {'all', 'minimal'}, 'Expected distinct all/minimal profiles')
     before=m.source_hashes();out=m.ROOT/'target/assurance/protected-contracts';out.mkdir(parents=True,exist_ok=True)
     report=out/'summary.json';report.unlink(missing_ok=True)
     if prove:subprocess.run([sys.executable,str(m.ROOT/'verification/central_proofs.py')],cwd=m.ROOT,check=True)
@@ -28,7 +31,7 @@ def verify(skip_build=False,prove=True,profiles=('all','minimal')):
         if not skip_build:m.build(profile)
         results[profile]=c.check(profile)
     good=all(result['status']=='registered-payload-confinement-checked' and result['routing_certificate']['solver']=='unsat' for result in results.values())
-    assert m.source_hashes()==before,'Source changed during kernel/coverage connection'
+    require(m.source_hashes()==before, 'Source changed during kernel/coverage connection')
     summary={'status':'protected-contracts-verified' if good else 'rejected',
         'property':'Every library-managed protected payload entry is routed through the proved common mediation kernel.',
         'inputs':before,'kernel_proofs':proofs,'profiles':results,

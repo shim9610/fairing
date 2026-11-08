@@ -99,6 +99,13 @@ changes. The subject and session identity never change within a pair. Identities
 and publication revisions never wrap; exhaustion refuses issuance or revokes the
 controller rather than reusing authority.
 
+`SessionToken::snapshot(now)` evaluates deadlines at the supplied `now`.
+Keeping a snapshot does not advance that timestamp: its later permission reads
+still detect publication/revocation, but do not sample wall time. External token
+consumers must acquire a fresh snapshot with the current authoritative clock for
+each new admission decision, rather than cache a snapshot as a lasting grant.
+Fairing advances its observation time through its frame/logic update contract.
+
 `SessionGrant::temporary(gate, until)` grants an additional permission until the
 exclusive deadline. A base permission can coexist with it. Expiration checks the
 current base grant; it never restores a copied pre-elevation permission set. A

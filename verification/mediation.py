@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 import install
+from validation import require
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'target/mediation'
@@ -22,7 +23,7 @@ def digest(path):
 
 def source_hashes():
     paths = list((ROOT / 'crates').rglob('*.rs')) + list((ROOT / 'crates').rglob('Cargo.toml'))
-    paths += [ROOT / p for p in ['Cargo.toml', 'Cargo.lock', 'verification/mediation_driver.rs', 'verification/mediation_schema.rs', 'verification/central_mediation.py', 'verification/contract_types.py', 'verification/contract_controls.py', 'verification/protected_contracts.py', 'verification/central_proofs.py', 'verification/verus/mediation_path.py', 'verification/metadata_driver.rs', 'verification/check_extension.py', 'verification/metadata_controls.py', 'verification/mediation.py', 'verification/mediation_controls.py', 'verification/fixtures/mediation.rs', 'verification/examples/mediation_probe.rs', 'verification/tools.json']]
+    paths += [ROOT / p for p in ['Cargo.toml', 'Cargo.lock', 'verification/mediation_driver.rs', 'verification/mediation_schema.rs', 'verification/central_mediation.py', 'verification/contract_types.py', 'verification/contract_controls.py', 'verification/protected_contracts.py', 'verification/central_proofs.py', 'verification/verus/mediation_path.py', 'verification/metadata_driver.rs', 'verification/check_extension.py', 'verification/metadata_controls.py', 'verification/mediation.py', 'verification/mediation_controls.py', 'verification/fixtures/mediation.rs', 'verification/examples/mediation_probe.rs', 'verification/tools.json', 'verification/validation.py']]
     return {str(p.relative_to(ROOT)): digest(p) for p in sorted(paths)}
 
 def build(profile):
@@ -47,25 +48,25 @@ def build(profile):
         command += ['--all-features'] if profile=='all' else ['--no-default-features']
         run(command)
     (dest/'compiler-version.txt').write_text(compiler)
-    assert source_hashes()==before,'Source changed while extracting compiler MIR'
+    require(source_hashes()==before, 'Source changed while extracting compiler MIR')
     (dest/'input-receipt.json').write_text(json.dumps({'inputs':before,'compiler':compiler,'profile':profile,'inventories':{n:digest(dest/(n+'.json')) for n in CRATES}},indent=2)+'\n')
 
 def graph(profile):
     receipt=json.loads((OUT/profile/'input-receipt.json').read_text())
-    assert receipt['inputs']==source_hashes(),'Stale compiler inventory; rebuild before mediation analysis'
-    assert receipt['profile']==profile
+    require(receipt['inputs']==source_hashes(), 'Stale compiler inventory; rebuild before mediation analysis')
+    require(receipt['profile']==profile, "Assurance condition failed: receipt['profile']==profile")
     bodies={};inventory=[]
     for crate in CRATES:
         p=OUT/profile/(crate+'.json');data=json.loads(p.read_text())
-        assert receipt['inventories'][crate]==digest(p),'Compiler inventory changed after extraction'
-        assert data['crate']==crate
-        assert data['mir_keys']==len(data['bodies'])+len(data['skipped_non_functions'])
+        require(receipt['inventories'][crate]==digest(p), 'Compiler inventory changed after extraction')
+        require(data['crate']==crate, "Assurance condition failed: data['crate']==crate")
+        require(data['mir_keys']==len(data['bodies'])+len(data['skipped_non_functions']), "Assurance condition failed: data['mir_keys']==len(data['bodies'])+len(data['skipped_non_functions'])")
         for body in data['bodies']:
             key=crate+'::'+body['id']
             if key in bodies:raise RuntimeError('Duplicate compiler body '+key)
             bodies[key]=body|{'crate':crate}
         inventory.append({'crate':crate,'runtime_bodies':len(data['bodies']),'compiler_mir_keys':data['mir_keys'],'non_function_bodies':len(data['skipped_non_functions']),'sha256':digest(p)})
-    assert GUARD in bodies, 'Protected dispatcher omitted from compiler inventory'
+    require(GUARD in bodies, 'Protected dispatcher omitted from compiler inventory')
     def resolve(body,name,local=False):
         # Preserve the compiler's crate ownership; a foreign symbol must never
         # resolve to a same-spelled local module. Closure IDs are fully qualified.
@@ -132,15 +133,15 @@ def solve(profile,scope,roots,nodes,edges,sites):
     z3=install.tool('verus').parent/'z3'
     result=subprocess.run([str(z3),str(path)],capture_output=True,text=True,check=True)
     (OUT/profile/(scope+'-solver.log')).write_text(result.stdout+result.stderr)
-    verdict=result.stdout.strip();assert verdict in ('sat','unsat','unknown'),verdict
+    verdict=result.stdout.strip();require(verdict in ('sat','unsat','unknown'), verdict)
     previous=reachable(roots,edges);hits=[n for n in sites if n in previous and n[0]!=GUARD]
-    assert verdict=='unknown' or (verdict=='sat')==bool(hits), 'Independent reachability disagrees with solver'
+    require(verdict=='unknown' or (verdict=='sat')==bool(hits), 'Independent reachability disagrees with solver')
     witnesses=[]
     for hit in sorted(hits):
         path=[];node=hit
         while node is not None:path.append(node);node=previous[node]
         path.reverse()
-        assert path[0] in roots and all((a,b) in edges for a,b in zip(path,path[1:])), 'Invalid witness certificate'
+        require(path[0] in roots and all((a,b) in edges for a,b in zip(path,path[1:])), 'Invalid witness certificate')
         witnesses.append({'sink':{'body':hit[0],'block':hit[1],'location':nodes[hit]['location']},'path':[{'body':n[0],'block':n[1],'location':nodes[n]['location']} for n in path]})
     return {'solver':verdict,'roots':len(roots),'reached_blocks':len(previous),'potential_unmediated_sites':len(hits),'witnesses':witnesses,'smt_sha256':digest(OUT/profile/(scope+'.smt2'))}
 
@@ -167,7 +168,7 @@ def main():
         bodies,nodes,edges,kinds,sites,callbacks,boundaries,unsupported,inventory=graph(profile)
         roots=[(name,0) for name,body in bodies.items() if body['public'] and not body['closure'] and not name.startswith(GUARD)]
         protected=[(name,0) for name,body in bodies.items() if body['public'] and name.startswith('fairing::shell::protected::ProtectedShell::')]
-        assert roots and protected
+        require(roots and protected, 'Assurance condition failed: roots and protected')
         report={'compiler_inventory':inventory,'body_count':len(bodies),'blocks':len(nodes),'edges':len(edges),'callback_sites':callbacks,'unresolved_boundaries':boundaries,'unsupported_terminators':unsupported,
                 'all_public_roots':solve(profile,'all-public',roots,nodes,edges,sites),
                 'protected_shell_roots':solve(profile,'protected-shell',protected,nodes,edges,sites)}
@@ -180,27 +181,27 @@ def main():
         result=subprocess.run(command,cwd=ROOT,env=env,capture_output=True,text=True)
         (OUT/'concrete-probe.log').write_text(result.stdout+result.stderr)
         records=[json.loads(line) for line in result.stdout.splitlines() if line.startswith('{')]
-        assert records,'Concrete probe failed without a structured observation; inspect concrete-probe.log'
+        require(records, 'Concrete probe failed without a structured observation; inspect concrete-probe.log')
         probe=records[-1]|{'command':command,'exit_code':result.returncode}
         if probe['status']=='counterexample-confirmed':
-            assert result.returncode==2 and probe['unauthenticated'] and probe['required_permission_denied'] and probe['app_state_writes']>0 and probe['secret_in_output_shapes']
+            require(result.returncode==2 and probe['unauthenticated'] and probe['required_permission_denied'] and probe['app_state_writes']>0 and probe['secret_in_output_shapes'], "Assurance condition failed: result.returncode==2 and probe['unauthenticated'] and probe['required_permission_denied'] and probe['app_state_writes']>0 and probe['secret_in_output_shapes']")
             for profile in reports:
                 report=json.loads((OUT/profile/'report.json').read_text())
-                assert report['protected_shell_roots']['solver']=='sat','Solver did not confirm the candidate reachability query'
+                require(report['protected_shell_roots']['solver']=='sat', 'Solver did not confirm the candidate reachability query')
                 witnesses=[w for w in report['protected_shell_roots']['witnesses'] if w['sink']['body']=='fairing::chrome::status_bar::StatusBar::ui_with']
-                assert witnesses,'Native counterexample has no matching compiler path; model correspondence changed'
+                require(witnesses, 'Native counterexample has no matching compiler path; model correspondence changed')
                 (OUT/profile/'confirmed-status-painter-path.json').write_text(json.dumps(witnesses[0],indent=2)+'\n')
         elif probe['status']=='blocked-at-construction':
-            assert result.returncode==0 and probe['callback_calls']==0 and probe['app_state_writes']==0 and not probe['secret_in_output_shapes']
+            require(result.returncode==0 and probe['callback_calls']==0 and probe['app_state_writes']==0 and not probe['secret_in_output_shapes'], "Assurance condition failed: result.returncode==0 and probe['callback_calls']==0 and probe['app_state_writes']==0 and not probe['secret_in_output_shapes']")
         else:
             raise SystemExit('Concrete regression inconclusive; inspect concrete-probe.log')
-    assert source_hashes()==before,'Inputs changed during mediation analysis'
+    require(source_hashes()==before, 'Inputs changed during mediation analysis')
     confirmed=probe is not None and probe['status']=='counterexample-confirmed'
     summary={'property':'Every application callback entry is mediated by a current permission check.','status':'violated-confirmed' if confirmed else 'not-proved','profiles':reports,'inputs':before,'concrete_probe':probe,
              'scope':'Compiler MIR call/CFG inventory and finite Horn reachability over a conservative graph. SAT paths are candidates until reproduced. Generic/trait dispatch, external bodies, branch feasibility and complete compiler/model refinement remain unresolved; no absence theorem is claimed. The local invoke contract is assumed only for its scoped callback execution, never for later calls.'}
     (OUT/'summary.json').write_text(json.dumps(summary,indent=2)+'\n');print(json.dumps({k:v for k,v in summary.items() if k!='inputs'},indent=2))
     if args.expect_counterexample:
-        assert confirmed,'Expected mediation counterexample was not reproduced'
+        require(confirmed, 'Expected mediation counterexample was not reproduced')
     elif args.require_proved or confirmed:
         raise SystemExit('COMPLETE_MEDIATION_VIOLATED' if confirmed else 'UNPROVED_COMPLETE_MEDIATION: inspect report paths and unresolved boundaries')
 

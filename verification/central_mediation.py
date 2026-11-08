@@ -11,6 +11,7 @@ from collections import defaultdict, deque
 import json
 import re
 from pathlib import Path
+from validation import require
 import mediation as m
 
 KERNEL = 'fairing::access::mediation::'
@@ -109,15 +110,15 @@ def analyze(data):
     contracts=[contract for inventory in data for contract in inventory['contracts']]
     CARRIERS={contract['owner'] for contract in contracts if contract['role']=='carrier'}
     PROTOCOLS=({protocol for contract in contracts for protocol in contract['protocols']} | {p for inventory in data for body in inventory['bodies'] for local in body['locals'] for p in local['protected_protocols']}) - FUNCTIONS
-    assert CARRIERS and PROTOCOLS, 'No compiler-discovered protected contract'
+    require(CARRIERS and PROTOCOLS, 'No compiler-discovered protected contract')
     bodies = {}
     for inventory in data:
         for body in inventory['bodies']:
             name = inventory['crate'] + '::' + body['id']
-            assert name not in bodies, 'Duplicate MIR definition identity'
+            require(name not in bodies, 'Duplicate MIR definition identity')
             bodies[name] = body
-    assert m.GUARD in bodies, 'Admission primitive missing'
-    assert any(kernel(b['canonical_id']) for b in bodies.values()), 'No opaque kernel in inventory'
+    require(m.GUARD in bodies, 'Admission primitive missing')
+    require(any(kernel(b['canonical_id']) for b in bodies.values()), 'No opaque kernel in inventory')
     errors = [{'kind':'contract-not-generated','owner':contract['owner']} for contract in contracts if not contract['generated']]
     errors.extend({'kind':'carrier-outside-kernel','owner':owner}for owner in CARRIERS if not kernel(owner))
     declared={contract['owner'] for contract in contracts if contract['role']=='declaration'}
@@ -158,7 +159,7 @@ def analyze(data):
                 errors.append({'kind': 'raw-payload-return', 'body': name, 'type': body['return_type']})
             if set(body['input_payload_parameters']) & set(body['return_parameters']):
                 errors.append({'kind': 'generic-payload-return', 'body': name, 'type': body['return_type']})
-    assert stores and references, 'Missing payload storage/operation inventory'
+    require(stores and references, 'Missing payload storage/operation inventory')
 
     # Type-parameter points-to constraints. Definitions preserve disambiguators
     # from rustc, not display-name substring aliases or hand-written call lists.
@@ -212,7 +213,7 @@ def analyze(data):
             for index in parameter_indices[name]:
                 constraints.append(((parent, index), (name, index)))
     roots = {(name, 0) for name, body in bodies.items() if kernel(body['canonical_id']) and not body['closure']}
-    assert roots, 'No callable kernel entry roots'
+    require(roots, 'No callable kernel entry roots')
     for name, _ in roots:
         for index in parameter_indices[name]:
             points[(name, index)].add(('unknown', '', None))
@@ -394,7 +395,7 @@ def main():
         if not args.skip_build:
             m.build(profile)
         reports[profile] = check(profile)
-    assert before == m.source_hashes(), 'Sources changed while checking the admission cut'
+    require(before == m.source_hashes(), 'Sources changed while checking the admission cut')
     path.write_text(json.dumps({'profiles': reports, 'inputs': before}, indent=2) + '\n')
     print(json.dumps({p: {k: v[k] for k in ['status', 'errors', 'unguarded_payload_entries', 'unsupported_reachable']} for p, v in reports.items()}, indent=2))
     raise SystemExit(0 if all(r['status'] == 'registered-payload-confinement-checked' for r in reports.values()) else 1)

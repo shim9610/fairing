@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 
+from validation import require
 import check_extension as checker
 
 ROOT = checker.ROOT
@@ -63,14 +64,14 @@ def main():
             report = checker.check(project / 'Cargo.toml', OUT / 'work')
             log = (OUT / 'work/compiler.log').read_text()
             actual = report['status'] == 'metadata-contracts-checked'
-            assert actual == accepted, (name, report)
+            require(actual == accepted, (name, report))
             if accepted:
-                assert report['checked_methods'] == 2, report
+                require(report['checked_methods'] == 2, report)
             elif name != 'missing-declaration':
-                assert 'error: FAIRING_METADATA_EFFECT:' in log, (name, log[-4000:])
+                require('error: FAIRING_METADATA_EFFECT:' in log, (name, log[-4000:]))
             else:
-                assert 'required_permission' in log and 'not all trait items implemented' in log
-            assert not (ROOT / 'metadata-must-not-run').exists()
+                require('required_permission' in log and 'not all trait items implemented' in log, "Assurance condition failed: 'required_permission' in log and 'not all trait items implemented' in log")
+            require(not (ROOT / 'metadata-must-not-run').exists(), "Assurance condition failed: not (ROOT / 'metadata-must-not-run').exists()")
             shutil.copyfile(OUT / 'work/compiler.log', OUT / (name + '.log'))
             (OUT / (name + '.json')).write_text(json.dumps(report, indent=2) + '\n')
             results.append({'case': name, 'expected': 'accepted' if accepted else 'rejected', 'actual': report['status'], 'checked_methods': report['checked_methods']})

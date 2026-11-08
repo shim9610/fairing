@@ -76,10 +76,15 @@ jobs:
       - name: Install pinned compiler development components and solver
         run: python3 verification/install.py proofs
       - name: Prove the common kernel and cover every protected contract
-        run: python3 verification/mediation.py --require-proved
+        run: |
+          python3 verification/test_validation.py
+          python3 -O verification/test_validation.py
+          python3 verification/mediation.py --require-proved
       - name: Require SAT and UNSAT compiler-fixture controls
         if: always()
-        run: python3 verification/mediation_controls.py
+        run: |
+          python3 verification/mediation_controls.py
+          python3 -O verification/mediation_controls.py
       - name: Check one-line extension and reject compiled bypasses
         if: always()
         run: python3 verification/contract_controls.py

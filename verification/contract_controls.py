@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+from validation import require
 import central_mediation as c
 import mediation as m
 
@@ -57,17 +58,17 @@ def main():
   (m.OUT/'build').symlink_to(ROOT/'target/mediation/build',target_is_directory=True)
   for label,file,old,new,expected in cases:
    path=checkout/file;original=path.read_text()
-   if old is not None:assert original.count(old)==1,(label,old)
+   if old is not None:require(original.count(old)==1, (label,old))
    path.write_text(original+new if old is None else original.replace(old,new,1))
    try:
     m.build('all');m.graph('all');data=[json.loads((m.OUT/'all'/(n+'.json')).read_text())for n in m.CRATES]
     outcome=c.analyze(data);kinds={e['kind']for e in outcome['errors']}
     if outcome['unguarded_payload_entries']:kinds.add('unguarded-payload-entry')
     if expected:
-     assert outcome['status']=='rejected' and expected in kinds,(label,outcome)
+     require(outcome['status']=='rejected' and expected in kinds, (label,outcome))
     else:
-     assert outcome['status']=='registered-payload-confinement-checked',(label,outcome)
-     assert any(p.endswith('::ContractExtension')for p in c.PROTOCOLS),'New protocol was not discovered automatically'
+     require(outcome['status']=='registered-payload-confinement-checked', (label,outcome))
+     require(any(p.endswith('::ContractExtension')for p in c.PROTOCOLS), 'New protocol was not discovered automatically')
     (OUT/(label+'.json')).write_text(json.dumps(outcome,indent=2)+'\n')
     results.append({'case':label,'status':'compiled-and-rejected' if expected else 'compiled-and-automatically-covered','reason':expected})
     print(label+': '+results[-1]['status'],flush=True)
@@ -75,6 +76,6 @@ def main():
     shutil.copy2(m.OUT/'all/compiler.log',OUT/(label+'-compiler.log'));raise
    finally:path.write_text(original)
  m.ROOT=ROOT;m.OUT=ROOT/'target/mediation'
- assert m.source_hashes()==before,'Source changed while checking contract controls'
+ require(m.source_hashes()==before, 'Source changed while checking contract controls')
  report.write_text(json.dumps({'inputs':before,'controls':results},indent=2)+'\n')
 if __name__=='__main__':main()

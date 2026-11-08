@@ -16,6 +16,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'verification'))
 import install
+from validation import PATH_INPUTS, require
 
 OUT = ROOT / 'target/assurance/central-mediation'
 
@@ -71,12 +72,12 @@ def generate(text):
             Some(p) => p.entries().insert((stamp, gate.key)),
         },
     """
-    assert constructor.startswith(signature_new)
+    require(constructor.startswith(signature_new), 'Assurance condition failed: constructor.startswith(signature_new)')
     checked_constructor = constructor.replace(signature_new, contract_new, 1)
-    assert checked_constructor.replace(contract_new, signature_new, 1) == constructor
+    require(checked_constructor.replace(contract_new, signature_new, 1) == constructor, 'Assurance condition failed: checked_constructor.replace(contract_new, signature_new, 1) == constructor')
     original = function(text, 'pub(crate) fn allows(&self, cx: &Cx')
     signature = "pub(crate) fn allows(&self, cx: &Cx<'_>) -> bool"
-    assert original.startswith(signature)
+    require(original.startswith(signature), 'Assurance condition failed: original.startswith(signature)')
     contract = '''fn allows(&self, cx: &Cx<'_>) -> (allowed: bool)
         ensures allowed ==> cx.token && cx.stamp == Some(self.stamp)
             && forall |e:(Stamp,int)| #[trigger] self.entries().contains(e)
@@ -92,12 +93,12 @@ def generate(text):
                     ==> Self::valid_entry(e, self.stamp, cx),
             decreases match next { Some(p) => p.height(), None => 0 },
         {'''
-    assert adapted.count(loop) == 1
+    require(adapted.count(loop) == 1, 'Assurance condition failed: adapted.count(loop) == 1')
     adapted = adapted.replace(loop, invariant, 1)
     # The complete executable body must round-trip exactly. No replacement of
     # accesses, branch predicates, loop steps or returns is allowed.
     restored = adapted.replace(contract, signature, 1).replace(invariant, loop, 1)
-    assert restored == original
+    require(restored == original, 'Assurance condition failed: restored == original')
     return SUPPORT + checked_constructor + '\n' + adapted + '\n}\n}\n', constructor + '\n' + original
 
 
@@ -117,7 +118,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     receipt = OUT / 'path-proof.json'
     receipt.unlink(missing_ok=True)
-    paths = [args.source, Path(__file__), ROOT / 'verification/tools.json']
+    paths = [args.source, *(ROOT / p for p in PATH_INPUTS[1:])]
     def hashes():
         return {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
     before = hashes()
@@ -133,14 +134,14 @@ def main():
         ('omit-ancestor-revision', 'path.stamp != self.stamp || !cx.allows_gate(path.gate)', '!cx.allows_gate(path.gate)'),
         ('omit-token-mode', '!cx.token_mode() || cx.authority_stamp() != Some(self.stamp)', 'cx.authority_stamp() != Some(self.stamp)'),
     ]:
-        assert args.source.read_text().count(old) == 1
+        require(args.source.read_text().count(old) == 1, 'Assurance condition failed: args.source.read_text().count(old) == 1')
         mutant = OUT / (label + '-source.rs')
         mutant.write_text(args.source.read_text().replace(old, new, 1))
         result, _, _ = verify(mutant, OUT / (label + '.rs'), verus)
         diagnostic = result.stdout + result.stderr
-        assert result.returncode and ('postcondition not satisfied' in diagnostic or 'invariant not satisfied' in diagnostic), 'Control did not fail a proof obligation: ' + label
+        require(result.returncode and ('postcondition not satisfied' in diagnostic or 'invariant not satisfied' in diagnostic), 'Control did not fail a proof obligation: ' + label)
         controls.append({'case': label, 'status': 'proof-obligation-rejected'})
-    assert hashes() == before, 'Proof sources changed during verification'
+    require(hashes() == before, 'Proof sources changed during verification')
     report = {'status': 'unbounded-production-path-verified', 'inputs': before,
         'production_body_sha256': hashlib.sha256(body.encode()).hexdigest(), 'command': command,
         'controls': controls, 'property': 'Successful admission checks every entry in any finite borrowed ancestor chain against one expected stamp and granted identity set, with token mode enabled.',

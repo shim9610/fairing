@@ -104,14 +104,19 @@ impl ShellConfig {
     /// are wrong.
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
-        if !path.exists() {
-            log::info!("{} is missing - using the default config", path.display());
-            return Ok(Self::default());
-        }
-        let text = std::fs::read_to_string(path).map_err(|err| Error::Io {
-            path: path.display().to_string(),
-            message: err.to_string(),
-        })?;
+        let text = match std::fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                log::info!("{} is missing - using the default config", path.display());
+                return Ok(Self::default());
+            }
+            Err(err) => {
+                return Err(Error::Io {
+                    path: path.display().to_string(),
+                    message: err.to_string(),
+                });
+            }
+        };
         Self::from_toml(&text)
     }
 
@@ -1174,6 +1179,38 @@ impl Default for PatternTableConfig {
 #[cfg(test)]
 mod tests {
     use super::ShellConfig;
+
+    #[test]
+    fn load_defaults_only_for_a_missing_file() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = std::env::temp_dir().join(format!("fairing-config-load-{}", std::process::id()));
+        std::fs::create_dir(&dir)?;
+        let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+            assert_eq!(
+                ShellConfig::load(dir.join("missing.toml"))?,
+                ShellConfig::default()
+            );
+            let file = dir.join("config.toml");
+            std::fs::write(&file, "[access]\nsession_tokens = true\n")?;
+            assert!(ShellConfig::load(&file)?.access.session_tokens);
+            // A non-directory ancestor is an I/O error, not an absent configuration.
+            assert!(matches!(
+                ShellConfig::load(file.join("child.toml")),
+                Err(crate::Error::Io { .. })
+            ));
+            assert!(matches!(
+                ShellConfig::load(&dir),
+                Err(crate::Error::Io { .. })
+            ));
+            std::fs::write(&file, "[invalid")?;
+            assert!(matches!(
+                ShellConfig::load(&file),
+                Err(crate::Error::Config(_))
+            ));
+            Ok(())
+        })();
+        std::fs::remove_dir_all(&dir)?;
+        result
+    }
 
     #[test]
     fn default_and_toml_round_trip() {

@@ -222,10 +222,12 @@ keeps such things:
 
 ## 7. Repaint and power
 
-The shell draws only when something happens: input, a backend's `wake()`, or an animation in
-progress. While something moves it draws at the display's rate, and the moment it stops the shell
-drops to **0 fps**. The clock asks for the next minute boundary only when it is on screen. A
-screen with `keep_awake` holds the display's idle timer off. How to confirm 0 fps at idle is in
+In reactive mode, the shell requests updates for input, backend wakeups, animations,
+queued work and scheduled deadlines. With none pending it requests no continuous
+redraws; this is the idle **0 fps** condition. A visible clock still schedules updates
+according to its minute/second format. Continuous mode and application repaint requests
+can keep drawing independently. A screen with `keep_awake` asks the display backend
+to inhibit its idle timer. How to confirm 0 fps at idle is in
 [guide 08](guide/08-troubleshooting.md).
 
 ## 8. Errors
@@ -236,8 +238,11 @@ screen with `keep_awake` holds the display's idle timer off. How to confirm 0 fp
   callbacks and infallible allocation can still terminate a process; whole-renderer exhaustion is not universally recoverable. The diagnostic allocator
   is not selected by either product library.
 - A backend error comes back as a value, and the shell shows it as a toast or a notification.
-- A configuration that cannot be right fails at start with `Error::Config`. Access control is
-  never silently opened.
+- Invalid configuration values fail at start with `Error::Config`; unreadable or
+  invalid filesystem paths return `Error::Io`. An absent file deliberately selects
+  defaults, including legacy access mode. A deployment requiring a provisioned
+  security configuration must enforce its presence; `ShellConfig::load` is not a
+  required-file API. `build_protected` separately requires token mode.
 - Logging goes through the `log` facade. The logger is yours.
 - **Runtime unwind faults quarantine the shell.** Borrowed ownership is restored before
   forwarding an unwind to the shell boundary. Dispatch, event delivery and admission
@@ -271,10 +276,14 @@ These are the rules the design keeps coming back to.
 5. **Non-waiting UI APIs.** Threads exchange messages; UI code does not wait for messages or capacity.
 6. **One general mechanism beats a one-off effect.** Implement a trait, and the library does the
    rest.
-7. **The public surface is deliberate.** Nothing is public by accident.
+7. **Review the public surface.** Reachability lints reject unreachable public items;
+   compatibility also depends on public fields, exhaustive enums and exposed concrete
+   types. See [API evolution](api-contracts.md#public-surface-and-evolution).
 8. **Defaults are chosen with care and stay adjustable** through the API.
 9. **The crate writes no files of its own.**
-10. **Code shown in the docs compiles,** and the audit checks it.
+10. **Executable documentation examples are checked.** Ignored integration outlines
+    and platform-dependent examples need their stated external setup; compilation
+    alone does not establish their visible behavior.
 
 ## 11. The control rules
 

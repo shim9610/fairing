@@ -82,14 +82,24 @@ continues to reject untyped hooks, and admitted scopes use local extension store
 
 ```sh
 python3 verification/install.py proofs
+python3 verification/test_validation.py
+python3 -O verification/test_validation.py
 python3 verification/mediation.py --require-proved
 python3 verification/contract_controls.py
 python3 verification/mediation_controls.py
 ```
 
-The strict command succeeds only when both compiled feature profiles pass the
+The strict command above succeeds only when both compiled feature profiles pass the
 contract checker and the source-bound kernel receipts are current. Evidence is
 written to `target/assurance/protected-contracts/` and
 `target/assurance/central-mediation/`. The broad legacy reachability diagnostic
 remains available without `--require-proved`; its candidates are not the protected
 contract certificate.
+
+Receipt validation checks the complete expected input set as well as hashes and
+proof status. Acceptance checks remain active under Python `-O`/`-OO` and
+`PYTHONOPTIMIZE`; CI runs negative receipt controls normally and with `-O`.
+An explicit `--profile all` or `--profile minimal` run covers only that profile;
+its report must not be described as a two-profile result. Receipts bind local
+artifacts to source inputs; they are not signatures against an attacker who can
+rewrite both tools and evidence.

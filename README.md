@@ -160,7 +160,9 @@ fn build(ctx: &egui::Context) -> fairing::Result<ProtectedShell> {
     let mut shell = Shell::builder(config).build_protected(ctx)?;
     shell.add(Protected::new(
         PermissionId::ViewResults,
-        screen("results", |ui, _cx| { ui.heading("Results"); }).desktop(),
+        screen("results", |ui, _cx| { ui.heading("Results"); })
+            .icon(fairing::icon::GAUGE)
+            .desktop(),
     ));
     shell.add(Protected::new(
         PermissionId::ExportResults,
