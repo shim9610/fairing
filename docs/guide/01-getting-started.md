@@ -373,11 +373,12 @@ The enum is `#[non_exhaustive]`, so keep a `_ => {}` arm.
 
 ## 5. Running the bundled examples
 
-None of them needs real hardware: `hello` runs on the null backends, the rest on the mock ones.
+None of them needs real hardware: `hello` and `protected` run on the null backends; the other examples use mock backends.
 
 | Example | Command | What it shows |
 |---|---|---|
 | `hello` | `cargo run -p fairing --features runner-x11 --example hello` | §4 as a file: one screen on the desktop, the built-in settings, a status bar item and a nav bar item, in a 1024×600 window. It shares nothing with the other examples, so it is the one to copy into a new project |
+| `protected` | `cargo run -p fairing --features runner-x11 --example protected -- --tour target/protected` | ProtectedShell login with a public development marker, an admitted operation, logout with protected content hidden and a stale button click blocked, then reauthentication. The smoke tour is included in `tools/tours.sh`; this marker is not production authentication |
 | `demo` | `cargo run -p fairing --features runner-x11 --example demo -- --size=1024x600` | The whole shell: twelve icons over two pages, the status bar, the shade, a `Form` screen that raises the OSK, the `Widgets` and `Notify` galleries, edge-swipe back, and a scenario thread waking the UI through the `Waker` |
 | `console` | `cargo run -p fairing --features runner-x11,mock --example console -- --size=1280x800` | A bench instrument rather than a phone: a rail down the left joined to the status bar, five pages with their own transitions, and the shade split into two floating cards |
 | `kiosk` | `cargo run -p fairing --features runner-x11,mock --example kiosk -- --size=1080x2560 --panel-mm=380x900` | A production-shaped café ordering flow, laid out and styled almost entirely by the crate — what it still draws itself is listed in its header. `--layout=portrait\|counter\|compact` puts the same code on three devices, and a switch on its attract screen changes the language of every screen at run time (`--lang=ko` starts it in Korean) |
@@ -385,14 +386,15 @@ None of them needs real hardware: `hello` runs on the null backends, the rest on
 | `motion_lab` | `cargo run -p fairing --features runner-x11 --example motion_lab -- --size=1024x600` | Every `[motion]` token on a slider, replaying the shade, page swipes, push/pop and icon zoom. A frame-time graph sits top right (p50, p95, a 33 ms rule) and the tuned values export as TOML |
 | `palette_sheet` | `cargo run -p fairing --release --features runner-x11,mock --example palette_sheet -- --tour out/ --panel-mm=305x381` | One frame with every control on it, for comparing palettes (`--preset=base\|abyss\|linen`, `--theme=dark\|light`) |
 
-Drop `--size` and they open fullscreen; `hello` sets its window in code. Every example but
-`hello` needs `mock`, and `hello` needs `settings`; `custom_chrome` also needs `overlay`, and
+The gallery examples open fullscreen without `--size`; `hello` sets its window in code
+and `protected` uses the runner default. The galleries need `mock`; `hello` and `protected`
+need `settings`. `custom_chrome` also needs `overlay`, and
 `motion_lab` `overlay` and `osk`. All of those are default features, so normally there is nothing
 to pass beyond the runner.
 
 ### `--tour` screenshot mode
 
-`demo`, `console`, `kiosk`, `custom_chrome` and `palette_sheet` drive themselves,
+`demo`, `console`, `kiosk`, `custom_chrome`, `palette_sheet` and `protected` drive themselves,
 write PNGs and close the window. They put the shell into each state through its own API (`launch`, `back`,
 `home`) plus a synthetic finger, then send `egui::ViewportCommand::Screenshot` —
 nobody has to sit and watch.

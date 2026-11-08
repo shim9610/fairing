@@ -15,7 +15,7 @@ categories = ["gui", "embedded"]
 # from a downloaded crate. The audit enables guides with the repository-only
 # `fairing_repo_docs` cfg. The examples live in the repository. `examples/demo.toml` stays, for a
 # test reads it. The tour-clock regression also depends on the excluded example driver.
-exclude = ["examples/*.rs", "examples/common/", "examples/kiosk.toml", "src/guide_probe.rs", "tests/tour_timing.rs"]
+exclude = ["examples/*.rs", "examples/common/", "examples/protected/", "examples/kiosk.toml", "src/guide_probe.rs", "tests/tour_timing.rs"]
 
 [dependencies]
 fairing-widgets = { path = "../fairing-widgets", version = "0.1.0" }
@@ -52,12 +52,13 @@ runner-x11 = ["runner", "eframe/x11"]
 # has its offset as a config value and so knows nothing of summer time. On, it measures at +3 crates.
 chrono = ["dep:chrono"]
 
-# The smallest complete app, standing alone (no `mod common`) so it can be copied. It runs on
-# the null backends, so it needs no `mock`; `settings` is stated for the screens it adds.
+# Protected host and GUI smoke tour on Null backends, with typed settings registration.
 [[example]]
 name = "protected"
 required-features = ["runner", "settings"]
 
+# The smallest complete app, standing alone (no `mod common`) so it can be copied. It runs on
+# the null backends, so it needs no `mock`; `settings` is stated for the screens it adds.
 [[example]]
 name = "hello"
 required-features = ["runner", "settings"]

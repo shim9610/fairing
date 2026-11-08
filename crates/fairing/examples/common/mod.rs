@@ -2,7 +2,7 @@
 //! argument parsing, installing a Hangul font, the screenshot tour driver (a synthetic finger
 //! included) and a PNG encoder written with std alone.
 //!
-//! Each example gives only its own **script** (a list of [`Act`]s) and its shell-building function,
+//! Each gallery example gives only its own **script** (a list of [`Act`]s) and its shell-building function,
 //! and takes the rest from here. This module is compiled whole into each example through `mod
 //! common;`, so a different part of it is used by each — which is why `dead_code` is lifted for the
 //! whole file (this is not library code).
@@ -152,7 +152,7 @@ fn our_shots(ctx: &egui::Context) -> Vec<Arc<egui::ColorImage>> {
     })
 }
 
-fn ask_for_frame(ctx: &egui::Context, path: PathBuf) {
+pub fn ask_for_frame(ctx: &egui::Context, path: PathBuf) {
     let ready = ctx.clone();
     ctx.request_screenshot(move |image| {
         ready.data_mut(|d| {
@@ -165,7 +165,7 @@ fn ask_for_frame(ctx: &egui::Context, path: PathBuf) {
     });
 }
 
-fn frame_shots(ctx: &egui::Context) -> Vec<(PathBuf, Arc<egui::ColorImage>)> {
+pub fn frame_shots(ctx: &egui::Context) -> Vec<(PathBuf, Arc<egui::ColorImage>)> {
     ctx.data_mut(|d| {
         std::mem::take(d.get_temp_mut_or_default(egui::Id::unique("fairing.examples.frames")))
     })
@@ -495,7 +495,7 @@ pub enum Expect {
 /// [`Expect::Text`] look through. The shell has drawn by the time the script runs in a frame, so
 /// this reads the frame being built. A text clipped away whole (scrolled out of its area) is left
 /// out: it is not on the glass, so a finger cannot land on it.
-fn drawn_texts(ctx: &egui::Context) -> Vec<(String, egui::Rect)> {
+pub fn drawn_texts(ctx: &egui::Context) -> Vec<(String, egui::Rect)> {
     let mut layers = vec![egui::LayerId::background()];
     ctx.memory(|m| {
         for id in m.layer_ids() {
@@ -1246,10 +1246,19 @@ impl<S: std::any::Any> Tour<S> {
                 );
             }),
             Act::Osk(name) => {
-                if let Some(layout) = fairing::osk::OskLayout::parse(name, true, false) {
-                    self.with_shell(|shell| shell.set_osk_layout(layout))
-                } else {
-                    self.fail(&format!("Act::Osk({name:?}) - unknown layout"));
+                #[cfg(feature = "osk")]
+                {
+                    if let Some(layout) = fairing::osk::OskLayout::parse(name, true, false) {
+                        self.with_shell(|shell| shell.set_osk_layout(layout))
+                    } else {
+                        self.fail(&format!("Act::Osk({name:?}) - unknown layout"));
+                        self.next_step();
+                        Flow::Next
+                    }
+                }
+                #[cfg(not(feature = "osk"))]
+                {
+                    self.fail(&format!("Act::Osk({name:?}) requires the osk feature"));
                     self.next_step();
                     Flow::Next
                 }
@@ -1590,6 +1599,7 @@ impl<S: std::any::Any> Tour<S> {
 
     /// [`Act::Key`]: find the OSK key by label, press it, and release it on the next frame. Where the
     /// label cannot be found it fails the tour and moves on, so one run lists every miss.
+    #[cfg(feature = "osk")]
     fn key_step(&mut self, ctx: &egui::Context, label: &'static str) -> Flow {
         let Some(rect) = self.shell.as_ref().and_then(|s| s.osk().key_rect(label)) else {
             self.fail(&format!(
@@ -1606,6 +1616,13 @@ impl<S: std::any::Any> Tour<S> {
         SyntheticInput::release(ctx, self.finger);
         self.next_step();
         Flow::Wait
+    }
+
+    #[cfg(not(feature = "osk"))]
+    fn key_step(&mut self, _ctx: &egui::Context, label: &str) -> Flow {
+        self.fail(&format!("Act::Key({label:?}) requires the osk feature"));
+        self.next_step();
+        Flow::Next
     }
 
     /// [`Act::DragTo`]: move to the next point along the line each frame. On the frame it reaches
