@@ -296,7 +296,7 @@ fn protected_shell_requires_token_mode_and_dispatches_only_current_grants() -> c
             _ => None,
         })
         .ok_or_else(|| crate::Error::Config("no session challenge".into()))?;
-    let now = shell.shell().now();
+    let now = shell.now();
     let (mut owner, token) = SessionController::issue(
         Subject::default(),
         vec![SessionGrant::base_for(View)],

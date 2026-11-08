@@ -40,8 +40,12 @@
 //! 16. events       — the integrator takes them with poll_events
 //! ```
 mod authentication;
+mod host;
+mod observation;
+pub use observation::ShellView;
 mod navigation;
 mod protected;
+pub use host::HostedShell;
 pub use protected::ProtectedShell;
 mod render;
 mod settings_dispatch;
@@ -938,17 +942,22 @@ impl Shell {
         self.mono
     }
 
+    /// Observe supported host state without borrowing component internals.
+    #[must_use]
+    pub fn observe(&self) -> ShellView<'_> {
+        ShellView { shell: self }
+    }
+
+    /// Change dock placement and schedule a redraw.
+    pub fn set_dock_placement(&mut self, placement: crate::desktop::DockPlacement) {
+        self.desktop.set_dock_placement(placement);
+        self.handle.waker().wake();
+    }
+
     /// The config.
     #[must_use]
     pub fn config(&self) -> &ShellConfig {
         &self.config
-    }
-
-    /// The declaration registry.
-    #[doc(hidden)]
-    #[must_use]
-    pub fn registry(&self) -> &Registry {
-        &self.registry
     }
 
     /// Whether the shell's prompt is up — an unlock prompt, or the lock screen with its prompt.

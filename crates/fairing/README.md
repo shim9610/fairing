@@ -90,8 +90,9 @@ work; declaring a permission never grants it.
 Protected construction rejects untyped global painters/layouts, image loaders and
 procedural wallpapers. There is no mutable conversion to ordinary `Shell`.
 Admitted callbacks retain original UI/app/backend references and callback-local
-extension stores. The current `runner::run_shell*`/`run_app*` helpers accept ordinary
-`Shell` only; host `ProtectedShell::logic*`, `frame*` and `poll_events` yourself.
+extension stores. `runner::run_shell*`/`run_app*` and `testing::Harness::from_builder`
+accept both shell modes. Use `settings::add_all_protected` for built-ins with
+application-owned permission values. Observe state through `ProtectedShell::observe`.
 
 See [session tokens](https://github.com/shim9610/fairing/blob/HEAD/docs/session-tokens.md)
 for a complete typed registration example, issuer lifecycle and nested elements.

@@ -170,11 +170,11 @@ fn main() -> fairing::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let size = common::arg_size(&args);
     let tour = common::arg_tour(&args);
-    let options = Options {
-        fullscreen: false,
-        title: "fairing palette sheet".to_owned(),
-        size: Some(size.unwrap_or(SIZE)),
-    };
+    let options = (Options::default()).configure(|config| {
+        config.fullscreen = false;
+        "fairing palette sheet".clone_into(&mut config.title);
+        config.size = Some(size.unwrap_or(SIZE));
+    });
     match tour {
         Some(dir) => common::run_tour(options, dir, PLAN, |ctx| Ok((build(ctx)?, ()))),
         None => runner::run_shell(options, build),

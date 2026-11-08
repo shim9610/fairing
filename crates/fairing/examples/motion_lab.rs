@@ -591,11 +591,11 @@ fn main() -> fairing::Result<()> {
     let mut shot =
         common::arg_shot(&args).map(|dir| common::OneShot::new(dir, "01-motion-lab.png", 30));
     fairing::runner::run(
-        fairing::runner::Options {
-            fullscreen: size.is_none(),
-            title: "fairing motion lab".to_owned(),
-            size,
-        },
+        (fairing::runner::Options::default()).configure(|config| {
+            config.fullscreen = size.is_none();
+            "fairing motion lab".clone_into(&mut config.title);
+            config.size = size;
+        }),
         move |ui| {
             lab.frame(ui);
             if let Some(shot) = shot.as_mut() {

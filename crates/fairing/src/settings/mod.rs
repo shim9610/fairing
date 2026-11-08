@@ -309,6 +309,40 @@ pub fn add_all_with(
     config: &SettingsConfig,
     entries: Vec<screens::SettingsEntry>,
 ) {
+    for decl in declarations(shell, config, entries) {
+        shell.add(decl);
+    }
+}
+
+/// Register built-in screens with application-owned permission values.
+/// The mapper selects each screen's requirement during registration; it grants no authority.
+/// Screen write operations retain their separate setting/credential gates.
+#[cfg(feature = "settings")]
+pub fn add_all_protected<P: crate::access::Permission>(
+    shell: &mut crate::ProtectedShell,
+    config: &SettingsConfig,
+    permission_for: impl FnMut(&str) -> P,
+) {
+    add_all_protected_with(shell, config, screens::entries(), permission_for);
+}
+
+/// Protected registration with a custom settings-home list.
+#[cfg(feature = "settings")]
+pub fn add_all_protected_with<P: crate::access::Permission>(
+    shell: &mut crate::ProtectedShell,
+    config: &SettingsConfig,
+    entries: Vec<screens::SettingsEntry>,
+    permission_for: impl FnMut(&str) -> P,
+) {
+    shell.register_settings(config, entries, permission_for);
+}
+
+#[cfg(feature = "settings")]
+pub(crate) fn declarations(
+    shell: &mut crate::Shell,
+    config: &SettingsConfig,
+    entries: Vec<screens::SettingsEntry>,
+) -> Vec<crate::screen::ScreenDecl> {
     use crate::services::Capabilities;
 
     // The capabilities are asked of **each backend** — only the Wi-Fi backend knows whether there is Wi-Fi.
@@ -360,10 +394,8 @@ pub fn add_all_with(
     }
     decls.push(screens::about());
 
-    for decl in decls {
-        let id = decl.id().to_owned();
-        if config.includes(&id) {
-            shell.add(decl);
-        }
-    }
+    decls
+        .into_iter()
+        .filter(|decl| config.includes(decl.id()))
+        .collect()
 }

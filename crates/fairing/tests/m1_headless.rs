@@ -773,10 +773,7 @@ fn a_struct_screen_can_be_resident_and_handle_back() -> fairing::Result<()> {
     })?
     .with_app(Log::default());
     assert!(
-        h.shell
-            .registry()
-            .screen("net")
-            .is_some_and(fairing::screen::ScreenDecl::is_resident),
+        h.shell.observe().screen_is_resident("net") == Some(true),
         "screen_of registers a **resident** declaration, so it can be embedded and it keeps state"
     );
 

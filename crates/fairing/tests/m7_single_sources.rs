@@ -23,7 +23,7 @@ fn add_all_registers_exactly_the_listed_screens() -> fairing::Result<()> {
         );
         Ok(shell)
     })?;
-    let registry = h.shell.registry();
+    let registry = h.shell.observe();
     for id in screens::ALL {
         assert!(
             registry.has_screen(id),
@@ -31,9 +31,7 @@ fn add_all_registers_exactly_the_listed_screens() -> fairing::Result<()> {
         );
     }
     let registered: Vec<&str> = registry
-        .screens()
-        .iter()
-        .map(fairing::ScreenDecl::id)
+        .screen_ids()
         .filter(|id| id.starts_with("settings."))
         .collect();
     for id in &registered {

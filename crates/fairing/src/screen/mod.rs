@@ -14,7 +14,7 @@ pub use cx::{Cx, PaneInfo};
 pub(crate) use cx::{CxParts, CxRequest};
 pub use policy::{BarMode, ChromePolicy, OskMode};
 #[doc(hidden)]
-pub use registry::Registry;
+pub(crate) use registry::Registry;
 pub use registry::{Decl, DeclKind};
 
 pub use crate::access::mediation::ScreenHandle;

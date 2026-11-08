@@ -142,9 +142,14 @@ connect library-managed protected entries to one admission boundary. The
 [metadata checker](permission-metadata-check.md) separately checks supported
 workspace permission getters/mappers. These are distinct contracts.
 
-Current `runner::run_shell*`/`run_app*`, `testing::Harness` and `settings::add_all`
-accept ordinary `Shell`. A protected application connects its facade's `logic*`,
-`frame*` and `poll_events` in its own host and uses typed registration.
+`runner::run_shell*`/`run_app*` and `testing::Harness::from_builder` accept ordinary
+or protected shells through the sealed `HostedShell` interface. It delegates
+frame/logic/event/fault operations without exposing registration or conversion.
+`ProtectedShell::restart_with` only accepts a protected replacement and uses the
+same close-before-build/fail-quarantined lifecycle as the ordinary shell.
+`settings::add_all_protected` maps each built-in screen ID to an application-owned
+permission value; backend writes retain their separate operation gates.
+`ShellView` exposes supported state and diagnostic queries without component loans.
 
 ## 4. One frame
 

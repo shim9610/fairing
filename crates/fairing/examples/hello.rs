@@ -40,14 +40,14 @@ fn main() -> fairing::Result<()> {
     config.nav_bar.items = vec!["back".to_owned(), "home".to_owned(), "kbd".to_owned()];
 
     // A window for the desktop; `Options::default()` is the fullscreen device build.
-    let options = fairing::runner::Options {
-        fullscreen: false,
-        title: "hello".to_owned(),
-        size: Some((
+    let options = (fairing::runner::Options::default()).configure(|config| {
+        config.fullscreen = false;
+        "hello".clone_into(&mut config.title);
+        config.size = Some((
             fairing::testing::DEFAULT_SIZE.x,
             fairing::testing::DEFAULT_SIZE.y,
-        )),
-    };
+        ));
+    });
     fairing::runner::run_shell(options, move |ctx| {
         let mut shell = Shell::builder(config)
             .services(Services::builder().build()) // the real clock, null everything else

@@ -16,17 +16,48 @@ use std::{
 pub struct SessionId(u64);
 
 /// One gate's base and additional temporary permission. Omitted gates are denied.
+///
+/// ```compile_fail
+/// let grant = fairing::access::SessionGrant {
+///     gate: "private".into(), base: true, temporary_until: None,
+/// };
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionGrant {
     /// Operation name. Role names and their expansion belong to the authenticator.
-    pub gate: Gate,
+    gate: Gate,
     /// Permit this gate for the session's lifetime.
-    pub base: bool,
+    base: bool,
     /// Additional permission expires at this exact shell-clock deadline.
-    pub temporary_until: Option<Instant>,
+    temporary_until: Option<Instant>,
 }
 
 impl SessionGrant {
+    /// Build the complete base/temporary grant without an exhaustive struct literal.
+    #[must_use]
+    pub fn new(gate: impl Into<Gate>, base: bool, temporary_until: Option<Instant>) -> Self {
+        Self {
+            gate: gate.into(),
+            base,
+            temporary_until,
+        }
+    }
+    /// The gate identifier carried by this grant.
+    #[must_use]
+    pub fn gate(&self) -> &Gate {
+        &self.gate
+    }
+    /// Whether the base permission is enabled.
+    #[must_use]
+    pub const fn is_base(&self) -> bool {
+        self.base
+    }
+    /// The optional additional permission deadline.
+    #[must_use]
+    pub const fn temporary_until(&self) -> Option<Instant> {
+        self.temporary_until
+    }
+
     /// A base grant for the same application value used by a protected element.
     #[must_use]
     pub fn base_for<P: super::Permission>(permission: P) -> Self {
@@ -73,6 +104,7 @@ impl SessionGrant {
 
 /// A publication or issuance could not preserve the session contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SessionError {
     /// Duplicate gate in one grant set.
     DuplicateGate,
@@ -163,6 +195,7 @@ impl fmt::Debug for SessionController {
 
 /// Why a read-only session observation cannot authorize work.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SessionReadError {
     /// Issuer revocation or controller disposal. Terminal.
     Revoked,

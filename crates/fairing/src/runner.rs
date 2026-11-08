@@ -14,10 +14,11 @@
 //! custom hosts that own a shell must connect the logic callback themselves.
 
 use crate::error::{Error, Result};
-use crate::shell::Shell;
+use crate::shell::{HostedShell, Shell};
 
 /// The options for [`run`] and [`run_shell`].
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct Options {
     /// Whether to open the window fullscreen. Usually `true` for a device build.
     pub fullscreen: bool,
@@ -77,9 +78,9 @@ pub fn run(options: Options, app: impl FnMut(&mut egui::Ui) + 'static) -> Result
 /// # Errors
 /// [`Error::Runner`] for a window or graphics failure; `build`'s error unchanged.
 #[allow(clippy::needless_pass_by_value)]
-pub fn run_shell(
+pub fn run_shell<H: HostedShell + 'static>(
     options: Options,
-    build: impl FnOnce(&egui::Context) -> Result<Shell> + 'static,
+    build: impl FnOnce(&egui::Context) -> Result<H> + 'static,
 ) -> Result<()> {
     run_shell_with(options, build, |event| {
         log::debug!("shell event: {event:?}");
@@ -116,9 +117,9 @@ pub fn run_shell(
 /// # Errors
 /// [`Error::Runner`] for a window or graphics failure; `build`'s error unchanged.
 #[allow(clippy::needless_pass_by_value)]
-pub fn run_shell_with(
+pub fn run_shell_with<H: HostedShell + 'static>(
     options: Options,
-    build: impl FnOnce(&egui::Context) -> Result<Shell> + 'static,
+    build: impl FnOnce(&egui::Context) -> Result<H> + 'static,
     on_event: impl FnMut(&crate::ShellEvent) + 'static,
 ) -> Result<()> {
     run_shell_with_recovery(options, build, on_event, |_, _| {})
@@ -161,11 +162,11 @@ pub fn run_shell_with(
 /// # Errors
 /// [`Error::Runner`] for a window or graphics failure; `build`'s error unchanged.
 #[allow(clippy::needless_pass_by_value)]
-pub fn run_shell_with_recovery(
+pub fn run_shell_with_recovery<H: HostedShell + 'static>(
     options: Options,
-    build: impl FnOnce(&egui::Context) -> Result<Shell> + 'static,
+    build: impl FnOnce(&egui::Context) -> Result<H> + 'static,
     on_event: impl FnMut(&crate::ShellEvent) + 'static,
-    on_recovery: impl FnMut(&egui::Context, &mut Shell) + 'static,
+    on_recovery: impl FnMut(&egui::Context, &mut H) + 'static,
 ) -> Result<()> {
     eframe::run_native(
         &options.title,
@@ -206,9 +207,9 @@ pub fn run_shell_with_recovery(
 /// # Errors
 /// [`Error::Runner`] for a window or graphics failure; `build`'s error unchanged.
 #[allow(clippy::needless_pass_by_value)]
-pub fn run_app<S: std::any::Any>(
+pub fn run_app<S: std::any::Any, H: HostedShell + 'static>(
     options: Options,
-    build: impl FnOnce(&egui::Context) -> Result<(Shell, S)> + 'static,
+    build: impl FnOnce(&egui::Context) -> Result<(H, S)> + 'static,
 ) -> Result<()> {
     run_app_with(options, build, |event| {
         log::debug!("shell event: {event:?}");
@@ -221,9 +222,9 @@ pub fn run_app<S: std::any::Any>(
 /// # Errors
 /// [`Error::Runner`] for a window or graphics failure; `build`'s error unchanged.
 #[allow(clippy::needless_pass_by_value)]
-pub fn run_app_with<S: std::any::Any>(
+pub fn run_app_with<S: std::any::Any, H: HostedShell + 'static>(
     options: Options,
-    build: impl FnOnce(&egui::Context) -> Result<(Shell, S)> + 'static,
+    build: impl FnOnce(&egui::Context) -> Result<(H, S)> + 'static,
     on_event: impl FnMut(&crate::ShellEvent) + 'static,
 ) -> Result<()> {
     run_app_with_recovery(options, build, on_event, |_, _, _| {})
@@ -245,11 +246,11 @@ pub fn run_app_with<S: std::any::Any>(
 /// # Errors
 /// [`Error::Runner`] for a window or graphics failure; `build`'s error unchanged.
 #[allow(clippy::needless_pass_by_value)]
-pub fn run_app_with_recovery<S: std::any::Any>(
+pub fn run_app_with_recovery<S: std::any::Any, H: HostedShell + 'static>(
     options: Options,
-    build: impl FnOnce(&egui::Context) -> Result<(Shell, S)> + 'static,
+    build: impl FnOnce(&egui::Context) -> Result<(H, S)> + 'static,
     on_event: impl FnMut(&crate::ShellEvent) + 'static,
-    on_recovery: impl FnMut(&egui::Context, &mut Shell, &mut S) + 'static,
+    on_recovery: impl FnMut(&egui::Context, &mut H, &mut S) + 'static,
 ) -> Result<()> {
     eframe::run_native(
         &options.title,
@@ -268,18 +269,18 @@ pub fn run_app_with_recovery<S: std::any::Any>(
     .map_err(|err| Error::Runner(err.to_string()))
 }
 
-type StateRecovery<S> = dyn FnMut(&egui::Context, &mut Shell, &mut S);
-type ShellRecovery = dyn FnMut(&egui::Context, &mut Shell);
+type StateRecovery<S, H> = dyn FnMut(&egui::Context, &mut H, &mut S);
+type ShellRecovery<H> = dyn FnMut(&egui::Context, &mut H);
 
 /// A [`Shell`] plus the app's state as an `eframe::App` — the app owns both.
-struct StateApp<S> {
-    shell: Shell,
+struct StateApp<S, H: HostedShell = Shell> {
+    shell: H,
     state: S,
-    on_recovery: Box<StateRecovery<S>>,
+    on_recovery: Box<StateRecovery<S, H>>,
     on_event: Box<dyn FnMut(&crate::ShellEvent)>,
 }
 
-impl<S: std::any::Any> eframe::App for StateApp<S> {
+impl<S: std::any::Any, H: HostedShell> eframe::App for StateApp<S, H> {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.shell.is_faulted() {
             if !crate::runtime::contain(|| {
@@ -346,13 +347,13 @@ where
 }
 
 /// A [`Shell`] as an `eframe::App`.
-struct ShellApp {
-    shell: Shell,
-    on_recovery: Box<ShellRecovery>,
+struct ShellApp<H: HostedShell = Shell> {
+    shell: H,
+    on_recovery: Box<ShellRecovery<H>>,
     on_event: Box<dyn FnMut(&crate::ShellEvent)>,
 }
 
-impl eframe::App for ShellApp {
+impl<H: HostedShell> eframe::App for ShellApp<H> {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.shell.is_faulted() {
             if !crate::runtime::contain(|| {
@@ -402,6 +403,41 @@ mod tests {
     use eframe::App;
     use std::cell::Cell;
     use std::rc::Rc;
+
+    #[test]
+    #[allow(
+        clippy::panic,
+        reason = "inject a host callback unwind into the real runner boundary"
+    )]
+    fn protected_runner_logic_contains_event_faults_and_preserves_recovery_mode(
+    ) -> crate::Result<()> {
+        let ctx = egui::Context::default();
+        let build = |ctx: &egui::Context| {
+            let config =
+                crate::ShellConfig::default().configure(|c| c.access.session_tokens = true);
+            Shell::builder(config).build_protected(ctx)
+        };
+        let shell = build(&ctx)?;
+        shell.handle().logout();
+        let mut app = ShellApp {
+            shell,
+            on_event: Box::new(|_| panic!("synthetic protected host event fault")),
+            on_recovery: Box::new(|_, _| {}),
+        };
+        let mut frame = eframe::Frame::_new_kittest();
+        let output = ctx.run_logic(&egui::RawInput::default(), |ctx| app.logic(ctx, &mut frame));
+        assert_eq!(output.platform_output.commands.len(), 0);
+        assert!(app.shell.is_faulted());
+        let old = app.shell.handle();
+        app.on_recovery = Box::new(move |ctx, shell| {
+            assert!(shell.restart_with(|| build(ctx)).is_ok());
+        });
+        let _ = ctx.run_logic(&egui::RawInput::default(), |ctx| app.logic(ctx, &mut frame));
+        assert!(!app.shell.is_faulted());
+        assert!(old.try_send(crate::shell::Command::Home).is_err());
+        assert!(app.shell.observe().session_token().is_none());
+        Ok(())
+    }
 
     #[test]
     fn application_can_restart_automatically_without_a_view_or_click() -> crate::Result<()> {
@@ -652,5 +688,14 @@ mod tests {
         assert_eq!(events.get(), 1);
         assert_eq!(app.shell.frame_no(), 0);
         Ok(())
+    }
+}
+
+impl Options {
+    /// Customize an extensible configuration without an exhaustive literal.
+    #[must_use]
+    pub fn configure(mut self, customize: impl FnOnce(&mut Self)) -> Self {
+        customize(&mut self);
+        self
     }
 }

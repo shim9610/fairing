@@ -19,6 +19,7 @@ use std::collections::BTreeMap;
 /// (`fairing::ShellBuilder::theme`).
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct ThemeConfig {
     /// `[theme] preset` — the palette preset name (`"base"` by default, `"abyss"` or `"linen"`). It is
     /// the [`Preset`](crate::theme::Preset) of that name, and an unknown name is an
@@ -43,6 +44,7 @@ impl Default for ThemeConfig {
 /// The `[motion]` tokens (the M1 part of the motion token table).
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct MotionConfig {
     /// Every tween 0 ms, springs settle instantly.
     pub reduce: bool,
@@ -123,6 +125,7 @@ impl Default for MotionConfig {
 /// `[motion.panes]` (A8): two panes coming and going, and the divider evening out.
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct PanesMotionConfig {
     /// The pane coming in slides in while the one there shrinks to its share.
     pub enter_ms: u64,
@@ -145,6 +148,7 @@ impl Default for PanesMotionConfig {
 /// `[motion.overview]` (A10): the recent screens.
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct OverviewMotionConfig {
     /// The screen on show shrinking into its card, and growing back out of it.
     pub in_ms: u64,
@@ -167,6 +171,7 @@ impl Default for OverviewMotionConfig {
 /// `[motion.shade]` (A1): the spring, the snap ratio and the rubber band.
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct ShadeConfig {
     /// The release spring.
     pub spring: SpringConfig,
@@ -200,6 +205,7 @@ impl Default for ShadeConfig {
 /// `[motion.page]` (A4): the desktop page swipe.
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct PageMotionConfig {
     /// The release spring.
     pub spring: SpringConfig,
@@ -225,6 +231,7 @@ impl Default for PageMotionConfig {
 /// `[motion.osk]` (A5).
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct OskMotionConfig {
     /// The show tween.
     pub show_ms: u64,
@@ -247,6 +254,7 @@ impl Default for OskMotionConfig {
 /// `[motion.toast]` (A6). The heads-up timing is here too.
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct ToastMotionConfig {
     /// A toast entering.
     pub in_ms: u64,
@@ -278,6 +286,7 @@ impl Default for ToastMotionConfig {
 /// `spring = { k = 400, c = 40 }`.
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct SpringConfig {
     /// The stiffness.
     pub k: f32,
@@ -294,6 +303,7 @@ impl Default for SpringConfig {
 /// `[motion.push]` (A3).
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct PushConfig {
     /// The tween's length.
     pub ms: u64,
@@ -316,6 +326,7 @@ impl Default for PushConfig {
 /// A token that is only a duration (`[motion.pop]`).
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct DurationConfig {
     /// The tween's length (ms).
     pub ms: u64,
@@ -330,6 +341,7 @@ impl Default for DurationConfig {
 /// `[motion.home]` (A2).
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct HomeConfig {
     /// The opening length.
     pub open_ms: u64,
@@ -352,6 +364,7 @@ impl Default for HomeConfig {
 /// `[motion.press]` (A7).
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct PressConfig {
     /// The press tween.
     pub ms: u64,
@@ -370,3 +383,31 @@ impl Default for PressConfig {
         }
     }
 }
+
+// Extensible configuration is built through Default and field customization.
+macro_rules! configuration_builders {
+    ($($ty:ty),* $(,)?) => { $(impl $ty {
+        /// Customize a configuration value without constructing an exhaustive literal.
+        /// The callback runs synchronously once during host configuration.
+        #[must_use]
+        pub fn configure(mut self, customize: impl FnOnce(&mut Self)) -> Self {
+            customize(&mut self);
+            self
+        }
+    })* };
+}
+configuration_builders!(
+    ThemeConfig,
+    MotionConfig,
+    PanesMotionConfig,
+    OverviewMotionConfig,
+    ShadeConfig,
+    PageMotionConfig,
+    OskMotionConfig,
+    ToastMotionConfig,
+    SpringConfig,
+    PushConfig,
+    DurationConfig,
+    HomeConfig,
+    PressConfig
+);

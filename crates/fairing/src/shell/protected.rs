@@ -14,6 +14,13 @@ use crate::screen::LaunchAction;
 /// admitted callbacks are local to that invocation and cannot install later hooks.
 /// Authentication, backends, destructors and arbitrary effects inside an admitted
 /// callback remain trusted. This facade does not mediate arbitrary raw egui calls.
+///
+/// Replacement cannot downgrade to an ordinary shell:
+/// ```compile_fail
+/// fn downgrade(shell: &mut fairing::ProtectedShell, ctx: &fairing::egui::Context) {
+///     let _ = shell.restart_with(|| fairing::Shell::builder(fairing::ShellConfig::default()).build(ctx));
+/// }
+/// ```
 pub struct ProtectedShell {
     inner: Shell,
 }
@@ -23,6 +30,58 @@ impl ProtectedShell {
         inner.access.require_mediation();
         inner.registry.bind_initial_library_requirements();
         Self { inner }
+    }
+
+    /// Whether dispatch is quarantined after a runtime or host fault.
+    #[must_use]
+    pub const fn is_faulted(&self) -> bool {
+        self.inner.is_faulted()
+    }
+
+    /// Stop dispatch and close command admission before host recovery.
+    pub fn quarantine(&mut self) {
+        self.inner.quarantine();
+    }
+
+    /// The shell's current monotonic observation time.
+    #[must_use]
+    pub fn now(&self) -> std::time::Instant {
+        self.inner.now()
+    }
+
+    /// Replace with a validated protected shell, closing old admission first.
+    ///
+    /// # Errors
+    /// Construction, disposal or wake failure leaves dispatch quarantined.
+    pub fn restart_with(
+        &mut self,
+        build: impl FnOnce() -> crate::Result<Self>,
+    ) -> Result<(), crate::recovery::RestartError> {
+        self.inner
+            .restart_with(|| build().map(|replacement| replacement.inner))
+    }
+
+    /// Set optional fault guidance and clear any pending restart request.
+    pub fn set_recovery_ui(&mut self, view: Option<crate::recovery::RecoveryUi>) {
+        self.inner.set_recovery_ui(view);
+    }
+
+    /// Consume the fault view's coalesced restart request.
+    pub fn take_restart_request(&mut self) -> bool {
+        self.inner.take_restart_request()
+    }
+
+    #[cfg(feature = "settings")]
+    pub(crate) fn register_settings<P: Permission>(
+        &mut self,
+        config: &crate::settings::SettingsConfig,
+        entries: Vec<crate::settings::screens::SettingsEntry>,
+        mut permission_for: impl FnMut(&str) -> P,
+    ) {
+        for decl in crate::settings::declarations(&mut self.inner, config, entries) {
+            let permission = permission_for(decl.id());
+            self.add(Protected::new(permission, decl));
+        }
     }
 
     /// Register a declaration with its mandatory requirement. The binding overrides
@@ -55,10 +114,10 @@ impl ProtectedShell {
         self.add_screen(id, tree);
     }
 
-    /// Observe layout, state and diagnostics without mutable registration access.
+    /// Observe supported host state without a legacy-shell or component loan.
     #[must_use]
-    pub fn shell(&self) -> &Shell {
-        &self.inner
+    pub fn observe(&self) -> super::ShellView<'_> {
+        self.inner.observe()
     }
 
     /// Remove a declaration and close its instances.

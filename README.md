@@ -185,8 +185,12 @@ paint. Custom `Screen + PermissionBound` implementations use `add_screen`.
 The [typed integration example](docs/session-tokens.md#typed-permission-requirements)
 shows nested UI and independent operation permissions.
 
-Host a `ProtectedShell` through its `logic*`, `frame*` and `poll_events` methods.
-The current `runner::run_shell*`/`run_app*` helpers accept ordinary `Shell` only.
+The `runner::run_shell*`/`run_app*` helpers accept both shell modes through a sealed
+host interface. `testing::Harness::from_builder` also accepts `build_protected`.
+Register built-in settings with `settings::add_all_protected`, supplying your
+permission mapping for each screen ID. Run the development integration example
+with `cargo run -p fairing --example protected --features runner-x11`; its public
+DEMO marker demonstrates session wiring and must be replaced by a real verifier.
 Protected construction rejects untyped global painters/layouts, image loaders and
 procedural wallpapers; put custom protected UI in typed declarations or elements.
 

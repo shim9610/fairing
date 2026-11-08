@@ -223,10 +223,9 @@ use fairing::Theme;
 
 fn snappy() -> Theme {
     let mut theme = Theme::dark();
-    theme.motion = MotionTokens::from_config(&MotionConfig {
-        snap_ratio: 0.25,
-        ..MotionConfig::default()
-    });
+    theme.motion = MotionTokens::from_config(&MotionConfig::default().configure(|config| {
+        config.snap_ratio = 0.25;
+    }));
     theme
 }
 ```
@@ -786,11 +785,10 @@ use fairing::theme::MotionTokens;
 use fairing::ShellHandle;
 
 fn apply_snappy(handle: &ShellHandle) {
-    let tokens = MotionTokens::from_config(&MotionConfig {
-        snap_ratio: 0.25,
-        fling_px_s: 600.0,
-        ..MotionConfig::default()
-    });
+    let tokens = MotionTokens::from_config(&MotionConfig::default().configure(|config| {
+        config.snap_ratio = 0.25;
+        config.fling_px_s = 600.0;
+    }));
     handle.set_motion(tokens);
 }
 ```

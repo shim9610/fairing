@@ -94,21 +94,19 @@ fn config_page_override_places_icon() -> fairing::Result<()> {
 #[test]
 fn config_override_relabels_and_hides_locked_icon() -> fairing::Result<()> {
     let mut cfg = access_config(&["viewer", "admin"], Some("top"));
-    cfg.desktop.pages = vec![PageConfig {
-        icons: vec![
-            IconOverride {
-                id: "secret".to_owned(),
-                label: Some("Secret".to_owned()),
-                icon: Some("lock".to_owned()),
-                locked: Some("hide".to_owned()),
-                ..IconOverride::default()
-            },
-            IconOverride {
-                id: "nope".to_owned(),
-                ..IconOverride::default()
-            },
-        ],
-    }];
+    cfg.desktop.pages = vec![(PageConfig::default()).configure(|api_config_value| {
+        api_config_value.icons = vec![
+            (IconOverride::default()).configure(|api_config_value| {
+                api_config_value.id = "secret".to_owned();
+                api_config_value.label = Some("Secret".to_owned());
+                api_config_value.icon = Some("lock".to_owned());
+                api_config_value.locked = Some("hide".to_owned());
+            }),
+            (IconOverride::default()).configure(|api_config_value| {
+                api_config_value.id = "nope".to_owned();
+            }),
+        ];
+    })];
     let mut h = test_shell(cfg, |sh| {
         sh.add(
             stub("secret")

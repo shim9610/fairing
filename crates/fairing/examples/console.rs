@@ -169,11 +169,11 @@ fn console_palette() -> fairing::theme::Palette {
 fn main() -> fairing::Result<()> {
     common::init_logger();
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let options = Options {
-        fullscreen: false,
-        title: "fairing console".to_owned(),
-        size: Some(common::arg_size(&args).unwrap_or((1280.0, 800.0))),
-    };
+    let options = (Options::default()).configure(|config| {
+        config.fullscreen = false;
+        "fairing console".clone_into(&mut config.title);
+        config.size = Some(common::arg_size(&args).unwrap_or((1280.0, 800.0)));
+    });
     match common::arg_tour(&args) {
         Some(dir) => common::run_tour(options, dir, TOUR, |ctx| Ok((build(ctx)?, ()))),
         None => runner::run_shell(options, build),
