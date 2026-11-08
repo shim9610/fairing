@@ -47,8 +47,13 @@ After installing `rustup`, check the repository once:
 
 ```sh
 rustup show                     # installs and selects 1.99 from rust-toolchain.toml
-cargo test -p fairing --all-features
+cargo test --locked --workspace --all-features
 ```
+
+CI also tests the complete workspace with default features, no default features,
+and the default UI features (`overlay,osk,settings,brand`) without `mock`. Tests
+that require Mock backends run when `mock` is enabled; backend-independent tests
+continue to run without it. The same four profiles are checked with Clippy.
 
 No Korean font ships with the crate — they run to several megabytes and subsetting
 is a policy call for the integrator. egui's `default_fonts` has no CJK, so Hangul
@@ -417,10 +422,10 @@ there, the script goes on so one run lists every miss, and the example exits non
 `tools/tours.sh` runs every tour that way, stills only, and the public repository's
 CI runs it on pull requests and pushes to `main`.
 
-Add `--record` and the tour runs on a fixed 60 Hz clock: each frame is 1/60 s after
-the one before, however long it took to draw, so a software rasteriser records as
-smoothly as a GPU. The animated stretches of the script are written as frames, 30 a
-second, each into a folder of its own (`demo-desktop/0000.png`, …). Stitch them into
+Every tour uses a fixed 60 Hz input clock: each frame is 1/60 s after the one
+before, however long it took to draw. This keeps scripted gestures and inertia
+independent of renderer speed. Add `--record` to also capture the animated
+stretches of the script at 30 frames a second, each into a folder of its own (`demo-desktop/0000.png`, …). Stitch them into
 a GIF or a video with any tool. `tools/make_gif.py` turns one folder into a GIF (it
 needs Pillow), and `tools/readme-gifs.sh` rebuilds the images in the repository's
 README that way, end to end.

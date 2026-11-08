@@ -12,7 +12,7 @@
 //! The rules: `fairing::Result<()>`, and positions come from `overlay().tile_rect` / `list_rect` /
 //! `frame().panel` / `item_rect` — never from a copy of the layout formula.
 // Turning the `overlay` feature off drops this target from the build too (checked by `--no-default-features --all-targets`).
-#![cfg(feature = "overlay")]
+#![cfg(all(feature = "overlay", feature = "mock"))]
 
 use fairing::gesture::Recognizer;
 use fairing::notify::{Notification, NotificationId};

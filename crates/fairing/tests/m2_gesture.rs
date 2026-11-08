@@ -9,8 +9,9 @@
 //! `step px/frame ≈ step × 60 px/s`. "Letting go at a velocity of 0" is made by dragging to the target, then
 //! stopping for longer than the window (6 frames) before letting go ([`still`]).
 
-use fairing::services::mock::MockDisplay;
-use fairing::testing::{single_level_access, test_shell, Harness};
+#[cfg(any(feature = "overlay", feature = "mock"))]
+use fairing::testing::test_shell;
+use fairing::testing::{single_level_access, Harness};
 use fairing::workspace::Instance;
 use fairing::{
     screen, screen_with, Cx, Error, LaunchAction, LaunchMode, Lifecycle, Screen, Services, Shell,
@@ -497,7 +498,9 @@ fn allow_peek_false_blocks_the_hidden_bar_pull() -> fairing::Result<()> {
 /// The skeleton smoke test: opening a `keep_awake` screen gives `DisplayBackend::set_idle_inhibit(true)`
 /// and closing it gives false.
 #[test]
+#[cfg(feature = "mock")]
 fn keep_awake_screen_drives_idle_inhibit() -> fairing::Result<()> {
+    use fairing::services::mock::MockDisplay;
     let mut h = Harness::new(
         {
             let mut c = single_level_access();

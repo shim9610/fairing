@@ -807,6 +807,7 @@ fn gesture_back_regrab_confirms_with_the_combined_progress() -> fairing::Result<
 /// memory view — it does not turn an already-on Mock Wi-Fi on again on a fresh shell. An integrator's key goes by
 /// the memory view (`None → true`).
 #[test]
+#[cfg(feature = "mock")]
 fn toggle_uses_the_backend_state_for_builtin_keys() -> fairing::Result<()> {
     let mut h = test_shell(single_level_access(), |_| {})?;
     h.shell
@@ -846,6 +847,7 @@ fn toggle_uses_the_backend_state_for_builtin_keys() -> fairing::Result<()> {
 /// The head of the default `[status_bar] right` is `status.notifications` — the badge is drawn without the demos
 /// and the tests putting it in by hand. The order on the right is guide 03's example as it is.
 #[test]
+#[cfg(feature = "mock")]
 fn status_notifications_is_in_the_default_right_slot() -> fairing::Result<()> {
     // The Null backends hide the Wi-Fi, BT and battery items (they report no capability), so it is built with Mocks.
     let mut cfg = single_level_access();

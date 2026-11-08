@@ -841,6 +841,7 @@ fn lock_logout_and_overview_leave_as_events() -> fairing::Result<()> {
 }
 
 /// Every line of text drawn on the next frame.
+#[cfg(feature = "mock")]
 fn drawn_lines(h: &mut Harness) -> Vec<String> {
     fn walk(shape: &egui::Shape, out: &mut Vec<String>) {
         match shape {

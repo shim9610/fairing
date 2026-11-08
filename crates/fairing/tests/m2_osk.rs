@@ -16,10 +16,7 @@ use fairing::chrome::{NavItem, NavStyle};
 use fairing::motion::Easing;
 use fairing::osk::OskLayout;
 use fairing::screen::OskMode;
-use fairing::services::mock::{MockPower, MockWifi, WifiMsg};
-use fairing::services::WifiState;
 use fairing::testing::{single_level_access, Harness, FRAME_DT_F32};
-use fairing::theme::Palette;
 use fairing::widgets::{BigButton, Switch, TouchSlider};
 use fairing::{screen, ChromePolicy, Cx, LaunchAction, Services, ShellEvent};
 use std::cell::RefCell;
@@ -784,7 +781,13 @@ fn switch_and_long_press_and_slider() -> fairing::Result<()> {
 /// A7: a change in the Wi-Fi strength crossfades the status bar icon over 120 ms, and a theme change interpolates
 /// the palette over 200 ms.
 #[test]
+#[cfg(feature = "mock")]
 fn parametric_and_theme_crossfade() -> fairing::Result<()> {
+    use fairing::services::{
+        mock::{MockPower, MockWifi, WifiMsg},
+        WifiState,
+    };
+    use fairing::theme::Palette;
     let wifi = MockWifi::new();
     let control = wifi.control();
     let services = Services::builder()

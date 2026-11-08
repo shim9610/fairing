@@ -14,8 +14,8 @@ categories = ["gui", "embedded"]
 # `assets/`, and the held guide gate `src/guide_probe.rs` reads `docs/guide/`, so neither builds
 # from a downloaded crate. The audit enables guides with the repository-only
 # `fairing_repo_docs` cfg. The examples live in the repository. `examples/demo.toml` stays, for a
-# test reads it.
-exclude = ["examples/*.rs", "examples/common/", "examples/kiosk.toml", "src/guide_probe.rs"]
+# test reads it. The tour-clock regression also depends on the excluded example driver.
+exclude = ["examples/*.rs", "examples/common/", "examples/kiosk.toml", "src/guide_probe.rs", "tests/tour_timing.rs"]
 
 [dependencies]
 fairing-widgets = { path = "../fairing-widgets", version = "0.1.0" }

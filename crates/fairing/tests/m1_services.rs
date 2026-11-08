@@ -7,11 +7,9 @@
 //! The tests are written as `fn … -> fairing::Result<()>` (the `panic!`/`unwrap` lint).
 
 use fairing::access::AccessEvent;
-use fairing::services::mock::MockWifi;
-use fairing::services::{Services, WifiState};
+use fairing::services::Services;
 use fairing::testing::{access_config, access_config_mode, single_level_access, Harness};
 use fairing::{screen, LaunchAction, ShellEvent};
-use std::time::Duration;
 
 /// With one level in the table a gate always passes, and there is no prompt event either.
 #[test]
@@ -71,7 +69,10 @@ fn routing_mode_never_prompts_but_emits_event() -> fairing::Result<()> {
 }
 
 #[test]
+#[cfg(feature = "mock")]
 fn mock_wifi_scan_completes_via_next_wake() -> fairing::Result<()> {
+    use fairing::services::{mock::MockWifi, WifiState};
+    use std::time::Duration;
     // The scan returns at once and completion comes on the next snapshot plus next_wake. It does not block the
     // UI thread (the test finishing is itself the proof). The 50 ms delay is 3 frames of virtual time.
     let mut wifi = MockWifi::new();
@@ -108,9 +109,11 @@ fn mock_wifi_scan_completes_via_next_wake() -> fairing::Result<()> {
 /// A bounded backend backlog progresses in logic-only callbacks without a UI frame
 /// or another producer send; one tick still applies only the configured batch.
 #[test]
+#[cfg(feature = "mock")]
 fn mock_backlog_continues_in_logic_only_ticks() -> Result<(), Box<dyn std::error::Error>> {
     use fairing::inbox::{InboxCapacity, InboxConfig};
     use fairing::services::mock::WifiMsg;
+    use fairing::services::{mock::MockWifi, WifiState};
 
     let wifi = MockWifi::with_inbox((InboxConfig::default()).configure(|config| {
         config.capacity = InboxCapacity::Bounded(3);

@@ -9,7 +9,8 @@
 # that does not hold, is logged as an error and the example exits non-zero at the end — so a
 # change that moves a row, renames a label or breaks a flow fails here rather than leaving a wrong
 # picture under the right file name. tools/readme-gifs.sh runs the same scripts with `--record`
-# to rebuild the README's images; this one is the quick pass CI runs.
+# to rebuild the README's images; this one is the quick pass CI runs. Both modes use
+# the same fixed 60 Hz input clock so scripted gesture velocity is renderer-independent.
 #
 # Needs xvfb-run (Debian/Ubuntu: xvfb) and Mesa. The stills take about three minutes on a software
 # rasteriser. Each tour's full log is left at target/tours/<name>.log.

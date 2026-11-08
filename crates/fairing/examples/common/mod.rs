@@ -308,10 +308,9 @@ pub enum Act {
     /// Until the animations and transitions finish (capped at [`SETTLE_MAX`] frames).
     Settle,
     /// Wait N frames — for the frames a shot or a check needs after a change, never for a
-    /// span of time (a frame is 1/60 s only under `--record`; [`Act::WaitMs`] is the time).
+    /// span of time (tour input advances at 60 Hz; [`Act::WaitMs`] states a duration).
     Wait(u32),
-    /// Wait this long **on the input clock** (`RawInput::time`: the wall clock, or the fixed
-    /// 60 Hz clock under `--record`) — for a long press to complete, a toast to time out, a
+    /// Wait this long **on the fixed 60 Hz tour input clock** (`RawInput::time`) — for a long press to complete, a toast to time out, a
     /// pause to register. A frame count stood in for these and a fast rasteriser ran it short.
     WaitMs(u32),
     /// Capture this frame.
@@ -624,7 +623,7 @@ const PATTERN_STROKE: usize = 3;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SyntheticInput;
 
-/// **`--record`'s clock.** Each frame is exactly [`RECORD_STEP`] after the one before, however long
+/// **The tour clock.** Each frame is exactly [`RECORD_STEP`] after the one before, however long
 /// it took to draw, so every animation advances by the same step on every frame and a recording of
 /// it comes out smooth. The shell's time is the sum of egui's `stable_dt`, which follows
 /// `RawInput.time` while repaints are requested, so setting that time is all it takes. The clock
@@ -671,6 +670,13 @@ impl SyntheticInput {
         }
         ctx.add_plugin(Self);
         ctx.data_mut(|d| d.insert_temp(installed, true));
+    }
+
+    /// Install tour input with the same fixed clock for stills and recordings.
+    /// Renderer speed must not change gesture velocity or timer durations.
+    pub fn install_tour(ctx: &egui::Context) {
+        Self::install(ctx);
+        Self::start_clock(ctx);
     }
 
     /// Put one event into the next pass.
@@ -942,10 +948,7 @@ impl<S: std::any::Any> Tour<S> {
     /// The first frame: pin the DPI to 1.0 and build the shell. On a failure it closes the window.
     fn start(&mut self, ctx: &egui::Context) -> bool {
         ctx.set_pixels_per_point(1.0);
-        SyntheticInput::install(ctx);
-        if self.film.is_some() {
-            SyntheticInput::start_clock(ctx);
-        }
+        SyntheticInput::install_tour(ctx);
         let Some(build) = self.build.take() else {
             return false;
         };

@@ -1389,6 +1389,7 @@ fn nav_back_is_disabled_on_home() -> fairing::Result<()> {
 /// status bar (the clock, the Mock Wi-Fi and the battery) and the integrator's items for yourself" the demo's docs
 /// promise becomes impossible. It reads **the same file** as the demo, so a config that drifts is caught here.
 #[test]
+#[cfg(feature = "mock")]
 fn demo_config_keeps_status_bar_visible() -> fairing::Result<()> {
     use fairing::{status_item, Slot};
     let config = fairing::ShellConfig::from_toml(include_str!("../examples/demo.toml"))?;

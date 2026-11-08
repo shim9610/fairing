@@ -97,8 +97,20 @@ jobs:
       - name: Audit
         run: cargo run -p xtask --locked -- audit --strict
 
-      - name: Test minimal-feature library units
-        run: cargo test --locked -p fairing --no-default-features --lib --test protected_host --test host_operations
+      # Each feature profile produces its own large test executables. Release workspace
+      # artifacts between profiles while keeping shared dependency artifacts cached.
+      - name: Check minimal, no-mock and default feature profiles
+        run: |
+          cargo clean -p fairing -p fairing-widgets
+          cargo clippy --locked --workspace --all-targets --no-default-features -- -D warnings
+          cargo test --locked --workspace --no-default-features
+          cargo clean -p fairing -p fairing-widgets
+          cargo clippy --locked --workspace --all-targets --no-default-features --features fairing/overlay,fairing/osk,fairing/settings,fairing/brand -- -D warnings
+          cargo test --locked --workspace --no-default-features --features fairing/overlay,fairing/osk,fairing/settings,fairing/brand
+          cargo clean -p fairing -p fairing-widgets
+          cargo clippy --locked --workspace --all-targets -- -D warnings
+          cargo test --locked --workspace
+          cargo clean -p fairing -p fairing-widgets
 
       - name: Inventory public API contracts
         run: |

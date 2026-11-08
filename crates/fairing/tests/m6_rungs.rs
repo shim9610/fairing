@@ -733,7 +733,7 @@ mod keyboard {
 }
 
 /// The shade's rung (feature `overlay`).
-#[cfg(feature = "overlay")]
+#[cfg(all(feature = "overlay", feature = "mock"))]
 mod shade {
     use super::{config, need};
     use fairing::overlay::{

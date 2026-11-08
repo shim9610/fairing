@@ -17,7 +17,7 @@ fn fail(what: impl Into<String>) -> fairing::Error {
 fn open_shade(config: ShellConfig) -> fairing::Result<Harness> {
     let mut h = Harness::from_builder(move |ctx| {
         Shell::builder(config)
-            .services(fairing::services::mock::services())
+            .services(fairing::Services::null())
             .build(ctx)
     })?;
     h.frames(2);

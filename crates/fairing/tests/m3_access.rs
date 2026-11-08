@@ -1074,7 +1074,7 @@ fn an_authenticator_that_manages_its_entries_gets_the_credentials_screen() -> fa
     let authenticator = Roster(Rc::clone(&roster), Rc::default());
     let mut h = Harness::from_builder(|ctx| {
         fairing::Shell::builder(config)
-            .services(fairing::services::mock::services())
+            .services(fairing::Services::null())
             .authenticator(authenticator)
             .build(ctx)
     })?
@@ -1704,7 +1704,7 @@ fn credentials(
     let authenticator = Roster(Rc::clone(&roster), Rc::clone(&actors));
     let mut h = Harness::from_builder(|ctx| {
         fairing::Shell::builder(config)
-            .services(fairing::services::mock::services())
+            .services(fairing::Services::null())
             .authenticator(authenticator)
             .build(ctx)
     })?
