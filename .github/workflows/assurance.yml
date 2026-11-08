@@ -52,6 +52,7 @@ jobs:
         run: |
           cargo run -p xtask --locked -- integrity
           python3 verification/check-inputs.py
+          python3 verification/test_install.py
           python3 verification/retained_state.py
           cargo audit --file verification/Cargo.lock
           cargo deny --manifest-path verification/Cargo.toml --config verification/deny.toml check

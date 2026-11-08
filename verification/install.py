@@ -10,6 +10,8 @@ import shutil
 import subprocess
 import tarfile
 import tomllib
+import time
+import urllib.error
 import urllib.request
 import zipfile
 
@@ -32,6 +34,35 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def download(pin, archive):
+    """Retry transient transport failures; publish only a verified complete archive."""
+    temporary = archive.with_suffix(archive.suffix + ".download")
+    try:
+        for attempt in range(4):
+            try:
+                # The public release API addresses the same immutable asset when
+                # the browser-download endpoint returns a transient gateway error.
+                url = pin.get("asset_api_url", pin["url"]) if attempt else pin["url"]
+                request = urllib.request.Request(url, headers={"Accept": "application/octet-stream"})
+                with urllib.request.urlopen(request, timeout=60) as source, temporary.open("wb") as output:
+                    shutil.copyfileobj(source, output)
+            except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
+                if isinstance(error, urllib.error.HTTPError) and error.code not in {408, 429, 500, 502, 503, 504}:
+                    raise
+                if attempt == 3:
+                    raise
+                delay = 2 ** (attempt + 1)
+                print(f"Tool download failed ({error}); retrying in {delay}s ({attempt + 1}/3)", flush=True)
+                time.sleep(delay)
+                continue
+            if digest(temporary) != pin["sha256"]:
+                raise ValueError("Tool archive checksum mismatch")
+            temporary.replace(archive)
+            return
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def tool(name):
     if platform.system() != "Linux" or platform.machine() != "x86_64":
         raise ValueError("The pinned assurance tool archives support Linux x86_64")
@@ -48,12 +79,7 @@ def tool(name):
     archives.mkdir(parents=True, exist_ok=True)
     archive = archives / pin["url"].rsplit("/", 1)[1]
     if not archive.exists() or digest(archive) != pin["sha256"]:
-        temporary = archive.with_suffix(archive.suffix + ".download")
-        with urllib.request.urlopen(pin["url"], timeout=60) as source, temporary.open("wb") as output:
-            shutil.copyfileobj(source, output)
-        if digest(temporary) != pin["sha256"]:
-            raise ValueError(f"{name} archive checksum mismatch")
-        temporary.replace(archive)
+        download(pin, archive)
     dest.mkdir(parents=True, exist_ok=True)
     if archive.suffix == ".zip":
         with zipfile.ZipFile(archive) as compressed:

@@ -19,21 +19,25 @@
   "verus": {
     "version": "release/0.2026.10.26.d17fbd0",
     "url": "https://github.com/verus-lang/verus/releases/download/release/0.2026.10.26.d17fbd0/verus-0.2026.10.26.d17fbd0-x86-linux.zip",
-    "sha256": "361674d05f0c1b2c9c3f4d5bc56a8fb2ab9241ed0cceca27780668c292bb4940"
+    "sha256": "361674d05f0c1b2c9c3f4d5bc56a8fb2ab9241ed0cceca27780668c292bb4940",
+    "asset_api_url": "https://api.github.com/repos/verus-lang/verus/releases/assets/676896409"
   },
   "kani": {
     "version": "kani-0.68.0",
     "url": "https://github.com/model-checking/kani/releases/download/kani-0.68.0/kani-0.68.0-x86_64-unknown-linux-gnu.tar.gz",
-    "sha256": "32e2b484d73ede0bbf64a2cf0879c4259422497d8aec4ee67d448de9ae7843d3"
+    "sha256": "32e2b484d73ede0bbf64a2cf0879c4259422497d8aec4ee67d448de9ae7843d3",
+    "asset_api_url": "https://api.github.com/repos/model-checking/kani/releases/assets/566906903"
   },
   "cargo_fuzz": {
     "version": "0.13.2",
     "url": "https://github.com/rust-fuzz/cargo-fuzz/releases/download/0.13.2/cargo-fuzz-0.13.2-x86_64-unknown-linux-musl.tar.gz",
-    "sha256": "b5b704018b63e0f151c17a057ac53b5111e1db545d1b9f72fee79f08a545931c"
+    "sha256": "b5b704018b63e0f151c17a057ac53b5111e1db545d1b9f72fee79f08a545931c",
+    "asset_api_url": "https://api.github.com/repos/rust-fuzz/cargo-fuzz/releases/assets/442959815"
   },
   "cargo_cyclonedx": {
     "version": "0.5.9",
     "url": "https://github.com/CycloneDX/cyclonedx-rust-cargo/releases/download/cargo-cyclonedx-0.5.9/cargo-cyclonedx-x86_64-unknown-linux-gnu.tar.xz",
-    "sha256": "fb8dbee9f182173e062a64a387b21a0badc6fab8b2abf9294973f012972bf6d8"
+    "sha256": "fb8dbee9f182173e062a64a387b21a0badc6fab8b2abf9294973f012972bf6d8",
+    "asset_api_url": "https://api.github.com/repos/CycloneDX/cyclonedx-rust-cargo/releases/assets/377060340"
   }
 }
