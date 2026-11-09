@@ -66,8 +66,10 @@ Set `[access] session_tokens = true` and return `AuthOutcome::Session(token)` to
 adopt split capabilities. The authenticator retains the non-cloneable controller.
 Existing authenticators keep their legacy behavior when this flag is false.
 `AccessConfig` now uses extensible construction: start with `Default` and set
-`session_tokens`, directly or through `.configure(...)`. The optional `Authenticator::session_ended` callback revokes
-the matching controller after local detachment. Direct subject injection does not
+`session_tokens`, directly or through `.configure(...)`. Implement
+`Authenticator::session_ended` to revoke the matching controller after local
+detachment. Its default implementation does nothing; detaching the shell reader
+does not revoke other readers. Direct subject injection does not
 authorize token-mode work; host-owned login flows use the request-bound
 `SessionRequested` / `accept_auth_response` path. See [session tokens](../session-tokens.md)
 for role expansion, catalog scope, grant expiry and proof boundaries.

@@ -9,6 +9,7 @@ with the documentation.
 | [System architecture](system-architecture.svg) | Host/application ownership, shell state, backend integration and presentation | [Architecture](../architecture.md#1-layers) |
 | [Runtime flow](runtime-flow.svg) | Logic-only updates, shared state processing, UI frames and events | [Architecture](../architecture.md#4-one-frame) |
 | [Security architecture](security-architecture.svg) | Issuer authority, token observations, typed registration and common admission | [Security architecture](../security-architecture.md#1-authority-and-trust-boundaries) |
+| [Authentication flow](authentication-flow.svg) | Library-issued requests, built-in prompts and host-owned login responses | [Security architecture](../security-architecture.md#3-authentication-and-session-publication) |
 | [Session lifecycle](session-lifecycle.svg) | Publication, busy reads, expiry, issuer revocation and local detachment | [Security architecture](../security-architecture.md#3-authentication-and-session-publication) |
 
 Solid arrows describe construction, calls or execution flow. Dashed arrows

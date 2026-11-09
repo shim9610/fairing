@@ -113,9 +113,17 @@ keyboard and no need for a shade can drop them all:
 fairing = { path = "…", default-features = false, features = ["runner"] }
 ```
 
-A subsystem you switch off leaves the build entirely. The `fairing::overlay` and
-`fairing::osk` paths disappear along with the `tile()` declaration, so code that
-uses them needs a `#[cfg(feature = "overlay")]` or has to go.
+Disabling a library feature removes its gated code; shared configuration and
+value types can remain. Without `overlay`, `fairing::overlay` and `tile()` are
+unavailable; without `osk`, `fairing::osk` is unavailable. Remove corresponding
+calls or guard them using a feature declared in your own application.
+
+Rust's `#[cfg(feature = "...")]` checks the package being compiled, not a
+dependency's feature set. To make the UI optional in your application, declare an
+application feature such as `device-ui` that forwards to `fairing/overlay` and
+`fairing/osk`, disable Fairing's default features in that dependency declaration,
+and guard your application code with `#[cfg(feature = "device-ui")]`.
+See [Cargo feature forwarding](https://doc.rust-lang.org/cargo/reference/features.html#dependency-features).
 
 ## 3. The device binary profile
 

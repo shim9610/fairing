@@ -7,30 +7,18 @@ Authentication, token authority and protected admission are in
 [security architecture](../security-architecture.md). Both include SVG diagrams.
 Planned work and current limits are in the [roadmap](../roadmap.md).
 
-Rust blocks on these pages, except those marked `ignore`, are compiled — and run
-unless marked `no_run` — by stage 3
-of `cargo xtask audit`, which CI runs on pull requests and pushes to `main`, and on a
-weekly schedule: `crates/fairing/src/guide_probe.rs`
-turns each page into doctests with all features enabled. This catches compilation
-errors and failures of assertions actually executed by those examples; prose,
-visual results and unasserted behavior still require review. The blocks marked `ignore`
-are of two kinds: **API outlines** (signatures without bodies, kept in step with the source by
-hand) and code that needs something outside this repository (a crate such as `image` or
-`zeroize`, or a font file of your own). API outlines show the relevant public
-members, not complete constructible definitions. TOML examples are syntax-checked;
-device-configuration fragments are deserialized and range-validated through
-`ShellConfig::from_toml` / `validate`. Partial fragments still need the surrounding
-configuration for declaration, gate and startup cross-checks; validate the complete
-configuration when building the shell. Cargo manifests are not `ShellConfig` input.
+## Choose a shell mode
 
-The audit explicitly enables `fairing_repo_docs` in `RUSTDOCFLAGS` for this gate.
-An extracted release archive omits these repository-only pages and instead runs
-its public API doctests without that flag; [release checks](../release-checks.md)
-exercise both package tests and an external consumer.
+| Integration | Start here |
+|---|---|
+| Ordinary UI with trusted application callbacks and optional legacy level gates | [01 Getting started](01-getting-started.md), then [02 Screens](02-screens.md) |
+| Issuer-controlled sessions with typed requirements checked at managed UI entry points | [Session tokens](../session-tokens.md), then [typed registration](../session-tokens.md#typed-permission-requirements) and the [`protected` example](../../crates/fairing/examples/protected.rs) |
+| Existing application updating from an earlier checkout | [10 Migration](10-migration.md) |
 
-> This guide targets the current checkout, before the first published release.
-> Applications using an earlier checkout should read
-> [10 Migration](10-migration.md) for the API and default changes.
+Choose the mode before copying registration examples. Chapters 01–04 primarily
+use ordinary `Shell`; their untyped hooks cannot be copied unchanged into
+`ProtectedShell`. Both modes can use the runners and headless harness. Authentication,
+permission assignment and device backends are supplied by the application.
 
 ## Reading order
 
@@ -126,27 +114,19 @@ at a time as you need it.
 | [09 Product branding](09-branding.md) | Image loaders · background, type, icon and mark requirements · the override table · the pre-ship review |
 | [10 Migration](10-migration.md) | Request/session tokens · permission values and protected hooks · deferred factories/opaque screen ownership · command/display admission · transport and recovery |
 
-## What exists and what does not
+## Examples and compatibility
 
-Milestones M0 to M5 are done, and M6 is down to the 0.1.0 release. The milestone table, what
-comes after 0.1 and the known limits are in the [roadmap](../roadmap.md).
+This guide describes the current checkout before the first published release.
+The [migration guide](10-migration.md) compares it with the earlier `f4ca28c`
+checkout; the [roadmap](../roadmap.md) separates implemented features from plans.
 
-## Coming from before 0.1
+Rust blocks are compiled by the repository's guide doctest gate unless marked
+`ignore`; `no_run` blocks are compiled without execution. Ignored blocks are API
+outlines or examples that need external crates or assets. An API outline lists
+selected members, not a complete constructible definition.
 
-Nothing has been published yet. The [migration guide](10-migration.md) compares the current
-code with the pre-hardening `main` checkout (`f4ca28c`). Two earlier design notes also differ
-from the implementation:
-
-- **Lengths are in du** — density-independent units, egui's points. Touch targets and bar sizes
-  are written in millimetres and resolve to du once the panel's size is known
-  (`ShellBuilder::physical_mm`, [01 §4](01-getting-started.md#4-a-minimal-app)); until then the
-  shell assumes a density and says so in the log.
-- **Part of the M2b plan was not built.** Planned only: the generic bars (a `Bar` on any edge,
-  rows of bars, bar layouts) and the desktop regions; the `[metrics]`, `[device]`, `[display]`
-  and `[scale]` sections; the `diag` feature and its scale reports; a closure over the resolved
-  metrics (`metrics_fn`); and `Cx`'s unit helpers (`cx.mm`, `cx.units`) — a screen reads the
-  resolved sizes from `cx.theme.metrics`. The shell has the status bar and the nav bar, the dock
-  and the icon rail, and its metrics are set in code (`ShellBuilder::metrics_spec`,
-  [04 §1](04-customization.md#1-injecting-a-theme)); only the three bar sizes also have TOML keys
-  ([03 §1.2](03-chrome.md#12-slot-placement), [03 §2.1](03-chrome.md#21-item-kinds)). The
-  [roadmap](../roadmap.md#3-after-01) lists them.
+The Rust doctest gate does not check TOML blocks. Cargo snippets belong in the
+application manifest. Device-configuration snippets belong in `fairing.toml` and
+need validation as part of the complete configuration with `ShellConfig::from_toml`
+and shell construction. See [Contributing](../../CONTRIBUTING.md#keeping-the-documents-up-to-date)
+for repository checks and [release checks](../release-checks.md) for package validation.

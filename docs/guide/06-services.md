@@ -73,8 +73,9 @@ implementations can avoid copying data that the item does not use.
 
 `DisplayBackend` drives `keep_awake` (idle inhibition, see
 `ChromePolicy::keep_awake` in [03 Chrome](03-chrome.md)), the `tile.brightness`
-slider and `status.brightness`. `set_power` is on the trait but nothing in the shell
-calls it yet. `AudioBackend` drives `settings.sound` and `status.volume`, and is asked
+slider and `status.brightness`. Built-in controls do not call `set_power`; trusted
+ordinary-host code can call it through `ServiceRequest::DisplayPower` and
+`Shell::request_service`. `AudioBackend` drives `settings.sound` and `status.volume`, and is asked
 for `Cue::Notify` when a new notification arrives (unless `ui.silent` is on).
 `NetworkBackend` drives `status.ethernet` — `ethernet_up()` is queried when that item is rendered, so
 answer it from a cache — and `settings.network`: the interface cards, an IPv4 form (DHCP or a
@@ -94,6 +95,12 @@ pub struct BtSnapshot { pub enabled: bool, pub discovering: bool, pub devices: V
 control their own buffers and any copies needed for asynchronous work.
 
 ### Connecting is yours
+
+The `request_service` examples below run in trusted host code with an ordinary
+`Shell`. This API does not apply access-gate checks and is unavailable on
+`ProtectedShell`. Do not use these calls as permission checks for user actions.
+User-driven setting writes use `set_setting`; custom device operations need an
+authorized application path and any device-side checks required by the product.
 
 The built-in `settings.wifi` screen **shows the networks and does not connect to
 them.** The radio toggle and the scan button are the screen's, because neither

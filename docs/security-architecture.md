@@ -68,6 +68,16 @@ drawing mechanism, not an additional permission boundary.
 
 ## 3. Authentication and session publication
 
+![Built-in prompt and host-owned login retain the library-issued request identity](diagrams/authentication-flow.svg)
+
+The library issues the `AuthRequestId`; the application returns a result bound
+to that request. Authentication can use either of these paths:
+
+| Credential UI | Request and response flow |
+|---|---|
+| Built-in prompt backed by an `Authenticator` | An unlock request starts `begin`; input goes to `submit`, and pending work completes through `poll`. The authenticator verifies the credentials. |
+| Host-owned login UI (routing mode or no built-in prompt method) | `AccessEvent::SessionRequested { request, gate }` goes to the host. After authentication, the host passes `request.respond(AuthOutcome::Session(token))` to `accept_auth_response`. |
+
 After verifying credentials, the issuer creates a `(SessionController,
 SessionToken)` pair and retains the controller. The returned
 `AuthOutcome::Session(token)` is installed only for a matching live authentication
@@ -80,8 +90,11 @@ level does not imply every permission. Include inactive catalog entries for gate
 that may be granted later. `replace_grants` validates the replacement before
 publication; unknown gates are rejected and omitted gates lose their rights.
 
-Controller publication and revocation wake the host through shared authority
-state; they do not wait behind `ShellHandle`'s bounded command queue. Readers
+The issuer must give `SessionController::issue` a `Waker` connected to the
+hosting shell. An attached authenticator can retain the waker passed to `attach`;
+a host-owned issuer can clone `shell.handle().waker()`. Installing a token does
+not replace that waker. Controller publication and revocation request a host
+update through it, outside `ShellHandle`'s bounded command queue. Readers
 check a coherent publication revision and current deadlines. An overlapping
 publication denies the current read without dropping the reader or retrying
 inside the read operation.
@@ -96,11 +109,15 @@ already expired session at the supplied authoritative clock, and revoked
 controllers cannot be reactivated.
 
 Local logout, lock, timeout, subject/authenticator replacement or fault quarantine
-first detach the shell's reader and invalidate pending authentication. The shell
-then calls `Authenticator::session_ended(session_id, now)`. The issuer must end
-only the matching controller; notification about an older session must not revoke
-a newer one. Other reader clones remain under the issuer's control. Dropping or
-revoking that controller ends all readers of the pair.
+detach the shell's reader. The shell
+calls `Authenticator::session_ended(session_id, now)` if an authenticator is
+attached. This hook defaults to no action: its implementation must revoke only
+the matching controller, without ending a newer session. A host-routed issuer
+without an attached authenticator must coordinate controller disposal/revocation
+itself; local detachment alone does not end the shared session. The callback reports
+reader detachment, not completion of pending-request cancellation; that cancellation
+belongs to the surrounding shell flow. Other reader clones remain under the
+issuer's control. Dropping or revoking that controller ends all readers of the pair.
 
 ## 4. Runtime enforcement and timing
 

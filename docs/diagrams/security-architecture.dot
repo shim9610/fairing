@@ -6,7 +6,7 @@ digraph security_architecture {
   subgraph cluster_issuer {
     label="Application authorization authority (trusted integration)"; fontsize=18; color="#bfa16b"; style="rounded,filled"; fillcolor="#fff9ed";
     verifier [label="Authenticator implementation\nVerify credentials; expand roles\nBind asynchronous result to AuthRequestId"];
-    controller [label="SessionController\nIssuer-only mutation capability\nFixed gate catalog; replace_grants / revoke / Drop"];
+    controller [label="SessionController\nIssuer-only mutation capability\nFixed gate catalog; replace_grants / revoke / Drop\nCaller supplies the shell Waker to issue"];
     verifier -> controller [label="verified subject + grants"];
   }
   subgraph cluster_library {

@@ -14,7 +14,8 @@ DESCRIPTIONS = {
     "system-architecture": ("Fairing system architecture", "Application-supplied host, UI and adapters connect to library-owned shell state, widgets and rendering. Device I/O and persistence remain application integrations."),
     "runtime-flow": ("Fairing host update flow", "Logic-only updates and UI frames share state processing. Matching UI frames reuse prepared state; both paths can produce events without requiring continuous redraw."),
     "security-architecture": ("Fairing protected security architecture", "The application verifier owns session mutation. Read-only tokens and typed requirements feed the common mediation kernel before managed application payload entry. This is an API boundary within one process."),
-    "session-lifecycle": ("Fairing session lifecycle", "Live publication, busy reads, terminal issuer revocation and local detachment are distinct. A matching issuer callback handles other token readers; new login creates a new pair."),
+    "authentication-flow": ("Fairing authentication request and response flow", "The library creates a request identity. Built-in prompts and host-owned login UIs return session results bound to that request; installation rejects stale or canceled responses."),
+    "session-lifecycle": ("Fairing session lifecycle", "Live publication, busy reads, terminal issuer revocation and local detachment are distinct. An optional authenticator hook lets the issuer revoke the matching controller; its default does nothing. New login creates a new pair."),
 }
 
 

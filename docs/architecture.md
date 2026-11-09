@@ -139,7 +139,6 @@ they do not expose new application APIs.
 | `settings` | Setting keys and values, and the built-in settings screens |
 | `services` | The backend traits, `Null` and `Mock`, `Services`, `Waker` |
 | `i18n` | The string table, with English and Korean built in, switched live |
-| `layout` | Screen layout helpers: grids, groups, action bars, tab bars |
 | `config` | `ShellConfig`, read from `fairing.toml` and validated |
 | `time` | Clocks and wall time |
 | `brand` | The mark and the procedural background |
@@ -184,7 +183,7 @@ Eviction and lifecycle requests can also finish during logic-only calls.
 |---|---|---|
 | 1 | Time, declarations and expiry | Advance time, rebuild declarations, observe integrator subject replacements, enforce overdue access deadlines and revalidate open gates before commands or input |
 | 2 | Commands | Receive and execute at most `max_commands_per_update` queued commands (default 256); request continuation for remaining work |
-| 3 | Services | Pin snapshots, confirm outstanding Bool commands and send queued targets, gather backend wake-ups |
+| 3 | Services | Poll backends, confirm outstanding Bool commands and send queued targets, gather backend wake-ups |
 | 4 | Access | Revalidate policy after backend updates, record input and poll the authenticator |
 | 5 | Input | Advance shell gesture, guard, shade, Back, keyboard and animation state |
 | 6 | Layout | The rects for this frame from the focused screen's chrome policy and the keyboard |
@@ -193,6 +192,11 @@ Eviction and lifecycle requests can also finish during logic-only calls.
 | 14 | Outputs | Launches, back, home, actions from the shade and notifications, lifecycle events |
 | 15 | Repaint | Request an immediate update for active work or a delayed update for the next scheduled wake |
 | 16 | Events | You take them with `poll_events` |
+
+Backend polling does not freeze a frame-wide snapshot. UI reads call backend
+getters, which may return an implementation-owned cache or observe newer state.
+An application that needs a consistent device-data revision across several reads
+must provide that consistency in its backend or application state.
 
 The deadline clock is the shell's monotonic `Instant`, distinct from the calendar
 `WallTime` returned by a backend's `ClockSource::now()`. Changing device wall time

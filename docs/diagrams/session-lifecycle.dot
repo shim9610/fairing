@@ -8,7 +8,7 @@ digraph session_lifecycle {
   busy [label="Publication overlaps a read\nDeny this read; retain token\nNo token-side wait or retry", fillcolor="#fff9ed"];
   local [label="Local authority detached\nLogout, lock, timeout, subject / authenticator\nreplacement or fault quarantine", fillcolor="#fff0ef", color="#ae4242"];
   ended [label="Revoked / whole-session deadline reached\nDeny admission; shell drops reader\nNo renewal after expiry at issuer's clock", fillcolor="#fff0ef", color="#ae4242"];
-  notify [label="Authenticator::session_ended(id, now)\nIssuer handles only the matching controller\nOther readers remain issuer-controlled", fillcolor="#fff9ed"];
+  notify [label="Authenticator::session_ended(id, now)\nOptional hook; default does nothing\nIssuer implementation revokes the matching controller", fillcolor="#fff9ed"];
   fresh [label="New login → new controller/token pair\nRevoked controllers cannot be reactivated"];
   issue -> live [label="correlated response accepted"];
   live -> live [label="replace_grants\nvalidate full set, publish new revision"];
@@ -16,9 +16,10 @@ digraph session_lifecycle {
   busy -> live [label="later coherent read"];
   live -> local [label="local end event"];
   live -> ended [label="controller revoke / Drop\nor observed expiry"];
-  local -> notify [label="detach before notification"];
-  ended -> notify [label="invalidate pending authentication"];
-  notify -> fresh [style=dashed, label="when authentication is requested"];
+  local -> notify [style=dashed, label="if authenticator attached\nreader already detached"];
+  ended -> notify [style=dashed, label="if authenticator attached"];
+  local -> fresh [style=dashed, label="new authentication request"];
+  ended -> fresh [style=dashed, label="new authentication request"];
   note [shape=note, fillcolor="#f7f7fa", label="A temporary grant expiry can remove one permission without ending the session.\nA concurrent revocation does not undo an operation already admitted.\nIndependent web and device login states require different pairs."];
   fresh -> note [style=invis];
 }

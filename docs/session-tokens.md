@@ -51,7 +51,10 @@ new pair. This bounds each controller's authority to its issued catalog.
 
 Use the shell's monotonic `now` when issuing and updating sessions. Scheduled
 session and temporary-grant deadlines participate in Fairing's next-wake selection.
-The controller wakes the UI after publication or revocation. Issuance and updates
+Pass the shell-connected `Waker` to `issue`: retain the value supplied to
+`Authenticator::attach`, or clone `shell.handle().waker()` for a host-owned issuer.
+Token installation does not rebind that waker. Publication and revocation use it
+to request a UI update. Issuance and updates
 allocate on the issuer side. `snapshot(now)` and direct gate-name checks borrow
 the published state; they do not allocate or retry an overlapping publication.
 Typed convenience checks also invoke the application's `Permission::gate` mapping,
@@ -130,8 +133,10 @@ are host/platform responsibilities.
 `SessionController::revoke()` is terminal. Fairing drops revoked/expired tokens,
 invalidates pending authentication and denies further protected work. Fairing's
 logout, lock, timeout, subject replacement, authenticator replacement and fault
-quarantine detach local authority before notifying
-`Authenticator::session_ended(session_id, now)`. Implement that callback to revoke
+quarantine detach local authority before notifying an attached authenticator via
+`Authenticator::session_ended(session_id, now)`. The default hook does nothing.
+Without an attached authenticator, the host-owned issuer coordinates controller
+revocation itself. Implement that callback to revoke
 only the matching controller; an old session's notification must not revoke a newer
 controller. Local detachment already denies work even if notification fails.
 Other readers of the pair are revoked by its controller owner.
