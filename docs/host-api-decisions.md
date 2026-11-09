@@ -6,8 +6,8 @@ payloads still enter the common mediation kernel. `ProtectedShell` has no
 conversion to `Shell`, mutable component loan or `request_service` method.
 
 The compiler-indexed [decision ledger](api-decisions.json) records the exported
-contracts in the minimal/all-feature inventories. This document supplies the
-concrete usage and replacement decisions for the seven removed component loans.
+contracts in the minimal/all-feature inventories. The seven component-mutation
+loans have the following replacements.
 
 | Previous API and observed use | Decision and replacement | Reason and compatibility impact |
 | --- | --- | --- |

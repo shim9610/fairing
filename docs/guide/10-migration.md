@@ -1,9 +1,8 @@
 # 10. Migration from an earlier checkout
 
-The first crates.io release has not been published. This page compares the current
-pre-release implementation with `main` at `f4ca28ce21a3227d35805a3d9e325ec64f42b25f`,
-before the authentication, recovery and resource-boundary changes in PR #8.
-It describes changes for existing checkout users, not a published-version upgrade.
+The first crates.io release is unpublished. The migration baseline is `main` at
+`f4ca28ce21a3227d35805a3d9e325ec64f42b25f`, before the authentication, recovery and
+resource-boundary changes in PR #8.
 
 ## 1. Source changes
 

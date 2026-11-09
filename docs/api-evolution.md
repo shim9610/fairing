@@ -33,10 +33,9 @@ python3 tools/api_surface.py --compare target/api-surface/baseline.json \
 
 The baseline checkout needs its ordinary Cargo/system inputs. The output reports
 added, removed and structurally changed declarations per profile. Review every
-removal/change against the decisions below and the migration guide. This tool
-reports changes; its exit status does not certify semantic-version compatibility.
-Private representation, auto traits, macro expansion in downstream crates,
-layout, behavioral and timing changes need separate review and consumer tests.
+removal/change against the decisions below and the migration guide. The report
+covers declaration structure. Review private representation, auto traits, downstream
+macro expansion, layout, behavior and timing through code review and consumer tests.
 Keep the report and build logs with the implementation PR's evidence.
 
 ## Decisions by integration surface

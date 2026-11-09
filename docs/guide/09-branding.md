@@ -5,10 +5,8 @@ and [texture API](https://docs.rs/egui/0.37.0/egui/struct.Context.html#method.lo
 Fairing adds installation helpers and theme/branding hooks; image decoding and
 asset selection belong to the application.
 
-This page collects, in one place, what a manufacturer touches and what they have to prepare in
-order to make a product look like their own. The optional Abyss styling (the manta and
-the abyss) can be changed — override one colour, or replace the background, the mark and the icons
-outright, all without patching the crate.
+Customize colours, fonts, backgrounds, marks and icons through configuration and
+builder hooks. The optional Abyss manta and background can also be replaced.
 
 The global painter, procedural wallpaper and image-loader hooks below describe
 ordinary `Shell` customization. Protected construction rejects untyped hooks;
@@ -220,8 +218,7 @@ the crop against each supported content rectangle.
 > **Cropping is computed against the content ratio, not the panel ratio.** The background is
 > drawn into the **content rect**, after the current chrome policy reserves bar space,
 > not necessarily the whole screen. Bar dimensions, chrome policy and panel metadata change the resulting
-> content ratio. A fixed percentage margin alone does not establish that artwork
-> will remain inside every crop.
+> content ratio. Verify the crop with the supported chrome and panel configurations.
 
 **Strategy B — one per ratio (when you ship instrument panels and portrait panels together)**
 
@@ -927,8 +924,7 @@ window or obtain pixel output from the integrating host.
   or a matching headless layout, and convert logical points to capture pixels using its scale.
   `Desktop::icon_rect(id)` records the icon graphic's rectangle, not the label bounds.
 - Include the supported display profiles, palettes, label lengths and image
-  backgrounds in the product review; two resolutions in dark/light mode are
-  a starting sample, not an exhaustive set.
+  backgrounds in the product review.
 
 ### 9.3 Idle repaint behavior
 

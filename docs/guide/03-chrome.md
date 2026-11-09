@@ -19,10 +19,9 @@ There are three ways to work with an ordinary shell.
 | Code declarations (`status_item` · `nav_item` · `tile` · `screen().desktop()`) | What exists | Adding your own items |
 | Painter hooks (`status_bar_painter` · `nav_bar_painter` · `slot_painter`) | The drawing itself | Replacing the built-in look wholesale |
 
-This page covers the first two. Painter hooks and theme injection are in
-[04 Customization](04-customization.md). The complete config key tables are in
-[07 Config reference](07-config-reference.md). How the parts fit together is in
-[architecture](../architecture.md).
+For painter hooks and theme injection, see [04 Customization](04-customization.md).
+For all config keys, see [07 Config reference](07-config-reference.md); for component
+relationships, see [architecture](../architecture.md).
 
 ---
 

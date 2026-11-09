@@ -1,9 +1,7 @@
 # fairing architecture
 
-This page is the map of the crate: what sits where, how one frame runs, how threads talk to the
-shell, and the rules the code keeps. It describes the code in the repository today. How to use
-each part is in the [integrator guide](guide/README.md); what is planned is in the
-[roadmap](roadmap.md).
+For integration examples, see the [integrator guide](guide/README.md). For planned
+work, see the [roadmap](roadmap.md).
 
 ## 1. Layers
 

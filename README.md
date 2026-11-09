@@ -25,8 +25,8 @@ and shared theme and motion tokens. egui supplies the underlying
 runner uses [eframe](https://docs.rs/eframe/0.37.0/eframe/). See the
 [responsibility map](docs/architecture.md#egui-and-eframe-responsibilities) for the boundary.
 
-**Development toward 0.1.0; the crates are not published yet.** This documentation
-describes the current checkout. Start with the [integrator guide](docs/guide/README.md),
+**Development toward 0.1.0; the crates are not published yet.** Start with the
+[integrator guide](docs/guide/README.md),
 or read the [migration guide](docs/guide/10-migration.md) when updating an existing app.
 
 <table>
@@ -286,7 +286,6 @@ fn widen_clock(shell: &mut fairing::Shell) -> bool {
 The shell owns live component state and invalidates derived layout when a change
 is committed. `ProtectedShell` exposes the narrow observation view and protected
 operations; it provides neither mutable component loans nor `request_service`.
-Admitted callbacks still receive their documented UI, app-state and backend access.
 See [host API decisions](docs/host-api-decisions.md) for migration from earlier
 component-mutation APIs.
 
@@ -339,9 +338,6 @@ cargo run -p fairing --example console --features runner-x11 -- --size=1280x800
 | `palette_sheet` | Widget palette comparison |
 | `bench` | Headless frame-time scenarios |
 
-The gallery comes from the example tours. [Contributing](CONTRIBUTING.md#rebuilding-the-readmes-animations)
-explains screenshot and GIF regeneration.
-
 ## Verification
 
 `fairing::testing::Harness` drives actual egui frames without a window or GPU and
@@ -362,8 +358,6 @@ cargo run -p xtask --locked -- audit --strict
 
 [Rust assurance](docs/rust-assurance.md), the [API contract map](docs/api-contracts.md)
 and [release checks](docs/release-checks.md) describe commands, evidence and scope.
-Verification is tied to source/configuration; it is not a certification of arbitrary
-application code or all possible UI histories.
 
 ## Platforms and current limits
 

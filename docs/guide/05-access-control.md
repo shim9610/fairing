@@ -15,15 +15,13 @@ proof and automatic protected-route check. The
 [application metadata checker](../permission-metadata-check.md) checks supported
 permission getters/mappers in an integrator's workspace.
 
-## 0. The principle, and what exists today
+## 0. Responsibilities
 
 Applications define level names, feature-to-level assignments and credential
 verification/storage. Fairing supplies level/gate coordination and the reference
 clear-text PIN/pattern table; production credential handling can be supplied through
 an application `Authenticator`.
-What the crate does is **enforce** the gate decision, and — if you let it — draw
-the prompt that asks for a credential. This page is about what the crate does for
-you.
+Fairing enforces gate decisions and can draw the credential prompt.
 
 | The crate does | You decide |
 |---|---|
@@ -103,8 +101,7 @@ levels = ["default"]   # no authentication; mode is irrelevant
 - Every screen, action, status item, nav item and tile you declare **uses its own
   id as its gate name** by default. `.gate("shared-name")` lets several items
   share one gate. The declaration APIs themselves are in
-  [02 Screens](02-screens.md) and [03 Chrome](03-chrome.md); this page is only
-  about the gate side.
+  [02 Screens](02-screens.md) and [03 Chrome](03-chrome.md).
 - No gate (`gate = None`) does not mean "always allowed" — it means **"use the id
   as the gate"**. For a legacy gate reachable at the lowest level under the default `LevelPolicy`,
   assign that level in `[access.gates]` or set `default_gate = "bottom"`. A custom policy
@@ -251,9 +248,9 @@ In `mode = "prompt"`, when an authenticator offers a prompt method, a failed gat
 what the authenticator offers, hands what was entered to it, and acts on the
 answer. It follows the palette and the tokens, and two painters redraw what the way in stands
 on — the lock screen's ground and clock, the prompt's backdrop and card
-([04 §10.6](04-customization.md#106-the-lock-screen-and-the-unlock-prompt)). The way in is still
-the shell's, drawn over them, and so is everything this section describes. For a flow of your
-own, use `routing` (§6) and build the screen from `PinPad` and `PatternPad`.
+([04 §10.6](04-customization.md#106-the-lock-screen-and-the-unlock-prompt)).
+The shell owns the prompt controls. For an application-owned flow, use `routing`
+(§6) and build the screen from `PinPad` and `PatternPad`.
 
 ```text
 tap a locked item
@@ -270,8 +267,8 @@ tap a locked item
 
 `submit` receives an owned `Credential`. The shell does not include credential
 contents in its authentication events, and `Credential`'s `Debug` redacts them.
-This is not a no-copy or memory-erasure guarantee: the pattern prompt retains its
-points while awaiting an answer, and egui/input buffers may hold text copies.
+The pattern prompt retains its points while awaiting an answer, and egui/input
+buffers may hold text copies.
 A refusal displays the authenticator's message, so the authenticator determines
 whether that message reveals the existence of a user.
 

@@ -104,9 +104,8 @@ The generated test uses proptest sequence/value shrinking with at most 2,048
 shrink iterations. Its failure report includes the profile and reduced byte
 sequence; the opcode table makes that sequence replayable. Regressions are
 persisted under target/assurance/ui-histories and uploaded with CI logs.
-If the shrink budget is exhausted the reported input is a reduced reproducer,
-not a claim of global minimality. Fixed regressions belong in source, not only
-in transient artifacts.
+Shrinking stops at the configured budget. Add fixed regressions to source so they
+survive artifact expiry.
 
 The dedicated UI interaction histories workflow runs the native suite. Existing
 Rust assurance also runs these tests through its integration test workspace.

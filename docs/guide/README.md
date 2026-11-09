@@ -116,14 +116,12 @@ at a time as you need it.
 
 ## Examples and compatibility
 
-This guide describes the current checkout before the first published release.
-The [migration guide](10-migration.md) compares it with the earlier `f4ca28c`
-checkout; the [roadmap](../roadmap.md) separates implemented features from plans.
+The first release is unpublished. For changes since the `f4ca28c` checkout, see
+[migration](10-migration.md); for planned work, see the [roadmap](../roadmap.md).
 
 Rust blocks are compiled by the repository's guide doctest gate unless marked
 `ignore`; `no_run` blocks are compiled without execution. Ignored blocks are API
-outlines or examples that need external crates or assets. An API outline lists
-selected members, not a complete constructible definition.
+outlines listing selected members, or examples that need external crates or assets.
 
 The Rust doctest gate does not check TOML blocks. Cargo snippets belong in the
 application manifest. Device-configuration snippets belong in `fairing.toml` and

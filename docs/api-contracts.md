@@ -8,9 +8,8 @@ and public APIs. The table distinguishes exhaustive decision proofs from
 generated or bounded executions. Production mutation controls check verifier
 rejection or failed native tests with expected diagnostic markers, as described below.
 
-The stronger whole-application operability theorem is incomplete. Component proofs
-and finite witnesses must not be presented as complete concrete-state coverage or
-universal interaction progress; see [formal operability obligations](formal-operability.md).
+Open whole-application proof obligations are listed in
+[formal operability](formal-operability.md).
 
 ## Contract map
 
@@ -122,7 +121,6 @@ the entire shell, layout, egui map and application callbacks; see
   background/logic-only regressions continue in the strict audit.
 - ASan (AddressSanitizer) campaigns run 20,000 ACK inputs, 10,000 parser inputs,
   10,000 public non-UI API inputs and 2,000 shell/backend/grant inputs.
-  They provide bounded bug-finding evidence, not an exhaustive proof.
 
 Rendering, arbitrary gestures, every optional runner/platform combination,
 integrator callbacks, schedulability and hardware behavior are covered only
@@ -214,15 +212,15 @@ python3 verification/coverage.py
 ```
 
 CI uploads contract controls, per-module coverage, proof controls, Miri/Loom
-logs, fuzz corpora and BOMs. A passing run establishes the recorded contracts
-within these scopes and assumptions; it is not a device certification.
+logs, fuzz corpora and BOMs. Results identify the checked contracts, source
+revision and configuration.
 
 ## Panic payload contract
 
 Only `String`, `&'static str` and `recovery::PanicCode` payloads are supported for
 cleanup. Expected API failures use typed return values. Unknown payload destructors
 are not invoked: those objects are retained and counted, including across shell
-replacement. This preserves dispatch quarantine without claiming bounded retention.
+replacement. Retained unknown payloads have no fixed bound.
 `PanicCleanupStats::released` replaces the earlier experimental `cleanup_panics`
 counter; `last_code` is a process-wide diagnostic, not a per-shell fault association.
 The numeric payload type provides no helper for initiating a panic inside Fairing.

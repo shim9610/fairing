@@ -1,10 +1,8 @@
 # Security architecture
 
-This document describes the device UI authorization boundary implemented by
-Fairing. The [system architecture](architecture.md) covers component ownership,
-hosting, update order and device integration. Protocol-level contracts and proof
-commands belong to the [session](session-tokens.md) and
-[mediation](protected-contracts.md) documents.
+For component ownership, hosting and device integration, see the
+[system architecture](architecture.md). For protocol contracts and proof commands,
+see [sessions](session-tokens.md) and [mediation](protected-contracts.md).
 
 ## 1. Authority and trust boundaries
 
@@ -101,10 +99,8 @@ inside the read operation.
 
 ![Session lifecycle: coherent and busy reads, issuer end events and distinct local detachment](diagrams/session-lifecycle.svg)
 
-The figure separates admission observations and local lifecycle events; it is
-not a replacement for the executable session state machine. A temporary grant
-can expire while the session and its base grants remain live. A whole-session
-deadline denies admission at or after the deadline. Controllers cannot renew an
+A temporary grant can expire while the session and its base grants remain live.
+A whole-session deadline denies admission at or after the deadline. Controllers cannot renew an
 already expired session at the supplied authoritative clock, and revoked
 controllers cannot be reactivated.
 
@@ -202,14 +198,14 @@ coverage of library-managed protected entries. Kani and Verus check bound
 production decisions/path contracts; the routing checker derives carrier,
 protocol and operation relationships from compiled Rust and rejects unsupported
 reachable contracts. Accepted-extension and rejected-bypass controls exercise
-that integration. Test results and source-bound receipts belong to their actual
-source/toolchain revisions; this architecture map is not an execution report.
+that integration. Test results and receipts identify their source and toolchain
+revisions.
 
 Trusted assumptions include Rust privacy/borrowing, compiler extraction, solver
 correctness, authoritative clock observations, permission metadata and the stated
-observer interfaces. The result is not a whole-application information-flow,
-credential-verifier, arbitrary-callback termination or device-operation
-cancellation proof. Detailed guarantees and assumptions are maintained in
+observer interfaces. Credential verification, callback effects and device-operation
+cancellation remain application responsibilities. For proof
+contracts and assumptions, see
 [common mediation](protected-contracts.md), [sessions](session-tokens.md),
 [metadata checking](permission-metadata-check.md) and
 [formal operability](formal-operability.md).

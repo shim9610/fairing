@@ -1,8 +1,7 @@
 # 07. Config reference
 
-Every section and key of `fairing.toml`, read off the source
-(`crates/fairing/src/config.rs`). This page does not argue for the shape — follow
-the links beside each table for that.
+`fairing.toml` keys, defaults and validation rules are defined in
+`crates/fairing/src/config.rs`. The links beside each table lead to usage examples.
 
 ## 0. Load rules
 
@@ -263,9 +262,8 @@ while it stays within half of `[motion] slop_px`. Gesture regions
 
 ## 10. `[motion]`
 
-The tuning workflow (`motion_lab`) is in
-[04 §8](04-customization.md#8-tuning-motion). This section is keys, defaults and
-validation only.
+For motion tuning with `motion_lab`, see
+[04 §8](04-customization.md#8-tuning-motion).
 
 | Key | Type | Default | Meaning | Validation |
 |---|---|---|---|---|
@@ -423,7 +421,7 @@ overrides can change these relationships; review the colour pairs actually used.
 
 | Key | Type | Default | Meaning | Validation | Code |
 |---|---|---|---|---|---|
-| `mode` | `String` | `"prompt"` | `"prompt"`, `"routing"` or `"off"` | Unknown values are an **error**; `"off"` is also rejected when `session_tokens = true` | `AccessMode`. `prompt` draws the shell's prompt and lock screen through an authenticator; with none (no `[access.pin_table]` PINs or `[access.pattern_table]` patterns, no `ShellBuilder::authenticator`) it behaves as `routing` — the event only ([05 §0](05-access-control.md#0-the-principle-and-what-exists-today)) |
+| `mode` | `String` | `"prompt"` | `"prompt"`, `"routing"` or `"off"` | Unknown values are an **error**; `"off"` is also rejected when `session_tokens = true` | `AccessMode`. `prompt` draws the shell's prompt and lock screen through an authenticator; with none (no `[access.pin_table]` PINs or `[access.pattern_table]` patterns, no `ShellBuilder::authenticator`) it behaves as `routing` — the event only ([05 §0](05-access-control.md#0-responsibilities)) |
 | `session_tokens` | `bool` | `false` | Require a live issuer-controlled session and explicit gate grants | Required by `build_protected`; cannot combine with `mode = "off"` | `SessionController` / `SessionToken`; [security architecture](../security-architecture.md) |
 | `levels` | `Vec<String>` | `["default"]` | Legacy level names, low to high; token-mode identity metadata does not imply grants | **Empty is an error.** Only legacy mode bypasses authentication with one level | `LevelTable::from_names` |
 | `initial` | `Option<String>` | `None` | Starting level | Error when not in `levels`. Omitted means the lowest | |
@@ -792,7 +790,7 @@ The shell's two panes and its recent screens
 | `split_axis` | `String` | `"auto"` | How two panes divide the content: `"auto"` (side by side on content at least as wide as it is tall, one above the other otherwise), `"side_by_side"` or `"stacked"` | Anything else is an **error** | `WorkspaceConfig::axis` |
 | `overview` | `bool` | `true` | The shell's recent screens, behind the nav bar's `"recents"` and `LaunchAction::OpenOverview`. `false` leaves them reported only (`ShellEvent::OverviewRequested`) — for a device with an overview of its own — and the split control then takes the task used last instead of offering the cards | None | `WorkspaceConfig::overview` |
 
-Who may use them is a matter of gates, not of this section: `nav.recents` and `workspace.split`
+The `nav.recents` and `workspace.split` gates control access
 ([05 §2.1](05-access-control.md#21-built-in-gates)).
 
 ---

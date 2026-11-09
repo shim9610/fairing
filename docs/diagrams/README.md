@@ -14,9 +14,8 @@ with the documentation.
 
 Solid arrows describe construction, calls or execution flow. Dashed arrows
 represent data/publication, wake notifications or optional continuation as
-labelled in each figure. Colored regions indicate ownership/responsibility, not
-process isolation. The session figure is a lifecycle view, not the formal state
-machine itself.
+labelled in each figure. Colored regions group components by ownership and
+responsibility within the host process.
 
 Regenerate all figures from the repository root with Graphviz `dot` installed:
 

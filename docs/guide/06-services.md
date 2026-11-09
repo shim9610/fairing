@@ -18,9 +18,6 @@ it. Four rules hold that up.
    (`set_enabled`, `scan`, `connect`, …) must return immediately. Anything slow
    belongs to a worker thread or to a state machine inside the backend.
 
-This page covers the traits, the implementations and the assembly that exist in the crate
-today.
-
 **Device adapters are yours.** Fairing supplies the traits, `Null*` defaults,
 optional `Mock*` simulators and clock implementations, including `SystemClock`.
 For device I/O through sysfs, a vendor SDK, D-Bus or a PLC protocol, implement the trait;
@@ -480,8 +477,8 @@ queue returns `Busy` immediately; the application chooses whether to retry. The
 worker retains one pending update and waits for capacity before taking another
 command. Configure update storage and the per-poll budget for that connection;
 `Unbounded` storage remains an explicit option for a trusted producer. To resume a
-zero budget, call `set_inbox_batch_limit` and wake the shell. The snapshot
-construction above stands in for driver I/O, not a complete Wi-Fi driver.
+zero budget, call `set_inbox_batch_limit` and wake the shell. Replace the example
+snapshot construction with your driver I/O.
 
 ### 5.1 Anything else: a custom backend
 

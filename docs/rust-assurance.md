@@ -218,8 +218,9 @@ The trials exhaust the arena until a one-byte reserve fails. Inline newest-sampl
 retention, bounded borrowed-image preview, warning rasterization and 10,000
 preallocated work commands must continue with zero allocations in their measured
 interval. Other checks require actual old-text reclamation before replacement
-and omitted text/real product frost work after fallible failure. These are
-same-process CPU/storage guarantees, not an egui frame or GPU-presentation proof.
+and omitted text/real product frost work after fallible failure. The measured
+scope is same-process CPU operations and storage; egui frame allocation and GPU
+presentation are outside that scope.
 
 Kani checks both individual and bulk insertion of four arbitrary samples into a
 two-slot window, its chronological newest suffix and zero capacity. Verus checks

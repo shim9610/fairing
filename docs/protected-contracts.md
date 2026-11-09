@@ -71,8 +71,8 @@ Authoritative gate/stamp observations and pure permission metadata obey their
 interfaces. The checker binds concrete context forwarding to the original owner;
 the existing session and metadata checks cover their respective contracts.
 Ordinary Rust privacy/borrowing, standard containers, compiler extraction and
-solver correctness are trusted. This certificate proves monitor use and the
-monitor's stated contract; it does not certify an external credential verifier.
+solver correctness are trusted. The certificate proves monitor use and the
+monitor's stated contract. The application authenticator verifies credentials.
 
 Admitted application bodies retain raw egui, app and backend access. Their
 arbitrary effects, destructors, already-disclosed output and explicit standalone
@@ -101,7 +101,5 @@ contract certificate.
 Receipt validation checks the complete expected input set as well as hashes and
 proof status. Acceptance checks remain active under Python `-O`/`-OO` and
 `PYTHONOPTIMIZE`; CI runs negative receipt controls normally and with `-O`.
-An explicit `--profile all` or `--profile minimal` run covers only that profile;
-its report must not be described as a two-profile result. Receipts bind local
-artifacts to source inputs; they are not signatures against an attacker who can
-rewrite both tools and evidence.
+`--profile all` and `--profile minimal` each check one profile. Receipts bind local
+artifacts to source inputs and assume the tools and evidence files are trusted.

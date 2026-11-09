@@ -156,7 +156,7 @@ during updates rather than being fixed.
 
 The A1–A7 labels used below are the repository's `motion_lab` groups: shade,
 home/task, push/pop, pages, on-screen keyboard, toasts/banners and widgets,
-respectively. They are local example labels, not an external classification.
+respectively.
 
 `MotionTokens` is `[motion]` turned into motion-system types. The value table and how to tune
 them are in §8.

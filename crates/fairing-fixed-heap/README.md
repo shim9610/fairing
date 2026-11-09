@@ -22,8 +22,8 @@ that must not invoke an application logger. They keep shell panic quarantine cle
 
 Separate infallible-allocation and stock-egui-frame controls demonstrate the remaining
 abort. The frame control prepares `RawInput` before exhausting the arena, then calls
-`Context::run_ui` on the warmed context. That failure is a documented limitation,
-not a passing production recovery test. Run both controls through
+`Context::run_ui` on the warmed context and expects it to abort. Run both controls
+through
 `python3 verification/memory.py` (Linux); the main pressure trial also runs on Windows.
 
 Only this diagnostic crate has a scoped unsafe static-arena ownership transfer;

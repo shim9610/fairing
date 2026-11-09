@@ -375,8 +375,8 @@ panel is. Both log a warning at startup. Give it a bold with `ShellBuilder::font
 `ShellBuilder::physical_mm` ([01 §4.3](01-getting-started.md#43-the-panels-size)).
 
 **Q1. Is a screen really an app?**
-No. Not a separate process, not a separate window — a virtual layer that one
-`Screen` implementation (or closure) draws inside the same egui frame loop. See
+A screen is a virtual layer drawn by one `Screen` implementation or closure inside
+the shared egui frame loop. It shares the host process and window. See
 the crate docs in [lib.rs](../../crates/fairing/src/lib.rs).
 
 **Q2. Why can I not use `Mutex` or `RwLock`?**

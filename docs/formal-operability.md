@@ -7,26 +7,25 @@ The target theorem is stronger than a regression campaign:
 3. Every valid invocation of a promised interaction reaches its specified outcome;
    previous interaction history cannot leave a hidden blocker.
 
-**This whole-application theorem is not proved.** The executable status report is
-`target/assurance/proofs/state-obligations.json`. The implemented components have their own required evidence gate. A green component-proof job does
-not discharge the remaining concrete/UI boundaries. Run
-`python3 verification/proof_obligations.py --require-whole-app` to require this
-stronger claim; it currently fails with `OPEN_PROOF_OBLIGATIONS`.
+**The whole-application theorem has open proof obligations**, listed in
+`target/assurance/proofs/state-obligations.json`.
+`python3 verification/proof_obligations.py --require-whole-app` fails with
+`OPEN_PROOF_OBLIGATIONS`; `--require-components` checks the implemented component
+contracts.
 
 The [issuer-controlled session component](session-tokens.md#security-evidence-and-assumptions)
 also has exact decision proofs, terminal-history induction and a conditional sequentially consistent (SC) trace
-lemma. Its concrete atomic implementation has bounded Loom evidence and source tripwires;
-this does not discharge the whole-application boundaries below.
+lemma. Bounded Loom scenarios exercise its concrete atomics, and source tripwires
+check the production bindings.
 
-The [compiler-derived callback mediation verifier](callback-mediation.md) now
-checks for paths outside the local dispatcher. Its confirmed unauthenticated
-custom-painter route is now blocked by protected-builder validation. Untyped hook
+The [compiler-derived callback mediation verifier](callback-mediation.md) checks
+for paths outside the local dispatcher. Protected-builder validation rejects the
+unauthenticated custom-painter route found by that verifier. Untyped hook
 families are rejected, and protected callbacks cannot persist icon/widget painters
 in shared shell stores. Regression and mutation controls cover those repairs.
 The [common mediation gate](protected-contracts.md) proves the shared monitor
 and automatically checks all library-managed protected payload entries. The broad
 legacy diagnostic still reports conservative candidates outside that certificate.
-This routing result does not discharge the whole-application operability theorem above.
 
 ## Statement and required proof order
 
@@ -218,9 +217,8 @@ type declarations, not reachable states or verified application behavior. Other
 declarations remain explicitly unmapped. The inventory includes configuration,
 rendering and builder types as well as retained state and does not enumerate
 function-local types and anonymous callback environments, arbitrary integrator types or upstream internals.
-It is an omission guard and a worklist for further refinement, not a
-whole-state completeness theorem. Compiler runs record the exact source inputs;
-a local `--skip-build` report is explicitly marked as not freshly compiled.
+The inventory tracks declarations that need state correspondence. Compiler runs
+record the exact source inputs; local `--skip-build` reports identify reused builds.
 
 ## Backend inventory and concrete witnesses
 
@@ -228,16 +226,14 @@ a local `--skip-build` report is explicitly marked as not freshly compiled.
 widget crate. `retained_state.py` rejects changes in source-text access/lifecycle
 call-pattern counts until that inventory is reviewed. It does not resolve Rust calls
 and can also match comments or string literals. The inventory explicitly records
-geometry state in expandable content and paint-only caches as separate categories. This is a source
-inventory tripwire, not a proof over arbitrary Rust fields or upstream egui internals.
+geometry state in expandable content and paint-only caches as separate categories.
 
 Native witnesses exercise all seven dropdown trigger forms, all four openers and
 all 16 ordered pairs of outside-dismissal, owner withdrawal, own disabling and
 parent disabling: 448 histories, with the promised peer click/reopen/selection
 suffix checked after both prefixes (896 suffix probes). The same context and ids
 survive every prefix; the harness never clears hidden memory between probes.
-These concrete probes allow layout/animation frames to settle; they do not establish
-a zero-frame input-realization theorem.
+These probes allow layout and animation frames to settle before input assertions.
 Other witnesses check stale numeric drafts (including update concurrent with blur
 and changes below displayed precision), interrupted pattern completion/restart,
 keyboard request expiry/disable, a new hold after an old completed hold, and
@@ -274,7 +270,5 @@ The whole-application theorem still needs:
 - Machine-checked termination/effect contracts for arbitrary application, painter,
   backend and `on_back` callbacks.
 
-`--require-whole-app` deliberately rejects that stronger claim. This rejection
-means the concrete boundaries remain unproved; it is not a counterexample from
-Kani or Verus. Neither the state inventory nor more finite test histories can
-substitute for those missing refinement and callback contracts.
+`--require-whole-app` reports `OPEN_PROOF_OBLIGATIONS` for these missing contracts,
+separately from Kani/Verus proof results.
