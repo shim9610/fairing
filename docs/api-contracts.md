@@ -100,7 +100,7 @@ the entire shell, layout, egui map and application callbacks; see
   path; generated cases run natively.
 - Loom exhausts its six bounded scenarios without a preemption/permutation/time
   cap. The larger scenario has four threads including the caller. The branch
-  safety limit is 1,000 and exceeding it fails. Loom 0.7.2 does not model the exact
+  safety limit is 1,000 and exceeding it fails. Loom 0.7.3 does not model the exact
   empty/disconnected error distinction. The bounded transport substitutes a model
   channel (Loom has no sync_channel) while retaining production admission atomics.
   A close-after-drain model avoids the stub's failed-send/destruction miscount;

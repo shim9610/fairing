@@ -71,6 +71,11 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Changed
 
+- Refresh compatible runtime/dev dependencies, including `toml` 1.2.1, `arboard`
+  3.7.0 and `log` 0.4.35. Update the separate verification workspace to `loom` 0.7.3
+  and `generator` 0.8.12; keep the diagnostic allocator on `spinning_top` 0.3.1 and
+  `talc` 5.1.1.
+
 - Remove seven unused button/switch/slider component values and their duplicate
   containers. Use the documented `ControlSpec` and `MetricsSpec` inputs; default
   built-in rendering is unchanged. Diagnostic layer slots widen to `u64`.
