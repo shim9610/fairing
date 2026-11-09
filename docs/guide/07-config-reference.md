@@ -12,7 +12,8 @@ the links beside each table for that.
 | No file | Not an error: `ShellConfig::default()` |
 | A file that cannot be read, or a path with a non-directory ancestor | `Error::Io`; does not select defaults |
 | Bad syntax or a wrong type | `Error::Config` (`ShellConfig::from_toml` → `toml::from_str` fails) |
-| A value out of range | `Error::Config` from `ShellConfig::validate` — the "Validation" column below |
+| Checked numeric ranges | `Error::Config` from `ShellConfig::validate`, called by `from_toml` / `load` |
+| Access names/secrets and palette names/colours | Additional checks run through `Access::from_config` and `build_theme` during shell construction; parsing alone does not complete them |
 | Non-finite floating-point input | `nan` and `inf` are valid TOML floats. Active bar sizes and the motion/desktop/overlay/keyboard/gesture values checked by `validate_finite` are rejected; a disabled bar's unused `height` is not checked |
 | An unknown section or key | Silently ignored (`#[serde(default)]` plus serde's default behaviour). Unknown fields do not cause a deserialization error; range and cross-reference validation still applies |
 | A section behind a feature you turned off (`overlay`, `osk`) | **Still parsed.** A config file with `[overlay]` reads fine with the feature off, so two builds with different feature sets can share one file |
@@ -179,7 +180,7 @@ treatment in [09 Branding](09-branding.md).
 | `tiles` | `Vec<String>` | `["tile.wifi", "tile.bluetooth", "tile.brightness", "tile.volume", "tile.lock", "tile.theme"]` | Tile order. Mix built-in ids and your own declarations | Neither built-in nor declared **warns and is skipped**. A declared tile missing from the list is appended at the end |
 | `tile_columns` | `u8` | `6` | Tiles per row | `0` is an error |
 | `footer` | `Vec<String>` | `["clear_all", "lock", "settings"]` | The footer buttons, left to right. `[]` draws none — the subject's name and the level dot stay, being state rather than controls | An unknown name **warns and is skipped** |
-| `max_height_ratio` | `f32` | `0.85` | Maximum shade height as a fraction of the screen | Outside `(0.0, 1.0]` is an error |
+| `max_height_ratio` | `f32` | `0.85` | Unified shade height limit as a fraction of the screen. Split panels use the available content height instead | Outside `(0.0, 1.0]` is an error |
 | `peek_ms` | `u64` | `2000` | How long a peeked status bar stays | None |
 | `two_step` | `bool` | `false` | Open in two steps: the first pull stops at the tiles, a second carries on to the notifications. Resting at the stop, the shade lies over the live page and a press outside closes it | Ignored, with a warning, under `layout = "split"` |
 | `reveal` | `String` | `"curtain"` | How the shade comes into view. `"curtain"` draws the panel down from the top edge. `"card"` is a floating card already at its final size and place, which the pull fades and slides in; the page behind is not dimmed | An unknown name **warns and draws the curtain** |
@@ -714,13 +715,13 @@ attempt_limit = 5
 lock_secs = 60
 ```
 
-To check a file of your own:
+To check a file's TOML types and the ranges handled by `ShellConfig::validate`:
 
 ```rust,no_run
 fn main() {
     let text = std::fs::read_to_string("fairing.toml").expect("read");
     match fairing::ShellConfig::from_toml(&text) {
-        Ok(cfg) => println!("OK: levels = {:?}", cfg.access.levels),
+        Ok(cfg) => println!("Parsed and range-checked: levels = {:?}", cfg.access.levels),
         Err(e) => eprintln!("config error: {e}"),
     }
 }

@@ -39,7 +39,7 @@ use std::path::{Path, PathBuf};
 /// - `Once` — the initialisation race `OnceLock` was banned for, without the value attached.
 /// - `ReentrantLock` — a lock.
 /// - `LazyCell` — single-threaded, but it panics where the initialiser re-enters.
-/// - `UnsafeCell` — unreachable under `unsafe_code = "forbid"` anyway, named so the intent is on record.
+/// - `UnsafeCell` — explicitly excluded; constructing it is safe even though raw-pointer mutation requires unsafe code.
 /// - `SyncSender` · `sync_channel` — a bounded channel's `send` **blocks**, and at capacity 0 it is a
 ///   rendezvous. The blocking list below cannot reach it: `Sender::send` is spelt the same.
 /// - `Exclusive` · `mpmc` — unstable today. Here so they cannot arrive quietly.
@@ -47,7 +47,7 @@ use std::path::{Path, PathBuf};
 ///   signature can name a guard without naming its lock.
 ///
 /// `tex_manager` is not a type of ours but egui's accessor — `Context::tex_manager()` hands an
-/// `Arc<RwLock<TextureManager>>` back as it stands (`egui-0.36.1/src/context.rs`), so the calling
+/// `Arc<RwLock<TextureManager>>` back as it stands (`egui-0.37.0/src/context.rs`), so the calling
 /// side's source has no `RwLock` in it and clippy's type-based `disallowed-types` cannot catch it
 /// either. This scanner therefore rejects the accessor by name.
 const LOCK_TOKENS: [&str; 20] = [

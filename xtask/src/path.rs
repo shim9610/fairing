@@ -7,7 +7,7 @@
 use crate::util::{self, Error, Result};
 use std::f64::consts::{PI, TAU};
 
-/// The segment the generated code uses. The same shape as `Seg` in `crates/fairing/src/icons`.
+/// The segment the generated code uses, matching `Seg` in `crates/fairing-widgets/src/icons`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Seg {
     /// A move.

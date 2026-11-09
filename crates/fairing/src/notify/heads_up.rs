@@ -1,5 +1,5 @@
-//! The heads-up banner (A6): shows a new notification briefly at the top before
-//! it goes into the shade.
+//! The heads-up banner (A6): briefly presents a newly retained notification at the
+//! top. The notification is already in the centre used by the shade.
 //!
 //! `y: −H → 0` over 220 ms `CubicOut`; a 4 s hold (paused while held); leaving `0 → −H` over
 //! 200 ms `CubicIn`. Dragging up is 1:1, and on release `dy < −H/3` or a fling past

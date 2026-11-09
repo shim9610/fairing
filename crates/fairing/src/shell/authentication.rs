@@ -172,7 +172,7 @@ impl Shell {
             .open(Purpose::Unlock { gate, then }, methods, hint, self.mono);
     }
     /// The methods the shell's prompt would offer — `None` where it draws none: not `prompt` mode,
-    /// one level, no authenticator, or an authenticator that offers nothing (which behaves as
+    /// a single level in legacy mode, no authenticator, or no offered methods (which behaves as
     /// `routing` — the lock and the logout included).
     pub(super) fn prompt_methods(&mut self) -> Option<Vec<AuthMethod>> {
         if !self.access.can_prompt() {
@@ -461,8 +461,8 @@ impl Shell {
             }
         }
     }
-    /// Apply the authenticator's answer. A grant closes the prompt, applies
-    /// `unlock_mode` and runs what the prompt was opened for — through the gate again.
+    /// Apply the authenticator's answer. Legacy grants use `unlock_mode`; session grants
+    /// install the issuer's token. Successful continuations re-enter the launch gate.
     pub(super) fn apply_outcome(&mut self, outcome: AuthOutcome, app: &mut AppRef<'_>) {
         let now = self.mono;
         if !matches!(outcome, AuthOutcome::Pending) {

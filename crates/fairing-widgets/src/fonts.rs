@@ -279,9 +279,9 @@ impl FontSet {
         &self.sources
     }
 
-    /// Whether a **bold** face is registered — a readable source attached to
-    /// [`FontFamilies::Strong`]. Without one the strong family holds the regular faces, so
-    /// `Theme::strong` (screen titles, list-row titles) draws in the regular weight.
+    /// Whether a source with an accepted header is registered for [`FontFamilies::Strong`].
+    /// This does not inspect glyph weight or fully parse the font. Supply a bold face
+    /// explicitly when that appearance is required; otherwise the family uses its fallback faces.
     #[must_use]
     pub fn has_bold(&self) -> bool {
         self.sources.iter().any(|source| {
@@ -291,11 +291,10 @@ impl FontSet {
 
     /// Install into egui.
     ///
-    /// It runs even for an empty set, because binding [`FontFamilies::Strong`] and
-    /// [`FontFamilies::Display`] is part of the job, so neither draws replacement glyphs. An
-    /// empty set therefore installs egui's own fonts plus those two families pointing at the same
-    /// faces — the same render as before, with the weight and display axes in place for anyone who
-    /// fills them.
+    /// It runs even for an empty set to bind [`FontFamilies::Strong`] and
+    /// [`FontFamilies::Display`] to fallback faces. This makes the named families
+    /// available; glyph coverage still depends on the installed fonts. An empty set
+    /// uses egui's default faces for these families.
     ///
     /// Pass through `fairing::ShellBuilder::fonts` for installation during shell
     /// construction. egui applies changed definitions; identical installed
@@ -325,9 +324,9 @@ impl FontSet {
             .unwrap_or_default();
         defs.families.insert(strong_family(), regular);
         for source in &self.sources {
-            // **A source that cannot be read is left out, not handed over.** epaint panics on a
-            // font it cannot parse, and a panic is not something the integrator who passed the
-            // bytes can handle — see `FontSet::rejected`.
+            // Omit sources rejected by the header/index checks. This does not fully
+            // parse their glyph data; accepted but corrupt data may still panic in epaint.
+            // See `FontSet::rejected` for the sources omitted here.
             if let Some(reason) = source.reject_reason() {
                 log::warn!("[fonts] {reason}; leaving it out");
                 continue;

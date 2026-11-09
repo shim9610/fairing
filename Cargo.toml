@@ -14,11 +14,11 @@ rust-version = "1.95"
 license = "MIT"
 repository = "https://github.com/shim9610/fairing"
 
-# The approved direct dependencies. A crate not here cannot be added as a direct dependency.
-# The versions and features are pinned here as the single source, and the members refer to them with `.workspace = true` alone.
+# Declare approved direct dependencies here. Members inherit these version and feature
+# requirements with `workspace = true`, adding member-specific optional flags as needed.
 #
-# egui and eframe ask for the minor, not the patch: an integrator's tree may hold other egui
-# crates, and an exact `=0.36.x` here would fail their resolution over one patch release. This
+# egui and eframe use a compatible minor range so an integrator can resolve a shared
+# patch version with its other egui dependencies instead of requiring one exact patch. This
 # repository's own tree stays exact all the same — Cargo.lock holds the patch, and deps.allow's
 # `=X.Y.Z` lines make a patch update an approval diff.
 [workspace.dependencies]
@@ -65,6 +65,6 @@ indexing_slicing = "warn"
 disallowed_types = "deny"
 disallowed_methods = "deny"
 
-# No [profile.release] at the root. The profile is settled by the root package, so it
-# does not propagate to an integrator's binary, and `panic = "abort"` breaks `cargo test --release`.
+# No [profile.release] at the root. The integrating root package chooses its release
+# profile; a library workspace profile does not propagate into a consuming application.
 # The recommended profile for a device binary is written down in crates/fairing/README.md.

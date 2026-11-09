@@ -284,8 +284,8 @@ mod tests {
         assert_eq!(fixed, right);
     }
 
-    /// A narrow screen: as wide as the screen allows, whatever the side; and never narrower than
-    /// the tile row needs.
+    /// These narrow-screen fixtures use the available width regardless of anchor.
+    /// Tile-row preference is tested where sufficient width is available.
     #[test]
     fn a_narrow_screen_gives_the_card_the_whole_width() {
         let screen = Rect::from_min_max(pos2(0.0, 40.0), pos2(480.0, 800.0));

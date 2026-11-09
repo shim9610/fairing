@@ -2,9 +2,9 @@
 //!
 //! # A card is a title and an icon
 //!
-//! Cards show no thumbnails. They contain the task's icon, title, last-used time and the level its
-//! screen needs. Coming in, the screen on show shrinks into its card — the real content, scaled
-//! whole by its layer's transform (A10) — and the card takes over from it at the end.
+//! Cards show no thumbnails. They contain the task's icon, title, last-used time and an optional
+//! hint for the top screen's gate. Coming in, the screen on show shrinks into its card — the
+//! real content, scaled whole by its layer's transform (A10) — and the card takes over from it at the end.
 //!
 //! # One drag, two meanings
 //!
@@ -77,7 +77,7 @@ pub(crate) struct Card {
     pub(crate) title: String,
     pub(crate) icon: Option<IconRef>,
     pub(crate) last_active: Instant,
-    /// The level its screen needs, where it needs more than everyone has.
+    /// The top screen's gate hint, omitted when absent or equal to the level table's bottom label.
     pub(crate) badge: Option<String>,
     /// Whether its split button shows — it can go beside the focused pane.
     pub(crate) beside: bool,
@@ -840,7 +840,7 @@ fn split_button(header: Rect, theme: &Theme) -> Rect {
     )
 }
 
-/// One card: its face, the header (icon, title, when, level), and the task's icon large in the
+/// One card: its face, the header (icon, title, when, gate hint), and the task's icon large in the
 /// middle. `text` is the title and the when line, worded.
 fn paint_card(
     painter: &egui::Painter,

@@ -458,14 +458,15 @@ screen — it is the workspace's `Home` view.
 `shell.back()` — where the nav bar's back button and the `ShellHandle::back` command both land —
 has a fixed priority:
 
-1. If the unlock prompt is up, back cancels it and stops; on the lock screen it does nothing at
-   all ([05 §5](05-access-control.md#5-the-shells-prompt-and-the-authenticator)).
-2. If the shade is open, close the shade and stop.
-3. If the OSK is up, close the OSK and stop.
-4. At home, do nothing.
-5. Call the top screen's `on_back`. `BackAction::Consumed` ends it (for a screen with navigation
-   of its own).
-6. On `BackAction::Pop`, pop. Popping the root ends the task and goes home (`WentHome`).
+1. A faulted shell ignores back. If the unlock prompt is up, back cancels it and stops;
+   on the lock screen it does nothing ([05 §5](05-access-control.md#5-the-shells-prompt-and-the-authenticator)).
+2. If an icon info popover is open, close it and stop.
+3. If the shade is open, close it and stop.
+4. If the OSK is up, hide it and stop.
+5. If the recent-screens overview is open, close it and stop.
+6. At home, do nothing.
+7. Call the top screen's `on_back`. `BackAction::Consumed` stops back handling.
+8. On `BackAction::Pop`, pop. Popping the root ends the task and goes home (`WentHome`).
 
 **Edge gestures do not take this path today.** An edge swipe from `[nav_bar] back_edges` is
 handled separately by `Shell::gesture_back`, which pops straight through
@@ -586,7 +587,7 @@ A `ChromePolicy` is set in two places: on the declaration (`.chrome()` · `.full
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `status_bar` | `BarMode` | `Show` | `Show` · `Hide` · `Overlay` (translucent, over the content) |
+| `status_bar` | `BarMode` | `Show` | `Show` · `Hide` · `Overlay` (over the content; opacity is `metrics.status_overlay_alpha`, opaque by default) |
 | `nav_bar` | `BarMode` | `Show` | `Show` · `Hide`. `Overlay` is treated as `Show` |
 | `allow_peek` | `bool` | `true` | Let an edge pull briefly reveal a hidden bar |
 | `edge_guard` | `bool` | `false` | Suppresses built-in shell edge gestures; the emergency gesture remains. Custom gesture regions choose how to handle the blocked-edge flags |
@@ -689,13 +690,13 @@ the row helpers combine that placement with the shared styling.
 # fn add(shell: &mut fairing::Shell) {
 use fairing::{layout, screen, Cx};
 
-shell.add(screen("network", |ui: &mut egui::Ui, cx: &mut Cx<'_>| {
+let mut on = true; // Owned by this resident screen, so the value survives UI passes.
+shell.add(screen("network", move |ui: &mut egui::Ui, cx: &mut Cx<'_>| {
     layout::page(ui, cx, "network", |ui, cx| {
         layout::title(ui, cx, "Network");
 
         layout::section(ui, cx, "Wireless");
         layout::group(ui, cx, |ui, cx| {
-            let mut on = true;
             // (title, subtitle, value, enabled) — returns `true` on the frame it changed.
             if layout::switch_row(ui, cx, "Wi-Fi", Some("home-5g"), &mut on, true) {
                 // the value just changed
@@ -752,8 +753,8 @@ in absolute pixels but in multiples of the row height, so it follows the finger 
 
 | Handle | When |
 |---|---|
-| `max_columns(n)` | A strip with a fixed count. Five category chips or three payment methods want to be on one line first, and to be wide second |
-| `fill_height(ratio)` | Upright panels. A grid fills from the top and does not use the leftover height, so the bottom half goes empty. The ratio is a **height cap relative to tile width** |
+| `max_columns(n)` | An upper bound on columns. A narrow area can still produce fewer; pass the item count to avoid allocating widths for additional columns |
+| `fill_height(ratio)` | Upright panels. A grid fills from the top and does not use the leftover height, so the bottom half goes empty. The ratio caps height relative to tile width when that cap is above the configured minimum; otherwise the minimum wins |
 | `deco(Deco)` | Colour, corners, spacing |
 | `fill_with(f)` | A different background per item. Sold-out or recommended tiles |
 

@@ -679,8 +679,9 @@ fn scrim(ui: &egui::Ui, rect: egui::Rect, base: egui::Color32, top_a: u8, bottom
 
 /// The device's form. Three layouts share the same order state.
 ///
-/// It can be forced with `--layout=`, and without it **the screen's aspect ratio settles it** — which
-/// is what this example means to show.
+/// `--layout=` overrides the choice. Otherwise panel dimensions select the compact
+/// customer display or the orientation-based layout; without panel metadata, pixel
+/// dimensions provide the fallback.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Shape {
     /// A portrait 21.5" kiosk — a customer uses it standing. Divided into display and control bands.

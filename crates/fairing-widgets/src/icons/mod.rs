@@ -164,7 +164,7 @@ impl IconColor {
 /// An icon's style.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct IconStyle {
-    /// The pixel size (the side of the square).
+    /// The side of the square in egui points (du), before host pixel scaling.
     pub size: f32,
     /// The colour.
     pub color: IconColor,
@@ -210,7 +210,7 @@ impl IconStyle {
         }
     }
 
-    /// The stroke width in pixels: the grid stroke × (size / 24).
+    /// The stroke width in egui points: grid stroke × (`size` / 24).
     #[must_use]
     pub fn stroke_px(&self) -> f32 {
         self.stroke.unwrap_or(2.0) * self.size / 24.0

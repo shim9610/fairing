@@ -126,7 +126,7 @@ const GRID_ITEMS: [&str; 12] = [
 ];
 
 /// A point `fx` across and `fy` down the harness's screen — the scenarios are written as shares
-/// of the glass, so a different `--size` drives the same gestures.
+/// of the screen, so the gesture definition follows the harness dimensions.
 fn at(h: &Harness, fx: f32, fy: f32) -> egui::Pos2 {
     let r = h.screen_rect();
     r.min + egui::vec2(fx * r.width(), fy * r.height())

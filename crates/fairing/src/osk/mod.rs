@@ -29,7 +29,8 @@
 //!   where the two cross. Either way it is never taller than the room above the nav bar.
 //! - **Key taps**: the hit area is the drawn key Rect plus half the gap, so there is no dead band
 //!   between keys. A pressed key is tinted immediately (A7) and shrinks by `press_scale`. Label
-//!   galleys are not laid out again while the face and the text size are unchanged — the buffers can be reused when capacity is sufficient.
+//!   galleys are requested from egui each draw; its galley cache can reuse matching layouts.
+//!   The label vector reuses its capacity when sufficient.
 //! - **Focus**: egui takes the focus off a widget **when a click completes outside it** —
 //!   `InputOptions::surrender_focus_on` defaults to [`egui::SurrenderFocusOn::Clicks`] (`Presses`
 //!   is the non-default alternative and the shell does not touch the value), and the decision is
@@ -142,7 +143,8 @@ pub struct Osk {
     shown: bool,
     manual: bool,
     /// Once closed by [`Osk::hide`], `Some(the previous frame's wants)` — it blocks an `Auto`
-    /// reopen until `wants` has a rising edge (false → true). `None` = no suppression.
+    /// reopen until a rising edge of `wants`, or a completed tap followed by keyboard focus.
+    /// `None` = no suppression.
     dismissed: Option<bool>,
     lost_focus_at: Option<Instant>,
     /// The key Rects drawn last frame (row, column, Rect). Cleared and refilled each frame;
@@ -150,7 +152,7 @@ pub struct Osk {
     key_rects: Vec<(usize, usize, Rect)>,
     /// This frame's label galleys, in the current face's key order.
     labels: Vec<Arc<egui::Galley>>,
-    /// The galley cache's validity key = (face, text-size bits).
+    /// The face and text-size bits recorded by the latest label layout request.
     labels_key: (usize, u32),
     /// The pressed key (A7 tint · scale).
     pressed_key: Option<KeyIndex>,
@@ -175,8 +177,7 @@ pub struct Osk {
     /// back at the shell, so there is no cycle.
     ctx: Option<egui::Context>,
     /// The composing input method. Present only on a layout that stacks jamo into
-    /// syllables, as Hangul does. Being a `Box<dyn>`, an integrator's — or a later language's
-    /// (Chinese, Japanese) — goes in the same slot.
+    /// syllables: currently the built-in Hangul layout. No public composer replacement API is exposed.
     composer: Option<Box<dyn Composer>>,
     /// How many of the composing characters are **already in the buffer**. The next step erases
     /// that many with ⌫ and types the new composition result (`inject::inject_compose`).
@@ -482,7 +483,7 @@ impl Osk {
         self.face
     }
 
-    /// Whether caps is locked (⇧ double tap). Only ever on for the built-in qwerty.
+    /// Whether shift is locked (⇧ double tap), for the built-in Qwerty or Hangul layout.
     #[must_use]
     pub fn shift_locked(&self) -> bool {
         self.shift_lock
@@ -612,7 +613,8 @@ impl Osk {
 
     /// A close request (back · the Hide key). The target becomes hidden at once and the next
     /// [`Osk::update`] brings `y` down to 0 (the `osk_hide` tween). `Auto` will not reopen even
-    /// with the focus unchanged — only a rising edge of `wants` releases it.
+    /// with the focus unchanged. A rising edge of `wants`, or a completed tap while closed
+    /// followed by keyboard focus, releases the suppression.
     pub fn hide(&mut self) {
         self.flush_composer();
         self.manual = false;

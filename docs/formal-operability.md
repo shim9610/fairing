@@ -225,9 +225,10 @@ a local `--skip-build` report is explicitly marked as not freshly compiled.
 ## Backend inventory and concrete witnesses
 
 `verification/retained-state.json` classifies the retained egui backend sites in the
-widget crate. `retained_state.py` rejects an added/removed access site or lifecycle
-call until that inventory is reviewed. It explicitly records geometry state in
-expandable content and paint-only caches as separate categories. This is a source
+widget crate. `retained_state.py` rejects changes in source-text access/lifecycle
+call-pattern counts until that inventory is reviewed. It does not resolve Rust calls
+and can also match comments or string literals. The inventory explicitly records
+geometry state in expandable content and paint-only caches as separate categories. This is a source
 inventory tripwire, not a proof over arbitrary Rust fields or upstream egui internals.
 
 Native witnesses exercise all seven dropdown trigger forms, all four openers and

@@ -377,8 +377,9 @@ fn tap_jamo(h: &mut Harness, jamo: &[&str]) -> fairing::Result<()> {
     Ok(())
 }
 
-/// Typing dubeolsik jamo has `HangulComposer` compose them into syllables and put them in as IME
-/// `Preedit`/`Commit`. It does not imitate backspace, so the `TextEdit`'s real contents are the result.
+/// Dubeolsik jamo are composed into syllables and committed into the field.
+/// Composition updates replace the preceding syllable through synthetic key/text
+/// events; the test checks the resulting `TextEdit` buffer, not IME preedit state.
 #[test]
 fn hangul_keys_compose_syllables_in_the_focused_edit() -> fairing::Result<()> {
     let (mut h, form) = form_harness(true, ChromePolicy::default())?;

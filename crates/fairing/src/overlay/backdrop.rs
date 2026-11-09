@@ -217,7 +217,8 @@ mod tests {
             .unwrap_or(Color32::TRANSPARENT)
     }
 
-    /// No sum can outgrow its `u32`: a block of white, summed through every pass, still fits.
+    /// Malformed source geometry is rejected; a large white input produces a bounded
+    /// output whose pixels remain white.
     #[test]
     fn malformed_images_are_rejected_and_larger_views_use_bounded_outputs() {
         for size in [[0, 1], [usize::MAX, 2], [2, 2]] {

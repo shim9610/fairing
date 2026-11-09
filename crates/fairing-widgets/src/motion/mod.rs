@@ -762,9 +762,9 @@ mod tests {
         assert!((b.value() - 500.0).abs() < 1.0);
     }
 
-    /// Running to the same elapsed time at 60 fps and at 30 fps has to give the same value
-    /// (±1 px) — both the spring and the tween evaluate a closed form of the accumulated elapsed
-    /// time, so they are frame-rate independent.
+    /// Compare the spring at the same accumulated time using the 30 and 60 fps
+    /// fixture steps, both below `MAX_DT`. The values agree within one coordinate unit;
+    /// larger steps can lose elapsed time through the per-tick cap.
     #[test]
     fn spring_value_is_frame_rate_independent() {
         let spring = Spring::default();

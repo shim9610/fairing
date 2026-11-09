@@ -561,7 +561,7 @@ fn credential_ops(
             }
             let digits = typed.bytes().all(|b| b.is_ascii_digit());
             if !typed.is_empty() {
-                // A fixed length is the only one the prompt can take: it submits on the last digit.
+                // Fixed-length methods require exactly len digits; len == 0 accepts up to max_len.
                 if len > 0 && (typed.len() != usize::from(len) || !digits) {
                     return Err(
                         tr!(strings, "A PIN is {n} digits.").replace("{n}", &len.to_string())

@@ -8,9 +8,10 @@
 //! - **Placing.** [`GestureRegion::place`] says where the region is this frame, or that it stands
 //!   aside. It is asked over a screen or the desktop only: not over the shade, the unlock prompt
 //!   or the recent screens, and not at all with `[gesture] enabled = false`.
-//! - **The touch.** A press inside the region is the region's to its release. Nothing under the
-//!   region sees it, not a widget and not a desktop page, and no gesture of the shell's starts
-//!   from it. [`GestureRegion::touch`] hears it every frame: [`Phase::Started`] on the press,
+//! - **The touch.** A primary-pointer press beginning in the region is routed to it
+//!   until release. Guard areas intercept ordinary underlying egui widget interactions
+//!   and desktop page gestures. Raw input remains readable through the context.
+//!   No ordinary shell swipe or fling starts from that press. [`GestureRegion::touch`] hears it every frame: [`Phase::Started`] on the press,
 //!   [`Phase::Moved`] on each frame after (a finger at rest included, as frames keep coming while
 //!   a finger is down), [`Phase::Ended`] on the release, and [`Phase::Cancelled`] when the touch
 //!   is taken: the shade, the prompt or the recent screens coming over the regions, the pointer

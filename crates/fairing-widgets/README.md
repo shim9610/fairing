@@ -34,7 +34,11 @@ egui = "0.37"
 
 
 A widget is drawn with a `WidgetCx`: the theme, the icon set and the animation store,
-which your app keeps between frames.
+which your app keeps between frames. Advance `AnimationStore::tick(dt, frame)` once
+per egui pass with elapsed seconds and an increasing pass number, and pass that same
+number as `WidgetCx::frame`. Request repaints while animations run and when changing
+an animation target. During setup, apply the theme to your egui context and install
+a `FontSet` (even an empty one binds the named strong/display fallback families).
 
 ```rust
 use fairing_widgets::icons::IconSet;
@@ -78,7 +82,8 @@ and `ProtectedShell::add_elements`; see the
 `painters` takes a `WidgetPainters`: one painter per kind of widget, each optional. A widget
 whose kind has one is drawn by it — told its look for the frame: its rects, what it says, its
 state and how far each animation has got — and keeps its press, its value and its motion. A kind
-without one draws itself. See `fairing_widgets::widgets::WidgetPainters`.
+without one draws itself. Custom painters also draw focus, disabled and hold cues
+from their look data. See `fairing_widgets::widgets::WidgetPainters`.
 
 ## Dependencies
 

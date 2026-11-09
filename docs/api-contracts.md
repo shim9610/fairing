@@ -250,7 +250,7 @@ replay input or provide atomic rerouting to widgets outside a claimed region.
 ## UI progress and required input paths
 
 The production `shell/input_route.rs` decision is shared by the shell, Kani, Verus
-and Miri. The required six-edge UI fixture uses real egui buttons, Cancel, on-screen
+and Miri. The required twelve-edge UI fixture uses real egui buttons, Cancel, on-screen
 PIN keys and a region action; it never substitutes a host command or hardware-key
 shortcut for a required edge. Generated region/rotation histories precede the
 witnesses. A missing edge witness, sticky deferral or stale guard covering a modal

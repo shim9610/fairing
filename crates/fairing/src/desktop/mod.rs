@@ -116,10 +116,8 @@ pub struct IconSlot {
     pub visibility: Visibility,
     /// The badge.
     pub badge: Option<Badge>,
-    /// A launch-mode override — it overrides the screen declaration's `.launch()` value. **In
-    /// M1 it is always `None`** and `Shell::open_screen` does not look at it either — the way to give
-    /// a per-slot override from the config (a `launch` key in `[[desktop.pages]]`) is M2, so this is
-    /// only the slot for it.
+    /// Reserved per-slot launch metadata. Current shell launches use the screen
+    /// declaration's `.launch()` value and do not read this field.
     pub launch: Option<LaunchMode>,
     /// The kind.
     pub kind: SlotKind,
@@ -343,8 +341,8 @@ impl Dock {
     ///
     /// **There is no cap on the count**. A cap of five is a phone convention, not a device
     /// requirement — twelve along the bottom of a 1920 bar panel is normal, and so is eight down the
-    /// left rail of a 480×800. Instead, they shrink once a cell would fall below the physical minimum
-    /// touch size (the geometry rule).
+    /// left rail of a 480×800. Layout divides the available dock length between entries;
+    /// crowded docks can have slots smaller than the touch target.
     fn push(&mut self, mut slot: IconSlot) -> bool {
         if self.slots.iter().any(|s| s.id == slot.id) {
             return false;
@@ -458,8 +456,8 @@ pub enum Wallpaper {
     /// This holds both and picks by `theme.dark`. The two sides need not be the same kind — a
     /// painting for the night and a flat colour for the day is a pair like any other.
     ///
-    /// It is resolved **once, before the paint match**, so it does not nest: a pair inside a pair
-    /// picks the same side twice and the inner one wins.
+    /// Only one pair level is resolved before painting. Supply non-`Themed` leaves:
+    /// selecting another pair logs a warning and draws no wallpaper for that pass.
     Themed {
         /// Drawn while the palette is dark.
         dark: Box<Wallpaper>,

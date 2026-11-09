@@ -202,7 +202,8 @@ pub struct Toast {
     /// Severity (the colour).
     pub level: Level,
     /// How long it shows. `Duration::ZERO` means `[notify] toast_ms`; a duration too long for the
-    /// clock to count (`Duration::MAX`) holds it until it is tapped.
+    /// clock to count (`Duration::MAX`) has no timed expiry. Queue lifecycle or
+    /// reclamation can still remove it.
     pub duration: Duration,
     /// The icon.
     pub icon: Option<IconRef>,
@@ -248,7 +249,7 @@ impl Toast {
         self
     }
 
-    /// How long it shows. `Duration::MAX` keeps it up until it is tapped.
+    /// How long it shows. `Duration::MAX` disables timed expiry, not other removal.
     #[must_use]
     pub fn duration(mut self, duration: Duration) -> Self {
         self.duration = duration;

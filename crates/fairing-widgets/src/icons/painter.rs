@@ -1,9 +1,10 @@
-//! The icon painter: 24-grid → pixel conversion, curve flattening, and a per-size polyline cache
-//! (rendering).
+//! Icon painting: design-grid conversion, curve flattening and a per-size polyline cache.
+//! Despite legacy `*_px` names, sizes and output coordinates used by [`paint`] are
+//! egui points (du); the host applies physical pixel scaling later.
 //!
 //! # The per-frame cost
 //!
-//! [`IconCache`] stores flattened curves by path and rounded pixel size; a cache
+//! [`IconCache`] stores flattened curves by path and rounded point size; a cache
 //! miss builds the path again. Drawing translates cached points into the target
 //! `Rect`. A two-point subpath uses [`egui::Shape::LineSegment`] without creating
 //! a point vector. With three or more points,
@@ -26,7 +27,8 @@ use egui::epaint::{PathShape, PathStroke};
 use egui::{Color32, Painter, Pos2, Rect, Shape, Stroke, Vec2};
 use std::collections::TryReserveError;
 
-/// One flattened subpath. The coordinates are pixels with **the icon's top-left as the origin**.
+/// One flattened subpath, with the icon's top-left as the origin.
+/// Coordinates follow the supplied size; [`paint`] uses egui points (du).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Polyline {
     /// The points.
@@ -35,7 +37,7 @@ pub struct Polyline {
     pub closed: bool,
 }
 
-/// One icon flattened at a particular pixel size.
+/// One icon flattened at a particular supplied size; [`paint`] uses egui points.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Flattened {
     /// The subpaths.

@@ -4,7 +4,7 @@
 //! options are presented. These are independent settings. Supported openers include
 //! an anchored list, grid, sheet and searchable list.
 //!
-//! The open panel is placed within the calling `Ui`'s clip rectangle and accounts
+//! Panel placement uses the calling `Ui`'s clip rectangle and accounts
 //! for `WidgetCx::inset_bottom`. Anchored panels can open above the trigger when
 //! space below is insufficient. Long lists scroll and long labels are truncated.
 //! An outside press dismisses the panel and is consumed within its bound.

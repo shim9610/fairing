@@ -370,7 +370,7 @@ reports — the shell has already acted — and a few are requests that only you
 | `DeclRemoved(id)` | A declaration, a built-in status item or a tile was removed | — |
 | `NotificationTapped(id)` | A notification was tapped; its `action` has already been launched | — |
 | `NotificationDismissed(id)` | A notification was dismissed, by the user or `dismiss_notification` | — |
-| `OverlayToggled(open)` | The shade finished opening (`true`) or closing (`false`) | — |
+| `OverlayToggled(open)` | The shade left `Closed` (`true`, including its first opening pull) or returned to `Closed` (`false`) | — |
 | `OskToggled(shown)` | The keyboard was shown or hidden | — |
 | `TileLongPressed { id }` | A quick-settings tile was held ([03 §4.4d](03-chrome.md#44d-long-pressing-a-tile)) | Open its detail, if it has one |
 | `IconLongPressed { id }` | A desktop icon was held; the info popover shows unless `[desktop] long_press = "none"` ([03 §3.8](03-chrome.md#38-holding-an-icon-the-info-popover)) | — |
@@ -500,7 +500,7 @@ passes as it is.
 |---|---|
 | `frame()` | One frame; virtual time advances 1/60 s |
 | `frames(n)` / `run_for(seconds)` | Several frames / a span of time |
-| `frame_shapes()` | The shapes actually drawn this frame |
+| `frame_shapes()` | Runs one new frame and returns its shapes; advances time and the frame count |
 | `now()` / `time()` / `frames` (field) | The shell's monotonic clock / the next `RawInput.time` / how many frames have run |
 
 | Input | Meaning |
@@ -508,7 +508,7 @@ passes as it is.
 | `tap(pos)` | Press frame, release frame, settle frame (three in total) |
 | `drag(from, to, steps)` | Press, move over `steps` frames, release |
 | `hold(pos, frames)` | Hold without releasing (long press, emergency gesture) |
-| `fling(from, step, frames)` | Push `step` per frame, then release. At 60 Hz that is `step × 60` px/s |
+| `fling(from, step, frames)` | Push `step` per frame, then release. At 60 Hz the sustained speed is about `step × 60` px/s; egui estimates release velocity from recent pointer samples |
 | `wheel(pos, delta)` | Pixel scroll. Scrolling up is `delta.y > 0` |
 | `type_text(text)` | `Event::Text` — the same path the OSK injects on |
 | `press` / `release` / `move_to` / `push_event` | The layer below |

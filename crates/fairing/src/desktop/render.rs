@@ -7,8 +7,9 @@ use super::{
 };
 
 impl DesktopView {
-    /// Draw the desktop in `rect`. Slot records and text galleys are reused where their
-    /// inputs are unchanged. Cache rebuilds, egui and custom drawing can still allocate.
+    /// Draw the desktop in `rect`. Slot records and selected geometry are reused;
+    /// label text is submitted to egui layout on each draw. Cache rebuilds, egui
+    /// and custom drawing can still allocate.
     pub fn ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -207,7 +208,7 @@ impl DesktopView {
     pub fn is_animating(&self) -> bool {
         self.press.is_animating() || self.swipe.is_animating() || self.info.is_animating()
     }
-    /// A change in cell width throws the label galleys away (they are rebuilt at the next layout).
+    /// Refresh the wrap width used when submitting labels to egui layout.
     pub(super) fn refresh_label_width(&mut self, cell: f32, pad: f32) {
         let width = (cell - pad).max(pad);
         if (self.label_width - width).abs() > 0.5 {
@@ -273,7 +274,7 @@ impl DesktopView {
         // **The pair is resolved before the match**, so it costs one line rather than a second copy
         // of every arm below it.
         match self.wallpaper.for_theme(theme.dark) {
-            // Already picked above; a pair inside a pair keeps the inner one.
+            // Nested pairs are unsupported: report the selected inner pair without drawing it.
             Wallpaper::Themed { dark, light } => {
                 let inner = if theme.dark { dark } else { light };
                 log::warn!("[wallpaper] a Themed pair inside a Themed pair: {inner:?}");

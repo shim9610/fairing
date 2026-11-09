@@ -235,13 +235,12 @@ impl Workspace {
     /// sizing pass (`ui_builder.invisible()`) and throws that frame's output away whole — which is
     /// what leaves an incoming screen blank on the frame a transition starts. `Areas::set_state` is
     /// `pub(crate)`, so the state cannot be planted; instead **an empty `Area` is drawn once
-    /// beforehand** to consume that pass first. Exactly once per slot, and nothing is drawn on that
-    /// frame.
+    /// beforehand** to consume that pass first. Each warmed slot gets one empty pass;
+    /// the empty warm-up Area itself draws no content.
     ///
     /// [`WARM_SLOTS`] of them are run through on the first frame, and as the stack deepens the
-    /// **next slot to be used** (`depth + 1`) is run through in advance — a launch or back request is
-    /// handled at frame stage 14 and that instance is first drawn on the following frame, so this
-    /// frame's warm-up is always a step ahead.
+    /// next slot (`depth + 1`) is warmed, up to `PANE_SLOTS` per pane. This covers ordinary
+    /// incremental stack growth; it does not prewarm arbitrary depths beyond that bound.
     pub(super) fn warm_layer_slots(&mut self, ctx: &egui::Context, content: Rect) {
         let depth_of = |ws: &Self, pane: usize| ws.task_of_pane(pane).map_or(0, Task::len);
         let split = self.split.is_some();
@@ -377,7 +376,8 @@ impl Workspace {
         (self.inset_bottom - (content.max.y - visible.max.y)).max(0.0)
     }
     /// The Pane (stack) render: mid-transition it draws two instances on offset layers
-    /// (A3). The layer slots are lent out here by stack depth (a finite set), from each pane's base.
+    /// (A3). Layer slots are lent out by stack depth from each pane's base. See `PANE_SLOTS`
+    /// for the depth boundary at which pane ranges overlap.
     /// During an A2, the placeholder card is drawn first inside the top instance's `Area` (the
     /// card's colour is the declaration's `background` or surface, and the icon the task root's),
     /// and the real screen is drawn over it from `screen_opacity > 0` (an open's `t ≥ 0.5`) on.

@@ -14,14 +14,14 @@ body:
     attributes:
       label: How to reproduce
       description: >
-        The smallest code or `fairing.toml` that shows it. A `testing::Harness` test that fails is
-        the best report there is.
+        Include a minimal code example or `fairing.toml` configuration that reproduces the issue.
+        If it needs no device hardware, a failing `testing::Harness` test helps locate the problem.
       render: rust
   - type: input
     id: version
     attributes:
-      label: fairing version
-      placeholder: "0.1.0"
+      label: fairing version or Git revision
+      placeholder: "Git revision from git rev-parse HEAD, or a published version"
     validations:
       required: true
   - type: input

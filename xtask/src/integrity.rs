@@ -1,8 +1,8 @@
 //! Build-input integrity checks run before the audit compiles product targets.
 //!
-//! The approval gates (`deps.allow`, `cargo-deny`) look at the tree `Cargo.toml` / `Cargo.lock`
-//! speaks for. There are a few channels that can part that tree from **the code actually compiled**,
-//! and neither gate can see them:
+//! Name/version/license approval is not sufficient to validate build configuration. The
+//! integrity gate separately rejects configured source substitutions, compiler wrappers,
+//! lint opt-outs and unaudited target dependency declarations, including these forms:
 //!
 //! - `.cargo/config.toml`'s `[source]` replacement plus `vendor/` — Cargo.toml and Cargo.lock do not
 //!   change by a byte while the source compiled does.

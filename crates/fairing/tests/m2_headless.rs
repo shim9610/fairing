@@ -89,8 +89,9 @@ fn open_shade(h: &mut Harness) -> fairing::Result<()> {
 
 // ------------------------------------------------------- the overlay gate
 
-/// `OpenOverlay` goes through the `overlay.open` gate. At level 2 with top it does not open and gives
-/// `UnlockRequested`; at level 1 it opens. `back()` closes the shade first.
+/// `OpenOverlay` is denied to the initial viewer in a two-level legacy table with
+/// `default_gate = "top"`, emitting `UnlockRequested`. A single-level legacy table
+/// allows it, and `back()` closes the shade first.
 #[test]
 fn open_overlay_respects_the_overlay_open_gate() -> fairing::Result<()> {
     let mut h = test_shell(access_config(&["viewer", "admin"], Some("top")), |_| {})?;

@@ -4,8 +4,8 @@
 //! than the shell's behaviour, so they sit with the types that read them: [`ThemeConfig`] feeds
 //! [`Palette::apply_overrides`](crate::theme::Palette::apply_overrides) and
 //! [`MotionConfig`] feeds [`MotionTokens::from_config`](crate::theme::MotionTokens::from_config).
-//! The rest of the file they came from — the bars, the desktop, access, the OSK, gestures — stays
-//! remains in the shell configuration module.
+//! The remaining shell configuration — bars, desktop, access, keyboard and gestures —
+//! stays in Fairing's shell configuration module.
 //!
 //! `fairing` re-exports every type here from `fairing_widgets::config`, so a config written against the
 //! old paths still resolves.
@@ -51,9 +51,9 @@ pub struct MotionConfig {
     pub spring: SpringConfig,
     /// The release distance threshold (a ratio).
     pub snap_ratio: f32,
-    /// The release velocity threshold (px/s).
+    /// The release velocity threshold in egui points (du) per second.
     pub fling_px_s: f32,
-    /// The drag detection slop (px).
+    /// The drag detection slop in egui points (du).
     pub slop_px: f32,
     /// The tap window (ms).
     pub tap_ms: u64,

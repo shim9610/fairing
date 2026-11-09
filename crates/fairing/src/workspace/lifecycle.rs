@@ -504,7 +504,7 @@ impl Workspace {
         self.prune_empty_tasks(tokens);
         closed
     }
-    /// Frame stage 5: end the `Stopped` spawned instances whose `evict_after` has passed
+    /// During a state update, end the `Stopped` spawned instances whose `evict_after` has passed
     /// (`Instance::evict_due`). `now` is the shell's time.
     pub(crate) fn evict_expired(
         &mut self,

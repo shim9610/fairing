@@ -86,9 +86,9 @@ levels = ["viewer", "maintainer"]
 }
 ```
 
-In an operational shell with one level, `Access::allows` returns early and every
-gate passes, regardless of `mode`. Fault quarantine denies gates even in this
-configuration. A device that needs no authentication says so in one line:
+In an operational legacy shell with one level, `Access::allows` returns early and
+every gate passes, regardless of `mode`. Token mode requires explicit grants.
+Fault quarantine denies gates even in this configuration. A device that needs no authentication says so in one line:
 
 ```toml
 [access]
@@ -124,7 +124,7 @@ matching screen or feature exists at all.
 | `tile.wifi`, `tile.bluetooth`, `tile.brightness`, `tile.lock`, … (all of `overlay::BUILTIN_IDS`) | ✔ (render filter) | ✘ | Quick-settings tile ids. **Unlike status items these are not in the warning list** — assign one wrong and it just disappears |
 | `settings.wifi`, `settings.bluetooth`, `settings.display`, `settings.sound`, `settings.locale`, `settings.power`, `settings.network`, `settings.network.edit`, `settings.datetime`, `settings.datetime.set`, `settings.credentials` | ✔ | ✔ | These ids include built-in screens and the `settings.network.edit` / `settings.datetime.set` operation gates. The screens ship behind the `settings` feature (`settings.credentials` only where the authenticator manages its entries, §5.4), but you **opt in** by calling `fairing::settings::add_all(&mut shell, &SettingsConfig::default())`. Narrow the set with `SettingsConfig::only([..])` or `.without(id)`, or replace one wholesale by declaring your own screen with the same id. Wi-Fi, Bluetooth, network and power eligibility depends on the relevant capability. Display, Sound and other candidates without capability requirements remain eligible; `ignoring_capabilities()` bypasses capability filtering |
 | `nav.recents`, `workspace.split` | ✔ | ✔ | The recent screens, and **entering** a split ([03 §2.3](03-chrome.md#23-recent-screens-and-the-split)). Short of one, a press asks for an unlock; short of `workspace.split`, the cards carry no split buttons and `cx.open_in_other_pane` opens in the same pane. Going back from the cards, or to one pane, is never gated |
-| `desktop.edit` | ✘ (the feature is M6) | ✔ | Desktop editing. Reserved — there is nothing to tap yet |
+| `desktop.edit` | ✘ | ✔ | Desktop editing is unimplemented; the name is reserved |
 | `session.lock`, `session.logout` | ✘ | ✔ | Reserved names. These operations do not require an additional gate named `session.lock` or `session.logout`; the controls that do them carry gates of their own (`tile.lock`, `status.lock`). An unlock from the lock screen reports `session.lock` (§8) |
 
 `settings.home` and `settings.about` use their screen ids as gates. Assign them
@@ -233,8 +233,10 @@ shell.set_policy(Box::new(custom_policy()));
 ```
 
 To use a level table other than the one `fairing.toml` built, just hold your own
-inside the policy — the shell delegates the whole decision, so whether
-`[access.gates]` matters at all is up to you.
+inside the policy. When legacy level checks are active, the shell delegates the
+decision, so the policy decides whether `[access.gates]` matters. Legacy `off` mode
+and a single-level table bypass the policy. In token mode, an installed policy
+can narrow issuer grants but cannot add authority.
 
 Open screen gates are revalidated during operational state updates, before commands and again after backend
 polling. Replacing a policy or changing a dynamic policy can close a screen without
@@ -568,8 +570,8 @@ not appear for it.
 ### 5.5 A keypad or a pattern in a login screen of your own
 
 In `routing` mode the login screen is yours, and the keypad does not have to be.
-`fairing::widgets::PinPad` is the one the prompt uses. It types into your buffer
-and nowhere else:
+`fairing::widgets::PinPad` is the one the prompt uses. It edits the `String` you
+supply; your code decides when to submit that value:
 
 ```rust
 use fairing::widgets::PinPad;
@@ -613,8 +615,11 @@ crossed dots. `PatternPad::as_drawn(dots, grid)` gives the path a finger drawing
 
 ## 6. Doing authentication yourself with `routing`
 
-In `mode = "routing"` the crate does gate decisions and session storage, nothing
-else. A blocked launch arrives as one event instead of a prompt.
+In legacy `mode = "routing"`, the crate handles gate decisions and session
+storage while the host supplies the login UI. The `set_subject` examples below
+apply to legacy sessions. Token-mode routing instead supplies an
+`AccessEvent::SessionRequested` and installs a request-bound
+`AuthOutcome::Session`; see [session tokens](../session-tokens.md).
 
 ```text
 tap a locked item
@@ -952,7 +957,7 @@ drain the events and record them through its logging or audit backend if needed.
 # fn on_events(shell: &mut fairing::Shell) {
 for event in shell.poll_events() {
     if let ShellEvent::HiddenEntry { id } = event {
-        log::warn!("hidden entry {id} was opened");   // into the device log
+        log::warn!("hidden entry {id} trigger completed"); // admission may still be denied
     }
 }
 # }

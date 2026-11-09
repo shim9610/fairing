@@ -1,9 +1,10 @@
 //! `Stepper` edits an integer through decrement and increment controls.
 //!
 //! The value is displayed between the two controls. The configured range clamps
-//! updates, and an end control is unavailable when its next step would exceed the
-//! range. Geometry and press feedback use theme and control tokens. The caller
-//! owns the value and decides how changes affect application or device state.
+//! updates. An end control is unavailable at its corresponding range endpoint;
+//! a step that would pass that endpoint is clamped to it. Geometry and press feedback
+//! use theme and control tokens. The caller owns the value and decides how changes
+//! affect application or device state.
 
 use super::{StepEnd, StepperLook};
 use crate::cx::WidgetCx as Cx;

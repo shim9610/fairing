@@ -62,7 +62,8 @@ fn zero_page_spring_is_refused_at_build() {
 
 // ── NaN / inf ───────────────────────────────────────────────────────────────────────────────
 
-/// `nan` and `inf`, valid TOML floats, are refused for every float key, ranged or not.
+/// The listed active float settings reject `nan` and `inf`, including values
+/// without a narrower range check.
 #[test]
 fn nan_and_inf_are_refused_for_float_keys() {
     let cases = [

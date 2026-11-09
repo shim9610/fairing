@@ -18,7 +18,8 @@ pub struct WallTime {
 
 /// How the status bar clock is written (`StatusItem::Clock { format }`).
 ///
-/// The four shapes come in a 24- and a 12-hour spelling. Which of the two is drawn is **not** fixed
+/// The three shapes (minutes, seconds, and date with minutes) each have a 24- and
+/// a 12-hour spelling. Which spelling is drawn is **not** fixed
 /// by the config: the `ui.clock_12h` setting ([`keys::UI_CLOCK_12H`](crate::settings::keys::UI_CLOCK_12H),
 /// written by the built-in `settings.datetime` screen) turns whichever shape was configured into
 /// its other half through [`ClockFormat::with_hour12`].

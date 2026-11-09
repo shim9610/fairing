@@ -1,11 +1,15 @@
-//! The component tokens — whether twenty widget metrics really do reach an override.
+//! Component-token regressions: geometry, style, metadata and validation.
 //!
-//! What this file holds to is not the values but **the path**. A token made while the widget goes on reading a
+//! These tests observe selected response geometry and egui style, retained metadata,
+//! and validation. The switch, list-row, slider, lock-ring and shade-multiple checks
+//! do not establish their built-in paint paths. A token made while the widget goes on reading a
 //! file constant means nothing happens for the integrator — the defects fixed this round (`visual_inset` biting
 //! on `Grid` alone, the `PageSwipe` rubber band not being refreshed, the shade's scrim ignoring the role colour)
 //! all had that shape. A knob that does not turn is worse than no knob.
 //!
-//! The rules are the other integration tests': written as `fairing::Result<()>` with no `panic!` and no `unwrap`.
+//! Fallible harness tests return `fairing::Result<()>`; the direct validation/default
+//! checks return `()`. There are no explicit `panic!` or `unwrap` calls in this file,
+//! but failed assertions still panic.
 
 #![cfg(feature = "mock")]
 
@@ -19,8 +23,7 @@ use std::rc::Rc;
 
 /// It gives back one value the screen measured. A `spec` of `None` means the default spec.
 fn measure(
-    // `ComponentSpec` is 19 `Span`s, so 1.6 KB. Taking it by value is caught by clippy — it is copied once when
-    // the shell is built so it is no performance problem, but the test has no reason to work round the lint either.
+    // Borrow the component spec rather than copying the full configuration into this helper.
     spec: Option<&ComponentSpec>,
     draw: impl Fn(&mut egui::Ui, &mut Cx<'_>, &Cell<f32>) + 'static,
 ) -> Option<f32> {
@@ -85,8 +88,8 @@ fn the_button_padding_reaches_the_widget() -> fairing::Result<()> {
         sink.set(r.response.rect.width());
     }
     // **Both ends are pinned, rather than one end and an assumption about the default.** The default
-    // `content_inset` resolves with the finger since adoption step 4 (27.27 du at the gloved
-    // default, not its 16 du floor), so an expected delta written against 16 measured the policy
+    // `content_inset` resolves with the size policy rather than necessarily using its 16 du
+    // floor, so an expected delta written against 16 measured the policy
     // rather than the path. Two explicit `du` spans make the arithmetic depend on nothing.
     let narrow = fairing::theme::MetricsSpec {
         content_inset: du(16.0).pinned(),
@@ -113,14 +116,14 @@ fn the_button_padding_reaches_the_widget() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **The switch's height reaches the integrator.** At the same time this holds the default to reproducing today's
-/// formula (`touch_target × 0.6`) exactly — promoting a value is not a change to the render.
+/// Read the retained switch component height, clamped to the widget's interaction
+/// rectangle. This does not measure the painted switch height, which uses control metrics.
 #[test]
 fn the_switch_height_reaches_the_widget_and_keeps_todays_value() -> fairing::Result<()> {
     fn draw(ui: &mut egui::Ui, cx: &mut Cx<'_>, sink: &Cell<f32>) {
         let mut on = true;
         let r = Switch::new(&mut on).show(ui, &mut cx.widgets());
-        // The token settles **the drawn height**, not the hit Rect. The hit area keeps to the touch target.
+        // Observe retained component metadata, bounded by the interaction rect.
         sink.set(cx.theme.components.switch.height.min(r.rect.height()));
     }
     let base = ComponentSpec::default();
@@ -140,10 +143,11 @@ fn the_switch_height_reaches_the_widget_and_keeps_todays_value() -> fairing::Res
     Ok(())
 }
 
-/// **The row's padding reaches the integrator.** The chevron's width is in the same group, so it is measured alongside.
+/// Add retained row-padding metadata to the response's left edge. This checks the
+/// configured value, not the painted title position or chevron width.
 #[test]
 fn the_list_row_padding_reaches_the_widget() -> fairing::Result<()> {
-    /// It measures the x where the title's text starts — the padding pushes it.
+    /// Compute a candidate title x from the response rect and metadata; do not inspect text shapes.
     fn draw(ui: &mut egui::Ui, cx: &mut Cx<'_>, sink: &Cell<f32>) {
         let r = ListRow::new("row")
             .chevron(false)
@@ -165,8 +169,8 @@ fn the_list_row_padding_reaches_the_widget() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **The track's thickness is a ratio of the handle**. Opened as a length, it gives combinations where
-/// the handle alone is large and the track is a thread.
+/// Resolve the retained slider component ratio against the thumb metric. This
+/// metadata-only check does not draw a slider; the built-in track uses control metrics.
 #[test]
 fn the_slider_track_is_a_ratio_of_the_thumb() -> fairing::Result<()> {
     fn draw(_ui: &mut egui::Ui, cx: &mut Cx<'_>, sink: &Cell<f32>) {
@@ -248,9 +252,9 @@ fn the_page_indicator_hit_band_is_a_token() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **The lock's border padding grows the outer circle alone.** Growing `desktop_lock_size` itself grows the inner
-/// glyph with it and the lock fills the circle — it was made that way once while promoting, and the tour's pixel
-/// comparison caught it. That the two tokens are **different things** is nailed down here.
+/// Check the default lock-size and ring-padding metadata are distinct and sum to
+/// the expected value. No lock is rendered, so this does not check which shapes
+/// consume either metric.
 #[test]
 fn the_lock_ring_pad_is_not_the_lock_size() {
     let m = fairing::theme::Metrics::default();
@@ -264,9 +268,8 @@ fn the_lock_ring_pad_is_not_the_lock_size() {
     assert!((m.desktop_lock_size + m.desktop_lock_ring_pad - 20.0).abs() < f32::EPSILON);
 }
 
-/// **The shade opens on multiples of two axes**. Holding lengths directly has the icons alone grow when
-/// the density changes while the padding stays as it was, and the rhythm breaks — that is why `PanelStyle` chose
-/// two axes in the first place, and the tokens take the multiples outside without removing the axes.
+/// Check shade-multiple defaults, spec resolution and invalid-value rejection.
+/// This does not open a shade or inspect the panel's geometry or paint.
 #[test]
 fn the_shade_ratios_reach_the_panel() -> fairing::Result<()> {
     use fairing::theme::{ComponentSpec, ShadeMetrics};

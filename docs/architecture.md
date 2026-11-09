@@ -70,8 +70,10 @@ The first crates.io release has not been published yet. `verification/` is a
 separate unpublished Cargo workspace for assurance and is not a product dependency.
 
 `fairing` depends on `fairing-widgets`, `egui`, `serde`, `toml` and `log`, plus `eframe` behind `runner` and `chrono`
-behind `chrono`. Every other dependency, a new asset included, goes through an approval list
-that the audit checks (`deps.allow`, `deny.toml`).
+behind `chrono`. Cargo dependency approvals are checked through `deps.allow` and
+`deny.toml`. Asset licences and attribution are reviewed separately and recorded in
+the hand-maintained asset section of `THIRD_PARTY.md`; the dependency scanner does
+not inventory new image or font files.
 
 egui and eframe use the 0.37 API. The optional runner keeps GL, Wayland, bundled fonts and
 OS clipboard support explicit, with X11 added by `runner-x11`. For an overdue redraw,
@@ -291,8 +293,8 @@ asks the display backend to inhibit its idle timer. Idle repaint checks are in
 
 `testing::Harness` runs whole frames on `egui::Context` with virtual time, so a test taps and
 drags where the shell actually drew, with no window, no GPU and no sleeping. The library's tests
-run under `cargo xtask audit`, which also compiles guide Rust blocks and executes
-those not marked `no_run` or `ignore`. Its all-target
+run under `cargo xtask audit`, which also compiles non-ignored guide Rust blocks
+and executes those not marked `no_run`. Its all-target
 Clippy pass also compiles the enabled examples; real-window tours run separately
 through `tools/tours.sh`. The audit checks formatting, API docs, dependencies,
 licenses, locks and blocking calls. CI runs it with

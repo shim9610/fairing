@@ -13,7 +13,7 @@
 //! | [`Switch`] | A toggle whose knob can be dragged |
 //! | [`Checkbox`] | A box that carries a drawn tick — on or off, independent of its neighbours |
 //! | [`Radio`] · [`RadioGroup`] | One of a set — a ring that fills only at its centre |
-//! | [`SegmentedControl`] | Two to four exclusive options sharing one track |
+//! | [`SegmentedControl`] | Exclusive options in a strip up to `control.segment_max`, with stacked rows otherwise |
 //! | [`ListRow`] | A settings row (icon · title · subtitle · trailing) |
 //! | [`TouchSlider`] | A 1:1 finger slider with a selectable handle shape |
 //! | [`TextField`] | An egui text editor wrapped with Fairing sizing and styling |

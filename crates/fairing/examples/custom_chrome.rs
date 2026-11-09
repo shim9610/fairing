@@ -297,7 +297,7 @@ fn slot_painter(ui: &mut egui::Ui, slot: SlotCx<'_>) {
     let _ = slot
         .icons
         .paint(&painter, inner, &slot.slot.icon, &style, theme);
-    // The label goes below the badge, in the panel's language. (On a real device the galley would be cached as the built-in rendering does — the example keeps it simple.)
+    // Lay out the translated label below the badge using egui's text layout API.
     painter.text(
         egui::pos2(center.x, slot.cell.max.y - 14.0),
         egui::Align2::CENTER_CENTER,

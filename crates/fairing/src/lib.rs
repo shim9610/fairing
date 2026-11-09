@@ -188,8 +188,8 @@ pub use workspace::InstanceId;
 /// The version string from this crate's `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-// The guide doctest gate: every Rust block in docs/guide is compiled — and run, unless it is
-// marked `no_run` — as a doctest of this module. The guide is written against the whole feature
+// The guide doctest gate compiles non-ignored Rust blocks in docs/guide and runs
+// those not marked `no_run` as doctests of this module. The guide is written against the whole feature
 // set (it shows the runner, chrono, the shade and the keyboard), so the gate needs every feature
 // on. The audit sets `--cfg fairing_repo_docs` in RUSTDOCFLAGS; the published package
 // excludes this repository-only module, so normal/all-feature package doctests omit it.

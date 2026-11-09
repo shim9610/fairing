@@ -168,8 +168,7 @@ impl Shell {
     pub fn settings(&self) -> &crate::settings::SettingsView {
         &self.settings
     }
-    /// Swap the wallpaper from a file. This is the path by which a shopkeeper chooses a photo
-    /// from the settings screen.
+    /// Replace the wallpaper from a file using the application-provided loader.
     ///
     /// The decode is done by **the integrator loader** registered through
     /// [`ShellBuilder::image_loader`](crate::shell::ShellBuilder::image_loader) — the crate does not
@@ -203,7 +202,7 @@ impl Shell {
         Ok(())
     }
     /// Swap the dark/light palette pair. The palette in view is left alone — it takes effect
-    /// from the next [`Shell::set_theme_dark`].
+    /// on the next dark/light change through [`Shell::set_theme_dark`].
     ///
     /// Where the old behaviour is wanted (a toggle resetting to the neutral palette), it is one line:
     /// `set_palettes(Palette::dark(), Palette::light())`.

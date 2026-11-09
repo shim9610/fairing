@@ -11,8 +11,8 @@
 //!
 //! It makes its screenshots by itself — one per file named in [`PLAN`]. It sets the state up through the shell API
 //! (`Shell::launch` / `back` / `home`) and **a synthetic finger** (`common::SyntheticInput` — it puts
-//! pointer events into the next pass's `RawInput`, as the headless harness does), sends an
-//! `egui::ViewportCommand::Screenshot` at the appointed moments, and writes the `ColorImage` that
+//! pointer events into the next pass's `RawInput`, as the headless harness does), sends a
+//! screenshot request through `Context::request_screenshot` at the appointed moments, and writes the `ColorImage` that
 //! comes back through the screenshot callback out as a PNG. A mid-transition frame is captured by
 //! reading the transition's progress `t` every frame and taking **the frame closest** to the target,
 //! and a mid-gesture frame (the shade pull, the page swipe, back) is captured with the finger still
@@ -24,8 +24,8 @@
 //! `10b-shade-slider` (a Slider tile expanded — the icon comes down from the tile to the left of the
 //! row) · `10c-shade-swipe` (a notification row being pushed left — the space revealed marks it as
 //! being thrown away) · `11-osk` (the `TextEdit` screen on the English qwerty, with the inset
-//! applied) · `11a-osk-compose` (switched to dubeolsik, mid-composition — `ㅎ`+`ㅏ` with the active
-//! underline) · `11b-osk-latin` (back on the qwerty, the syllable left in the field) ·
+//! applied) · `11a-osk-compose` (switched to dubeolsik, after `ㅎ`+`ㅏ`, with the current syllable
+//! committed into the field) · `11b-osk-latin` (back on the qwerty, the syllable left in the field) ·
 //! `11c-osk-password` (a password field typed into, masked, with its eye) ·
 //! `11d-osk-password-shown` (the eye tapped: the text shows and the keyboard stays) ·
 //! `12-toast` (two toasts plus a heads-up) · `13-page-swipe-mid` (a two-page desktop) ·

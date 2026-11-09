@@ -334,6 +334,8 @@ pub trait Authenticator {
     /// The shell detached this device session (logout, lock, expiry, replacement or fault).
     /// Revoke its controller to invalidate other readers. The shell already blocks this token
     /// locally before calling; return promptly and do not end unrelated web/device sessions.
+    /// The default implementation does nothing; implement this hook when the issuer
+    /// must invalidate other readers of the detached session.
     fn session_ended(&mut self, _session: super::SessionId, _now: Instant) {}
 
     /// Optional credential management, exposed behind the settings.credentials gate.

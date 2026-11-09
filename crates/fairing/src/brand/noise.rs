@@ -1,8 +1,8 @@
 //! Deterministic noise. No RNG crate — the constraint is zero new dependencies.
 //!
 //! **The seed changes the scatter and nothing else.** What `[desktop.abyss] seed` moves is where
-//! the bubbles, the fish and the rocks go; the manta formation (how many, and the flight lines),
-//! the number of god rays, the light position and the band heights are **authored constants**.
+//! the bubbles, the fish and the rocks go. Manta count, ray count and light position
+//! come from other parameters; formation curves and band heights use authored geometry.
 //! Leaving those to chance too would put a manta on top of the icons at some seed or other.
 
 /// The lowbias32 integer hash. `wrapping_mul` is const-stable.

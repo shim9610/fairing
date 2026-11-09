@@ -158,7 +158,8 @@ roles into independent grants, updates them or terminally revokes the session.
 `inactive_for(value)` at issuance for a permission that may be enabled later.
 The session's gate catalog is fixed: `replace_grants` rejects unknown gates and
 removes rights omitted from the replacement. `revoke()` or dropping the controller
-ends the session permanently and wakes the shell; a new login issues a new pair.
+ends the session permanently and requests an update through the shell-connected
+`Waker` supplied at issuance; a new login issues a new pair.
 `SessionGrant` fields are private; use constructors and its `gate()`, `is_base()`
 and `temporary_until()` readers.
 

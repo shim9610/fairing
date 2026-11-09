@@ -190,11 +190,11 @@ pub(super) const GRID_H: f32 = 20.0;
 pub enum MantaLod {
     /// Below 16 device pixels: stroke the outline.
     Glyph,
-    /// `16..24 px` — a flat mass. No eyes, no tail, no fins.
+    /// `16..24 px` — the filled body silhouette without belly lobes or tail.
     Silhouette,
-    /// `24..48 px` — flat plus the fins, one eye and the tail.
+    /// `24..48 px` — filled body, near belly lobe and tail.
     Solid,
-    /// `>= 48 px` — two-tone plus the far wing, both eyes, the tail and the feather.
+    /// `>= 48 px` — both belly lobes, tail and edge feathering over the body.
     Full,
 }
 
@@ -214,9 +214,9 @@ impl MantaLod {
     }
 }
 
-/// The **two** colours actually drawn. Always derived from one base colour — the mark keeps no
-/// colour system of its own, so the icon tint, the theme cross-fade and the disabled alpha all
-/// follow it unchanged.
+/// Body and belly colours used by the mark. [`MantaStyle::tones`] derives defaults
+/// from a base colour and applies the optional belly override. A caller can also
+/// supply these colours directly.
 ///
 /// There are no eyes. The mark in the original art
 /// (`assets/brand/manta-mark-black.png` · `-two-tone.png`) is an eyeless two-tone silhouette, and

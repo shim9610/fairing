@@ -13,8 +13,9 @@
 //! they print installation guidance and are skipped, and under `--strict` (CI) they count as failures.
 //! 9 (`cargo update --dry-run`) only reports and never counts as a failure.
 //!
-//! A stage that calls cargo passes `--locked`. Where a PR's stale lock file is quietly reinterpreted
-//! on the runner, the tree audited and the tree committed differ.
+//! Clippy, tests, docs, target checks and dependency-tree queries pass `--locked` so they use
+//! the committed dependency resolution. Formatting/plugin commands have their own flags;
+//! the informational `cargo update --dry-run` stage deliberately does not use `--locked`.
 
 use crate::util::{self, Result};
 use crate::{deps, dup, icons, integrity, licenses, sync, tree};

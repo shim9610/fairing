@@ -266,9 +266,8 @@ impl Default for ControlSpec {
             gap: Span::fixed(Dim::text(0.5)).min(Dim::du(8.0)),
             line_gap: Span::fixed(Dim::text(0.25)).min(Dim::du(4.0)),
             mark_radius: Span::fixed(Dim::text(0.187)).min(Dim::du(3.0)),
-            // The one exception, and it is not a new value: this is `components.switch.height`
-            // moved here unchanged, finger term and all, because a switch that suddenly shrank on a
-            // gloved device would be a regression rather than a no-op.
+            // The drawn mark follows text size. Switch touch allocation separately
+            // retains the finger-size minimum through control_height.
             mark_size: Span::fixed(Dim::text(1.8)).min(Dim::du(28.8)),
             icon: Span::fixed(Dim::text(1.272)).min(Dim::du(24.0)),
             slider_track: Span::fixed(Dim::text(1.125)).min(Dim::du(18.0)),

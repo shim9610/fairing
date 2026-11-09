@@ -23,9 +23,8 @@
 //!
 //! # Reading, once
 //!
-//! `std::env::var` is called once, from [`ShellBuilder::build`](super::ShellBuilder::build). There
-//! is no IO inside a frame, and an environment that changed mid-run would move every dimension in
-//! the shell. [`EnvScale::from_lookup`] is the whole of the parsing and takes the lookup as a
+//! Process-environment overrides are read during [`ShellBuilder::build`](super::ShellBuilder::build),
+//! rather than on each frame. [`EnvScale::from_lookup`] performs the parsing using a
 //! closure, so the tests never touch the process environment — which is shared by every test thread
 //! and, from Rust 2024, `unsafe` to write.
 

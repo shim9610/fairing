@@ -414,7 +414,7 @@ mod tests {
     }
 
     /// The knob stays inside the track at both ends and travels `track_w − track_h` — the two
-    /// properties the inset and the greyscale carrier depend on.""
+    /// properties the inset and the greyscale carrier depend on.
     #[test]
     fn the_knob_travels_between_the_two_end_caps() {
         let track = Rect::from_min_size(pos2(10.0, 20.0), egui::vec2(88.44, 49.13));

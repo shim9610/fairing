@@ -1,10 +1,9 @@
 //! The split — two panes sharing the content, and the divider between them (A8).
 //!
-//! # One tree, one level
+//! # One optional split
 //!
-//! The workspace is designed as a tree (`Leaf | Split { axis, ratio, a, b }`) able to hold
-//! four panes. v1 holds two, so the tree is this one struct: the split is there or it is not, and
-//! while it is there are two panes, the first at the start of the axis (left, or top).
+//! The workspace stores one optional split, not a recursive pane tree. While the split is
+//! present there are two panes, the first at the start of the axis (left, or top).
 //!
 //! # Geometry is a function, not state
 //!

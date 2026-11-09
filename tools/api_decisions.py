@@ -90,7 +90,7 @@ def category(key, traits):
 
 RATIONALE = {
     'configuration': 'Construct extensible configuration with Default/constructors. Public fields remain value customization contracts; added fields need defaults. Closed rendering value models are classified separately.',
-    'sessions-and-access': 'Keep issuer/controller ownership, read-only tokens, correlated authentication and per-operation enforcement. Permission names belong to applications. No caller may obtain mutable token authority from an observer.',
+    'sessions-and-access': 'Keep issuer/controller ownership, read-only tokens, correlated authentication and per-operation enforcement. Permission names belong to applications. Read-only observation APIs do not provide controller mutation authority.',
     'shell-host-and-diagnostics': 'Host mutations use named operations or owned values, not mutable component loans. Read-only legacy queries remain supported; protected observation uses ShellView only. Backend/recovery setup remains trusted host code.',
     'registration-and-elements': 'Retain declarative registration and application callback contracts. Protected registration uses application permission values and the common mediation contract; direct standalone/ordinary use retains its documented trust boundary.',
     'external-traits': 'Retain application implementations and each declared method signature/default. New required methods are breaking; changes to defaults require behavior, object-safety and authority review.',

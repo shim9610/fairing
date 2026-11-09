@@ -151,8 +151,9 @@ pub struct Eye;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Hand;
 
-/// Anchored to **neither** — `du`, `mm`, `px` and the fractions. A rigid length is admissible
-/// anywhere, which is why it is the default parameter: every floor and cap in the crate is one.
+/// Anchored to neither eye nor hand: `du`, `mm`, `px` and fractional terms.
+/// Rigid offsets and bounds can accompany either anchor. Assigning an entirely rigid
+/// span to an anchored field requires [`Span::pinned`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Rigid;
 
@@ -439,9 +440,9 @@ impl<A: Anchor> Mul<f32> for Dim<A> {
 /// A [`Dim`] plus a floor and a cap.
 ///
 /// **The floor beats the cap, and non-finite values fold onto the fallback.** `f32::clamp` is
-/// not used because it panics on `min > max` and on NaN, and **the defaults actually reach that
-/// condition** — on a 3.2-inch 240×320 panel, `touch_target`'s cap of `frac_min(0.14)` is
-/// 33.6 du while its floor `du(40)` is 40 du. The fold handles inverted bounds.
+/// not used because it panics on `min > max` and on NaN. For example, a 240 du
+/// shorter side makes `frac_min(0.14)` resolve to 33.6 du, below a `du(40)` floor.
+/// The fold handles such caller-supplied inverted bounds.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Span<A = Rigid> {
     /// The base length. Folded between the floor and the cap. **Its family is the span's.**
@@ -695,7 +696,7 @@ impl ScalePolicy {
         Self::default()
     }
 
-    /// A device operated with gloves or a stylus (`finger_mm = 13.0`).
+    /// A gloved-hand policy (`finger_mm = 13.0`).
     #[must_use]
     pub fn gloved() -> Self {
         Self {

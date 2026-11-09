@@ -102,8 +102,8 @@ pub enum FooterButton {
     ClearAll,
     /// Lock the session ([`LaunchAction::Lock`](crate::LaunchAction::Lock)).
     Lock,
-    /// Open `settings.home` — which exists only if the integrator registered the built-in settings
-    /// screens ([`settings::add_all`](crate::settings::add_all)).
+    /// Open `settings.home`. Register that destination using the built-in settings
+    /// helpers or an application-owned screen with that ID.
     Settings,
 }
 
@@ -715,7 +715,7 @@ impl Overlay {
             };
         }
         let cols = self.tile_columns as f32;
-        // Never narrower than the tile row at one touch target a tile.
+        // Preferred tile-row width; card::rest can reduce it to the available screen width.
         let gap = panel::tile_gap(&theme.metrics);
         let min_w = cols * theme.metrics.touch_target + gap * (cols + 1.0) + style.extra * 2.0;
         // A split card fills the height: from under the status bar down to its

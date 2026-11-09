@@ -1,7 +1,7 @@
 //! Quick-settings tiles. The built-in `tile.*` and the integrator's
 //! `tile(id, kind)` declarations.
 //!
-//! Tiles are filtered by their gate (`tile.<name>`), and a `Locked` one gets a
+//! Tiles are filtered by their declared gate (the declaration ID by default), and a `Locked` one gets a
 //! padlock badge and an unlock prompt on tap. A tap goes through `Shell::launch` as a
 //! [`crate::LaunchAction`] — a `Toggle(key)`'s gate is the key name, so it is checked twice
 //! (the render filter is presentation; the shell enforces).
@@ -114,7 +114,7 @@ pub struct Gauge {
 }
 
 /// The default for [`Gauge::value_width`] as a multiple of the body type size — the width
-/// `100 %` fits in at any type scale (it was a fixed 56 du, which a larger scale overran).
+/// used for percentage readouts. Adjust it when the selected font or value format needs more room.
 pub(crate) const GAUGE_VALUE_EM: f32 = 3.5;
 
 impl Gauge {
@@ -188,11 +188,12 @@ pub struct QuickTile {
     pub gate: Gate,
     /// On or off (from config or code).
     pub enabled: bool,
-    /// **Where a long press goes** (without one, a long press goes nowhere).
+    /// **Explicit long-press destination**, overriding any registered built-in default.
     ///
     /// Holding the Wi-Fi tile to reach Wi-Fi settings, the way Android's quick settings do, is a
-    /// common expectation. Which screen that is, **only the integrator knows** (the crate has no
-    /// such screen id). Attached or not, the long press itself goes out as
+    /// common expectation. This is an explicit destination override; built-in tiles
+    /// otherwise use their built-in settings destination when that screen is registered.
+    /// With or without a destination, the long press itself goes out as
     /// [`ShellEvent::TileLongPressed`](crate::ShellEvent::TileLongPressed), so take that to do
     /// something other than opening a screen (a menu, a dialog).
     pub long_press: Option<LaunchAction>,
@@ -389,10 +390,10 @@ impl TileDecl {
     /// `lit_by` on one of those is ignored with a warning — two sources for one tile is a bug
     /// waiting to happen, not a feature.
     ///
-    /// **The key is a gate name** like every other setting, so with a
-    /// `[access] default_gate` in force the write is refused unless `[access.gates]` names the key
-    /// at a level the writer holds. A machine-state key is not something the person at the panel
-    /// sets, so give it the lowest level and leave it there.
+    /// **The setting key is also its write gate.** Legacy mode uses the configured
+    /// `[access.gates]` / `default_gate` level decision. Token mode requires an explicit
+    /// current grant for the key. Choose write authority according to who may publish
+    /// this application state; a display-state update is not an authority bypass.
     #[must_use]
     pub fn lit_by(mut self, key: impl Into<SettingKey>) -> Self {
         if matches!(self.tile.kind, TileKind::Toggle(_) | TileKind::Slider(_)) {
@@ -520,8 +521,8 @@ pub fn builtin(id: &str) -> Option<QuickTile> {
         kind,
         gate: Gate::from(id),
         enabled: true,
-        // A built-in tile leaves its destination empty too — a settings screen's id is the integrator's,
-        // not ours (the ladder: a crate that invents screen names leaves the integrator unable to change them).
+        // Leave the explicit override empty; builtin_long_press supplies a default
+        // only when its settings destination is registered.
         long_press: None,
         lit_by: None,
     })

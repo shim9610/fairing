@@ -82,10 +82,9 @@ fn closure_screen_fills_the_inset_pane_rect() -> fairing::Result<()> {
     h.frames(2);
     let content = h.shell.layout().content;
     // **Read from the live theme, not from `Metrics::default()`.** `screen_inset` resolves from
-    // `MetricsSpec` at the frame's scale since the control vocabulary's adoption step 4, so 12 is
-    // its `du` floor rather than its value — at the default gloved finger it is 20.47. What this
-    // test is about is that the screen gets the content rect shrunk by *the* inset, whatever the
-    // panel resolved it to, so it has to ask.
+    // `MetricsSpec` at the frame's scale, so 12 is its `du` floor rather than necessarily its
+    // resolved value. The test checks that the screen gets the content rect shrunk
+    // by the actual resolved inset, so it reads that value from the live theme.
     let inset = h.shell.theme().metrics.screen_inset;
     assert!(
         inset >= 12.0,

@@ -288,6 +288,9 @@ impl SessionController {
     /// Include inactive entries for permissions that can be granted later; adding a new gate
     /// or changing identity requires a new pair. No role ordering is imposed.
     ///
+    /// For a token installed in a shell, supply that shell's `Waker` so controller
+    /// updates request a UI pass. Installing the token does not replace this waker.
+    ///
     /// # Errors
     /// Duplicate gates, unrepresentable deadlines or exhausted identity space.
     #[allow(deprecated, reason = "fetch_update supports the declared MSRV")]
@@ -376,7 +379,8 @@ impl SessionController {
             Err(SessionError::Ended)
         }
     }
-    /// Terminally revoke this session and wake its consumer. Repeated calls are harmless.
+    /// Terminally revoke this session and request an update through the supplied
+    /// `Waker`. Repeated calls are harmless.
     pub fn revoke(&mut self) {
         self.inner.shared.revoke();
         self.waker.wake();

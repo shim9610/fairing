@@ -19,7 +19,7 @@
 //! | `shade_tile_painter` · `shade_panel_painter` (feature `overlay`) | Each quick-settings tile · the panel's ground |
 //! | [`lock_screen_painter`](ShellBuilder::lock_screen_painter) · [`unlock_prompt_painter`](ShellBuilder::unlock_prompt_painter) | The lock screen's ground and clock · the unlock prompt's backdrop and card |
 //! | [`recents_card_painter`](ShellBuilder::recents_card_painter) · [`recents_ground_painter`](ShellBuilder::recents_ground_painter) | Each recent screen's card · the ground under them |
-//! | [`widget_painters`](ShellBuilder::widget_painters) | Each kind of widget, wherever it is drawn — the shell's own screens and prompt included |
+//! | [`widget_painters`](ShellBuilder::widget_painters) | Painter-enabled Fairing controls using the supplied widget context |
 //! | [`gesture_handle_painter`](ShellBuilder::gesture_handle_painter) | Each gesture handle's strip, and the arrow while it is swiped |
 //! | [`slot_painter`](ShellBuilder::slot_painter) | Each desktop cell |
 //! | [`authenticator`](ShellBuilder::authenticator) | Who may unlock what — the shell draws whatever it asks for |
@@ -248,7 +248,7 @@ impl ShellBuilder {
     ///
     /// # Errors
     /// Requires `access.session_tokens = true`. Untyped custom painters, layouts,
-    /// image loaders and wallpapers are rejected before any backend/authenticator
+    /// image loaders and procedural wallpapers are rejected before any backend/authenticator
     /// attachment or user hook execution. Use typed declarations for application UI;
     /// use `build` when unmediated host customization is intentional.
     pub fn build_protected(self, ctx: &egui::Context) -> crate::Result<super::ProtectedShell> {
@@ -555,8 +555,9 @@ impl ShellBuilder {
     }
 
     /// Inject a theme **whole**. `[shell] theme` (dark|light) and `[theme.palette]` are then
-    /// ignored (with a warning logged at startup) and this value is used as it stands — every
-    /// palette, metric and motion token.
+    /// ignored (with a warning logged at startup). This supplies the initial theme;
+    /// explicit metric/component/control/elevation specs can override its resolved values.
+    /// An explicit palette pair determines later dark/light toggles.
     ///
     /// The bar heights have a single source in `theme.metrics.{status_bar_height,
     /// nav_bar_height}`: [`build`](Self::build) puts those values into `StatusBar::height` and
@@ -595,8 +596,9 @@ impl ShellBuilder {
     /// The fonts to load. egui's `default_fonts` has no CJK glyphs, so Hangul
     /// comes out as □ — to use it, hand a font over here. The crate embeds no font of its own.
     ///
-    /// Installing happens **once**, in [`ShellBuilder::build`]. `set_fonts` rebuilds the font
-    /// atlas and is a heavy call, so it is not made from the frame loop.
+    /// Configured font definitions are installed in [`ShellBuilder::build`]. Startup
+    /// passes may rebind Fairing family names if the host replaces those definitions.
+    /// Avoid repeated definition changes during normal rendering, which can rebuild the atlas.
     ///
     /// ```no_run
     /// # fn main() -> fairing::Result<()> {
@@ -1028,6 +1030,7 @@ impl ShellBuilder {
     /// |---|---|---|
     /// | [`Preset::Base`](crate::theme::Preset::Base) | Neutral dark/light | A flat `Background` role |
     /// | [`Preset::Abyss`](crate::theme::Preset::Abyss) | The deep sea drawn from the manta art | The procedural deep sea (feature `brand`) |
+    /// | [`Preset::Linen`](crate::theme::Preset::Linen) | Warm neutral surfaces with a sage accent | A flat `Background` role |
     ///
     /// Without a configured or builder-selected art preset, the default uses a
     /// neutral palette and flat background rather than the manta and deep-sea art.
@@ -1161,9 +1164,9 @@ impl ShellBuilder {
         let theme_injected = theme.is_some();
         let metrics_spec = resolve_metrics_spec(metrics_spec, theme_injected, &config);
         let (theme, palettes) = resolve_theme(theme, palettes, &config)?;
-        // The fonts come first — `set_fonts` throws the font atlas and the galley cache away whole, so it
-        // is called once, before the style. It runs even for an empty set — binding the strong
-        // family (`fonts::STRONG_FAMILY`) is part of it, so strong text always has fallback faces.
+        // Install configured definitions before applying the style, including regular-face
+        // fallbacks for the strong family even when the supplied font set is empty.
+        // Startup frame checks can restore family names after host definition replacement.
         fonts.install(ctx);
         if !fonts.has_bold() {
             // egui's own face has one weight, so the titles come out flat and nothing on the
@@ -1470,7 +1473,7 @@ fn warn_ignored_theme_config(config: &ShellConfig) {
     }
 }
 
-/// Assemble the gesture engine (which keeps `build` under 100 lines — clippy `too_many_lines`).
+/// Assemble the gesture engine from motion tokens and gesture configuration.
 /// The values come from two places only: the motion tokens and `[gesture]`.
 fn gesture_engine(config: &ShellConfig, tokens: &crate::theme::MotionTokens) -> GestureEngine {
     GestureEngine::new(GestureTuning {

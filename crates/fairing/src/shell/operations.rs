@@ -10,8 +10,8 @@ impl Shell {
     ///
     /// # Errors
     /// Returns the backend's error, or `Other` when quarantine/fault containment
-    /// prevents execution. A command accepted asynchronously still completes via
-    /// the backend's normal polling/snapshot contract.
+    /// prevents execution. Observe asynchronously accepted work through the
+    /// backend's polling/snapshot contract.
     ///
     /// ```compile_fail
     /// fn command(shell: &mut fairing::ProtectedShell) {

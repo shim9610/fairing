@@ -134,7 +134,8 @@ impl ShellConfig {
     /// `default_gate` and `pin_table` are validated by
     /// [`crate::access::Access::from_config`], and the `[theme.palette]` role names and colour
     /// formats by [`ShellConfig::build_theme`] — each by whichever side knows those names. All
-    /// three are called at startup by [`crate::Shell::builder`].
+    /// three run during [`crate::ShellBuilder::build`] or
+    /// [`crate::ShellBuilder::build_protected`], not when merely creating the builder.
     ///
     /// # Errors
     /// [`Error::Config`] on a value out of range.
@@ -435,8 +436,8 @@ pub struct AbyssConfig {
     /// The quality tier.
     pub tier: AbyssTier,
     /// The scatter seed. **The composition does not move** — only the bubbles, fish and rocks
-    /// do; the manta formation, the ray count, the light position and the band heights are
-    /// authored constants.
+    /// do. Manta/ray counts and light position come from their other configuration
+    /// fields; formation curves and band heights use authored geometry.
     pub seed: u32,
     /// The god ray count (0..=16).
     pub rays: u8,
@@ -591,8 +592,8 @@ pub struct DesktopConfig {
     ///
     /// **There is no count limit**. Five is the phone convention, not a device
     /// requirement — twelve along the bottom of a 1920 bar panel is normal, and so is eight in a
-    /// left rail on 480×800. Cells shrink only once they fall below the physical minimum touch
-    /// size.
+    /// left rail on 480×800. Available dock length is divided between entries; a
+    /// crowded dock can have slots smaller than the resolved touch target.
     pub dock: Vec<String>,
     /// Which edge the dock attaches to: `"bottom"` (the default), `"top"`, `"left"` or
     /// `"right"`.
@@ -753,8 +754,9 @@ pub struct OverlayConfig {
     /// An unknown name warns and uses `"curtain"`.
     pub reveal: String,
     /// **A card's width as a share of the screen's** (`reveal = "card"`). Measured off One UI 8:
-    /// 0.445 of a tablet's width. It never goes below what the tile row needs at one touch
-    /// target per tile; and where the card would then cover more than three quarters of the
+    /// 0.445 of a tablet's width. Placement prefers enough width for one touch target
+    /// per tile, but the available screen width wins. Where the preference would
+    /// cover more than three quarters of the
     /// screen, leaving only a sliver of page beside it, it takes the whole width less its side
     /// insets instead — a phone's shade rather than a tablet's.
     pub card_width_ratio: f32,

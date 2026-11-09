@@ -3,17 +3,17 @@
 //! The frame order is a fixed contract.
 //! [`Shell::logic`] / [`Shell::logic_with`] can run state stages 1–4 plus eviction and
 //! lifecycle requests without drawing. The shell/state runners use them in `App::logic`;
-//! a following UI pass reuses that update and records only its fresh input activity.
+//! a matching UI pass reuses that update and records only its fresh input activity.
 //! Background calls use wall time and schedule state deadlines, leaving visual animation
 //! and gesture processing to UI passes.
 //!
 //! ```text
 //! Shell::frame(ui)
-//!  1. now / dt — now on the real time between frames, dt = stable_dt capped at 50 ms;
+//!  1. now / dt — shell monotonic time; animation dt = stable_dt capped at 50 ms;
 //!               revoke expired access and enforce overdue idle locks before commands or input
 //!               (changed declarations are rebuilt before queued icon updates)
 //!  2. handle.drain()        — the command queue, through mpsc try_recv (+ M2 notify/toast/dismiss/toggle_overlay)
-//!  3. services.poll()       — pin snapshots, reconcile pending Bool targets, gather next_wake
+//!  3. services.poll()       — poll backends, reconcile pending Bool targets, gather next_wake
 //!  4. access                — revalidate policy, record input, poll the authenticator
 //!  5. osk.update()          — current keyboard policy, bounds and reserved band (A5)
 //!     gestures.update()     — edge swipes and long presses (M2)
@@ -200,8 +200,7 @@ pub struct Shell {
     /// The integrator's painters for the recent screens' cards and ground (rung 5), lent
     /// to the workspace each frame.
     recents_painters: crate::workspace::RecentsPainters,
-    /// The integrator's widget painters (rung 5), lent to every widget the shell and its
-    /// screens draw.
+    /// The integrator's widget painters (rung 5), supplied to painter-enabled Fairing controls.
     widget_painters: fairing_widgets::widgets::WidgetPainters,
     /// The integrator's gesture handle painter.
     handle_painter: Option<crate::gesture::HandlePainter>,
@@ -247,7 +246,7 @@ pub struct Shell {
     heads_up: HeadsUp,
     /// The theme cross-fade (M2, A7).
     theme_fade: ThemeFade,
-    /// Set by [`Shell::theme_mut`]; the next frame re-applies the theme to egui's style.
+    /// Set by theme/metrics host operations; the next frame re-applies egui style.
     theme_dirty: bool,
     /// The hidden entry points. Registration order is kept — where several watch the same
     /// corner, the one registered first sees it first.
@@ -540,7 +539,8 @@ impl Shell {
         Self::builder(config).services(services).build(ctx)
     }
 
-    /// Add a declaration. It takes effect from the next frame. The same id is replaced — any open
+    /// Register a declaration immediately; derived desktop/tile state is rebuilt at an update.
+    /// The same id is replaced — any open
     /// instance is closed and each one raises a [`ShellEvent::ScreenClosed`] (so that an
     /// integrator can tidy up the replaced screen's external state).
     ///
@@ -1137,8 +1137,8 @@ impl Shell {
         self.gestures.set_tuning(tuning);
     }
 
-    /// The dark/light switch — it cross-fades the palette over 200 ms (A7). The `theme.dark` setting
-    /// and `tile.theme` come here.
+    /// The dark/light switch uses `motion.theme_fade` (200 ms by default).
+    /// The `theme.dark` setting and `tile.theme` come here.
     ///
     /// The target palette is chosen from the pair [`Shell::set_palettes`] settled. Where both sides of
     /// the pair are the same (the default when the theme was injected from code) the colours stay and

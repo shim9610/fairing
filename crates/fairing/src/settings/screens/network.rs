@@ -450,7 +450,7 @@ fn parse_static(
         dns,
     })
 }
-/// RFC 1123: one to 63 letters, digits and hyphens, not starting or ending with a hyphen.
+/// A single ASCII hostname label: 1–63 letters, digits or hyphens, with no hyphen at either end.
 fn valid_hostname(name: &str) -> bool {
     (1..=63).contains(&name.len())
         && !name.starts_with('-')

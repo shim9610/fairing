@@ -50,9 +50,9 @@ impl<T> Inbox<T> {
 /// assert_eq!(inbox.drain().next(), None);
 /// ```
 ///
-/// The blocking spellings are **not reachable**. `for msg in inbox` is the one a lint cannot ban
-/// (it desugars to `IntoIterator::into_iter`, which every `for` loop uses), so `Inbox` simply does
-/// not implement `IntoIterator`:
+/// The wrapper exposes no blocking receive spellings or receiver loan. The configured
+/// disallowed-method lint does not identify implicit `IntoIterator` calls in a
+/// `for` loop, so `Inbox` also omits that implementation:
 ///
 /// ```compile_fail
 /// use fairing::inbox::Inbox;

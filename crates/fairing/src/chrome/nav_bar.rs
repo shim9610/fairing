@@ -2,7 +2,8 @@
 //! integrator items) — and `Gesture`, a band with the home indicator, where the bottom edge's
 //! swipes are home, recents and the next task (the gestures are the shell's).
 //!
-//! An item keeps the minimum touch target (48 px) and its press feedback follows A7 —
+//! Built-in cells use the resolved touch-target metric, subject to available bar
+//! width. Their press feedback follows A7 —
 //! it answers on the first frame with the `pressed` tint, and the scale shrinks `1 →
 //! press_scale` and comes back on release. The scale value lives in the shell-owned
 //! [`crate::motion::AnimationStore`], so the repaint policy (`is_animating`) applies to it

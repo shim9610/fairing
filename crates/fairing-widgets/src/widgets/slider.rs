@@ -139,9 +139,9 @@ impl<'a> TouchSlider<'a> {
         }
     }
 
-    /// Set the track thickness directly (du). The default is `control.slider_track`, which
-    /// follows the gloved-hand policy, so **setting it directly breaks that link** — use it only
-    /// when one slider has to be thicker.
+    /// Set the track thickness directly in du, bypassing `control.slider_track`.
+    /// The default token is text-relative with a du floor; a direct override does
+    /// not follow changes to that specification.
     ///
     /// It is floored at three × `control.stroke_edge`: below that the mover has no body left
     /// between its two edges.

@@ -69,8 +69,8 @@ pub enum ShellEvent {
     /// The OSK was shown (true) or hidden (false) (M2, measured on the target).
     OskToggled(bool),
     /// A quick-settings tile was **long-pressed** (M2). If the tile carries a
-    /// `QuickTile::long_press` (feature `overlay`) the shell has already opened it —
-    /// take this event to do anything else (a menu, a dialog).
+    /// `QuickTile::long_press` (feature `overlay`), the shell also dispatches that action
+    /// through its gate. This event alone does not confirm that the target opened.
     TileLongPressed {
         /// The tile id.
         id: String,
@@ -113,7 +113,7 @@ pub enum ShellEvent {
     WifiNetworkTapped {
         /// The SSID that was tapped.
         ssid: String,
-        /// Whether the network is secured, so a PSK is needed.
+        /// Whether the network is marked secured; saved profiles and backend policy determine credentials.
         secured: bool,
         /// Whether the backend already reports a saved profile for it
         /// ([`WifiSnapshot::known`](crate::services::WifiSnapshot::known)).
@@ -160,8 +160,8 @@ pub enum ShellEvent {
     /// # }
     /// ```
     ///
-    /// Outside `prompt` mode, not taking it leaves the control drawn and pressing it doing
-    /// nothing. Where that is not what you want, take `"lock"` out of `[overlay] footer` and
+    /// In legacy mode without a built-in prompt, the host must handle the explicit request.
+    /// To omit that control, take `"lock"` out of `[overlay] footer` and
     /// `tile.lock` out of the tile list — the device chooses which controls exist.
     LockRequested,
     /// **Log out was asked for**.

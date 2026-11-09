@@ -39,7 +39,7 @@ struct Trailing<'a> {
 }
 
 /// How a row is set apart from its neighbours. The two travel together on a navigation list —
-/// `fairing_widgets::layout::list_item` badges every entry and bolds the selected one — and neither is set
+/// `fairing::layout::list_item` badges every entry and bolds the selected one — and neither is set
 /// on a content row, which is why they are one field rather than two loose flags.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 struct Emphasis {
@@ -515,7 +515,7 @@ impl ListRow {
 
     /// Draw it and time a long press as well ([`RowPress`]).
     ///
-    /// The engine's `fairing_widgets::gesture::Gesture::LongPress` reaches the quick
+    /// The engine's `fairing::gesture::Gesture::LongPress` reaches the quick
     /// settings tiles and the shade, not a row drawn inside a screen, and egui's
     /// `Response::long_touched()` only stands up where **real touch events** arrive — on a panel
     /// that passes touch through as the mouse it never fires at all. So the row times

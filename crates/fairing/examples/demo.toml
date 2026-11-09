@@ -53,8 +53,8 @@ icons2 = "viewer"
 # The screen the hidden entry point opens. **The gate is separate** — a successful knock still does not open
 # it at too low a level. The demo assigns viewer here; choose the product gate explicitly.
 service = "viewer"
-# The built-in settings screens. Mostly viewer, but **power and accounts stay maintainer** — a mis-touched
-# shutdown and editing accounts are not for anyone on a device: the levels are the integrator's to settle.
+# The listed settings screens are viewer in this demonstration. Unlisted gates,
+# including settings.credentials, retain the maintainer default.
 "settings.home" = "viewer"
 "settings.wifi" = "viewer"
 "settings.bluetooth" = "viewer"

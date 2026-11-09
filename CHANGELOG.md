@@ -67,6 +67,12 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Changed
 
+- Pre-release API evolution: configuration structs are non-exhaustive with
+  `Default`/`configure` construction; session grant fields use constructors and
+  getters. Session errors and declaration enums are non-exhaustive.
+- Remove `Shell::registry` and `ProtectedShell::shell`; use `observe` queries.
+  Runner functions and `Harness` now support both shell modes. See the migration guide.
+
 - `InstanceScreen::Owned` contains an opaque `ScreenHandle`; use
   `InstanceScreen::owned(screen)`. Factories are deferred to the first dispatched
   hook in both legacy and protected shells so their payload cannot escape the
@@ -127,14 +133,6 @@ for source changes, queue/display defaults and recovery behavior.
   retention is not globally bounded. No production fixed-heap or renderer IPC feature
   is provided; the allocator diagnostic is outside product dependency graphs.
 - Pin external CI actions to verified commit SHAs.
-
-### Changed
-
-- Pre-release API evolution: configuration structs are non-exhaustive with
-  `Default`/`configure` construction; session grant fields use constructors and
-  getters. Session errors and declaration enums are non-exhaustive.
-- Remove `Shell::registry` and `ProtectedShell::shell`; use `observe` queries.
-  Runner functions and `Harness` now support both shell modes. See the migration guide.
 
 ### Fixed
 
@@ -400,8 +398,9 @@ next to the generated geometry. See [third-party notices](THIRD_PARTY.md).
   receives pointer phases for presses that begin in it (`touch`, with a
   `RegionTouch` of the phase, the movement since the last frame, the velocity, the time held and
   whether it went past the slop) and draws it (`paint`). Part of a screen used as a trackpad is
-  one; the gesture handles are the shell's own. Nothing under a region sees its touches and no
-  shell gesture starts in it, while the emergency gesture still works through it. A region runs
+  one; the gesture handles are the shell's own. Region-owned pointer presses are routed away
+  from ordinary widgets and shell gestures; raw input remains available through egui.
+  The emergency gesture still works through the region. A region runs
   the shell's actions through `RegionCx::launch` and `launch_gated` and reaches the app's state
   with `RegionCx::app_mut`. The later of two overlapping regions, or of a region and a handle,
   takes the press. Up to eight (`MAX_GESTURE_REGIONS`); `remove_gesture_region` and

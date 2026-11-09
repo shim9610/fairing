@@ -134,11 +134,11 @@ Nothing stops you from connecting on every tap if that suits the machine.
 The application owns the password buffer. `connect` takes
 `psk: Option<&str>` and [`TextField`](04-customization.md) borrows a
 `&mut String`, so the buffer is yours from end to end — hold it in a zeroizing
-type if you want one, and reserve its capacity up front so growing it does not
-leave an unzeroed copy behind:
+type if you want one. Reserving capacity can reduce reallocations, but it neither
+limits input length nor prevents copies in egui, the allocator or the backend:
 
 ```rust,ignore
-let mut psk = zeroize::Zeroizing::new(String::with_capacity(64)); // WPA2 tops out at 63
+let mut psk = zeroize::Zeroizing::new(String::with_capacity(64)); // room for a 63-character WPA2 passphrase
 TextField::new(&mut psk).password(true).hint("Password").show(ui, &mut cx.widgets());
 ```
 

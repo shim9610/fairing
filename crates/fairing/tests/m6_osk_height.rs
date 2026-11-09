@@ -1,7 +1,8 @@
 //! **The keyboard's rows have a physical cap**. The height was only a share of the
 //! screen (`[osk] height_ratio`, 0.38) with a floor per row, so on a tall kiosk panel each row of
-//! keys grew to the size of a palm. Now no row is taller than `metrics.osk_max_key`, and the floor
-//! (`[osk] min_key_px`) still wins where the two cross.
+//! keys grew to the size of a palm. Default rows are capped by `metrics.osk_max_key`,
+//! unless the configured `min_key_px` floor is larger; available screen space still
+//! bounds the keyboard.
 #![cfg(feature = "osk")]
 
 use fairing::testing::{single_level_access, Harness};

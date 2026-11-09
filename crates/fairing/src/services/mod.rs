@@ -161,12 +161,12 @@ pub trait Backend {
     /// Given when the backend is installed, at startup or replacement. A worker can
     /// use it to request an update when the backend state changes.
     fn attach(&mut self, _waker: Waker) {}
-    /// Every state update (a UI frame or a logic-only tick): drain the channel with
-    /// `try_recv` and refresh the `latest` snapshot, on the event-loop thread.
+    /// Refresh backend state on each UI or logic-only state update, without blocking.
+    /// Channel-backed implementations can drain messages with `try_recv` into a cached snapshot.
     fn poll(&mut self) {}
     /// What frame stage 3 actually calls. `now` is the shell's monotonic time
-    /// ([`crate::Shell::now`]) — headless it is virtual time (1/60 s at a step), so a
-    /// time-dependent backend (a simulated scan delay, say) can be tested with no `sleep`.
+    /// ([`crate::Shell::now`]). Frame-only headless hosts can supply virtual input time,
+    /// allowing time-dependent simulations without `sleep`.
     /// The default delegates to [`Backend::poll`]. A backend that watches the
     /// clock should implement this using the supplied time rather than `Instant::now()`.
     fn poll_at(&mut self, _now: Instant) {
@@ -594,8 +594,8 @@ pub trait NetworkBackend: Backend {
             .collect();
         (!wired.is_empty()).then(|| wired.contains(&true))
     }
-    /// Change how an interface is addressed. Returns at once; the change shows in a later
-    /// [`NetworkBackend::interfaces`].
+    /// Request an addressing change without blocking. Observe the reported configuration
+    /// through [`NetworkBackend::interfaces`].
     ///
     /// # Errors
     /// [`ServiceError`] if the backend does not support it (`Unsupported`) or it fails.

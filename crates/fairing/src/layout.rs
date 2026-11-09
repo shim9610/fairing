@@ -168,7 +168,7 @@ impl Deco {
         }
     }
 
-    /// **Which of the three container kinds this is** — see [`Container`].
+    /// Select a container presentation kind — see [`Container`].
     ///
     /// It sets the fill, the edge, the radius and the elevation together, and every explicit knob
     /// on this builder still wins over it, so `Deco::new().container(Container::Outlined).fill(..)`
@@ -467,7 +467,6 @@ const SLIDER_VALUE_WIDTH: f32 = 1.15;
 const SLIDER_PAD: f32 = 0.08;
 /// The gap between the columns of a one-line layout (relative to the row height).
 const SLIDER_COL_GAP: f32 = 0.20;
-/// The switch's width = its height × this. The same ratio as `widgets::Switch` — a purely visual
 /// The title column's cap (relative to the row height). Wider than this leaves open ground behind a short title.
 const SLIDER_LABEL_MAX: f32 = 2.4;
 /// The share of the height left over that goes **above** when [`Grid::fill_height`] hits its cap. 0.5 is dead centre.
@@ -986,10 +985,11 @@ impl<'a, T> Grid<'a, T> {
 
     /// Expand cell height into available vertical space, with an aspect-ratio cap.
     ///
-    /// `cell_rows` remains the lower bound. The supplied ratio caps height relative to
-    /// cell width. If space remains beyond the cap, the grid is centred vertically.
-    /// Values at or below zero disable this option. The ratio cap also bounds cells
-    /// when the parent reports an unbounded available height.
+    /// `cell_rows`, or the `cell_height` callback when supplied, sets the lower bound.
+    /// The ratio caps height relative to cell width only when that cap is at least
+    /// the lower bound; otherwise the lower bound wins. Remaining vertical space is
+    /// split according to the alignment token. Values at or below zero disable this
+    /// option. The same cap/floor rules apply to unbounded available height.
     ///
     /// ```no_run
     /// # fn draw(ui: &mut egui::Ui, cx: &mut fairing::Cx<'_>) {

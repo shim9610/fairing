@@ -1,8 +1,10 @@
 //! The bar painter hooks — the integrator draws the status bar or the nav bar **wholesale**.
 //!
 //! What the shell keeps: the bar rect (layout and edge zones), the gate decision, tap events on
-//! the bar itself, and visibility per the chrome policy (`Hide` / `Overlay`). What the painter
-//! is handed is **the drawing, and nothing else**. With a painter installed the built-in render
+//! the bar itself, and visibility per the chrome policy (`Hide` / `Overlay`). The
+//! painter receives a `Ui` and [`BarCx`] for its custom drawing and widgets.
+//! This ordinary-host hook retains its documented application/backend access.
+//! With a painter installed the built-in render
 //! (`StatusBar::ui` / `NavBar::ui`) is never called.
 //!
 //! ```no_run
@@ -36,8 +38,9 @@ pub enum BarKind {
 }
 
 /// One bar item. An element of the list the shell hands over **with the gate already decided** —
-/// the painter chooses the layout and the drawing, and takes "who may see this" exactly as the
-/// shell (and `[access.gates]`) decided it.
+/// the painter chooses the layout and drawing. Use [`BarItem::live`] to respect the
+/// shell's enabled/gate decision when rendering and handling an item. The ordinary
+/// painter itself is trusted application code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BarItem<'a> {
     /// The declaration id (`"status.clock"`, `"back"`, an integrator id, …).

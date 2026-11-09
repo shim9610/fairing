@@ -24,7 +24,7 @@ pub struct Options {
     pub fullscreen: bool,
     /// The window title, used by the window manager where titles are displayed.
     pub title: String,
-    /// The window size (windowed mode, `--size`). Without it, the runner's default.
+    /// The window size in windowed mode. Without it, the runner's default.
     pub size: Option<(f32, f32)>,
 }
 
@@ -52,7 +52,8 @@ fn native_options(options: &Options) -> eframe::NativeOptions {
     }
 }
 
-/// Open a fullscreen window and call `app` for each UI pass. Returns when the window closes.
+/// Open a window using `options` and call `app` for each UI pass.
+/// Fullscreen is the default; returns when the window closes.
 ///
 /// # Errors
 /// [`Error::Runner`] if creating the window or initialising the graphics context fails.

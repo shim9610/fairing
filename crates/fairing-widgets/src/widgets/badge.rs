@@ -14,7 +14,7 @@ use egui::{Color32, CornerRadius, Rect, Response, Sense, Stroke, StrokeKind, Vec
 /// Badge content, borrowed from the caller where it is text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BadgeValue<'a> {
-    /// A number. Over `control.badge_max` it reads `99+`.
+    /// A number. Above `control.badge_max`, displays `<max>+` (`99+` by default).
     Count(u32),
     /// A mark with no number — "something, and it does not matter how many".
     Dot,

@@ -330,9 +330,9 @@ impl<'a> ProgressRing<'a> {
         from: f32,
         to: f32,
     ) {
-        // **Cached against what it depends on.** A ring that is not moving rebuilds nothing; a
-        // moving one rebuilds once per frame. `to` is quantised to a step around the circle so the
-        // eased value's last few thousandths do not defeat the cache.
+        // Reuse the mesh only while its geometry, fill colour, arc bounds and style key
+        // match. Layout or theme changes can rebuild it without progress changing;
+        // quantized arc bounds let some small progress changes reuse the same mesh.
         let key = CacheKey {
             center: geom.center.round(),
             radius: geom.radius.round(),
@@ -924,10 +924,9 @@ mod tests {
             .count()
     }
 
-    /// **No two triangles of a capped band cover the same point.** The tail is translucent, and
-    /// a cap drawn as a whole disc over the band's end painted its start twice — a darker
-    /// half-moon at twelve o'clock, on the console's own ring. With a halo the band sits over it
-    /// by design, so two is the ceiling there and three (the old cap) is the defect.
+    /// Check overlap counts at a tail-cap point and a grid of more than 5,000 sample
+    /// points for the supplied band geometry. Flat paint permits one covering triangle;
+    /// adding the halo permits two. This catches the former whole-disc cap overlap.
     #[test]
     fn a_capped_band_paints_no_point_twice() {
         let geom = Geometry {

@@ -6,8 +6,9 @@ screens at all.
 
 The examples below use ordinary `Shell`. With `ProtectedShell`, wrap custom
 screen/action/status/nav/tile declarations in `Protected::new(value, declaration)`;
-the library checks their token requirements before dispatch. Untyped global painter
-hooks are rejected. Use [typed elements](../session-tokens.md#typed-permission-requirements)
+the library checks their token requirements before dispatch. Level-assignment recipes using
+`[access.gates]` below describe the default legacy policy; token mode instead needs explicit
+issuer grants. Untyped global painter hooks are rejected. Use [typed elements](../session-tokens.md#typed-permission-requirements)
 for custom protected drawing.
 
 There are three ways to work with an ordinary shell.
@@ -82,8 +83,8 @@ clock_format = "hm"
 
 Placement works like this: the left slot fills from the left edge, the right slot fills backwards
 from the right edge, and the center slot is centred in what is left. Side padding is
-`theme.metrics.status_edge_pad` (12 du) and the gap between items is fixed at 10 du (`SPACING`
-in `chrome/status_bar.rs`).
+`theme.metrics.status_edge_pad` (12 du). The item gap is
+`theme.components.status_bar.item_gap` (10 du by default), configurable through `ComponentSpec`.
 
 When the width runs out, items collapse. Lowest `priority` first; ties collapse from the right
 slot. The last remaining item stays even if it overflows.
@@ -103,9 +104,10 @@ and the bar still draws and presses the items where it says
 | Turn the whole bar off | `[status_bar] enabled = false` |
 | Hide it on one screen | `ChromePolicy::status_bar = BarMode::Hide` ([02 Screens](02-screens.md)) |
 
-A gate name is the item id. In a config with `default_gate = "top"`, not assigning
-`status.clock` makes the clock disappear entirely — which is why status bar items are usually
-assigned to `bottom`.
+By default, an item uses its id as its gate name; `.gate(..)` or an owned item spec can
+override it. Under the legacy `LevelPolicy`, an unassigned `status.clock` with
+`default_gate = "top"` is hidden from sessions below that level. Assign a lower level
+when the clock should be visible to those sessions.
 
 ### 1.4 Adding your own item
 
@@ -153,7 +155,8 @@ Taps are the closure's own widgets' business. The only thing the shell handles f
 |---|---|
 | Empty space with no item | With `tap_opens_shade = true`, the shade toggles |
 | `status.notifications` | Opens the shade |
-| Any other built-in item | Nothing |
+| `status.lock` | Requests logout |
+| Other built-in items with their default specs | Nothing; `StatusItemSpec::tap_action` can override this |
 | Your own item | The widgets inside your closure take it |
 
 ---
@@ -288,14 +291,12 @@ fn handle(shell: &mut Shell) {
 }
 ```
 
-Outside `prompt` mode, locking and logging out are not carried out by the shell — what "locked"
-is on your device, and which subject "logged out" is, are yours. `shell.handle().set_subject(..)`
-is the lever when they mean an access level. The shade does close itself first on a lock, so that
-whatever you open is visible.
+In legacy mode without a usable prompt, explicit lock/logout requests are left to the host;
+`set_subject(..)` can select a legacy subject. Ignoring those requests leaves their host-owned
+action unimplemented. In token mode, local detachment happens even when the host ignores the
+event, and `set_subject` cannot authorize a replacement token session.
 
-Not taking an event leaves the control drawn and the press doing nothing, which is the same
-contract as a Wi-Fi row tap. Where that is not what you want, take the control out of the list:
-`[overlay] footer`, `[nav_bar] items`, `[overlay] tiles`.
+Remove unwanted controls from their configured footer, tile or custom nav lists.
 
 ### 2.5 Adding your own item
 
@@ -324,6 +325,9 @@ fn add_keyboard_item(shell: &mut Shell) {
 [nav_bar]
 items = ["back", "home", "kbd"]
 ```
+
+`settings.keyboard` in this example is an application-defined screen: register it before
+opening it. To toggle the built-in OSK instead, use the special `osk` item in §6.3.
 
 The shell draws press tint and scale for built-in items only. Your own item makes its own with
 `cx.animate(..)`.
@@ -369,8 +373,8 @@ the bottom edge takes the buttons' work:
 - **Lifecycle**: the screen on show is `Paused` when a lift or a slide begins, and `Resumed` if
   it comes back; one that goes is `Stopped`, and the task that came in is `Resumed`.
 
-The shell has no other way into the recent screens in this style; `LaunchAction::OpenOverview`
-and `ShellHandle::launch` still reach them.
+This style has no built-in recents button. Application controls and gesture handles can still
+request `LaunchAction::OpenOverview`, directly or through `ShellHandle::launch`.
 
 ---
 
@@ -556,7 +560,7 @@ There are nine `Wallpaper` variants.
 | `Wallpaper::Fixed(Color32)` | A fixed colour | `wallpaper = "#101418"` |
 | `Wallpaper::Gradient { top, bottom }` | Two colours, vertical | not available (code only) |
 | `Wallpaper::Texture { id }` | An `egui::TextureId` — **stretches** | not available (code only) |
-| `Wallpaper::TextureFit { id, source_size, fit }` | Keeps the aspect but **does not hold the handle** | not available (code only) |
+| `Wallpaper::TextureFit { id, source_size, fit }` | Uses the source size and `Fit` (`Cover` / `Contain` preserve aspect; `Stretch` does not); **does not hold the handle** | not available (code only) |
 | **`Wallpaper::owned(texture, fit)`** | **Holds** the handle. Normally the one you want | `wallpaper = "file:…"` (needs a loader) |
 | `Wallpaper::Painter(Box<dyn Fn(&Painter, Rect)>)` | Procedural drawing | not available (code only) |
 | `Wallpaper::ThemedPainter(..)` | Procedural drawing that receives the theme | `wallpaper = "abyss"` (the one built-in) |
@@ -677,7 +681,7 @@ it takes the unread notification count to zero and absorbs any heads-up banner i
 | `tile.wifi` | `Toggle` | `wifi.enabled` | State comes from the backend snapshot |
 | `tile.bluetooth` | `Toggle` | `bluetooth.enabled` | State comes from the backend snapshot |
 | `tile.brightness` | `Slider` | `display.brightness` | Dimmed when the backend returns `None` |
-| `tile.volume` | `Slider` | `audio.volume` | An in-memory value in M2 (0.5 by default) |
+| `tile.volume` | `Slider` | `audio.volume` | Uses backend volume when `VOLUME` is reported; without that capability, uses the stored setting or 50% when absent. A capable backend returning no volume makes it unavailable |
 | `tile.lock` | `Action` | `LaunchAction::Lock` | |
 | `tile.theme` | `Toggle` | `theme.dark` | A 200 ms palette crossfade |
 | `tile.airplane` | `Toggle` | `radio.airplane` | |
@@ -705,7 +709,7 @@ peek_ms = 2000
 | `tiles` | The six above | Tile ids in order. A `tile()` declaration not listed here goes at the end |
 | `tile_columns` | `6` | Tiles per row. Zero is a config error at startup |
 | `footer` | The three above | The footer buttons, left to right. `[]` draws none of them |
-| `max_height_ratio` | `0.85` | Maximum shade height = `min(content, ratio × screen)` |
+| `max_height_ratio` | `0.85` | Unified: `min(content height + hidden-status-bar allowance, ratio × screen height)`. Split fills the available shade room |
 | `peek_ms` | `2000` | How long a peeked hidden status bar stays revealed |
 
 The card shade (`reveal = "card"`, `card_width_ratio`, `card_anchor`, `card_glass`, `card_relief`),
@@ -768,9 +772,9 @@ fn add_heater_tile(shell: &mut Shell) {
 | `.long_press(LaunchAction)` | none (built-in tiles have the pairings in §4.4d) |
 | `.lit_by(key)` | none — lights a tile that is not a switch, below |
 
-The setting key of a `Toggle` or `Slider` is checked twice. The render filter looks at the tile's
-gate, and the actual write makes the shell check the key name's gate again. So making `tile.wifi`
-visible means assigning **both** `tile.wifi` and `wifi.enabled`.
+A `Toggle` or `Slider` has separate display and write requirements. The tile gate controls
+its allowed/locked presentation; a setting write checks the setting key's gate. Permitting
+`tile.wifi` does not itself permit changing `wifi.enabled`: grant both for an interactive toggle.
 
 #### Lighting a tile that is not a switch
 
@@ -845,7 +849,7 @@ so that icons do not stand at four different sizes.
 | What you put in | How | Spec |
 |---|---|---|
 | A built-in icon | `icon::GAUGE` (the `fairing::icon` constants) | — |
-| **Your own vector icon** | `icons.register(IconDef { name, segs, fill })` → `IconRef::Custom(id)` | **A 24 × 24 grid**; coordinates must not leave it. Stroke width is 2.0 on that grid and scales with the size |
+| **Your own vector icon** | `icons.register(IconDef { name, segs, fill })` → `IconRef::Custom(id)` | **A 24 × 24 design grid**; keep coordinates and stroke extent within the intended icon area. Runtime registration does not enforce those bounds. Stroke width is 2.0 on that grid and scales with the size |
 | A bitmap | `IconRef::Texture { id, tint }` | An egui texture id. `tint = true` dyes it the icon colour; `false` keeps the source colours (logos, photos) |
 | A glyph or emoji | `IconRef::Glyph("⚑".into())` | It has to exist in the fonts you installed — otherwise □ |
 | A drawing callback | `icons.register_painter(..)` → `IconRef::Custom(id)` | Draws directly into the rect the shell gives it. For icons whose shape depends on state |
@@ -977,8 +981,9 @@ Only if that screen is actually registered — exclude it with `SettingsConfig::
 `settings` feature, and it goes nowhere.
 
 Whether or not a detail screen is attached, a recognized long press is reported as
-`ShellEvent::TileLongPressed { id }`. Take that if you want a menu or a dialog instead of a
-screen. A locked tile goes nowhere on a long press — the unlock prompt is raised on taps only
+`ShellEvent::TileLongPressed { id }`. The event can drive a menu or dialog, but it does not
+veto the paired action: override the tile's `.long_press(..)` action when replacing that
+behavior. A locked tile goes nowhere on a long press — the unlock prompt is raised on taps only
 (raise it on a mere press-and-hold and it is easy to summon by accident). A press consumed by a
 long press **does not emit a tap** on release: otherwise Wi-Fi would turn off *and* the settings
 screen would open.
@@ -1127,8 +1132,9 @@ fn spawn_update_worker(shell: &Shell) {
                     .persistent(),
             );
         }
+        // Replace the same item without persistent(), so the completed result can be dismissed.
         handle.notify(
-            Notification::new(NotificationId::of("update.done"), "Update complete")
+            Notification::new(NotificationId::of("update"), "Update complete")
                 .source("update")
                 .level(Level::Success),
         );
@@ -1259,6 +1265,9 @@ fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
         .build(ctx)
 }
 ```
+
+| Key | Default | Meaning |
+|---|---|---|
 | `layout` | `"qwerty"` | `"qwerty"`, `"numpad"` or `"hangul"` (`"ko"` too). An unknown value warns and uses qwerty |
 | `numpad_decimal` | `true` | A `.` key on the numpad |
 | `numpad_sign` | `false` | A `-` key on the numpad |
@@ -1783,21 +1792,20 @@ shell.add_gesture_handle(
   it to the glass's very end instead, over a bar where one shows.
 - **It fits the keyboard.** While the on-screen keyboard is up, the side strips end above the keys
   and `along` is measured over what is left, and a bottom strip stands aside: the keys lie where
-  it was. They keep off the keys while it slides, too: from the moment it starts coming up they
-  end where the keys will stop, and on its way down they end above the keys still showing. Two
-  limits remain, both because egui senses a strip's guard where it was a frame before. For the
-  first two frames after the keyboard starts to appear, about 33 ms at 60 Hz, a press on the outer
-  2 mm of a key that reaches a side strip, such as `⌫` or the numeric keypad's right column, can
-  still go to the handle. On the very frame the keyboard comes up again after the first time,
-  about 17 ms, a press on the lower edge of the space bar, where a bottom strip lies, can too. A
-  strip shown with `visible(true)` is likewise drawn over the keys for the keyboard's first frame.
+  it was. Placement reserves the keyboard's target band while it comes up and the visible band while
+  it goes down. egui still uses previous-pass widget hits, so boundary input during geometry
+  changes has the limitations described in §9.3. The regression fixtures sample side-key taps
+  at updates 3–8 and bottom-key taps at updates 1–8 after focus. Those are test coverage ranges,
+  not measurements of how many earlier updates lose input or a bound on transition latency.
 - **Over a screen or the desktop only.** Not over the shade, the unlock prompt or the recent
   screens, not on a screen with `edge_guard`, and not with `[gesture] enabled = false`. There the
   strip is not there at all, and a press at the edge reaches the screen: a screen that needs its
   very edge sets `edge_guard`.
 - **Completion emits an event.** `ShellEvent::Gesture { handle, gesture }` comes out when one
   completes, gate or no gate. With a gate the session does not pass, `AccessEvent::UnlockRequested`
-  follows, the unlock prompt comes up, and the action runs once the gate is passed.
+  follows. The configured authentication flow handles the request (a prompt is not guaranteed
+  in routing mode or without prompt methods). On a matching accepted response, the action is
+  retried through its own admission checks.
 - **Nothing follows the finger but an arrow** that says which gesture the swipe is. The built-in
   one is a disc ahead of the finger, lit in the accent once the swipe counts and runs something,
   ringed while a rest makes it long. `ShellBuilder::gesture_handle_painter` draws it your way
@@ -1881,8 +1889,8 @@ screen reads the same `Pointer` through `cx.app::<Pointer>()` and draws it.
   long it has been held, and whether it has gone past the slop (`moved`): a touch let go before
   it moved is a tap. A press let go within one frame is heard whole, `Started` then `Ended`.
 - **A region runs the shell's actions** with `cx.launch(action)`, and `cx.launch_gated(action,
-  gate)` puts a gate in front: a session that does not pass it gets the unlock prompt. The
-  actions run once the region has heard the touch. `cx.app::<T>()` and `cx.app_mut::<T>()`
+  gate)` puts a gate in front: a failed check requests authentication through the configured
+  prompt or routing flow. The actions run once the region has heard the touch. `cx.app::<T>()` and `cx.app_mut::<T>()`
   reach the app's state, and `cx.ctx()` the egui context, for what else the input holds, such
   as a second finger.
 - **Where regions overlap, the one added later is on top** and takes the press. That holds for

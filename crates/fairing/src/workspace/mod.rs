@@ -6,7 +6,8 @@
 //! (`Order::Background`) on a different `LayerId`, and through a transition the layer is moved
 //! whole with `Context::set_transform_layer` and faded with `Ui::set_opacity`.
 //! The workspace supplies these transforms around the screen callback. It reuses
-//! a finite set of layer IDs by pane/stack slot rather than issuing one per instance.
+//! layer IDs by pane/stack slot rather than issuing one per instance. The number used grows
+//! with stack depth; pane slot ranges are disjoint only below the `PANE_SLOTS` depth boundary.
 //! Transform and opacity handling use egui's
 //! [Context](https://docs.rs/egui/0.37.0/egui/struct.Context.html) and
 //! [Ui](https://docs.rs/egui/0.37.0/egui/struct.Ui.html) APIs.

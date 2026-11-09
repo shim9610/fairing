@@ -3,8 +3,8 @@
 //! The selected face moves between cells using `motion.switch`. Cells share a
 //! width and use `metrics.touch_target` as a minimum. When the options do not fit
 //! the available strip, the control uses stacked `ListRow` choice rows instead of
-//! shrinking or truncating the labels. Check the resulting layout in the available
-//! pane, with the actual translated labels.
+//! reducing cell width below the strip requirements. Stacked rows still elide labels
+//! that exceed their available width. Check the layout with the actual translated labels.
 
 // UI geometry: a segment count of at most four and pixel values crossing to f32. The loss is
 // meaningless in this range, so the cast lints are lifted for the whole file (the rest of the pedantic set stays).
@@ -103,8 +103,8 @@ impl<'a> SegmentedControl<'a> {
         if cell < crate::theme::control_height(&cx.theme.metrics, &cx.theme.control) {
             return None;
         }
-        // The label is kept `control.gap` clear of the cell's edges: it is the hand-family gap
-        // token, and two labels in adjacent cells must not read as one word.
+        // Keep labels control.gap clear of cell edges. This shared gap is
+        // text-relative; touch-target width is checked separately.
         let room = cell - 2.0 * c.gap;
         let painter = ui.painter();
         for label in self.labels {

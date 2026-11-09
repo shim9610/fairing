@@ -464,10 +464,9 @@ pub enum Expect {
     OskDown,
 }
 
-/// Every text painted this frame, with where on the glass — what [`Act::TapText`] and
-/// [`Expect::Text`] look through. The shell has drawn by the time the script runs in a frame, so
-/// this reads the frame being built. A text clipped away whole (scrolled out of its area) is left
-/// out: it is not on the glass, so a finger cannot land on it.
+/// Text-shape strings and clipped bounds from the frame being built, used by named
+/// tour targets and [`Expect::Text`]. Fully clipped shapes are omitted. This checks
+/// shape/clip intersection, not pixel visibility, contrast or occlusion by later layers.
 pub fn drawn_texts(ctx: &egui::Context) -> Vec<(String, egui::Rect)> {
     let mut layers = vec![egui::LayerId::background()];
     ctx.memory(|m| {

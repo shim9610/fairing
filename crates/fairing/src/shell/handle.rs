@@ -36,10 +36,10 @@ pub enum Command {
     Back,
     /// Home.
     Home,
-    /// For an integrator applying the result of their own authentication.
+    /// Trusted legacy subject replacement; token mode detaches authority instead.
     SetSubject(Subject),
-    /// Log out — the same as [`LaunchAction::Logout`]: dispatch emits a request, and carries it out (back to
-    /// the starting subject) where the shell draws its own prompt.
+    /// Log out as [`LaunchAction::Logout`]: token mode detaches local authority; legacy
+    /// prompt mode resets to the starting subject. Dispatch also emits the host request.
     Logout,
     /// An icon badge.
     SetBadge {
@@ -144,7 +144,8 @@ impl ShellHandle {
     /// A failed factory releases its reservation without logging or waking the UI.
     ///
     /// # Errors
-    /// Queue full/closed or the factory's own error. A rejected factory is not invoked.
+    /// Queue full/closed or the factory's own error. A failed initial reservation skips
+    /// the factory; a previously reserved factory may still run after receiver close.
     pub fn try_send_fallible_with<E>(
         &self,
         make: impl FnOnce() -> Result<Command, E>,
@@ -270,7 +271,7 @@ impl ShellHandle {
         });
     }
 
-    /// A notification, from any thread. A new one shows briefly as a heads-up and then goes into the shade.
+    /// Queue a notification from any thread. Retention and heads-up display follow shell policy.
     pub fn notify(&self, notification: Notification) {
         self.post_with(|| Command::Notify(notification));
     }

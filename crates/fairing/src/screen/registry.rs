@@ -1,8 +1,8 @@
 //! The declaration registry — the store behind `shell.add(decl)` and `shell.remove(id)`.
 //!
 //! Adding the same id again replaces it. Removing takes the related icons and items with it and
-//! closes open screens (ending an instance is done by `Shell` on the next frame, when it sees
-//! the registry changed).
+//! closes open screens (ending an instance is done by `Shell` on its next state update, when it
+//! sees the registry changed).
 
 use super::{ActionDecl, DesktopPlacement, ScreenDecl, ScreenSource};
 use crate::chrome::NavItemDecl;

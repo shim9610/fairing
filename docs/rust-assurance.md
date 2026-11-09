@@ -16,7 +16,7 @@ before checking out or building code. A failed, canceled or skipped `inputs` job
 therefore makes these checks fail rather than silently skipping them. Configure
 `inputs` itself as a required check as well when maintaining repository rules.
 
-Native test ownership is split between jobs: UI histories run their 17 widget
+Native test ownership is split between jobs: UI histories run their 18 widget
 tests and one deadline test; the general assurance job runs the other 58 tests.
 The UI job owns three mutation controls, and the general control job runs the
 other 40, including protected construction, callback-store isolation, nested wallpapers,

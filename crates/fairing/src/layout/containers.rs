@@ -540,7 +540,8 @@ pub(super) fn columns_for(avail: f32, min_cell: f32, gap: f32) -> usize {
     }
     cols
 }
-/// `usize` → `f32`. The column count is 12 or under, so it is exact.
+/// Convert layout counts to `f32`. Column counts are capped at 12; row counts
+/// depend on item count and can lose precision when sufficiently large.
 #[expect(clippy::cast_precision_loss, reason = "at most 12 columns")]
 pub(super) fn f32_from(value: usize) -> f32 {
     value as f32

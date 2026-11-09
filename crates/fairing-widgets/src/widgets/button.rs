@@ -22,14 +22,14 @@ use std::time::Duration;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum ButtonKind {
-    /// Ordinary button: `SurfaceVariant` face, `Muted` edge and `OnSurface` label.
+    /// Ordinary button: translucent `OnSurface` face, `ControlEdge` boundary and `OnSurface` label.
     ///
     /// The edge distinguishes the button when its face matches its container.
     #[default]
     Normal,
     /// Filled kind: `Primary` face, no separate edge, and `OnPrimary` label.
     Primary,
-    /// Destructive-action styling: `SurfaceVariant` face and `Danger` edge/label.
+    /// Destructive-action styling: translucent `OnSurface` face and `Danger` edge/label.
     /// Use [`BigButton::long_press`] when the application requires a hold interaction.
     Danger,
 }
@@ -477,8 +477,9 @@ struct Hold {
     scale: f32,
 }
 
-/// The long press: linear `0 → 1` while held, with an 80 ms reverse on release. On the completing
-/// frame it reports `completed` once and the ring pops `0.9 → 1.1 → 1`.
+/// Hold progress is linear over the supplied duration. Release reverses it with
+/// `motion.press_release`; completion is reported once and the ring's `0.9 → 1.1 → 1`
+/// pop uses `motion.press`.
 ///
 /// The progress itself is [`Cx::animate`](crate::cx::WidgetCx::animate), but the "armed →
 /// reported" step is a flag rather than an animation, so it lives in egui's store per widget id.

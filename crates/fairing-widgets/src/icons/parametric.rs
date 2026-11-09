@@ -59,7 +59,7 @@ pub struct ParamStyle {
     pub muted: Color32,
     /// The danger colour (a battery at 20 % or below).
     pub danger: Color32,
-    /// The stroke in pixels.
+    /// The stroke in egui points (du).
     pub stroke_px: f32,
 }
 

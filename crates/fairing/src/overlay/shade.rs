@@ -9,7 +9,7 @@
 //! Pressing during `Settling` returns to `Dragging` (at the current y, with v = 0 —
 //! [`Shade::begin_drag`] freezes it where it is). On release: it commits to open at
 //! `y ≥ H × snap_ratio` or `v ≥ +fling`, and to closed at `v ≤ −fling` or below the threshold.
-//! The spring is k 400, c 40, with the finger's velocity as the initial one. Under `reduce` it
+//! The default spring is k 400, c 40, with the finger's velocity as the initial one. Under `reduce` it
 //! settles the instant it is released (still following the drag).
 //!
 //! **How `Open` is decided**: `Settling → Open/Closed` stays

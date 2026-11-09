@@ -408,7 +408,7 @@ fn power_confirm(
     );
     ui::group_with(ui, cx, ui::Deco::new(), |ui, cx| {
         if ui::icon_row(ui, cx, IconRef::Builtin("check"), verb, None, None).clicked() {
-            // The shell gives the integrator a chance to tidy up through the `PowerRequest` event, and then it runs.
+            // The shell emits PowerRequest; the host decides whether and when to commit the power action.
             cx.request_power(request);
             *pending = None;
         }

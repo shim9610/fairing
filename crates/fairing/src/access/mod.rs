@@ -1149,8 +1149,9 @@ impl Access {
     }
 
     /// Whether the shell draws its own prompt/lock screen: prompt mode with an authenticator,
-    /// and either token mode or multiple legacy levels. Otherwise a failed gate is an
-    /// [`AccessEvent::UnlockRequested`] and nothing more, as in `routing` mode.
+    /// and either token mode or multiple legacy levels. Without a built-in prompt,
+    /// failed unlock requests emit [`AccessEvent::UnlockRequested`]; token mode
+    /// additionally emits [`AccessEvent::SessionRequested`] for host-owned login.
     #[must_use]
     pub fn can_prompt(&self) -> bool {
         if self.quarantined {
@@ -1247,9 +1248,10 @@ impl Access {
     /// password under the entry's id — and goes to the authenticator by value.
     ///
     /// `allowed` is whether the session still passes the screen's gate: the calls were asked for
-    /// while it was drawn, and the session can drop between then and now. Above that, nothing is
-    /// given or touched above the session's own level ([`Access::may_grant`]); the authenticator is
-    /// told who is asking and has the last word on the rest.
+    /// while it was drawn, and the session can drop between then and now. Legacy mode
+    /// applies its level ceiling unless the configured bypass is active. Token mode
+    /// checks each management-operation grant instead of ordering display levels.
+    /// The authenticator receives the actor and enforces its account/role rules.
     pub(crate) fn apply_admin(&mut self, ops: Vec<CredentialOp>, allowed: bool) {
         let seq = self
             .admin_note

@@ -62,7 +62,6 @@ impl AbyssColors {
     pub fn from_palette(p: &Palette) -> Self {
         Self {
             water_glow: p.primary.lerp_to_gamma(Color32::WHITE, 0.72),
-            // 0.55 → 0.20. Re-solved by least squares, and it cuts the surface error by 78 %.
             water_surface: p.primary.lerp_to_gamma(Color32::WHITE, 0.20),
             // 0.35 → 0.45.
             water_mid: p.primary.lerp_to_gamma(p.background, 0.45),
@@ -134,7 +133,8 @@ impl Default for AbyssParams {
 }
 
 impl AbyssParams {
-    /// Build from `[desktop.abyss]`. The colours are not in the config — they follow the palette.
+    /// Build from `[desktop.abyss]`, selecting palette-derived or fixed art colours
+    /// according to its `colors` field.
     #[must_use]
     pub fn from_config(cfg: &AbyssConfig) -> Self {
         Self {
@@ -330,8 +330,8 @@ impl Abyss {
 
         let mut cache = self.cache.borrow_mut();
         let hit = matches!(&*cache, Some(b) if b.key == key);
-        // It freezes through a cross-fade — a different palette arrives every frame, so it would re-bake
-        // 12 frames in a row.
+        // Hold the retained mesh while the paint-call freeze budget is active,
+        // avoiding repeated bakes as palette values change.
         let frozen = self.freeze_until_stable.get() > 0 && cache.is_some();
         if !hit && !frozen {
             *cache = Some(self.bake(rect, ppp, colors, ground, key, &theme.metrics));
@@ -342,8 +342,9 @@ impl Abyss {
         }
     }
 
-    /// Detect a dark/light change by itself and freeze re-baking through the cross-fade. No new
-    /// plumbing is needed in the shell and the `Fn` contract is not broken.
+    /// Detect a dark/light toggle and hold rebaking for a paint-call budget derived
+    /// from theme-fade duration at an assumed 60 Hz, plus two calls. No elapsed-time
+    /// clock is consulted; after the budget, a cache miss requests the next bake.
     fn tick_freeze(&self, theme: &Theme) {
         let was = self.last_dark.replace(Some(theme.dark));
         if was.is_some_and(|w| w != theme.dark) {
@@ -637,7 +638,7 @@ fn bubbles(mesh: &mut Mesh, g: Geo, c: AbyssColors, p: AbyssParams) {
     }
 }
 
-/// 5. The shoal — a cluster of small triangles in the quadrant opposite the hero.
+/// 5. The shoal — small fish triangles scattered across the water column.
 fn fish(mesh: &mut Mesh, g: Geo, c: AbyssColors, p: AbyssParams) {
     let count = u32::from(p.fish);
     if count == 0 {
@@ -796,7 +797,7 @@ fn reef(
     }
 }
 
-/// 4. The manta formation — one hero plus 2 to 4 followers (smaller and fainter, aerial perspective).
+/// 4. Up to six mantas along the authored formation curve; count comes from the parameters.
 ///
 /// It uses **the same authored coordinates** as the mark ([`super::manta::append_manta`]) — if the
 /// manta in the background were a different creature from the manta in the logo, it would not be a
@@ -995,7 +996,8 @@ mod tests {
         assert_eq!(demote(AbyssTier::Flat), None);
     }
 
-    /// **One** draw call. The seven layers and the veil are one mesh.
+    /// The background submits one mesh shape to egui. This checks shape submission,
+    /// not the renderer's batching or GPU draw-call count.
     #[test]
     fn abyss_emits_one_shape() {
         let ctx = egui::Context::default();
@@ -1071,7 +1073,8 @@ mod tests {
         );
     }
 
-    /// The colours follow the palette — override `primary` alone and **all nine** change.
+    /// A primary-colour override changes the sampled water, floor and manta colours;
+    /// the background-derived silhouette stays unchanged.
     ///
     /// `water_deep` is no exception. It used to take `background` as it stood, but the UI's ground
     /// colour is 64 blue units darker than the original's deep sea, and the bottom of the screen died

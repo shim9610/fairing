@@ -38,9 +38,9 @@ impl Shell {
     }
     /// The frame's own launch — it carries the app's state, so an `action(id, ..)` closure reached
     /// by a tap sees `cx.app()`. The public [`Shell::launch`] is this with nothing lent,
-    /// because between frames the shell is not holding the app's state; use
-    /// [`ShellHandle::launch`](crate::ShellHandle::launch) instead and it lands inside the next
-    /// frame with the state in hand.
+    /// because between frames the shell is not holding the app's state.
+    /// [`ShellHandle::launch`](crate::ShellHandle::launch) queues work for a subsequent state
+    /// update; lend app state through the host's logic/frame entry points for that dispatch.
     pub(super) fn launch_in(&mut self, action: LaunchAction, app: &mut AppRef<'_>) {
         self.sync_session(app);
         if self.faulted {
@@ -76,7 +76,7 @@ impl Shell {
     }
     /// The overview control (the nav bar's `"recents"`, `LaunchAction::OpenOverview`).
     /// Emits [`ShellEvent::OverviewRequested`], and the shell's own
-    /// overview comes up where `[workspace] overview` is on. Pressed with it up, it goes back.
+    /// overview opens when enabled and `nav.recents` allows entry. Pressed with it up, it goes back.
     pub(super) fn open_overview(&mut self) {
         self.events.push(ShellEvent::OverviewRequested);
         if !self.config.workspace.overview {
@@ -107,7 +107,7 @@ impl Shell {
     /// The split control (the split tile, the nav bar's `"split"` item,
     /// `LaunchAction::ToggleSplit`). Split, back to one pane keeping the focused one; one pane in
     /// the Tasks view, the task used last beside it. Emits
-    /// [`ShellEvent::SplitRequested`], and carried out where `[workspace] split` is on.
+    /// [`ShellEvent::SplitRequested`]. Entry requires enabled split support, its gate and a fitting task.
     pub(super) fn toggle_split(&mut self) {
         self.events.push(ShellEvent::SplitRequested);
         if !self.config.workspace.split {
@@ -150,9 +150,9 @@ impl Shell {
             let _ = self.workspace.show_in_other_pane(task, &tokens);
         }
     }
-    /// Back (the priority: the prompt → close the overlay → close the OSK → `on_back` → pop →
-    /// ignored at home). Back cancels an unlock prompt and does nothing on the lock screen — the
-    /// way out of that is the prompt.
+    /// Back resolves the prompt, icon-info popover, overlay, OSK and overview before
+    /// workspace `on_back`/pop handling. It is ignored at home and during fault quarantine.
+    /// Back cancels an unlock prompt and does nothing on the lock screen.
     pub fn back(&mut self) {
         self.contain_fault(|shell| shell.back_in(&mut None));
     }
@@ -276,7 +276,7 @@ impl Shell {
     /// `true` requests another update. This is a count limit, not a callback-duration guarantee.
     pub(super) fn drain_commands(&mut self, app: &mut AppRef<'_>) -> bool {
         for _ in 0..self.commands_per_update {
-            // `Inbox` has no blocking call to reach for, so this loop cannot become one.
+            // Receiving does not wait for queued messages; dispatched callbacks own their execution time.
             let Ok(command) = self.rx.try_recv() else {
                 return false;
             };

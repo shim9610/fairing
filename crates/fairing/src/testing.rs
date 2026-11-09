@@ -127,15 +127,16 @@ impl<H: HostedShell> Harness<H> {
         Rect::from_min_size(Pos2::ZERO, self.size)
     }
 
-    /// The shell's monotonic time (as of the last frame, `Shell::now`). It advances by exactly
-    /// [`FRAME_DT`] per frame — use it as the reference when asserting on
+    /// The shell's monotonic time (as of the last frame, `Shell::now`). Ordinary frame
+    /// calls advance virtual input by [`FRAME_DT`]; [`Harness::sleep`] adds a gap before its next frame.
+    /// Use this observed shell time as the reference when asserting on
     /// `evict_after` or a backend's `next_wake`.
     #[must_use]
     pub fn now(&self) -> std::time::Instant {
         self.shell.now()
     }
 
-    /// The next frame's `RawInput.time` (seconds). The frames run so far × [`FRAME_DT`].
+    /// The next frame's `RawInput.time` (seconds), including explicit time advances.
     #[must_use]
     pub fn time(&self) -> f64 {
         self.time

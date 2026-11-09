@@ -47,8 +47,9 @@ const STEP_FRAMES: u32 = 45;
 
 // ── The knobs ─────────────────────────────────────────────────────────────────
 
-/// The bundle of values the sliders edit. It covers every section of `[motion]` (`crossfade_ms` ·
-/// `theme_fade_ms` · `clear_top_ms` included — the M2 integration gave them config keys).
+/// The motion values exposed by this tool's sliders and TOML export. Pane/overview
+/// motion and other unlisted tokens remain outside this set; `tokens` preserves
+/// their values from its supplied base.
 #[derive(Debug, Clone, Copy)]
 struct Knobs {
     // Shared

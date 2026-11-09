@@ -33,7 +33,8 @@ pub fn fit_text(
 }
 /// Compute a shared text size against the longest supplied label.
 /// This can keep sibling cells at one size; [`fit_text`] can instead fit each
-/// individual label. The caller chooses the grouping and minimum size.
+/// individual label. The caller supplies the group, maximum width and base font.
+/// The result has an eight-point floor, so sufficiently narrow space can still overflow.
 ///
 /// ```no_run
 /// # fn draw(ui: &egui::Ui, base: egui::FontId, w: f32) {

@@ -3,8 +3,9 @@
 //! A resident screen stays with its declaration and the instance holds only the declaration id —
 //! the screen is taken from the registry for one call and returned afterward. A
 //! reentrant lookup through that registry finds an empty slot during the loan.
-//! A spawned instance owns its screen handle. Drawn instances borrow distinct
-//! layer slots so transitions can transform their screen layers independently.
+//! A spawned instance owns its screen handle. Drawn instances borrow pane/stack layer slots
+//! so transitions can transform their screen layers independently within the slot range
+//! described by `workspace::PANE_SLOTS`.
 //! Reusing layer IDs avoids creating a new egui area identity for every instance.
 
 use crate::icons::IconRef;
@@ -13,7 +14,7 @@ use crate::theme::ColorRole;
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-/// An instance id. Monotonically increasing within the process.
+/// An instance id. Shell-created IDs increase within that workspace; separate shells can reuse values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct InstanceId(pub u64);
 
@@ -155,14 +156,15 @@ impl Instance {
 
     /// The `Area` id = `("fairing.screen", slot)`. The **slot** (the stack depth), not the instance
     /// id — the two instances being drawn (the one coming in and the one going out) are at
-    /// different depths, so they do not collide, and the id set stays finite.
+    /// different depths within their pane. Across panes, the slot ranges are distinct only
+    /// below the `PANE_SLOTS` depth boundary; identities are reused when a slot is reused.
     #[must_use]
     pub(crate) fn area_id(&self) -> egui::Id {
         Self::slot_area_id(self.layer_slot)
     }
 
-    /// An `Area` id made from the slot number alone. The layers being a finite set means one can be
-    /// named without an instance — used by the slot warm-up and the z-order tests.
+    /// An `Area` id made from the slot number alone. It can be named without an instance —
+    /// used by the slot warm-up and the z-order tests.
     #[must_use]
     pub(crate) fn slot_area_id(slot: u32) -> egui::Id {
         egui::Id::unique(("fairing.screen", slot))
@@ -310,7 +312,7 @@ impl Instance {
         }
     }
 
-    /// Queue an event. There are three delivery rules:
+    /// Queue an event. There are four delivery rules:
     ///
     /// 1. **Only consecutive duplicates are merged.** An event the same as the one right before it
     ///    (or as the last notified, with the queue empty) is dropped. `Paused, Resumed, Paused`

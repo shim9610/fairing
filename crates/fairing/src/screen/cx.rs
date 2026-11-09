@@ -302,11 +302,12 @@ impl<'a> Cx<'a> {
     }
 
     /// **The app's own state** — whatever it handed to
-    /// [`Shell::frame_with`](crate::Shell::frame_with) this frame.
+    /// [`Shell::frame_with`](crate::Shell::frame_with), or to
+    /// [`Shell::logic_with`](crate::Shell::logic_with) for a state-only update.
     ///
     /// The app owns its state and owns the shell; the shell borrows the state for the length of a
-    /// frame and lends it on to callbacks. This API does not require shared ownership
-    /// or an interior-mutability wrapper:
+    /// frame or state-only update and lends it on to callbacks. This API does not require
+    /// shared ownership or an interior-mutability wrapper:
     ///
     /// ```no_run
     /// # struct Console;
@@ -484,8 +485,9 @@ impl<'a> Cx<'a> {
     ///
     /// # When it answers `false`
     ///
-    /// Exactly when [`Cx::can_draw_screen`] is `false`, which is the one to ask before drawing a row
-    /// that leads here:
+    /// The availability conditions are the same as [`Cx::can_draw_screen`], which can be used
+    /// before drawing a row that leads here. Admission is checked again for this call, so a
+    /// session change after that observation can still refuse the draw:
     ///
     /// - Nothing is registered under `id`, or what is is not a screen.
     /// - **The screen's gate does not pass for this session.** The host cannot wave a guest past its
@@ -526,8 +528,8 @@ impl<'a> Cx<'a> {
     ) -> Option<R> {
         let mut screen = self.registry.as_mut()?.take_resident(id)?;
         let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&mut screen, self)));
-        // Where the declaration went in the meantime (`shell.remove(id)` from inside its own `ui`)
-        // this drops the screen, which is right — there is nothing left for it to belong to.
+        // put_resident drops the screen if its declaration no longer exists. Commands posted
+        // through ShellHandle during ui are queued rather than removing the declaration here.
         if let Some(registry) = self.registry.as_mut() {
             registry.put_resident(id, screen);
         }
@@ -596,7 +598,7 @@ impl<'a> Cx<'a> {
     ///
     /// ```no_run
     /// # fn ui(cx: &mut fairing::Cx<'_>, ui: &mut egui::Ui) {
-    /// if ui.label("Model ACME-7").clicked() {
+    /// if ui.add(egui::Label::new("Model ACME-7").sense(egui::Sense::click())).clicked() {
     ///     cx.knock("service");
     /// }
     /// # }
@@ -620,7 +622,8 @@ impl<'a> Cx<'a> {
     /// **Change a setting**. The built-in settings screens and integrator screens
     /// take the same path.
     ///
-    /// It applies at the end of the frame and emits
+    /// If the request passes the setting gate, it applies at the end of the
+    /// frame and emits
     /// [`ShellEvent::SettingChanged`](crate::ShellEvent::SettingChanged) — **persisting it is the
     /// integrator's.** The crate does not write files (where, how often and with what
     /// transactional guarantees differs per device), and

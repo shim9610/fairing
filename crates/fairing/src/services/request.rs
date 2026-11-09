@@ -1,4 +1,4 @@
-//! Owned-operation vocabulary for trusted host backend commands.
+//! Concrete commands for trusted host backends.
 
 /// A concrete backend command from the trusted ordinary-shell host.
 ///
@@ -6,7 +6,8 @@
 /// same trusted-host authority as installing backends: it does not authorize user
 /// requests. User-driven settings must use `Shell::set_setting` or admitted `Cx`
 /// operations. `ProtectedShell` deliberately exposes no service command method.
-/// Borrowed credentials are used synchronously and are not retained or formatted.
+/// The shell forwards borrowed credentials during the call without retaining or formatting them.
+/// Credential retention by the backend is that implementation's responsibility.
 #[non_exhaustive]
 pub enum ServiceRequest<'a> {
     /// Set UTC seconds on the clock backend.

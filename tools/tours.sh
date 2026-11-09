@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# Run the example tours as **checks**, stills only, and fail if any step of any script failed.
+# Run selected example tours as checks, stills only; propagate their non-zero exits.
 #
 #   tools/tours.sh            # every tour, into target/tours/<name>/
 #   tools/tours.sh console    # one tour, by the name tools/devices.sh gives it
 #
-# A tour presses what its script names (`Act::Tap(Spot::Text(..))`, `Act::Pin`, …) and says what it expects to
-# see (`Act::Expect`) before each picture. A step that cannot find its target, or an expectation
-# that does not hold, is logged as an error and the example exits non-zero at the end — so a
-# change that causes one of those checks to fail stops this run.
+# Tours check named targets, explicit Act::Expect assertions and capture/write results.
+# Not every picture has a preceding assertion; settle timeouts can warn and continue.
+# The driver records supported check failures and exits non-zero, which fails this run.
 # tools/readme-gifs.sh runs the same scripts with `--record`
 # to rebuild the README's images; this one is the quick pass CI runs. Both modes use
 # the same fixed 60 Hz input clock so scripted gesture velocity is renderer-independent.

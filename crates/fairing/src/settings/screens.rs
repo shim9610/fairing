@@ -20,8 +20,8 @@
 //! Registration filters screens using [`Capabilities`] unless that filter is
 //! explicitly disabled in `SettingsConfig`.
 //!
-//! The list follows: a row is drawn only where the screen behind it **is really registered**
-//! ([`Cx::has_screen`]). `settings.network` is registered where the network backend reports
+//! The list follows: a row is drawn only where the screen behind it **is registered and its
+//! gate passes** ([`Cx::screen_allowed`]). `settings.network` is registered where the network backend reports
 //! `ETHERNET`, and `settings.credentials` where the authenticator manages its own entries.
 mod device;
 pub use device::{
@@ -106,8 +106,8 @@ pub const ALL: &[&str] = &[
 /// # }
 /// ```
 ///
-/// A row is drawn only where a screen really is registered under its `id`
-/// ([`Cx::has_screen`]), so adding one means registering that screen too — `shell.add(screen(
+/// A row is drawn only where a screen is registered under its `id` and its gate passes
+/// ([`Cx::screen_allowed`]), so adding one means registering that screen too — `shell.add(screen(
 /// "app.heater", ..))`. Registered with `screen`, it also goes up in the right column on a wide
 /// screen; registered with `screen_with`, it is pushed instead.
 #[derive(Debug, Clone, PartialEq)]
@@ -331,9 +331,9 @@ fn format_offset(offset_min: i32) -> String {
 /// The selection is an **id**, so two rows pointing at one screen both light up when either is
 /// pressed and the right column takes its heading from whichever comes first — the second row's
 /// label never appears. It is an easy list to build by mistake, since [`entries`] already carries
-/// every built-in id and pushing "our Wi-Fi screen" onto it is the obvious move. This is the same
-/// policy as [`Registry::add`](crate::screen::Registry::add): one id, one entry, and a warning
-/// rather than a silent oddity.
+/// every built-in id and pushing "our Wi-Fi screen" onto it is the obvious move. Here the first
+/// row is kept and later duplicates warn and are dropped. Registry registration instead replaces
+/// an existing declaration with the same ID.
 fn dedup_ids(entries: Vec<SettingsEntry>) -> Vec<SettingsEntry> {
     let mut seen = std::collections::BTreeSet::new();
     let mut out = Vec::with_capacity(entries.len());
@@ -437,7 +437,7 @@ fn two_pane(ui: &mut Ui, cx: &mut Cx<'_>, list_width: f32, entries: &[SettingsEn
         // built-in bodies, so nothing an integrator registered could ever appear there.
         //
         // `selected` was filtered on `can_draw_screen`, so this normally draws. It can still come
-        // back `false` — the declaration was removed by a screen drawn earlier in this same frame —
+        // back `false` — for example, the session changed after selection —
         // and an empty column with a heading over it says nothing to the person looking at it.
         if !cx.draw_screen(&mut right, id) {
             ui::note(&mut right, cx, tr!(s, "This screen is not available."));

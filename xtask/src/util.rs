@@ -192,10 +192,9 @@ const COORD_STEP: f64 = 10_000.0;
 
 /// Narrow an `f64` coordinate to an `f32`.
 ///
-/// It is rounded to 1e-4 before the narrowing. That stops both the floating-point noise the arc (A) →
-/// cubic conversion produces, such as `-2.4e-8`, being written into the generated file as
-/// `-0.000000024234437`, and a difference in libm implementations changing the last digit and making
-/// `icons --check` come out differently per platform.
+/// Finite values are rounded to a 1e-4 grid before narrowing. This removes small arc-conversion
+/// noise such as `-2.4e-8` and reduces sensitivity to platform math differences in generated
+/// coordinates. Non-finite values are passed through for the caller to reject.
 #[allow(clippy::cast_possible_truncation)]
 pub(crate) fn to_f32(value: f64) -> f32 {
     if !value.is_finite() {

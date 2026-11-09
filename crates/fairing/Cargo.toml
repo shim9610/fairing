@@ -33,7 +33,7 @@ chrono = { workspace = true, optional = true }
 image = { workspace = true }
 
 [features]
-# A large subsystem comes out whole behind a feature — on by default, compiled out when off.
+# Features gate subsystem code; shared configuration and value types can remain when disabled.
 # `overlay` = the shade, the quick-settings tiles and the scrim; `osk` = the on-screen keyboard.
 default = ["mock", "overlay", "osk", "brand", "settings"]
 mock = []
@@ -49,7 +49,7 @@ settings = []
 runner = ["dep:eframe"]
 runner-x11 = ["runner", "eframe/x11"]
 # `chrono` = a `ChronoClock` that follows the system time zone and DST. The default `SystemClock`
-# has its offset as a config value and so knows nothing of summer time. On, it measures at +3 crates.
+# uses a configured fixed offset. Enabling chrono adds its optional timezone dependency tree.
 chrono = ["dep:chrono"]
 
 # Protected host and GUI smoke tour on Null backends, with typed settings registration.

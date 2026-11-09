@@ -45,7 +45,8 @@ pub struct HeadsUpMetrics {
     pub progress_h: f32,
 }
 
-/// The button dimensions (4).
+/// Button dimension values. The current built-in `BigButton` does not read these
+/// fields; it uses `ControlMetrics` and shared `Metrics` values instead.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ButtonMetrics {
     /// The side padding.
@@ -63,13 +64,14 @@ pub struct ButtonMetrics {
 pub struct SliderMetrics {
     /// Between the label and the track.
     pub label_gap: f32,
-    /// The track thickness = `metrics.slider_thumb × this ratio`. A **ratio**
-    /// rather than a length, so it is not a [`Span`] and does not go through scale resolution —
-    /// a bigger thumb has to bring the track with it.
+    /// A stored slider-thumb/track ratio, without scale resolution. The current
+    /// built-in `TouchSlider` does not read it; change `ControlSpec::slider_track`
+    /// or the widget's explicit thickness to change that track.
     pub track_ratio: f32,
 }
 
-/// The switch dimensions (2).
+/// Switch dimension values. The current built-in `Switch` does not read these
+/// fields; its track and knob use `ControlMetrics` instead.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SwitchMetrics {
     /// The padding between the knob and the track.
@@ -99,9 +101,8 @@ pub struct ListRowMetrics {
 pub struct OverviewMetrics {
     /// The gap between two cards.
     pub card_gap: f32,
-    /// **The narrowest a card is drawn.** A card is `0.6 ×` the content (A10); on a panel
-    /// small enough for that to fall under this, the cards — and the screen shrinking into one —
-    /// stay this wide instead, so what a finger taps and throws stays a touch target's family.
+    /// Preferred minimum card width. Cards normally use `0.6 ×` the content width (A10);
+    /// narrower results are raised to this value, capped at the available content width.
     pub card_min_width: f32,
 }
 
@@ -247,12 +248,9 @@ impl Default for ComponentSpec {
             slider_track_ratio: 0.64,
             switch: [
                 du(3.0).pinned(),
-                // Today it is `touch_target × 0.6`. `touch_target` being `max(finger(1.0), du(48))`,
-                // **`finger(0.6)` with a `du(28.8)` floor** reproduces that value at any finger width —
-                // 49.1 with a 13 mm glove, 34.0 bare-fingered at 9 mm, and 28.8 where the finger is small
-                // enough for the du floor to bite. A bare `du(28.8)` is only the third case's
-                // value, and using only that would suddenly shrink the switch
-                // on a gloved device.
+                // This stored height follows finger size with a du floor. It is
+                // resolved into ComponentMetrics::switch but is not read by the
+                // current built-in Switch, which uses ControlMetrics::mark_size.
                 Span::fixed(Dim::finger(0.6)).min(Dim::du(28.8)),
             ],
             list_row: [du(16.0), du(11.0), du(20.0)],

@@ -24,8 +24,8 @@ use super::InstanceId;
 use crate::motion::{Animated, Spring};
 use egui::{Pos2, Rect, Vec2};
 
-/// The smallest a lifted screen gets: the overview's card scale, so a lift held into the
-/// overview hands over to it without a jump.
+/// The smallest lift scale: the overview's nominal card scale. The overview can choose a
+/// larger scale on narrow content to satisfy its card-width floor.
 pub(crate) const LIFT_MIN_SCALE: f32 = CARD_SCALE;
 
 /// Where there is no task to slide in, the slide follows the finger this much — enough to say

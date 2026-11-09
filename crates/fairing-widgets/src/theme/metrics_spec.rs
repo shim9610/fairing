@@ -26,8 +26,7 @@ use crate::Result;
 /// // Resolve the default 9 mm finger parameter using the declared panel dimensions.
 /// assert!((scale.du_to_mm(m.touch_target) - 9.0).abs() < 0.5);
 /// ```
-// No `Copy` is attached — it is 14 `Span`s, so 1,180 bytes. Passed by value, clippy's
-// `large_types_passed_by_value` makes a fair point. The answer is `&self`.
+// Resolution borrows this specification rather than copying its collection of spans.
 ///
 /// **It carries no `#[non_exhaustive]`** — it is a struct the integrator builds, and with the
 /// attribute `..MetricsSpec::default()` would not compile outside the crate (see the same note
@@ -66,9 +65,8 @@ pub struct MetricsSpec {
     pub content_inset: Span<Eye>,
     /// **A card's inner padding** — the gap between a card's edge and the row inside it.
     ///
-    /// It was `row_height × 0.10`, a bare multiplier inside `layout::group_with`, which put the one
-    /// number the concentric-corner rule needs out of reach of the theme. The value is unchanged:
-    /// `finger(0.10) + du(0.8)` is exactly that product written out.
+    /// The default uses `text(0.3) + du(0.8)` with a 5.6 du floor, independently of
+    /// the row's finger-relative height. Container/control radii are configured separately.
     pub card_pad: Span<Eye>,
     /// The widget height: one touch target, like a row.
     pub widget_height: Span<Hand>,
@@ -148,18 +146,11 @@ impl Default for MetricsSpec {
             // concentric rule is `inner = outer - gap` and the gap is now text. The fractions are
             // the old finger ones over the body's 0.334, so nothing moves.
             corner_radius: Span::fixed(Dim::text(0.7485)).min(Dim::du(12.0)),
-            // **The concentric rule, as a token.** `inner = outer − gap`: a control inside a card
-            // takes the card's radius less the card's padding, so the two curves share a centre and
-            // the gap between them stays one thickness all the way round. Apple builds it into the
-            // API (`ConcentricRectangle`, `.concentric(minimum:)`); Windows 11 ships the same idea
-            // as two tiers, 8 px for containers and 4 px for in-page controls.
-            //
-            // card_radius = corner_radius × card_radius_ratio = finger(0.25) × 1.6 = finger(0.40),
-            // card_pad    = finger(0.10) + du(0.8),
-            // so concentric = finger(0.30) − du(0.8). A `Span` cannot carry the negative term, and
-            // it does not need to: `finger(0.30)` lands a flat 0.8 du (0.13 mm) over concentric at
-            // every finger size, and the references say a hair more than the maths reads better
-            // than a hair less. `metrics_are_concentric` holds it to within 1 du.
+            // Aim for control radius ≈ card radius − card padding. Before the du floors:
+            // card radius = text(0.7485) × 1.6 = text(1.1976),
+            // card padding = text(0.3) + du(0.8), and control radius = text(0.8982).
+            // The current coefficients and floors are checked within 1 du on the
+            // reference density/finger-policy fixtures by metrics_are_concentric.
             control_radius: Span::fixed(Dim::text(0.8982)).min(Dim::du(14.0)),
             card_pad: Span::fixed(Dim::text(0.3) + Dim::du(0.8)).min(Dim::du(5.6)),
             widget_height: Span::fixed(Dim::finger(1.0)).min(Dim::du(48.0)),
@@ -334,14 +325,14 @@ impl MetricsSpec {
         }
         for (name, span) in all {
             span.validate(name)?;
-            // **A text token also has a ceiling**, because past it epaint stops being a library and
-            // becomes an abort: `TextureAtlas::allocate` asserts a glyph is no wider than the
-            // atlas, and a mis-typed `type_scale` is the ordinary way to get there.
+            // Reject oversized text tokens at the reference scale. epaint asserts when a
+            // rasterized glyph exceeds its atlas width; this numeric limit does not parse
+            // fonts or prove that every glyph fits at every product scale.
             if name.starts_with("type_scale") || name.ends_with("text_size") {
                 let size = span.resolve(&Scale::identity());
                 if size > TEXT_CEILING_DU {
                     return Err(crate::Error::Config(format!(
-                        "{name} resolves to {size} du at the base scale, above the                          {TEXT_CEILING_DU} du ceiling — a glyph that size cannot be allocated in                          the font atlas and epaint would abort rather than report it"
+                        "{name} resolves to {size} du at the base scale, above the {TEXT_CEILING_DU} du text-size ceiling"
                     )));
                 }
             }
@@ -367,11 +358,8 @@ mod tests {
         )
     }
 
-    /// **A mis-typed text token is an error from `build`, not an abort inside epaint.**
-    ///
-    /// Without the ceiling this spec validates cleanly and the process dies later, in
-    /// `TextureAtlas::allocate`, with a message about texture atlases that names nothing the
-    /// integrator wrote.
+    /// Reject the fixture's oversized text token during specification validation.
+    /// This exercises the reference-scale ceiling, not font parsing or every atlas allocation.
     #[test]
     fn a_text_token_past_the_atlas_ceiling_is_reported() {
         let spec = MetricsSpec {
@@ -432,8 +420,8 @@ mod tests {
         }
     }
 
-    /// The touch target is **the same physical size** on a 7-inch 800×480 and a 15.6-inch
-    /// 1920×1080. Today both are 48 logical px, so the physical sizes differ by more than 2×.
+    /// Resolve the configured 13 mm touch target on the two declared panel fixtures.
+    /// Compare physical millimetres rather than assuming a fixed logical size.
     #[test]
     fn the_touch_target_is_the_same_physical_size_on_both_panels() {
         // 7" 800×480 = 154 × 86 mm → 5.19 px/mm
@@ -610,9 +598,9 @@ mod scale_tests {
     /// gap between them keeps one thickness the whole way round. Apple ships the rule as an API
     /// (`ConcentricRectangle`, `.concentric(minimum:)`); Windows 11 ships it as two tiers.
     ///
-    /// The tolerance is one `du`: a `Span` cannot carry the negative term the exact expression
-    /// needs, so the shipped `finger(0.30)` sits a flat 0.8 du over concentric at every finger
-    /// size - the side the references say to err on.
+    /// The tolerance is one du for the sampled density/finger-policy combinations.
+    /// The default text-relative coefficients and du floors approximate the
+    /// subtraction rather than expressing a negative term in a `Span`.
     ///
     /// What this catches is what it was written for: the card radius and the control radius were
     /// two unrelated numbers in two files, the layout multiplying `corner_radius` by 2.8 of its own

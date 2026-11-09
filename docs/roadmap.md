@@ -46,7 +46,7 @@ These are candidates, not promises. Each one waits for a real need.
 | A diagnostics overlay with scale reports | The log says which density the shell assumed and why |
 | Chinese and Japanese input on the keyboard | Numeric, QWERTY and two-set Hangul |
 | More than two panes, and thumbnails in the recent screens | Two panes; the recent screens show cards |
-| A software rasterizer for devices with no GPU | A GL driver is needed |
+| A software renderer for the complete interactive shell | The bundled runner uses glow/GL. Existing CPU preview/warning helpers render selected display surfaces, not the complete shell |
 | Snapshot tests of what is drawn | Tests assert positions and state through `testing::Harness` |
 | An accessibility tree, and right-to-left layout | No Fairing-specific screen-reader integration or right-to-left layout path is implemented |
 
@@ -62,6 +62,11 @@ These are the current implementation and verification boundaries.
   not establish complete concrete UI-state coverage or universal interaction progress.
   See [formal operability](formal-operability.md) and [API contracts](api-contracts.md).
 
+- **Deep stacks can share layer identities across panes.** Layer slots use
+  `pane * 32 + zero_based_depth`. Pane 0's 33rd entry and pane 1's first entry
+  therefore have the same egui area/layer identity. Stack growth does not enforce
+  a 32-entry limit; cross-pane identity isolation at that depth needs an
+  implementation change, rather than relying on the slot spacing.
 - **Background logic cannot present a frame.** The shell/state runners use eframe 0.37's
   `App::logic` fallback for state processing, but drawing and animations still wait for a
   UI pass. Access can be revoked in state while a compositor retains its last presented

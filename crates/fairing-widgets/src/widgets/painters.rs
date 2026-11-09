@@ -16,9 +16,9 @@ use std::ops::RangeInclusive;
 /// [`IconButton::long_press`]: super::IconButton::long_press
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HoldLook {
-    /// Where the built-in drawing puts it: a ring in a button's top-right corner, an arc round an
-    /// icon button's disc. On the frame the hold completes it pops — grows past its size and back
-    /// — and this rect grows with it.
+    /// Where the built-in drawing puts it: a ring in a button's top-right corner or an
+    /// arc round an icon button's disc. `BigButton` applies a completion pop to its ring;
+    /// `IconButton` supplies its arc rectangle without that completion-pop animation.
     pub rect: Rect,
     /// How far the hold has got: 0 at rest, filling while the finger stays down, back to 0 on a
     /// release before the end.
@@ -761,7 +761,7 @@ pub struct BadgeLook<'a> {
     pub rect: Rect,
     /// What it says.
     pub value: BadgeValue<'a>,
-    /// What the built-in badge writes: the count capped at `control.badge_max` (`99+`), the text,
+    /// What the built-in badge writes: `<max>+` above `control.badge_max` (`99+` by default), text,
     /// or nothing for a dot.
     pub text: &'a str,
     /// Which fill and ink.
@@ -893,7 +893,8 @@ pub type FeatureCardPainter = Box<dyn FnMut(&egui::Painter, &mut FeatureCardLook
 /// A `WidgetPainters` holds one painter per kind of widget, each optional. A widget whose kind
 /// has one passes its look data to that callback; otherwise it uses built-in drawing.
 /// The widget computes its layout and built-in interaction, then supplies geometry,
-/// content and state for the callback to paint, including focus indication.
+/// content and state for the callback to paint. The callback replaces built-in drawing,
+/// including focus, disabled and hold cues; render those from the supplied look data.
 ///
 /// A widget consults the bundle supplied through its `WidgetCx::painters`. Ordinary
 /// shells supply their bundle through `cx.widgets()` and built-in contexts; configure it with

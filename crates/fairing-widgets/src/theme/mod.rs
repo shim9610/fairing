@@ -1,8 +1,9 @@
 //! The theme — the palette, metrics and motion tokens, and applying them to egui's `Style`
 //! (`theme/`, the render principles).
 //!
-//! Touch first: no hover colour, with the tuning done on the pressed (`active`) state. No large
-//! blurred shadows; flat surfaces with 1 px borders.
+//! Touch-oriented styling keeps hover colours equal to the inactive state and accents
+//! the pressed state. Container elevation can use cast shadows, rims or no elevation;
+//! [`Theme::elevate`] resolves that choice from the theme tokens.
 
 mod fade;
 
@@ -582,8 +583,8 @@ pub struct Metrics {
     /// The dock height.
     pub dock_height: f32,
     /// The padding inside the rect a screen receives (12). The shell shrinks the content rect by
-    /// this much before handing it over — the layout (`fairing_widgets::shell::Layout`) does not shrink.
-    /// Per screen it is overridden by `fairing_widgets::screen::ChromePolicy::inset`.
+    /// this much before handing it over — the layout (`fairing::shell::Layout`) does not shrink.
+    /// Per screen it is overridden by `fairing::screen::ChromePolicy::inset`.
     pub screen_inset: f32,
     /// The desktop label text size (13).
     pub desktop_label_size: f32,
@@ -658,7 +659,8 @@ pub struct Metrics {
     /// tall panel, where a fraction of the screen made each row as big as a palm.
     /// `f32::INFINITY` lifts the cap — what [`MetricsSpec::osk_max_key`] set to `None` resolves to.
     pub osk_max_key: f32,
-    /// The default widget height — `BigButton` and `ListRow` (48): one touch target.
+    /// Legacy widget-height floor used by `ListRow` (48 du by default).
+    /// `BigButton` instead uses the maximum of `row_height` and `touch_target`.
     pub widget_height: f32,
     /// The slider thumb diameter (28) (M2, A7).
     pub slider_thumb: f32,
@@ -732,9 +734,9 @@ pub struct MotionTokens {
     pub spring: Spring,
     /// The release distance threshold.
     pub snap_ratio: f32,
-    /// The release velocity threshold (px/s).
+    /// The release velocity threshold in egui points (du) per second.
     pub fling_px_s: f32,
-    /// slop (px).
+    /// Drag-detection slop in egui points (du).
     pub slop_px: f32,
     /// The tap window.
     pub tap: Duration,
@@ -912,15 +914,15 @@ impl Default for MotionTokens {
     }
 }
 
-/// A theme = the palette + the metrics + the motion tokens.
+/// A theme combines palette, layout/component/control metrics, elevation and motion tokens.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Theme {
     /// The colours.
     pub palette: Palette,
     /// The metrics.
     pub metrics: Metrics,
-    /// The component metrics. The twenty values widgets and notifications draw
-    /// themselves with — named apart from [`Metrics`], which moves the layout.
+    /// Component-specific geometry for widgets, notifications and shell surfaces.
+    /// See [`ComponentMetrics`] for the fields, separate from shared layout [`Metrics`].
     pub components: ComponentMetrics,
     /// Shared control metrics. Individual widgets can also use component metrics,
     /// widget options and custom painting. See [`ControlMetrics`].
@@ -948,8 +950,8 @@ fn preset_from_config(cfg: &ThemeConfig) -> Result<Preset> {
 
 /// The config a [`Theme`] is built from ([`Theme::from_inputs`]).
 ///
-/// Five values out of the shell's TOML, named rather than passed positionally so that adding one
-/// later does not silently reorder a call.
+/// Theme-related inputs gathered from shell configuration, named rather than passed
+/// positionally so that adding an input does not silently reorder a call.
 #[derive(Debug, Clone, Copy)]
 pub struct ThemeInputs<'a> {
     /// `[shell] theme` — `"dark"` or `"light"`. Anything else warns and takes dark.
@@ -1012,7 +1014,7 @@ impl Theme {
 
     /// Built from the config sections that describe a theme ([`ThemeInputs`]).
     ///
-    /// The shell's own `ShellConfig` gathers these — `fairing_widgets::ShellConfig::build_theme` is the
+    /// The shell's own `ShellConfig` gathers these — `fairing::ShellConfig::build_theme` is the
     /// one-argument form. This method accepts only the theme-related sections, without
     /// depending on the rest of the shell configuration.
     ///
@@ -1086,8 +1088,8 @@ impl Theme {
         }
         // **Labels are not selectable.** egui's default lets a drag across a label select its
         // text, and on a panel a drag across a label is a scroll: the demo's tour dragged a page
-        // and got a highlighted sentence instead of a moved one. There is no clipboard to paste
-        // into on a machine, so nothing is lost.
+        // and got a highlighted sentence instead of a moved one. Disabling label selection
+        // gives that drag to the surrounding interaction instead of selecting label text.
         style.interaction.selectable_labels = false;
         let p = &self.palette;
         let m = &self.metrics;

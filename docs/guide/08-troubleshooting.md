@@ -17,7 +17,7 @@ straight to stderr or the log — it names the key.
 | A pattern that cannot be drawn | `[access.pattern_table] "x": invalid pattern; check dot range, minimum length, repeated dots and dots crossed by each stroke` | A stroke across a dot takes that dot. The error identifies the level and validation rules without printing the secret | Check the configured path against the grid, including intervening dots |
 | Empty `levels` | `[access] levels is empty` | `[access.levels]` needs at least one entry. One level bypasses legacy level checks; token mode still requires grants | Put something in, even `levels = ["default"]` |
 | Grid columns or rows too large | `[desktop] columns must be 0 (auto) or at most 12` (rows cap at 8) | `MAX_COLUMNS = 12`, `MAX_ROWS = 8`. A larger value allocates a `Vec` of empty cells per page and the renderer walks it every frame | Stay inside the cap, or use `0` for auto |
-| Bar height rejected | `[status_bar] height must be greater than 0` / `[nav_bar] height must be greater than 0` | An enabled bar needs a positive height | Fix the value, or set `enabled = false` |
+| Bar height rejected | `[status_bar] height must be a number greater than 0` / `[nav_bar] height must be a number greater than 0` | An enabled bar needs a positive height | Fix the value, or set `enabled = false` |
 | `[motion]` value out of range | e.g. `[motion] snap_ratio must be within 0..=1`, `[motion.spring] k must be greater than 0 and c at least 0` | Springs, ratios and pixel values that make no physical sense stop the start-up | Check the table in [07 §10](07-config-reference.md#10-motion) |
 | Odd value in `[nav_bar] back_edges` | ``[nav_bar] back_edges: `top` must be "left" or "right"`` | Only `"left"` and `"right"`; an empty array is fine and means "none" | Fix the typo |
 | `style = "gesture"` with no back edges | `[nav_bar] style = "gesture" has no back button, so an empty back_edges leaves no way back…` | A gesture bar has no back button, so this disables both built-in back mechanisms | Give it an edge, or set `style = "buttons"` |
@@ -110,7 +110,7 @@ uses exactly that combination:
 
 ```sh
 xvfb-run -a -s "-screen 0 1024x600x24" env LIBGL_ALWAYS_SOFTWARE=1 \
-  cargo run -p fairing --features runner-x11 --example demo -- --size=1024x600
+  cargo run -p fairing --features runner-x11 --example demo -- --size=1024x600 --tour=target/tours/demo
 ```
 
 The `runner` feature does not enable `eframe/x11`. Use `runner-x11` when the host requires
@@ -380,13 +380,14 @@ No. Not a separate process, not a separate window — a virtual layer that one
 the crate docs in [lib.rs](../../crates/fairing/src/lib.rs).
 
 **Q2. Why can I not use `Mutex` or `RwLock`?**
-You cannot. `cargo xtask sync-check` (audit stage 13) fails the build when
-`Mutex`, `RwLock`, `Condvar`, `Barrier`, `OnceLock`, `LazyLock` or `parking_lot`
-appears as an identifier in `crates/**/src/**/*.rs`, and inside
-`crates/fairing/src` it also bans `.recv(`, `.join(` and `thread::sleep`. The
-`disallowed-types` list in the root `clippy.toml` catches the same thing at
-compile time. Blocking the UI thread stops the frame. A justified exception gets
-`// sync-check: allow: <reason>` on the same line.
+This is a repository UI-source policy, not a type-system restriction on an
+integrating application. `cargo xtask sync-check` (audit stage 13) rejects the
+listed synchronization identifiers under `crates/**/src/**/*.rs`. In the two UI
+libraries it also checks blocking receives, no-argument `.join()` and
+`thread::sleep`; see the exact scope in §9. Clippy adds resolved-type/method bans.
+A reviewed repository exception needs the source-scan marker and any applicable
+lint allowance. Application backends choose their own worker synchronization,
+but UI-side methods must return promptly.
 
 **Q3. How do I change the wallpaper?**
 For a flat colour, `[desktop] wallpaper = "#RRGGBB"` or a palette role name.
@@ -442,7 +443,8 @@ The `ui.locale` setting switches the language while the shell runs
 **Q9. Why does `cargo xtask audit` skip stages locally?**
 Without `cargo-audit` (stage 7) and `cargo-deny` (stage 8) installed, the local
 run prints an install hint and skips them. CI runs with `--strict`, where a
-missing plugin fails. Run `cargo install cargo-audit cargo-deny` and then
+missing plugin fails. Install the versions pinned in `xtask/tools.lock`, as shown
+in [Contributing](../../CONTRIBUTING.md#setting-up), then run
 `cargo xtask audit --strict` to reproduce CI before you push.
 
 **Q10. I set `[shell] idle_lock_secs = 300` and the log warns about it.**

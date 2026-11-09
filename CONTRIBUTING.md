@@ -77,8 +77,9 @@ The required `proofs` and `miri` jobs explicitly fail before checkout if input
 approval fails or is skipped, so they cannot hide rejected inputs behind skipped
 required checks. The input check remains useful as a direct merge requirement.
 PR workflows supersede obsolete revisions; main-branch and scheduled runs finish
-without cancellation by a newer revision. UI histories own their 18 native tests
-and three mutation controls; the general assurance jobs exclude those selections.
+without cancellation by a newer revision. UI histories own the widget-lifecycle
+tests and the deadline-reply regression, plus three mutation controls; the general
+assurance jobs exclude those selections.
 Coverage, Miri, Loom, package and cross-OS runs retain their distinct purposes.
 
 When enabling CodeQL on an existing repository, let the initial default-branch
@@ -122,6 +123,10 @@ so it is checked there rather than in the graphical example tours.
    `deps.allow` line. Without a date, or with a `TODO` left in, `cargo xtask deps-check` fails —
    so a `--write` dump cannot be merged on its own. If it is rejected, close the PR with the
    reason in it.
+   `--write` emits only the main workspace's selected normal-dependency graph.
+   Inspect the diff and preserve approvals needed outside that graph, such as
+   build/dev-only dependencies or verification-only crates; unselected rows are
+   not emitted by that command.
 5. Assets (icon SVGs, fonts) follow the same procedure and must include an update to
    `THIRD_PARTY.md`. That file is generated, but the region between `<!-- assets:begin -->` and
    `<!-- assets:end -->` is hand-written and survives regeneration.
@@ -129,11 +134,12 @@ so it is checked there rather than in the graphical example tours.
 ## The example tours are checks
 
 `tools/tours.sh` runs the selected example tours under Xvfb, stills only. With no
-selector, it runs the script's configured tour set. A failed step fails that run. A script presses what it names
-(`Act::Tap(Spot::Text("Alerts"))` finds the label on the glass; there is no coordinate form) and says what it expects before each
-picture (`Act::Expect(Expect::Text("Lamp hours"))`), so a change that moves a row, renames a
-label or breaks an asserted step can fail the tour. Review the captured images
-for rendering and content issues outside those assertions.
+selector, it runs the script's configured tour set. Named targets use reported geometry
+(`Act::Tap(Spot::Text("Alerts"))`), and explicit assertions such as
+`Act::Expect(Expect::Text("Lamp hours"))` check selected states. Target lookup,
+assertion and capture/write failures fail the run. Screenshots do not each have a
+preceding assertion, and a settle timeout can warn and continue. Review captures
+for visual/content errors and behavior outside the explicit checks.
 The public repository's CI runs it on pull requests and pushes to `main`. When you change what a screen shows, run it; when you add a step to a
 script, name the target and assert the expected result. Named targets use the
 reported geometry when layout changes.
