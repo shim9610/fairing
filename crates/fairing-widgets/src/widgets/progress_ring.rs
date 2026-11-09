@@ -1,45 +1,13 @@
-//! `ProgressRing` — a ring that reports, determinate or not, with room in the middle for the
-//! number.
+//! `ProgressRing` displays determinate or indeterminate progress in a circular track.
 //!
-//! # Why a ring is not the bar bent round
+//! The centre can hold caller-supplied content. `RingStyle::Sweep` uses a colour
+//! gradient and `RingStyle::Flat` uses a flat arc. Gradient bands use mesh vertex
+//! colours interpolated by egui/epaint.
 //!
-//! `ProgressBar` is a strip beside a label, read in a list. A ring is read **from across the
-//! bench**: it sits alone in a tile or a hero, the number sits inside it, and the band has to be
-//! thick enough that the eye takes the fraction in without stopping. So it has its own stroke
-//! token (`control.ring_ratio`, over its own diameter), its own centre slot, and its own
-//! way of saying "still going".
-//!
-//! # Why the fill is a sweep of colour and not a flat arc
-//!
-//! On a flat arc the only thing that says which end is the *head* is the position of the cut,
-//! and at 63 % that is a matter of remembering where twelve o'clock was. The reference draws the
-//! band from a pale tint at the start to the full accent at the head, and a soft halo around the
-//! filled part, so the direction of travel is in the colour: the eye finds the head first. That is
-//! [`RingStyle::Sweep`], the default. [`RingStyle::Flat`] is the Material shape, for a panel that
-//! wants the quieter one.
-//!
-//! A gradient along an arc is not something a stroke can draw. The band is a **mesh** with a
-//! colour on every vertex, which epaint interpolates — the same way the desktop paints its
-//! gradient wallpaper. The mesh is cached against the ring's geometry and its quantised value, so
-//! a ring that is not moving costs no allocation and a moving one costs one rebuild per frame.
-//!
-//! # Why the shown value is eased, and never goes backwards
-//!
-//! Apple's guidance is to *even out* the pace of a determinate indicator, and Fluent's is never to
-//! let one rewind; both are about the same thing, which is that a bar is trusted only while it
-//! behaves like a clock. A worker reporting in bursts would have the ring jump; a worker that
-//! restarts a phase would have it snap back. So the ring eases towards each reported value over
-//! `motion.switch`, and holds the highest value it has shown unless the caller says a rewind is
-//! meant ([`ProgressRing::allow_rewind`]) — a *new run* is a rewind that is meant.
-//!
-//! And it reports silence the way the bar does: past [`ProgressRing::stale_after`]
-//! with no new value and no [`ProgressRing::heartbeat`], the band breathes and the centre value
-//! dims. The stall does not change the tone — that is the caller's judgement to make.
-//!
-//! # Why the read-out is the caller's string
-//!
-//! As for the bar: `63 %`, `63%`, `12.4 L`, `3 / 4` — the crate lays the number out and
-//! does not decide what it is.
+//! The widget animates reported progress and supports an explicit rewind policy,
+//! stale indication and reduced-motion presentation. The application supplies the
+//! reported value and operation status; visual animation is not a backend liveness
+//! check.
 
 use super::{ProgressFill as Fill, ProgressRingLook};
 use crate::cx::WidgetCx as Cx;
@@ -146,10 +114,9 @@ impl<'a> ProgressRing<'a> {
         }
     }
 
-    /// **Repaint an indeterminate ring at most this often**, rather than every frame — for a
-    /// ring that may go round for hours (a badge reader's wait on a lock screen), where sixty
-    /// frames a second all night is heat and power spent on nothing. The arc keeps its pace; it
-    /// only moves in coarser steps. Nothing for a determinate ring, which repaints on change.
+    /// Request indeterminate-ring updates at this interval instead of every frame.
+    /// Other UI work or host input may cause more frequent frames. Arc position still
+    /// uses elapsed time. This setting does not affect determinate-ring updates.
     #[must_use]
     pub fn repaint_every(mut self, interval: Duration) -> Self {
         self.repaint_every = Some(interval);
@@ -170,8 +137,8 @@ impl<'a> ProgressRing<'a> {
         self
     }
 
-    /// The outer diameter (du). `metrics.tile_size` by default, which is a ring that fills a
-    /// quick tile; a hero wants more.
+    /// Outer diameter in du, defaulting to `metrics.tile_size`.
+    /// Values below 1 du are drawn at 1 du.
     #[must_use]
     pub fn diameter(mut self, du: f32) -> Self {
         self.diameter = Some(du.max(0.0));
@@ -179,6 +146,8 @@ impl<'a> ProgressRing<'a> {
     }
 
     /// Override the band's thickness (du). `control.ring_stroke(diameter)` by default.
+    /// Thickness is capped at half the diameter; its 1 du floor is reduced for
+    /// diameters below 2 du.
     #[must_use]
     pub fn thickness(mut self, du: f32) -> Self {
         self.thickness = Some(du.max(0.0));
@@ -222,9 +191,9 @@ impl<'a> ProgressRing<'a> {
         self
     }
 
-    /// **Let the shown value go down.** Off by default: a ring holds the highest value it has
-    /// shown, because a reading that goes backwards is a reading the operator stops trusting. A
-    /// new run is the case this is for — say so, and the ring follows the value down.
+    /// Allow a lower reported target. Off by default: lower targets are raised to
+    /// the stored target before easing. Displayed values follow the configured
+    /// easing, including any overshoot and return.
     #[must_use]
     pub fn allow_rewind(mut self, allow: bool) -> Self {
         self.allow_rewind = allow;
@@ -248,8 +217,8 @@ impl<'a> ProgressRing<'a> {
         self
     }
 
-    /// Separate two rings that would otherwise share their eased value and cache. Only needed
-    /// where two are drawn in the same `Ui` scope.
+    /// Salt the widget ID used for eased value and mesh-cache state. Use a stable salt
+    /// when distinct instances would otherwise reuse an ID or move between UI positions.
     #[must_use]
     pub fn id_salt(mut self, salt: &'a str) -> Self {
         self.salt = salt;
@@ -260,10 +229,11 @@ impl<'a> ProgressRing<'a> {
     pub fn show(self, ui: &mut egui::Ui, cx: &mut Cx<'_>) -> Response {
         let m = &cx.theme.metrics;
         let diameter = self.diameter.unwrap_or(m.tile_size).max(1.0);
+        let max_thickness = diameter * 0.5;
         let thickness = self
             .thickness
             .unwrap_or_else(|| cx.theme.control.ring_stroke(diameter))
-            .clamp(1.0, diameter * 0.5);
+            .clamp(1.0_f32.min(max_thickness), max_thickness);
         let (rect, response) = ui.allocate_exact_size(Vec2::splat(diameter), Sense::hover());
         // The auto id, so two rings in one `Ui` keep separate memories.
         let id = response.id.with(self.salt);
@@ -360,9 +330,9 @@ impl<'a> ProgressRing<'a> {
         from: f32,
         to: f32,
     ) {
-        // **Cached against what it depends on.** A ring that is not moving rebuilds nothing; a
-        // moving one rebuilds once per frame. `to` is quantised to a step around the circle so the
-        // eased value's last few thousandths do not defeat the cache.
+        // Reuse the mesh only while its geometry, fill colour, arc bounds and style key
+        // match. Layout or theme changes can rebuild it without progress changing;
+        // quantized arc bounds let some small progress changes reuse the same mesh.
         let key = CacheKey {
             center: geom.center.round(),
             radius: geom.radius.round(),
@@ -485,12 +455,8 @@ impl<'a> ProgressRing<'a> {
     }
 }
 
-/// **Where the arc starts.** A ring starts at twelve o'clock, which is where every clock and every
-/// progress ring since has started. A gauge — a ring with a gap — starts at the gap's clockwise
-/// edge, so the arc runs up one side, over the top and down the other, with the opening at the
-/// bottom: the dashboard convention. The two are different rules, and a formula that slid from one
-/// to the other as the gap closed would put a plain ring's start at six o'clock, which is what the
-/// first render of this did.
+/// Start a full ring at twelve o'clock. A ring with a gap starts at the gap's
+/// clockwise edge so the opening remains at the bottom.
 fn start_angle(gap_degrees: f32) -> f32 {
     if gap_degrees > 0.0 {
         FRAC_PI_2 + gap_degrees.to_radians() * 0.5
@@ -889,7 +855,8 @@ mod tests {
         );
     }
 
-    /// **A band's vertices all sit on the band**, between the inner and outer radius.
+    /// Check vertices against the supplied band radii plus its anti-aliasing skirt.
+    /// Vertices in the skirt must be transparent.
     #[test]
     fn every_vertex_is_on_the_band() {
         let geom = Geometry {
@@ -957,10 +924,9 @@ mod tests {
             .count()
     }
 
-    /// **No two triangles of a capped band cover the same point.** The tail is translucent, and
-    /// a cap drawn as a whole disc over the band's end painted its start twice — a darker
-    /// half-moon at twelve o'clock, on the console's own ring. With a halo the band sits over it
-    /// by design, so two is the ceiling there and three (the old cap) is the defect.
+    /// Check overlap counts at a tail-cap point and a grid of more than 5,000 sample
+    /// points for the supplied band geometry. Flat paint permits one covering triangle;
+    /// adding the halo permits two. This catches the former whole-disc cap overlap.
     #[test]
     fn a_capped_band_paints_no_point_twice() {
         let geom = Geometry {

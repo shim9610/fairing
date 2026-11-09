@@ -5,12 +5,11 @@ covered by the resource-failure contracts below.
 
 The assurance suite checks the contracts below against the production sources
 and public APIs. The table distinguishes exhaustive decision proofs from
-generated or bounded executions. A tool installation or a green placeholder
-test is insufficient: production mutations must also fail the relevant checks.
+generated or bounded executions. Production mutation controls check verifier
+rejection or failed native tests with expected diagnostic markers, as described below.
 
-The stronger whole-application operability theorem is incomplete. Component proofs
-and finite witnesses must not be presented as complete concrete-state coverage or
-universal interaction progress; see [formal operability obligations](formal-operability.md).
+Open whole-application proof obligations are listed in
+[formal operability](formal-operability.md).
 
 ## Contract map
 
@@ -24,7 +23,7 @@ universal interaction progress; see [formal operability obligations](formal-oper
 | Runtime unwind faults latch dispatch off, deny gates and discard partial viewport/platform output; no automatic callback replay | Shell runtime boundaries, runner adapters, Access quarantine, BoundedInbox::close_admission | runtime_faults integration tests inject UI/borrowed-state/direct/queued/backend faults; runner tests inject event/raw-UI faults; approved-payload cleanup and subprocess controls for aborting/double-panicking unknown destructors. Requires unwind; no business rollback or universal OOM claim. |
 | Shell replacement closes old admission before construction, never replays old work, and leaves dispatch blocked on failure; recovery UI and restart policy are independent | Shell::restart_with, RecoveryUi, runner recovery callbacks | runtime_faults exercises factory errors/unwinds, rejected replacements, old-shell disposal faults and real button input; runner tests exercise automatic, request-based and failing recovery callbacks. No business/context rollback; unwind-only boundary. |
 | Icon storage failure reclaims older cache entries or omits the path; dismissal event allocation failure preserves notification/unread state; failed command factories release their slot | try_flatten, IconCache::try_get, Shell::try_dismiss_notification, ShellHandle::try_send_fallible_with | Real 16/64 MiB one-byte-exhaustion tests exercise zero-allocation cache hits, cold-icon refusal, reclamation, dismissal retry and no rejection logger calls. Stock-egui frame exhaustion is a separate failing negative control, not an acceptance result. |
-| Ordered gate levels; explicit assignments and unknown-gate defaults; one level/off bypasses policy | `Access::allows`, `LevelPolicy::allows/required` ([access guide §1–4](guide/05-access-control.md)) | Kani `ordered_gates_are_monotone_and_reflexive`; Verus `level_allows`; generated `public_access` includes Unicode/empty/unknown names and real level names preceding top/bottom aliases |
+| Legacy level mode: ordered gates, explicit assignments and unknown-gate defaults; a single configured level or off mode bypasses the legacy policy | `Access::allows`, `LevelPolicy::allows/required` ([access guide §1–4](guide/05-access-control.md)) | Kani `ordered_gates_are_monotone_and_reflexive`; Verus `level_allows`; generated `public_access` includes Unicode/empty/unknown names and real level names preceding top/bottom aliases |
 | A grant must name an existing level, cannot demote an unlock session, and may equal the current level only on a lock screen | `Shell::apply_outcome` → `access::rules::grant_allowed` ([access guide §5](guide/05-access-control.md)) | Kani `grants_cannot_use_unknown_or_lower_levels`; Verus `grant_allowed`; `public_grants` exercises actual table lookup, prompt purpose and continuation dispatch |
 | Direct and queued actions, screens and setting writes check their gate when executed; changing policy revokes open screens | `Shell::launch/set_setting`, `ShellHandle`, `revalidate_access` ([access guide §2.3](guide/05-access-control.md)) | `public_shell_ordering` tracks independent expected action counts/settings through up to 32 operations; same-sender subject/launch order; gate-bypass mutation must fail screen revocation |
 | Authentication continuation re-enters the launch gate; a session boundary cancels the old check before polling | `apply_outcome`, `observe_subject_change`, `request_unlock`, `cancel_prompt` ([access guide §5](guide/05-access-control.md)) | `public_grants`; fixed `session_boundaries_cancel_before_polling_and_deadlines_are_inclusive` covers logout, same-level identity replacement, gate retargeting, lock and Back |
@@ -33,7 +32,7 @@ universal interaction progress; see [formal operability obligations](formal-oper
 | PIN and pattern attempts share the stricter allowance and longer lockout; refused grants restore their cleared attempt history; reopening does not reset lockout | `PinTable::submit/refused` ([access guide §5](guide/05-access-control.md)) | `public_authentication` uses an independent attempt/deadline model for up to 64 operations; Miri fixed sequences include lock expiry equality and mixed methods |
 | Failure accounting cannot wrap; the attempt limit is inclusive | `PinTable::fail` → `next_failure/lockout_reached` | Kani `failure_accounting_never_wraps`, `lockout_is_inclusive_and_cannot_be_disabled_by_more_failures`; Verus contracts on both real functions; product regression at `u32::MAX` |
 | Accepted Boolean settings coalesce to the latest target and wait for the previous backend acknowledgement | `set_setting` → pending Boolean handling ([services guide §5](guide/06-services.md)) | Existing Kani/Verus ACK proofs plus `public_backend_ordering`: actual `ShellHandle`, setting gates and a recording delayed Wi-Fi backend; no overlapping writes and exact independent expected dispatch list |
-| Inbox has only nonblocking receive APIs and preserves messages and per-sender order | `Inbox::pair/try_recv/drain` ([screen guide](guide/02-screens.md)) | Two Loom scenarios: early/final drain, and a concurrent consumer with two senders/three messages; native and Miri run the same source with real channels; a drop-message mutation must fail |
+| Inbox receive APIs report empty/disconnected rather than waiting for messages; messages retain per-sender order | `Inbox::pair/try_recv/drain` ([screen guide](guide/02-screens.md)) | Two Loom scenarios: early/final drain, and a concurrent consumer with two senders/three messages; native and Miri run the same source with real channels; a drop-message mutation must fail |
 | Bounded admission shares capacity across clones, preserves rejected ownership, skips rejected factories and returns slots; update budget preserves accepted order | `Inbox::bounded`, `ShellHandle::try_send*`, builder limits ([memory limits](memory-limits.md)) | `public_memory` FIFO oracle; native/Miri close races and factory unwinding; Loom atomic-admission scenarios; shell cap-2/budget-1 integration regression |
 | Message-based mocks default to bounded storage and finite polls; explicit unbounded storage keeps finite work, full batches schedule continuation, and zero budgets pause without spinning | `MockControl::try_send`, mock `with_inbox` constructors, `MockInbox`, `Backend::next_wake` ([service guide](guide/06-services.md#bounded-service-channels)) | Product `services::mock::inbox_tests`: all six default capacities and per-poll limits, FIFO continuation, pause/resume with existing controls, rejected payload ownership/disconnect, timed scan progress under backlog and invalid capacity |
 | Inline pool handles remain pool-specific and removed generations never revive | `FixedPool`, `next_generation` ([memory limits](memory-limits.md)) | `public_memory` live/stale/foreign-key model, Miri and API fuzzer; Kani four-operation two-slot sequences and all u64 generations; Verus exact generation body; both reject generation wrap |
@@ -43,7 +42,7 @@ universal interaction progress; see [formal operability obligations](formal-oper
 | Notification ids deduplicate; source groups stay contiguous; persistent items resist dismissal; hard caps include persistent entries, refusing new overflow; gated content hides | `NotificationCenter`, `shows_content` ([notification source](../crates/fairing/src/notify/center.rs)) | `public_notifications` checks invariants after up to 64 operations; fixed persistent-flood/refusal regressions; Miri, libFuzzer and a cap-removal mutation |
 | Back routing covers every valuation of its observed predicates, selects exactly one group and dispatches each independently permitted Back to its specified target | `Shell::back_in` → `back_route::classify/dispatch` | Kani three harnesses and Verus contracts on exact source; all 256 predicate valuations and nine disjoint groups; both reject a missing group and a refused permitted operation; native field/keyboard controls reject wrong snapshot binding and an omitted hide call. This is dispatch, not whole-UI operability. |
 | Retained interaction owners have a total, disjoint state partition; every independently promised lifecycle operation has its specified immediate outcome | Private `interaction::rules` kernel and egui owner adapter | Kani four harnesses; Verus exact-source membership/admission/outcome/lifetime contracts over all raw protocol predicates and u64 timestamps. Native 448 dropdown histories/896 recovery suffixes plus other retained-owner witnesses; source inventory and four production-wiring controls. See [formal operability](formal-operability.md) for concrete refinement boundaries. |
-| Every service polls once with the supplied time and the minimum reported deadline wins | `Services::poll/custom` ([services guide §1](guide/06-services.md)) | `public_services`, two independently recorded backend types; Miri fixed deadline/missing-deadline cases |
+| A completed service-poll pass calls each installed backend once with the supplied time and selects the minimum reported deadline | `Services::poll/custom` ([services guide §1](guide/06-services.md)) | `public_services`, two independently recorded backend types; Miri fixed deadline/missing-deadline cases |
 | UTC conversion saturates, calendar fields are valid, formatting clears a reused buffer and changing hour convention preserves shape | `WallTime`, `ClockFormat` ([services guide: clocks](guide/06-services.md)) | `public_calendar` with arbitrary u64/i32 inputs, inverse Gregorian conversion and all formats; Miri boundary values and API fuzzer |
 | Pixel conversion clamps; changing a container changes fractional references without changing physical, finger or text terms | `round_u8/round_i8`, `Dim`, `Scale::in_container` ([unit source](../crates/fairing-widgets/src/unit.rs)) | `public_units` uses arbitrary f32 bit patterns, NaN/infinities and arbitrary u16 dimensions; Miri/fuzzer; compile-fail anchor contracts remain in product documentation tests |
 | Invalid ratios/grid dimensions fail validation; malformed configuration and credential debug/error output do not reveal entered secrets | `ShellConfig::from_toml`, `Access::from_config`, `Credential::Debug` ([configuration guide](guide/07-config-reference.md)) | Generated `public_configuration`, `credential_debug_is_independent_of_contents`, parser/redaction properties, Miri fixed cases and parser/API fuzz targets |
@@ -101,7 +100,7 @@ the entire shell, layout, egui map and application callbacks; see
   path; generated cases run natively.
 - Loom exhausts its six bounded scenarios without a preemption/permutation/time
   cap. The larger scenario has four threads including the caller. The branch
-  safety limit is 1,000 and exceeding it fails. Loom 0.7.2 does not model the exact
+  safety limit is 1,000 and exceeding it fails. Loom 0.7.3 does not model the exact
   empty/disconnected error distinction. The bounded transport substitutes a model
   channel (Loom has no sync_channel) while retaining production admission atomics.
   A close-after-drain model avoids the stub's failed-send/destruction miscount;
@@ -122,7 +121,6 @@ the entire shell, layout, egui map and application callbacks; see
   background/logic-only regressions continue in the strict audit.
 - ASan (AddressSanitizer) campaigns run 20,000 ACK inputs, 10,000 parser inputs,
   10,000 public non-UI API inputs and 2,000 shell/backend/grant inputs.
-  They provide bounded bug-finding evidence, not an exhaustive proof.
 
 Rendering, arbitrary gestures, every optional runner/platform combination,
 integrator callbacks, schedulability and hardware behavior are covered only
@@ -160,8 +158,16 @@ the control instead of counting as a successful rejection.
 checks a passing baseline, then breaks production gate delegation,
 notification cap enforcement, bounded factory admission, Inbox delivery, input progress,
 modal priority, response correlation, the per-update command budget, deadline ordering, Back snapshot binding, Back handler execution, retained-owner expiration, numeric caller-value validation, active hold admission, wheel capture admission, restoration delegation, fresh-pointer projection, capture-result application and completion latching separately. The matching
-public API/Loom test must fail with its expected assertion. Working sources
-and published dependencies remain intact.
+public API/Loom test must exit unsuccessfully, with `test result: FAILED` and the
+control's expected diagnostic marker in its log. This check does not establish
+that the marker belongs to the failing assertion; that relationship requires log
+inspection. Working sources and published dependencies remain intact.
+
+Six additional native controls reconnect the former 32-slot pane spacing or
+freeze switch, slider, list-row, lock-badge and shade geometry inputs. Their real headless witnesses
+must fail on layer aliasing or painted geometry/text positions. The component
+checks inspect rendered output rather than calculating expected geometry from
+configuration metadata.
 
 `verification/coverage.py` reports product code executed by the contract suite.
 It fails if any of the declared production modules has no executed source
@@ -212,15 +218,15 @@ python3 verification/coverage.py
 ```
 
 CI uploads contract controls, per-module coverage, proof controls, Miri/Loom
-logs, fuzz corpora and BOMs. A passing run establishes the recorded contracts
-within these scopes and assumptions; it is not a device certification.
+logs, fuzz corpora and BOMs. Results identify the checked contracts, source
+revision and configuration.
 
 ## Panic payload contract
 
 Only `String`, `&'static str` and `recovery::PanicCode` payloads are supported for
 cleanup. Expected API failures use typed return values. Unknown payload destructors
 are not invoked: those objects are retained and counted, including across shell
-replacement. This preserves dispatch quarantine without claiming bounded retention.
+replacement. Retained unknown payloads have no fixed bound.
 `PanicCleanupStats::released` replaces the earlier experimental `cleanup_panics`
 counter; `last_code` is a process-wide diagnostic, not a per-shell fault association.
 The numeric payload type provides no helper for initiating a panic inside Fairing.
@@ -248,7 +254,7 @@ replay input or provide atomic rerouting to widgets outside a claimed region.
 ## UI progress and required input paths
 
 The production `shell/input_route.rs` decision is shared by the shell, Kani, Verus
-and Miri. The required six-edge UI fixture uses real egui buttons, Cancel, on-screen
+and Miri. The required twelve-edge UI fixture uses real egui buttons, Cancel, on-screen
 PIN keys and a region action; it never substitutes a host command or hardware-key
 shortcut for a required edge. Generated region/rotation histories precede the
 witnesses. A missing edge witness, sticky deferral or stale guard covering a modal
@@ -270,7 +276,7 @@ compiler-generated rustdoc JSON in minimal/all-feature configurations with
 | `SessionGrant` | Private fields; full constructor, typed convenience constructors and read accessors | Internal extension does not require external exhaustive literals |
 | `SessionError`, `SessionReadError`, `Decl`, `DeclKind` | Non-exhaustive | New variants require a downstream fallback; known-variant behavior remains a contract |
 | Other public value enums | Retain existing closed/open status | A closed domain model is intentionally exhaustive; review a new variant as a source change |
-| Ordinary `Shell::*_mut` | Retain trusted legacy customization access | These concrete component types remain supported API; use declaration replacement, existing focused operations and `set_dock_placement` where sufficient |
+| Ordinary component mutation | Named operations and owned configuration replacement; seven broad mutable loans removed | Attach replacement backends before publication; invalidate derived configuration state; protected observation lends no mutable component |
 | `Shell::registry`, `ProtectedShell::shell` | Removed | `ShellView` provides screen/geometry/session/settings/fault queries without borrowing implementation stores |
 | Remaining hidden read-only test queries | Retain their paths as supported diagnostic APIs | Hidden rustdoc status grants no compatibility exemption; do not expose them through a mutable protected-shell conversion |
 | Runner and harness | Generic over sealed `HostedShell`, implemented only by the two shell modes | Shared host orchestration cannot install untyped declarations or convert protection modes |

@@ -39,9 +39,7 @@ pub(super) fn paint_words(ui: &egui::Ui, words: Words<'_>, ink: Ink) {
         words.value_colour,
     );
 }
-/// The chevron at the trigger's right edge, half an inset in: a glyph carries its own optical
-/// padding where a word does not, and Material's exposed dropdown pads its trailing icon 12 dp
-/// against the text's 16. On a narrow field the difference is a value shown whole.
+/// Paint the trailing chevron at the trigger's right edge with half an inset.
 pub(super) fn chevron(ui: &egui::Ui, cx: &mut Cx<'_>, t: &Tokens, face: Face, colour: Color32) {
     chevron_at(
         ui,

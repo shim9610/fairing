@@ -98,7 +98,7 @@ impl Workspace {
         let base = Self::slot_base(self.focus);
         let outgoing = outgoing.map(|mut o| {
             let len = self.active_task().map_or(0, Task::len);
-            o.set_layer_slot(base.saturating_add(u32::try_from(len).unwrap_or(u32::MAX)));
+            o.set_layer_slot(base.saturating_add(u64::try_from(len).unwrap_or(u64::MAX)));
             o
         });
         // The width W is the focused pane's, as last drawn (= the content's with one pane — the same

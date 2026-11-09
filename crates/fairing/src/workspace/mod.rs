@@ -4,10 +4,13 @@
 //!
 //! The render convention: the desktop and the screen instances are each drawn as an `Area`
 //! (`Order::Background`) on a different `LayerId`, and through a transition the layer is moved
-//! whole with `Context::set_transform_layer` and faded with `Ui::set_opacity`. Screen code knows
-//! none of it. The screen layer ids are a **finite set** (the Pane stack depth = the slot) — egui's
-//! `Areas` never prunes, so a new id per instance would grow the memory for ever (the head comment
-//! of `instance.rs`).
+//! whole with `Context::set_transform_layer` and faded with `Ui::set_opacity`.
+//! The workspace supplies these transforms around the screen callback. It reuses
+//! layer IDs by pane/stack slot rather than issuing one per instance. The number used grows
+//! with stack depth; the high bit separates the two pane ranges.
+//! Transform and opacity handling use egui's
+//! [Context](https://docs.rs/egui/0.37.0/egui/struct.Context.html) and
+//! [Ui](https://docs.rs/egui/0.37.0/egui/struct.Ui.html) APIs.
 //!
 //! The transition rules (A2 · A3):
 //! - **Interruption**: a new launch / back / close mid-transition finishes the one in progress at
@@ -19,8 +22,7 @@
 //!   close `Stopped` for the whole task (or `Destroyed` where a root pop ends the task). An A2
 //!   open's first `ui` comes at `t ≥ 0.5`.
 //! - **Blocking input**: through a transition every screen and desktop `Area` is left
-//!   `interactable(false)` — egui 0.36's hit test filters out that layer's widgets whole through
-//!   `Areas::is_interactable` (`context.rs` `begin_pass_mut`). A transparent shield `Area` over the
+//!   `interactable(false)`, using egui's area interaction control. A transparent shield `Area` over the
 //!   chrome is the M2 gesture shield's job.
 //! - **z order**: `Areas::end_pass` does `order.sort_by_key(|l| (l.order, wants_to_be_on_top))` —
 //!   **a stable sort**, so among layers that called `move_to_top` on the same frame the existing
@@ -78,12 +80,11 @@ use split::{Phase, Released, Split};
 use std::time::Instant;
 
 /// How many slots have a sizing pass run through them on the first frame (a stack depth of up to 4 is free).
-const WARM_SLOTS: u32 = 4;
+const WARM_SLOTS: u64 = 4;
 
-/// The layer slots a pane may borrow: pane `i` borrows from `i × PANE_SLOTS` up, so the two panes'
-/// screens never share a layer. A stack deeper than this in one pane would — and it draws only its
-/// top two anyway.
-const PANE_SLOTS: u32 = 32;
+/// Two disjoint pane ranges. A `Vec` allocation is at most `isize::MAX` bytes,
+/// so every non-zero-sized `Instance` depth fits below bit 63 on supported 32/64-bit hosts.
+const PANE_SLOTS: u64 = 1 << 63;
 
 /// The divider's `Area` — the band, its grip, the focus line, and the handle a finger takes.
 const DIVIDER_ID: &str = "fairing.split.divider";
@@ -154,7 +155,7 @@ pub struct Workspace {
     layers_dirty: bool,
     /// How many slots of each pane have already had their sizing pass consumed (= the next slot
     /// number to warm up, from the pane's base).
-    warmed_slots: [u32; 2],
+    warmed_slots: [u64; 2],
     /// The instances being cleared by the clear-top cross-fade, **from the top down**.
     /// Only the first (originally the top) is drawn — those below it are covered anyway. All
     /// go to the graveyard at the end of the transition.
@@ -468,8 +469,8 @@ impl Workspace {
     }
 
     /// The first layer slot pane `pane` borrows.
-    fn slot_base(pane: usize) -> u32 {
-        u32::try_from(pane).unwrap_or(0).saturating_mul(PANE_SLOTS)
+    fn slot_base(pane: usize) -> u64 {
+        u64::try_from(pane).unwrap_or(0).saturating_mul(PANE_SLOTS)
     }
 
     /// Replace the motion-token cache. [`Workspace::ui`] calls it every frame with
@@ -492,7 +493,7 @@ impl Workspace {
 }
 
 /// Run one slot's sizing pass with nothing in it (see [`Workspace::warm_layer_slots`]).
-fn warm_slot(ctx: &egui::Context, slot: u32, content: Rect) {
+fn warm_slot(ctx: &egui::Context, slot: u64, content: Rect) {
     egui::Area::new(Instance::slot_area_id(slot))
         .order(egui::Order::Background)
         .fixed_pos(content.min)

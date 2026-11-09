@@ -21,10 +21,9 @@ an operational shell:
 - After any history, one pass without a fresh press admits ordinary UI again, even
   if region geometry continues to animate.
 
-The decision has no persistent latch. This local property applies after arbitrary
-prefixes; it is not a claim that a finite trace search explored infinite time. The
-caller must overwrite its old decision and request a repaint when deferring. Actual
-shell witnesses and mutation controls check that wiring separately.
+The decision has no persistent latch, so the property applies after arbitrary
+prefixes. The caller must overwrite its old decision and request a repaint when
+deferring. Shell witnesses and mutation controls check that wiring separately.
 
 Fault quarantine, deliberate lockout and external authorization waits have separate
 contracts; an application must declare whether a recovery control is required.
@@ -106,9 +105,8 @@ cases where a standalone proof passes but the runtime stopped calling it correct
 
 ## Scope and extension
 
-The twelve edges are the fixture's declared requirements, not an inventory of every
-Fairing or integrator transition. Add a state observation, required edge and real
-input witness when extending this graph. Extend the independent history generator
+The fixture declares the twelve edges above. Add a state observation, required
+edge and real input witness when extending this graph. Extend the independent history generator
 with the obstruction that previously caused a regression. Keep permissions, deliberate
 lockout and configured input capture distinct from unintended inaccessibility.
 

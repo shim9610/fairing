@@ -3,14 +3,13 @@
 
     python3 tools/make_gif.py <frames dir> <out.gif> <width> [options]
 
-`--record` writes `0000.png`, `0001.png`, ... 30 a second into one folder per animated stretch
-(guide 01 §5). This turns one such folder into a GIF: every frame resized to `width`, one palette
-for the whole clip, built from frames sampled across it so that colours do not flicker from frame
-to frame, and Pillow's own frame deltas, which merge identical frames and store only the part of
-each frame that changed. The deltas are what keep the still stretches nearly free.
+`--record` writes `0000.png`, `0001.png`, ... and frame-rate metadata into one folder
+per animated stretch (guide 01 §5). This turns one such folder into a GIF: every frame resized to `width`, one palette
+for the whole clip, built from sampled frames. Pillow frame deltas merge identical frames
+and store changed regions, reducing repeated image data in still stretches.
 
-Dithering is off by default: on flat UI it only adds noise that every frame has to carry. Turn it
-on (`--dither`) for a clip full of photographs if the banding shows, at about 1.6 times the size.
+Dithering is off by default. `--dither` can reduce banding in photographic content,
+with a file-size tradeoff that depends on the frames.
 
 Needs Pillow 9.1 or newer (`pip install pillow`). `tools/readme-gifs.sh` runs the tours and calls
 this for the animations in the README.
@@ -41,7 +40,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("frames", type=Path, help="a folder of 0000.png, 0001.png, ...")
     p.add_argument("out", type=Path, help="the GIF to write")
     p.add_argument("width", type=int, help="the GIF's width in pixels; the height keeps the ratio")
-    p.add_argument("--step", type=int, default=1, help="keep every Nth frame (1 = 30 fps, 2 = 15)")
+    p.add_argument("--step", type=int, default=1, help="keep every Nth frame; timing uses the recorded frame rate")
     p.add_argument("--colors", type=int, default=255, help="palette size (at most 256)")
     p.add_argument("--dither", action="store_true", help="Floyd-Steinberg dithering")
     p.add_argument("--crop", help="x0,y0,x1,y1 in the recorded frame, before resizing")
@@ -91,7 +90,7 @@ def main() -> None:
         append_images=quantised[1:],
         duration=durations,
         loop=0,
-        # Keep each frame in place for the next: Pillow stores only what changed.
+        # Retain the preceding frame for Pillow's inter-frame encoding.
         disposal=1,
         optimize=False,
     )

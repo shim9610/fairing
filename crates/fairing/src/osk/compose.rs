@@ -1,7 +1,7 @@
 //! The composing input layer. For writing systems where one character takes
 //! several key presses.
 //!
-//! Latin is one key to one character and does not pass through this layer. Hangul stacks jamo
+//! The built-in Qwerty layout emits characters directly. Hangul stacks jamo
 //! into syllables, and Chinese and Japanese write a pronunciation and then pick from candidates
 //! — all three share the need to show "a character that is not final yet" (the composing string,
 //! the preedit) on screen.
@@ -16,8 +16,9 @@
 //!
 //! There is one implementation today, Hangul ([`super::hangul::HangulComposer`]). Chinese and
 //! Japanese are not included because they need someone who can verify the input method itself —
-//! what is provided instead is the place to attach one. A method that needs a candidate list
-//! (pinyin, kana-kanji conversion) extends this trait with candidate methods.
+//! the trait describes the composition protocol, but `Osk` currently selects only its built-in
+//! Hangul composer. There is no public setter for an integrator-supplied composer. Supporting
+//! candidate lists (pinyin, kana-kanji conversion) would require additional API and OSK wiring.
 
 /// What a composer returns for one input.
 ///
@@ -70,11 +71,8 @@ impl Compose {
     }
 }
 
-/// A composing input method.
-///
-/// The implementation holds its own state and the caller calls [`Composer::feed`] on each key.
-/// **It uses no lock types** — it is only ever touched as `&mut self` on the
-/// single UI thread.
+/// A composing input method. The caller invokes [`Composer::feed`] with `&mut self`
+/// for each key. Implementations used on the UI thread must return promptly.
 pub trait Composer {
     /// The name used in logs and config (`"hangul"`).
     fn name(&self) -> &'static str;

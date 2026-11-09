@@ -1,10 +1,8 @@
-//! **The four selection marks draw four different things** — `layout::SelectMark`.
+//! Selection-mark geometry for `layout::SelectMark`.
 //!
-//! The mark is what a rail is read by, and which one reads best is a property of the panel: a
-//! console wants the pill and the bar, a dense desktop list wants the bar alone because a fill
-//! behind one row of many reads as a stripe, and a rail that is already an accent panel wants
-//! neither. The vocabulary only means anything if the four are distinguishable, so these count the
-//! shapes each one adds over the same row drawn unselected.
+//! Tests compare the shapes added by each selection-mark variant against the same
+//! row drawn unselected. They also compare the leading-bar position with and without
+//! a pill.
 
 use fairing::layout::{self, SelectMark};
 use fairing::testing::{single_level_access, Harness};

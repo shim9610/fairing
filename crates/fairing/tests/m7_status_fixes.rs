@@ -1,14 +1,17 @@
 //! Regression tests for the status bar: its crossfades asking for frames and the measuring of
 //! integrator items (fixes before 0.1.0).
 
-use fairing::services::mock::{AudioMsg, MockAudio};
-use fairing::services::AudioSnapshot;
 use fairing::testing::{single_level_access, test_shell, Harness};
 use fairing::{status_item, Cx, Services, Slot};
 
 /// The volume icon's crossfade keeps the shell animating (and so asking for frames).
 #[test]
+#[cfg(feature = "mock")]
 fn volume_crossfade_keeps_the_shell_animating() -> fairing::Result<()> {
+    use fairing::services::{
+        mock::{AudioMsg, MockAudio},
+        AudioSnapshot,
+    };
     let audio = MockAudio::new(10);
     let control = audio.control();
     let services = Services::builder()

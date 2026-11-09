@@ -1,13 +1,12 @@
 //! An instance — one running screen.
 //!
 //! A resident screen stays with its declaration and the instance holds only the declaration id —
-//! the screen is taken from the registry for the length of a call and put straight back, so there
-//! is one owner, no shared cell and no way to reach it twice. A spawned one owns a
-//! `Box<dyn Screen>`. Each instance being drawn borrows a different `LayerId`, so a transition
-//! moves the layer whole. The layer ids are a **finite set** (the Pane slot = the stack
-//! depth) — egui 0.36's `Areas` never prunes a layer once registered (`memory/mod.rs`
-//! `Areas::set_state` only pushes into `order`, and `end_pass` only sorts), so a new id per
-//! instance would grow `areas` / `order` for ever on a device left running for days.
+//! the screen is taken from the registry for one call and returned afterward. A
+//! reentrant lookup through that registry finds an empty slot during the loan.
+//! A spawned instance owns its screen handle. Drawn instances borrow pane/stack layer slots
+//! so transitions can transform their screen layers independently within the slot range
+//! described by `workspace::PANE_SLOTS`.
+//! Reusing layer IDs avoids creating a new egui area identity for every instance.
 
 use crate::icons::IconRef;
 use crate::screen::{BackAction, ChromePolicy, Cx, Lifecycle, ScreenDecl, SplitSupport};
@@ -15,7 +14,7 @@ use crate::theme::ColorRole;
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-/// An instance id. Monotonically increasing within the process.
+/// An instance id. Shell-created IDs increase within that workspace; separate shells can reuse values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct InstanceId(pub u64);
 
@@ -67,7 +66,7 @@ pub struct Instance {
     /// The declaration's `.evict_after(..)`.
     evict_after: Option<Duration>,
     /// The borrowed layer slot (= the stack depth inside the Pane). `Workspace::draw_panes` hands it over every frame.
-    layer_slot: u32,
+    layer_slot: u64,
     /// The pane size it was last told — `Resized`'s size, or the first one it was put in.
     told: Option<egui::Vec2>,
 }
@@ -157,35 +156,36 @@ impl Instance {
 
     /// The `Area` id = `("fairing.screen", slot)`. The **slot** (the stack depth), not the instance
     /// id — the two instances being drawn (the one coming in and the one going out) are at
-    /// different depths, so they do not collide, and the id set stays finite.
+    /// different depths within their pane. Bit 63 separates the two pane ranges;
+    /// identities are reused when a slot is reused.
     #[must_use]
     pub(crate) fn area_id(&self) -> egui::Id {
         Self::slot_area_id(self.layer_slot)
     }
 
-    /// An `Area` id made from the slot number alone. The layers being a finite set means one can be
-    /// named without an instance — used by the slot warm-up and the z-order tests.
+    /// An `Area` id made from the slot number alone. It can be named without an instance —
+    /// used by the slot warm-up and the z-order tests.
     #[must_use]
-    pub(crate) fn slot_area_id(slot: u32) -> egui::Id {
+    pub(crate) fn slot_area_id(slot: u64) -> egui::Id {
         egui::Id::unique(("fairing.screen", slot))
     }
 
     /// An [`egui::LayerId`] made from the slot number alone. See `Instance::slot_area_id`.
     #[doc(hidden)]
     #[must_use]
-    pub fn slot_layer_id(slot: u32) -> egui::LayerId {
+    pub fn slot_layer_id(slot: u64) -> egui::LayerId {
         egui::LayerId::new(egui::Order::Background, Self::slot_area_id(slot))
     }
 
     /// Borrow a layer slot (the workspace hands the stack depth over just before drawing).
-    pub(crate) fn set_layer_slot(&mut self, slot: u32) {
+    pub(crate) fn set_layer_slot(&mut self, slot: u64) {
         self.layer_slot = slot;
     }
 
     /// The layer slot borrowed right now.
     #[doc(hidden)]
     #[must_use]
-    pub fn layer_slot(&self) -> u32 {
+    pub fn layer_slot(&self) -> u64 {
         self.layer_slot
     }
 
@@ -312,7 +312,7 @@ impl Instance {
         }
     }
 
-    /// Queue an event. There are three delivery rules:
+    /// Queue an event. There are four delivery rules:
     ///
     /// 1. **Only consecutive duplicates are merged.** An event the same as the one right before it
     ///    (or as the last notified, with the queue empty) is dropped. `Paused, Resumed, Paused`
@@ -386,8 +386,8 @@ impl Instance {
         }
     }
 
-    /// Send every queued event out through `on_lifecycle` (frame stage 14; an instance being drawn
-    /// has [`Instance::ui`] call it first). The closure queue was already filled by
+    /// Drain queued events through mediated `on_lifecycle` dispatch (frame stage 14; an instance
+    /// being drawn has [`Instance::ui`] call it first). Denied hooks are skipped. The closure queue was already filled by
     /// [`Instance::queue`].
     pub(crate) fn flush_lifecycle(&mut self, cx: &mut Cx<'_>) {
         while let Some(event) = self.pending.pop_front() {
@@ -401,18 +401,16 @@ impl Instance {
         }
     }
 
-    /// The event to ride `cx.event` on the next `ui` call. One per call, in order — `Created`
-    /// always comes on the first `ui` (`cx.event == Some(Created)`).
+    /// Pop the next closure event in queue order. The initial queue begins with `Created`.
     pub(crate) fn next_closure_event(&mut self) -> Option<Lifecycle> {
         self.for_closure.pop_front()
     }
 
     /// The screen's `ui`.
     ///
-    /// It sends any pending `on_lifecycle` out before drawing — `Created` comes "right after the
-    /// instance is created, **before the first `ui`**", and frame stage 14's batch flush
-    /// comes after the drawing, too late. Instances that are not drawn (a task gone home, the
-    /// graveyard) are left to stage 14 as before.
+    /// Drain pending lifecycle events before dispatching the UI body, with admission checked
+    /// for each hook. Frame stage 14 handles pending events for instances not drawn here
+    /// (such as a task at home or an instance in the graveyard).
     pub fn ui(&mut self, ui: &mut egui::Ui, cx: &mut Cx<'_>) {
         self.flush_lifecycle(cx);
         self.last_ui = Some(cx.now);

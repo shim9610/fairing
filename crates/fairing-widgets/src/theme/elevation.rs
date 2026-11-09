@@ -1,76 +1,13 @@
-//! **How high a container sits** — one token, two mechanisms.
+//! Container elevation tokens and painting.
 //!
-//! # Why height needed a token at all
+//! `Elevation` selects a level; `ElevationStyle` selects cast-shadow, rim or disabled
+//! presentation. `Auto` chooses cast shadows for a light palette and rims for a dark
+//! palette. Explicit style choices override that selection.
 //!
-//! The crate was flat by policy: `Theme::egui_style` sets `window_shadow` and `popup_shadow` to
-//! [`Shadow::NONE`] and nothing else ever drew one. Measured against the screens this element was
-//! designed from, that is not a style — it is a missing cue. In base light a card
-//! (`surface_variant`, white) measures **1.177** against the page it sits on (`surface`), which is
-//! *below* the crate's own decorative hairline (`Outline` on a card, 1.503): today a card reads
-//! fainter than a divider.
-//!
-//! The reference screens do not solve that with a bigger fill step. They solve it with a smaller
-//! one plus a penumbra. Bella Tavola's item card is `#FAFAFA` on a `#F6F6F6` page — a fill step of
-//! **1.035**, almost nothing — and the separation is a soft band under the card. La Table's card
-//! and page are the same value to the pixel. A card reads as *a sheet lying on the page* rather
-//! than *a region painted a different colour*, and that difference is most of what makes a shell
-//! look like a product.
-//!
-//! # Why the geometry is inverted from a measurement and not chosen
-//!
-//! Bella Tavola's card at (31, 516)–(236, 808), on the raw PNG, averaged along each edge:
-//!
-//! * below it the ground falls 246 → 238.5 and recovers over **10 px**,
-//! * beside it, **4 px**,
-//! * above it, **0 px** — the page actually *brightens*, so there is no shadow there at all.
-//!
-//! epaint publishes its own extent as `spread + 0.5 × blur ± offset` ([`Shadow::margin`]), so with
-//! `spread = 0` those three numbers invert exactly: `side = blur/2` gives `blur = 8 px`,
-//! `bottom = blur/2 + offset` gives `offset = 6 px`, and `top = blur/2 − offset = −2`, which is the
-//! measured zero. That screen's category chips are 88 px tall — a gloved 13 mm target — so
-//! 1 px = 0.1477 mm and the pair is **1.18 mm / 0.89 mm**. The tokens are 1.20 and 0.90.
-//!
-//! The offset being *larger* than half the blur is the whole shape of the thing: it is what keeps a
-//! shadow off the top of a card, which is what all four reference screens do and what neither
-//! Material nor Fluent ever violates (Fluent's ramp is literally `y = 0.5 × blur`).
-//!
-//! # Why a dark palette gets a rim instead
-//!
-//! A cast shadow is light that did not arrive. On a near-black page there is none to withhold, and
-//! both platform references say so outright: Apple's guidance is that drop shadows are ineffective
-//! in Dark Mode and ships a second set of *Elevated* background colours instead, and Windows 11
-//! "uses strokes instead of key shadows to outline an object" in dark theme. So
-//! [`ElevationStyle::Auto`] — the only value a shell normally sets — casts on a light palette and
-//! rims on a dark one, and [`ColorRole::Shadow`] flips polarity with the mode exactly as
-//! [`ColorRole::Pressed`] already does.
-//!
-//! [`ElevationStyle::Cast`], [`Rim`](ElevationStyle::Rim) and [`Off`](ElevationStyle::Off) exist
-//! for the panels whose physics a palette does not describe. The e-ink reference here is the case
-//! that makes them first-class: a *bright* UI carrying no shadow anywhere, its cards bounded by a
-//! single hairline. A display that cannot reproduce a 5 % feather does not degrade gracefully — it
-//! dithers the ramp into rings — and that display is the embedded panel this crate targets.
-//!
-//! # Why `Raised` is decoration and only `Floating` is identified
-//!
-//! `rim_alpha` is not taste. It is the value at which the **`Floating`** rim clears WCAG 1.4.11's
-//! 3.0 against the page in both dark palettes (3.03 and 3.01) while **`Raised`** stays at
-//! 1.62–1.65 — inside the band [`ColorRole::Outline`] occupies and which this crate documents as
-//! allowed to be a ghost. A thing that genuinely floats over content is identified; a card is
-//! decorated.
-//!
-//! Which is also why the cast shadow is **not** gated: at 1.11 against its ground it is
-//! figure-ground help for a sighted reader in bright ambient light, not a boundary. What identifies
-//! a card is still its fill step, and, where an integrator wants a real boundary,
-//! `Deco::stroke(control.stroke_hairline, ColorRole::Outline)`.
-//!
-//! # Why no widget may have one
-//!
-//! Elevation attaches to a container — [`Deco`](../../fairing/layout/struct.Deco.html) and the
-//! shell's own chrome — and never to a control. A control's height already has a vocabulary:
-//! `control.press_grow` on the painted silhouette and `ColorRole::Pressed` on the face. A shadow
-//! that also deepened under the finger would be a second, slower signal for one event. (There is a
-//! cheaper reason too: a shadow doubles a shape's tessellation, and thirty checkboxes on a settings
-//! page are thirty shapes whose wasted interior is larger than the control.)
+//! Cast geometry uses egui/epaint [`Shadow`] parameters. Rim colours and dimensions
+//! use theme and elevation metrics. Floating surfaces use a stronger boundary than
+//! decorative card separation. Check boundary contrast against the actual product
+//! background, including custom palettes and translucent content.
 
 use crate::theme::{ColorRole, Theme};
 use crate::unit::{round_i8, round_u8, Dim, Scale, Span};
@@ -86,15 +23,15 @@ pub enum Elevation {
     None,
     /// A sheet lying on the page — a card, a tile, a grid cell.
     Raised,
-    /// Over content that scrolls under it — an action bar, a toast, a heads-up banner, an open
-    /// list. The only level that is *identified* rather than decorated; see the module doc.
+    /// Floating surface, such as an action bar, toast, banner or open list.
+    /// Uses the floating-level boundary and elevation tokens.
     Floating,
 }
 
 /// Which mechanism expresses height.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ElevationStyle {
-    /// Cast on a light palette, rim on a dark one. The only value a shell normally sets.
+    /// Choose cast-shadow styling in light mode and rim styling in dark mode.
     #[default]
     Auto,
     /// Always a cast shadow, whatever the mode.
@@ -106,11 +43,8 @@ pub enum ElevationStyle {
     Off,
 }
 
-/// The two things one frame paints height with.
-///
-/// **The only place either colour is made is [`Theme::elevate`]** — the `Ink::of` rule the controls
-/// follow, applied to a container: every ratio is folded into one `gamma_multiply` in one function
-/// rather than sprinkled down a paint path.
+/// Resolved shadow and rim colours/strokes returned by [`Theme::elevate`].
+/// The built-in paint path applies configured opacity ratios during resolution.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Elevated {
     /// Under the caster. [`Shadow::NONE`] when the style is [`Rim`](ElevationStyle::Rim) or
@@ -147,8 +81,7 @@ pub struct ElevationMetrics {
     pub float_scale: f32,
     /// [`Elevation::Floating`]'s ink as a multiple of [`Elevation::Raised`]'s.
     pub float_alpha: f32,
-    /// A rim's ink as a multiple of a cast shadow's. A hairline covers a sixth of the width a
-    /// feather does, so the same role has to be louder to carry the same weight.
+    /// Rim opacity as a multiple of cast-shadow opacity.
     pub rim_alpha: f32,
     /// The level a card is given when nothing says otherwise.
     pub card: Elevation,
@@ -210,15 +143,9 @@ pub struct ElevationSpec {
 }
 
 impl Default for ElevationSpec {
-    /// Both lengths are the **eye** family — a millimetre with a device-pixel floor — and neither
-    /// carries a `finger` term. No finger lands on a shadow; a penumbra's job is to be seen at
-    /// arm's length through glass, and a gloved hand does not need a bigger one.
-    ///
-    /// The pixel floors are 4 and 2. At α 14/255 spread over an 8 du ramp each step is 1.75/255;
-    /// held at 4 physical pixels it is 3.5/255, which is where a gradient starts to band on an
-    /// 8-bit panel. Below that the honest answer is [`ElevationStyle::Off`], not a thinner shadow.
-    /// The floors are a *pair*: at 4 and 2 the defining property survives, because
-    /// `top = 4/2 − 2 = 0` still puts nothing above the caster.
+    /// Default elevation specification. Blur and offset use millimetre terms with
+    /// pixel floors and no finger term. Their values determine the cast-shadow extent;
+    /// applications can select `ElevationStyle::Off` when no elevation is desired.
     fn default() -> Self {
         Self {
             blur: Span::fixed(Dim::mm(1.20)).min(Dim::px(4.0)),
@@ -290,11 +217,8 @@ impl ElevationSpec {
 }
 
 impl Theme {
-    /// **The ink for one level — the only place an elevation colour is made.**
-    ///
-    /// [`ElevationStyle::Auto`] resolves here, against `self.dark`: a cast shadow on a light
-    /// palette, a rim on a dark one. Both ratios are folded into a single `gamma_multiply` so that
-    /// a level's alpha is arrived at once rather than by chaining multiplies that each round.
+    /// Resolve shadow and rim styling for a level. `Auto` selects the mechanism
+    /// using `self.dark`; configured alpha ratios are combined before scaling colour.
     #[must_use]
     pub fn elevate(&self, level: Elevation) -> Elevated {
         let e = &self.elevation;
@@ -339,14 +263,10 @@ impl Theme {
     }
 }
 
-/// Paint `level` for a container whose drawn rect is `rect`.
+/// Paint `level` for a container at `rect`, using its own corner radius.
 ///
-/// `radius` is the caster's **own** radius. `Shadow::as_shape` adds `CornerRadius::from(spread)`
-/// and the tessellator adds half the blur on top, so the penumbra comes out rounder than the thing
-/// casting it — which is what a penumbra is, and must not be corrected.
-///
-/// The rim is `StrokeKind::Inside`, so an elevated container never measures wider than a flat one
-/// and the rows inside it do not reflow when a manufacturer turns elevation on.
+/// `Shadow::as_shape` and tessellation expand the shadow geometry for spread and
+/// blur. The rim uses `StrokeKind::Inside`, so it does not increase layout bounds.
 pub fn paint_elevation(
     painter: &Painter,
     theme: &Theme,
@@ -371,9 +291,7 @@ mod tests {
     use super::{Elevated, Elevation, ElevationSpec, ElevationStyle};
     use crate::theme::{contrast, ColorRole, Palette, Preset, Theme};
 
-    /// A theme on one preset and mode. `Theme` has no such constructor of its own —
-    /// the shell always arrives through `from_inputs` — and every test here needs all
-    /// four palettes.
+    /// Construct the preset/mode fixtures used by these tests.
     fn theme_of(preset: Preset, dark: bool) -> Theme {
         Theme {
             palette: Palette::preset(preset, dark),
@@ -417,10 +335,8 @@ mod tests {
         }
     }
 
-    /// **`Floating` is identified and `Raised` is decoration** — the whole reason `rim_alpha` has
-    /// the value it does. A thing that floats over content clears WCAG 1.4.11's 3.0 against the
-    /// page behind it; a card stays inside the band `Outline` occupies, which this crate documents
-    /// as allowed to be a ghost.
+    /// Check floating-rim contrast against the supported page backgrounds.
+    /// Card and inset rims use decorative styling.
     #[test]
     fn only_the_floating_rim_is_a_boundary_you_can_measure() {
         for &preset in Preset::ALL {

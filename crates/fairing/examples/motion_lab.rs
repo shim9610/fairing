@@ -1,11 +1,10 @@
 //! The motion tuning tool: it replays the shade, the pages, push/pop and the
 //! icon zoom on a loop while the `[motion]` tokens are adjusted live on sliders. Run it on the board,
-//! and save the values you like into `[motion]` — "feel" cannot be settled in a document; it is
-//! settled on the real thing.
+//! and export the selected values to `[motion]` after checking the target device.
 //!
 //! - **The frame graph, top right**: the last [`SAMPLES`] frames' intervals (ms) plus the p50 and
-//!   p95. The frame cap of 33 ms is drawn as a gridline. A bar over the line means that motion is
-//!   eating the budget.
+//!   p95. A 33 ms reference is drawn as a gridline. A bar above it is a long frame;
+//!   profiling is needed to determine its cause.
 //! - **The replay loop**: home → the pages there and back → the icon zoom → the shade opening and
 //!   closing → push/pop, round and round without end. It exists to repeat the same transition
 //!   hands-off and compare the numbers.
@@ -48,8 +47,9 @@ const STEP_FRAMES: u32 = 45;
 
 // ── The knobs ─────────────────────────────────────────────────────────────────
 
-/// The bundle of values the sliders edit. It covers every section of `[motion]` (`crossfade_ms` ·
-/// `theme_fade_ms` · `clear_top_ms` included — the M2 integration gave them config keys).
+/// The motion values exposed by this tool's sliders and TOML export. Pane/overview
+/// motion and other unlisted tokens remain outside this set; `tokens` preserves
+/// their values from its supplied base.
 #[derive(Debug, Clone, Copy)]
 struct Knobs {
     // Shared
@@ -198,7 +198,7 @@ impl Knobs {
         MotionTokens::from_config(&cfg)
     }
 
-    /// The `[motion]` TOML. It can be pasted straight into a config file.
+    /// Serialize this tool's exposed motion values as a standalone TOML fragment.
     fn motion_toml(&self) -> String {
         let mut out = String::with_capacity(1024);
         let _ = writeln!(out, "[motion]");
@@ -209,6 +209,14 @@ impl Knobs {
         let _ = writeln!(out, "tap_ms = {}", ms(self.tap_ms));
         let _ = writeln!(out, "long_press_ms = {}", ms(self.long_press_ms));
         let _ = writeln!(out, "spring = {}", spring(self.spring_k, self.spring_c));
+        // Emit root keys before child-table headers instead of reopening `[motion]`.
+        let _ = writeln!(
+            out,
+            "crossfade_ms = {}\ntheme_fade_ms = {}\nclear_top_ms = {}",
+            ms(self.crossfade_ms),
+            ms(self.theme_fade_ms),
+            ms(self.clear_top_ms)
+        );
         let _ = writeln!(
             out,
             "\n[motion.push]\nms = {}\nparallax = {:.3}\ndim = {:.3}",
@@ -266,14 +274,6 @@ impl Knobs {
             self.press_scale
         );
         let _ = writeln!(out, "\n[motion.switch]\nms = {}", ms(self.switch_ms));
-        // Being a top-level `[motion]` key, the section header is written again at the end so it does not fall under an earlier section.
-        let _ = writeln!(
-            out,
-            "\n[motion]\ncrossfade_ms = {}\ntheme_fade_ms = {}\nclear_top_ms = {}",
-            ms(self.crossfade_ms),
-            ms(self.theme_fade_ms),
-            ms(self.clear_top_ms)
-        );
         out
     }
 }
@@ -431,8 +431,8 @@ impl Lab {
         })
     }
 
-    /// Where the graph goes — what [`lab_ui`] reserved on the title row. There is none on a frame the
-    /// lab screen is not in view (the desktop, a child screen).
+    /// The rectangle most recently reserved by [`lab_ui`] on the title row.
+    /// It stays available during replay and is absent before the first lab layout.
     fn graph_rect(&self) -> Option<egui::Rect> {
         self.shared.graph_rect
     }
@@ -447,7 +447,7 @@ impl Lab {
         self.filled = (self.filled + 1).min(SAMPLES);
     }
 
-    /// A percentile (0 with no samples). The sort is over a fixed array — no heap allocation.
+    /// A percentile (0 with no samples), computed by stably sorting a copy of the sample buffer.
     fn percentile(&self, p: f32) -> f32 {
         let mut buf = self.times;
         let Some(used) = buf.get_mut(..self.filled) else {
@@ -473,8 +473,8 @@ impl Lab {
         let tokens = shell.theme().motion;
         match self.step {
             0 => shell.home(),
-            1 => shell.desktop_mut().swipe_to(1, &tokens),
-            2 => shell.desktop_mut().swipe_to(0, &tokens),
+            1 => shell.swipe_desktop_to(1, &tokens),
+            2 => shell.swipe_desktop_to(0, &tokens),
             3 => shell.launch(LaunchAction::open("lab")),
             4 | 5 => shell.handle().toggle_overlay(),
             6 => shell.launch(LaunchAction::open("child")),
@@ -680,18 +680,14 @@ fn knob(
     value: &mut f32,
     range: (f32, f32),
 ) -> bool {
-    // It uses **the crate's `slider_row`** — the title, the track and the value on one line, folding
-    // to two by itself when the track gets short. It used to stack a `ui.label` and a
-    // `TouchSlider` separately, which made one knob two rows tall and turned scanning thirty of them
-    // into pure scrolling.
+    // Use slider_row to place the label, track and value together, with its
+    // narrow-width fallback.
     fairing::layout::slider_row(ui, cx, label, value, range.0..=range.1, "", true)
 }
 
 fn lab_ui(ui: &mut egui::Ui, cx: &mut Cx<'_>, state: &mut Shared) {
-    // **The graph's place is reserved on the title row.** Left as a floating layer it overlaps
-    // whatever is there — the status bar at first, and the `home` button once the buttons moved up.
-    // Taking the place from the layout means it cannot overlap, and the "press here to stop" hit is
-    // this Rect too.
+    // Reserve the graph rectangle in the title-row layout and use the same
+    // rectangle for its stop-replay hit test.
     ui.horizontal(|ui| {
         ui.heading("motion lab");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -699,13 +695,8 @@ fn lab_ui(ui: &mut egui::Ui, cx: &mut Cx<'_>, state: &mut Shared) {
             state.graph_rect = Some(rect);
         });
     });
-    // **The buttons go on top, with no space reserved.**
-    //
-    // As a bar pinned at the bottom, the bar's height would have to be settled in advance — and how
-    // many rows eight of them fold into depends on the width and the label lengths. In practice both
-    // `80.0` and `2.6 rows` were wrong and the last button was cut off. On top, they use only as much
-    // as they fold into and the knob list takes the rest — there is no number to get right. Always
-    // being in view during a replay is a bonus (stop used to be off-screen).
+    // Place the wrapping button row above the scrollable controls, using the
+    // height required by its labels at the current width.
     lab_buttons(ui, cx, state);
     ui.separator();
     lab_knobs(ui, cx, state);
@@ -892,4 +883,34 @@ fn lab_buttons(ui: &mut egui::Ui, cx: &mut Cx<'_>, guard: &mut Shared) {
             cx.shell.home();
         }
     });
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::{ms, Knobs, ShellConfig};
+
+    #[test]
+    fn exported_motion_config_round_trips_root_and_nested_values() -> fairing::Result<()> {
+        let base = ShellConfig::default();
+        let stock = Knobs::from_config(&base);
+        let mut edited = stock;
+        edited.reduce = true;
+        edited.crossfade_ms = 275.0;
+        edited.theme_fade_ms = 350.0;
+        edited.clear_top_ms = 425.0;
+        edited.push_ms = 190.0;
+        edited.switch_ms = 210.0;
+
+        for knobs in [stock, edited] {
+            let exported = ShellConfig::from_toml(&knobs.motion_toml())?;
+            exported.validate()?;
+            assert_eq!(exported.motion.reduce, knobs.reduce);
+            assert_eq!(exported.motion.crossfade_ms, ms(knobs.crossfade_ms));
+            assert_eq!(exported.motion.theme_fade_ms, ms(knobs.theme_fade_ms));
+            assert_eq!(exported.motion.clear_top_ms, ms(knobs.clear_top_ms));
+            assert_eq!(exported.motion.push.ms, ms(knobs.push_ms));
+            assert_eq!(exported.motion.switch.ms, ms(knobs.switch_ms));
+        }
+        Ok(())
+    }
 }

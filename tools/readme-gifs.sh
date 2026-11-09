@@ -3,14 +3,14 @@
 #
 #   tools/readme-gifs.sh
 #
-# Each tour runs with `--record` (a fixed 60 Hz clock, so a software rasteriser records as smoothly
-# as a GPU; guide 01 §5) and the stretch it records is stitched by tools/make_gif.py. The tours run
-# under xvfb-run with Mesa's software rasteriser, as the committed GIFs were made: the kiosk wants a
-# 1080 x 2560 window, which no desktop screen holds.
+# Each tour runs with `--record` and a fixed 60 Hz input clock (guide 01 §5).
+# tools/make_gif.py stitches the recorded stretch. The tours run
+# under xvfb-run with Mesa's software rasteriser. The virtual display accommodates
+# the kiosk's 1080 x 2560 portrait window independently of the attached desktop.
 #
-# Every tour is also a check (tools/tours.sh): a step that cannot find what it names, or an
-# expectation that does not hold, exits the example non-zero and stops this script before an
-# image is rebuilt from a flow that went wrong.
+# The tours check named targets, explicit assertions and capture/write results.
+# A non-zero example exit stops this script. Settle warnings and unasserted visual
+# states still need review; recording does not establish that the flow is correct.
 #
 # Needs xvfb-run (Debian/Ubuntu: xvfb), Mesa and Pillow (pip install pillow). The frames take about
 # 2 GB under target/readme-gifs and stay there until the next run.

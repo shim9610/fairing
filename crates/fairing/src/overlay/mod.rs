@@ -98,12 +98,12 @@ use std::time::{Duration, Instant};
 /// draw. These three are controls, so which of them exist is the device's to say.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FooterButton {
-    /// Clear every notification. Drawn only where there is something to clear.
+    /// Clear dismissible notifications. Drawn only where there is something to clear.
     ClearAll,
     /// Lock the session ([`LaunchAction::Lock`](crate::LaunchAction::Lock)).
     Lock,
-    /// Open `settings.home` — which exists only if the integrator registered the built-in settings
-    /// screens ([`settings::add_all`](crate::settings::add_all)).
+    /// Open `settings.home`. Register that destination using the built-in settings
+    /// helpers or an application-owned screen with that ID.
     Settings,
 }
 
@@ -279,9 +279,8 @@ struct PendingShot {
     surface: egui::Color32,
 }
 
-/// How many frames a card waits for the runner to answer its screenshot before it gives up and
-/// stays solid — a runner without the command never answers, and a frame late is all a real one
-/// is.
+/// Maximum frames to wait for a backdrop screenshot before retaining a solid card.
+/// Response timing depends on the integrating host.
 const SHOT_PATIENCE: u8 = 12;
 
 /// Shade / `ControlCenter`.
@@ -716,7 +715,7 @@ impl Overlay {
             };
         }
         let cols = self.tile_columns as f32;
-        // Never narrower than the tile row at one touch target a tile.
+        // Preferred tile-row width; card::rest can reduce it to the available screen width.
         let gap = panel::tile_gap(&theme.metrics);
         let min_w = cols * theme.metrics.touch_target + gap * (cols + 1.0) + style.extra * 2.0;
         // A split card fills the height: from under the status bar down to its
@@ -1058,8 +1057,7 @@ fn on_off(on: bool) -> TileState {
     }
 }
 
-/// A tile with no on/off of its own: lit from [`QuickTile::lit_by`] where the declaration named a
-/// key, and otherwise whatever it has always been.
+/// Resolve a tile's optional [`QuickTile::lit_by`] Boolean setting, or use the supplied fallback.
 fn lit(tile: &QuickTile, settings: &SettingsView, without: TileState) -> TileState {
     match tile.lit_by.as_ref() {
         Some(key) => on_off(matches!(settings.get(key), Some(SettingValue::Bool(true)))),
@@ -1123,7 +1121,7 @@ fn gauge_texts(
     }
 }
 
-/// Find or make a cache entry (allocating only for a key seen for the first time) and bring its content up to date.
+/// Find or create a text entry and refresh it. New entries, growing text and egui layout can allocate.
 fn touch(
     texts: &mut Vec<PanelText>,
     key: TextKey,

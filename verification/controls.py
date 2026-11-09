@@ -12,6 +12,7 @@ import tempfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 CONTROL_NAMES = [
+    "component-shade", "component-lock", "pane-slot", "component-switch", "component-slider", "component-row",
     "permission-value", "element-measure", "element-layout", "element-revision", "element-identity", "screen-requirement", "screen-metadata-recheck", "nav-permission-layout",
     "protected-builder", "protected-resources", "protected-wallpaper", "protected-dispatch", "protected-erasure", "protected-factory",
     "session-policy-recheck", "session-revoke", "session-authority", "session-policy", "session-temporary", "session-detach", "configuration-validation", "back-handler", "back-projection", "auth-correlation", "command-budget", "expiry-order", "ui-progress", "modal-input",
@@ -82,6 +83,31 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
         print(name + (": rejected broken production code" if failure else ": passed"), flush=True)
 
     scenarios = [
+        ("component-shade", "product/component_rendering/shade_padding_moves_the_rendered_tile_row",
+         "crates/fairing/src/overlay/panel.rs",
+         [("pad: u * s.pad,", "pad: u * 1.34,")],
+         False, "shade tile row must follow the configured panel padding"),
+        ("component-lock", "product/component_rendering/lock_ring_padding_reaches_the_painted_badge",
+         "crates/fairing/src/desktop/icon_render.rs",
+         [("let ring = lock + cx.theme.metrics.desktop_lock_ring_pad;", "let ring = lock + 4.0;")],
+         False, "lock badge must follow the configured ring padding"),
+        ("pane-slot", "product/deep_layers/deep_stacks_keep_distinct_layers_input_and_clean_transforms",
+         "crates/fairing/src/workspace/mod.rs",
+         [("const PANE_SLOTS: u64 = 1 << 63;", "const PANE_SLOTS: u64 = 32;")],
+         False, "deep pane layers must not alias"),
+        ("component-switch", "product/component_rendering/switch_mark_size_reaches_the_painted_track",
+         "crates/fairing-widgets/src/widgets/switch.rs",
+         [("let ms = theme.control.mark_size;", "let ms = 28.0;")],
+         False, "switch track must follow the configured"),
+        ("component-slider", "product/component_rendering/slider_track_spec_reaches_painted_geometry",
+         "crates/fairing-widgets/src/widgets/slider.rs",
+         [("    theme.control.slider_track\n}", "    18.0\n}")],
+         False, "slider track must follow the configured"),
+        ("component-row", "product/component_rendering/row_component_gap_moves_the_rendered_trailing_text",
+         "crates/fairing-widgets/src/widgets/list_row.rs",
+         [("right -= paint_icon(ui, cx, &icon, right, rect.center().y, self.enabled, None) + c.pad;",
+           "right -= paint_icon(ui, cx, &icon, right, rect.center().y, self.enabled, None) + 16.0;")],
+         False, "the real trailing-text position must follow the component gap"),
         ("permission-value", "unit/access::mediation::protected::tests::protected_scope_uses_current_context_and_never_caches_admission",
          "crates/fairing/src/access/protected.rs",
          [("gate: required.gate(),", "gate: Gate::borrowed(\"results.view\"),")],

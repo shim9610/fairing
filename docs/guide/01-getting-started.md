@@ -1,5 +1,9 @@
 # 01. Getting started
 
+The optional runner adapts [eframe `App`](https://docs.rs/eframe/0.37.0/eframe/trait.App.html)
+to Fairing's shell update methods. egui/eframe provide the UI context, window and
+rendering integration; Fairing supplies shell state and callback coordination.
+
 From installation to your first screen. Follow this page to the end and you have a
 desktop with two icons and a shell that moves between them.
 
@@ -47,8 +51,13 @@ After installing `rustup`, check the repository once:
 
 ```sh
 rustup show                     # installs and selects 1.99 from rust-toolchain.toml
-cargo test -p fairing --all-features
+cargo test --locked --workspace --all-features
 ```
+
+CI also tests the complete workspace with default features, no default features,
+and the default UI features (`overlay,osk,settings,brand`) without `mock`. Tests
+that require Mock backends run when `mock` is enabled; backend-independent tests
+continue to run without it. The same four profiles are checked with Clippy.
 
 No Korean font ships with the crate — they run to several megabytes and subsetting
 is a policy call for the integrator. egui's `default_fonts` has no CJK, so Hangul
@@ -68,7 +77,7 @@ fairing = { git = "https://github.com/shim9610/fairing", features = ["runner"] }
 # fairing = { path = "../fairing/crates/fairing", features = ["runner"] }
 
 # egui itself is optional.
-# Leave it out and use `fairing::egui` - a version mismatch becomes impossible.
+# Use `fairing::egui` to use the egui version selected by Fairing.
 # Put it in and it must be the same minor as fairing's, or you link two copies
 # of egui and the types stop matching.
 # egui = "0.37"
@@ -95,7 +104,7 @@ Straight from `crates/fairing/Cargo.toml`.
 | `settings` | ✓ | The eleven built-in settings screens and `settings::add_all` ([§4.1](#41-the-built-in-settings-screens)). The setting keys and values screens use are there either way |
 | `runner` | | `fairing::runner` — an eframe-based fullscreen bootstrap (Wayland + glow) |
 | `runner-x11` | | `runner` plus `eframe/x11` |
-| `chrono` | | `fairing::services::clock::ChronoClock` — a clock that asks the OS timezone database every frame, so daylight saving corrects itself. Costs three crates in the tree; the default `SystemClock` is a fixed offset and does not know about DST |
+| `chrono` | | `fairing::services::clock::ChronoClock` — a clock that uses the offset from installed timezone data when queried, including applicable daylight-saving rules. Adds the optional chrono dependency tree; the default `SystemClock` is a fixed offset and does not know about DST |
 
 The default set is `["mock", "overlay", "osk", "brand", "settings"]`. A device with a hardware
 keyboard and no need for a shade can drop them all:
@@ -104,9 +113,17 @@ keyboard and no need for a shade can drop them all:
 fairing = { path = "…", default-features = false, features = ["runner"] }
 ```
 
-A subsystem you switch off leaves the build entirely. The `fairing::overlay` and
-`fairing::osk` paths disappear along with the `tile()` declaration, so code that
-uses them needs a `#[cfg(feature = "overlay")]` or has to go.
+Disabling a library feature removes its gated code; shared configuration and
+value types can remain. Without `overlay`, `fairing::overlay` and `tile()` are
+unavailable; without `osk`, `fairing::osk` is unavailable. Remove corresponding
+calls or guard them using a feature declared in your own application.
+
+Rust's `#[cfg(feature = "...")]` checks the package being compiled, not a
+dependency's feature set. To make the UI optional in your application, declare an
+application feature such as `device-ui` that forwards to `fairing/overlay` and
+`fairing/osk`, disable Fairing's default features in that dependency declaration,
+and guard your application code with `#[cfg(feature = "device-ui")]`.
+See [Cargo feature forwarding](https://doc.rust-lang.org/cargo/reference/features.html#dependency-features).
 
 ## 3. The device binary profile
 
@@ -120,7 +137,7 @@ lto = "fat"
 codegen-units = 1
 panic = "unwind"
 strip = true
-opt-level = 3      # for a UI, 3 beats "s"; strip wins the size back
+opt-level = 3      # optimize for execution speed; measure speed/size on the target
 ```
 
 Use `panic = "unwind"` for runtime callback containment. `panic = "abort"` bypasses
@@ -207,7 +224,7 @@ built-in settings, a status bar item and a nav bar item, standing alone so you c
 
 `cx.open("settings.home")` opens a screen with that id, so one has to be there. The built-in
 settings screens go in with one call (feature `settings`, on by default): the home list,
-display, sound, date and time, language and about always; Wi-Fi, Bluetooth, network and power
+display, sound, date and time, language and about without capability requirements; Wi-Fi, Bluetooth, network and power
 when a backend reports that capability; users and access when your authenticator manages its
 entries.
 
@@ -219,7 +236,8 @@ add_all(shell, &SettingsConfig::default());
 # }
 ```
 
-Without it, `cx.open("settings.home")` only logs that the screen was never declared. So does
+If no screen is registered as `settings.home`, `cx.open("settings.home")` logs that it was never
+declared. Under default built-in registration, the same happens for
 `cx.open("settings.wifi")` on a device with no Wi-Fi backend — with the default `Null`
 backends, a Wi-Fi screen could only say "not supported", so it is left out.
 `SettingsConfig::default().ignoring_capabilities()` puts every screen in regardless. Narrowing
@@ -228,10 +246,10 @@ the list, replacing one screen and adding your own are in
 
 ### 4.2 Fonts
 
-The library carries no font, on purpose: which faces a device shows, and under what licence, is
-the device's call. Until you give it faces, it draws with egui's built-in face: **one weight,
-Latin letters only** — screen and row titles come out in the regular weight, and Hangul or `₩`
-come out as boxes. The shell logs a warning at startup when there is no bold, and when its own
+The library carries no additional font files: which faces a device shows, and under what licence, is
+the device's call. Until you give it faces, it uses egui's bundled fallback fonts.
+Fairing titles use the regular weight when no strong face is installed, and the
+fallback fonts do not cover the Hangul text needed by a Korean UI. The shell logs a warning at startup when there is no bold, and when its own
 language's letters are missing. A device image usually has the faces already; the crate finds
 them, and you decide what to load:
 
@@ -278,13 +296,13 @@ let shell = fairing::Shell::builder(fairing::ShellConfig::default())
 
 A display backend that reports `DisplayInfo::physical_mm` does the same, and the builder's value
 wins over it. With neither, the shell assumes about 6.3 pixels per millimetre and logs a warning:
-a touch target is then 57 px on every panel — oversized on a coarse one, under a fingertip on a
-dense one.
+the default 9 mm target then resolves to about 57 px, which can be physically too
+large or too small when that assumed density differs from the panel.
 
-The finger is a bare one by default, and the text is sized for a panel read at hand-held
-distance — a phone's density, where a row is one finger tall. A device worked with gloves or a
-stylus says so, and every touch target, row and bar grows with it; a panel read standing up
-moves the text on its own:
+The defaults use a 9 mm finger diameter and 360 mm viewing distance. Controls
+that use these metrics scale with the policy; fixed-size or custom content may
+need separate adjustment. For example, select a larger target-size policy and
+increase text size for a greater viewing distance:
 
 ```rust
 # fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
@@ -345,20 +363,21 @@ reports — the shell has already acted — and a few are requests that only you
 | `ScreenClosed { id, instance }` | A screen closed: popped, removed, or its task ended | — |
 | `WentHome` | The shell went to the desktop | — |
 | `HiddenEntry { id }` | A hidden entry point's knock completed ([05](05-access-control.md#hidden-entry-points--the-service-menu)) | — |
-| `Access(AccessEvent)` | Every unlock request, grant, refusal, lockout and change of subject ([05 §8](05-access-control.md#8-audit-logging-with-accessevent)) | In `routing` mode, `UnlockRequested` is yours to answer |
+| `Gesture { handle, gesture }` | A registered gesture handle completed a gesture; failed admission also requests an unlock | — |
+| `Access(AccessEvent)` | Unlock requests, grants, refusals, lockouts and session changes ([05 §8](05-access-control.md#8-audit-logging-with-accessevent)) | In `routing` mode, `UnlockRequested` is yours to answer |
 | `PowerRequest(PowerRequest)` | Shutdown, reboot or suspend was asked for | Clean up, then `Shell::commit_power` — the shell does not act on its own |
 | `SettingChanged { key, value }` | A setting changed | Store it if it should survive a restart: the shell writes no files, and `Shell::restore_settings` puts what you stored back ([06 §7.1](06-services.md#71-keeping-settings-across-a-restart)) |
 | `DeclRemoved(id)` | A declaration, a built-in status item or a tile was removed | — |
 | `NotificationTapped(id)` | A notification was tapped; its `action` has already been launched | — |
 | `NotificationDismissed(id)` | A notification was dismissed, by the user or `dismiss_notification` | — |
-| `OverlayToggled(open)` | The shade finished opening (`true`) or closing (`false`) | — |
+| `OverlayToggled(open)` | The shade left `Closed` (`true`, including its first opening pull) or returned to `Closed` (`false`) | — |
 | `OskToggled(shown)` | The keyboard was shown or hidden | — |
 | `TileLongPressed { id }` | A quick-settings tile was held ([03 §4.4d](03-chrome.md#44d-long-pressing-a-tile)) | Open its detail, if it has one |
 | `IconLongPressed { id }` | A desktop icon was held; the info popover shows unless `[desktop] long_press = "none"` ([03 §3.8](03-chrome.md#38-holding-an-icon-the-info-popover)) | — |
 | `WifiNetworkTapped { ssid, secured, known }` | A network row on `settings.wifi` was tapped | Connect — joining a network is the device's ([06 §1](06-services.md#connecting-is-yours)) |
 | `WifiNetworkLongPressed { ssid, known }` | A network row was held | Offer to forget it, for instance |
-| `LockRequested` | The lock control, `tile.lock`, `LaunchAction::Lock`, or the idle lock | In `prompt` mode with an authenticator the shell locks; elsewhere, what locking means is yours |
-| `LogoutRequested` | Log out was asked for — `LaunchAction::Logout`, `ShellHandle::logout`, a tap on the `status.lock` padlock | In `prompt` mode with an authenticator the shell returns to the starting subject; elsewhere it is yours (`ShellHandle::set_subject`) |
+| `LockRequested` | The lock control, `tile.lock`, `LaunchAction::Lock`, or the idle lock | Token mode detaches local session authority. In legacy mode a prompt-capable authenticator supplies the lock screen; an idle lock also resets the session without a prompt. Other explicit legacy locks are host requests |
+| `LogoutRequested` | Log out was asked for — `LaunchAction::Logout`, `ShellHandle::logout`, a tap on the `status.lock` padlock | Token mode detaches local session authority. Legacy mode resets to the starting subject when a prompt is available; otherwise the host handles it |
 | `OverviewRequested` | The recent-screens control was used | Only with `[workspace] overview = false`: show your own |
 | `SplitRequested` | The split control was used | Only with `[workspace] split = false` |
 | `SplitToggled(two)` | Two panes came up (`true`) or the workspace went back to one | — |
@@ -368,29 +387,31 @@ The enum is `#[non_exhaustive]`, so keep a `_ => {}` arm.
 
 ## 5. Running the bundled examples
 
-None of them needs real hardware: `hello` runs on the null backends, the rest on the mock ones.
+None of them needs real hardware: `hello` and `protected` run on the null backends; the other examples use mock backends.
 
 | Example | Command | What it shows |
 |---|---|---|
 | `hello` | `cargo run -p fairing --features runner-x11 --example hello` | §4 as a file: one screen on the desktop, the built-in settings, a status bar item and a nav bar item, in a 1024×600 window. It shares nothing with the other examples, so it is the one to copy into a new project |
+| `protected` | `cargo run -p fairing --features runner-x11 --example protected -- --tour target/protected` | ProtectedShell login with a public development marker, an admitted operation, logout with protected content hidden and a stale button click blocked, then reauthentication. The smoke tour is included in `tools/tours.sh`; this marker is not production authentication |
 | `demo` | `cargo run -p fairing --features runner-x11 --example demo -- --size=1024x600` | The whole shell: twelve icons over two pages, the status bar, the shade, a `Form` screen that raises the OSK, the `Widgets` and `Notify` galleries, edge-swipe back, and a scenario thread waking the UI through the `Waker` |
-| `console` | `cargo run -p fairing --features runner-x11,mock --example console -- --size=1280x800` | A bench instrument rather than a phone: a rail down the left joined to the status bar, five pages with their own transitions, and the shade split into two floating cards |
-| `kiosk` | `cargo run -p fairing --features runner-x11,mock --example kiosk -- --size=1080x2560 --panel-mm=380x900` | A production-shaped café ordering flow, laid out and styled almost entirely by the crate — what it still draws itself is listed in its header. `--layout=portrait\|counter\|compact` puts the same code on three devices, and a switch on its attract screen changes the language of every screen at run time (`--lang=ko` starts it in Korean) |
+| `console` | `cargo run -p fairing --features runner-x11,mock --example console -- --size=1280x800` | A bench-instrument example: a rail down the left joined to the status bar, five pages with their own transitions, and the shade split into two floating cards |
+| `kiosk` | `cargo run -p fairing --features runner-x11,mock --example kiosk -- --size=1080x2560 --panel-mm=380x900` | A café-ordering example using Fairing layouts, widgets and application-specific drawing. `--layout=portrait\|counter\|compact` selects three example layouts, and a switch on its attract screen changes the language of every screen at run time (`--lang=ko` starts it in Korean) |
 | `custom_chrome` | `cargo run -p fairing --features runner-x11 --example custom_chrome -- --size=1024x600` | Replacing the chrome without touching the crate: a `Theme` built in code, a hand-drawn status bar, circular desktop badges, a procedural wallpaper, no nav bar, a gauges tile the crate draws from a declaration, and a jog-pad tile it knows nothing about |
-| `motion_lab` | `cargo run -p fairing --features runner-x11 --example motion_lab -- --size=1024x600` | Every `[motion]` token on a slider, replaying the shade, page swipes, push/pop and icon zoom. A frame-time graph sits top right (p50, p95, a 33 ms rule) and the tuned values export as TOML |
-| `palette_sheet` | `cargo run -p fairing --release --features runner-x11,mock --example palette_sheet -- --tour out/ --panel-mm=305x381` | One frame with every control on it, for comparing palettes (`--preset=base\|abyss\|linen`, `--theme=dark\|light`) |
+| `motion_lab` | `cargo run -p fairing --features runner-x11 --example motion_lab -- --size=1024x600` | Motion controls on sliders, replaying the shade, page swipes, push/pop and icon zoom. A frame-time graph sits top right (p50, p95, a 33 ms rule) and the tuned values export as TOML |
+| `palette_sheet` | `cargo run -p fairing --release --features runner-x11,mock --example palette_sheet -- --tour out/ --panel-mm=305x381` | A widget gallery frame for comparing palettes (`--preset=base\|abyss\|linen`, `--theme=dark\|light`) |
 
-Drop `--size` and they open fullscreen; `hello` sets its window in code. Every example but
-`hello` needs `mock`, and `hello` needs `settings`; `custom_chrome` also needs `overlay`, and
+The gallery examples open fullscreen without `--size`; `hello` sets its window in code
+and `protected` uses the runner default. The galleries need `mock`; `hello` and `protected`
+need `settings`. `custom_chrome` also needs `overlay`, and
 `motion_lab` `overlay` and `osk`. All of those are default features, so normally there is nothing
 to pass beyond the runner.
 
 ### `--tour` screenshot mode
 
-`demo`, `console`, `kiosk`, `custom_chrome` and `palette_sheet` drive themselves,
+`demo`, `console`, `kiosk`, `custom_chrome`, `palette_sheet` and `protected` drive themselves,
 write PNGs and close the window. They put the shell into each state through its own API (`launch`, `back`,
-`home`) plus a synthetic finger, then send `egui::ViewportCommand::Screenshot` —
-nobody has to sit and watch.
+`home`) plus synthetic input, then request captures through
+`egui::ViewportCommand::Screenshot`.
 
 ```sh
 xvfb-run -a -s "-screen 0 1024x600x24" env LIBGL_ALWAYS_SOFTWARE=1 \
@@ -417,10 +438,10 @@ there, the script goes on so one run lists every miss, and the example exits non
 `tools/tours.sh` runs every tour that way, stills only, and the public repository's
 CI runs it on pull requests and pushes to `main`.
 
-Add `--record` and the tour runs on a fixed 60 Hz clock: each frame is 1/60 s after
-the one before, however long it took to draw, so a software rasteriser records as
-smoothly as a GPU. The animated stretches of the script are written as frames, 30 a
-second, each into a folder of its own (`demo-desktop/0000.png`, …). Stitch them into
+Every tour uses a fixed 60 Hz input clock: each frame is 1/60 s after the one
+before, however long it took to draw. This keeps scripted gestures and inertia
+independent of renderer speed. Add `--record` to also capture the animated
+stretches of the script at 30 frames a second, each into a folder of its own (`demo-desktop/0000.png`, …). Stitch them into
 a GIF or a video with any tool. `tools/make_gif.py` turns one folder into a GIF (it
 needs Pillow), and `tools/readme-gifs.sh` rebuilds the images in the repository's
 README that way, end to end.
@@ -472,14 +493,14 @@ passes as it is.
 |---|---|
 | `Harness::new(config, services)` | Your own config and backends. Use it when you want the animations to actually run |
 | `Harness::from_builder(\|ctx\| ..)` | Wraps a shell built through `Shell::builder`, so theme injection and painter hooks are in play |
-| `testing::test_shell(config, setup)` | Null backends with `motion.reduce = true` forced, so "two frames and it has landed" holds |
+| `testing::test_shell(config, setup)` | Null backends with `motion.reduce = true` forced, disabling the shell's timed transitions for frame-stepped tests |
 | `.with_size(w, h)` | Screen size (default `DEFAULT_SIZE`, 1024×600) |
 
 | Frames | Meaning |
 |---|---|
 | `frame()` | One frame; virtual time advances 1/60 s |
 | `frames(n)` / `run_for(seconds)` | Several frames / a span of time |
-| `frame_shapes()` | The shapes actually drawn this frame |
+| `frame_shapes()` | Runs one new frame and returns its shapes; advances time and the frame count |
 | `now()` / `time()` / `frames` (field) | The shell's monotonic clock / the next `RawInput.time` / how many frames have run |
 
 | Input | Meaning |
@@ -487,7 +508,7 @@ passes as it is.
 | `tap(pos)` | Press frame, release frame, settle frame (three in total) |
 | `drag(from, to, steps)` | Press, move over `steps` frames, release |
 | `hold(pos, frames)` | Hold without releasing (long press, emergency gesture) |
-| `fling(from, step, frames)` | Push `step` per frame, then release. At 60 Hz that is `step × 60` px/s |
+| `fling(from, step, frames)` | Push `step` per frame, then release. At 60 Hz the sustained speed is about `step × 60` px/s; egui estimates release velocity from recent pointer samples |
 | `wheel(pos, delta)` | Pixel scroll. Scrolling up is `delta.y > 0` |
 | `type_text(text)` | `Event::Text` — the same path the OSK injects on |
 | `press` / `release` / `move_to` / `push_event` | The layer below |
@@ -522,15 +543,16 @@ hardware of its own, so how fast it draws on yours is yours to measure.
 cargo run -p fairing --release --example bench
 ```
 
-`--release` is the baseline. Debug numbers are a different order of magnitude — do
-not mix them. The scenarios are: idle desktop, icon zoom (A2), push/pop (A3), a
+Use `--release` as the comparison baseline; debug and release builds use different
+optimization settings and should be measured separately. The scenarios are: idle desktop, icon zoom (A2), push/pop (A3), a
 200-widget screen (idle and drag-scrolling), home, shade drag (A1), page swipe (A4)
 and OSK reveal (A5).
 
 Keep each run with your device's notes: the hardware, the commit hash, the command, the
 conditions (resolution, icon count, `motion.reduce`) and the table of numbers `bench` prints. Compare
-runs on the same device: a p50 more than 30 % above an earlier one counts as a regression. p95
-wobbles run to run on shared machines, so re-run two or three times before calling it.
+runs on the same device. Investigate a p50 increase of 30 % or more as a comparison
+heuristic, then repeat under comparable conditions before attributing it to the
+change. Shared-machine load can also affect p95.
 
 The bench table does not count per-frame allocations. The separate diagnostic
 allocator example measures process-wide counters and injects actual failures;

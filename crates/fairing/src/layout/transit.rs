@@ -1,25 +1,16 @@
-//! **A page comes and goes the way it says** — [`transit`], [`Transit`] and [`Motion`].
+//! Page transitions through [`Transit`], [`transit`] and [`Motion`].
 //!
-//! A screen that keeps several pages behind one rail — the console's tabs — swaps its body in a
-//! single frame, because to the shell it is one screen: the two transitions the shell draws (the
-//! icon zoom from the desktop, the slide of a screen pushed over another) are about screens and
-//! never see a page change inside one. So a page's *identity* says how it enters and how it
-//! leaves, by implementing [`Transit`], and [`transit`] draws that: the page going out plays its
-//! exit, then the page coming in plays its entry, one page on the screen at a time. The
-//! integrator knows one thing — implement the trait, get the motion — and the sequencing, the
-//! layers and the input are this module's.
-//!
-//! **Sequential, not overlapped.** The exit finishes before the entry begins. It reads as a hand
-//! setting one card down and picking the next up, and it is what makes the whole thing cheap: at
-//! rest the page is drawn straight into the caller's `ui`, and while a transition runs one page
-//! is laid out, not two.
+//! This module handles page changes inside one registered screen. The outgoing
+//! page's exit finishes before the incoming page's entry starts. At rest, drawing
+//! uses the caller's `Ui`; during a transition, one page is laid out at a time.
+//! Applications implement `Transit` to select entry and exit motion.
 //!
 //! # What egui allows, and so what a [`Motion`] is
 //!
 //! A page can be moved (drawn at an offset), scaled (a layer transform on a sublayer of its own),
 //! faded (`Ui::set_opacity`) and cut by an axis-aligned edge (`Ui::set_clip_rect`). That is the
-//! whole vocabulary, and [`Motion`] is exactly it. There is no rotation and no diagonal edge: egui
-//! has no stencil, and a clip is a rectangle. The move is a real offset of the drawn rect rather
+//! supported vocabulary for [`Motion`]. These presets do not rotate pages or use
+//! diagonal clipping; clipping uses egui's rectangular clip mechanism. The move is a real offset of the drawn rect rather
 //! than a layer translation, because a layer translation carries its clip along with it and a
 //! page sliding out would be painted over the chrome around it; the clip stays put, and what
 //! slides out of it is cut.
@@ -305,19 +296,14 @@ struct Cue<'k, K> {
     moving: Option<(Motion, f32, bool)>,
 }
 
-/// **Draw the page `key` names, and the way there from the page before it**.
+/// Draw the page identified by `key`, with its entry/exit motion from [`Transit`].
 ///
-/// `body` draws a page for whichever key it is handed. While a page's exit plays, that is the
-/// key before — so a body draws by the key it is given, never by the state it can see; the
-/// console's `page(ui, cx, open, state)` already has that shape. Between transitions the page
-/// is drawn straight into `ui`, so the container costs nothing at rest.
-///
-/// One container per `ui`: it keeps its stage under the `ui`'s id. A second one in the same
-/// `ui` goes inside a `push_id`.
-///
-/// A key that changes again mid-way turns: a page still on its way out heads for the new key
-/// from where it is, and a page on its way in goes back out — along the way it came, if that is
-/// where it is sent. Under `[motion] reduce` every half is instant, and the swap is a cut.
+/// During exit, the callback receives the outgoing key; draw that page rather than
+/// reading a newer selection from application state. At rest, the callback draws
+/// directly into the caller's `Ui`. The transition state is stored under that UI's
+/// ID; use a distinct `push_id` for another container in the same UI.
+/// Changing keys during a transition redirects the current entry/exit. Under
+/// reduced motion, each transition half completes without intermediate animation.
 #[expect(
     clippy::needless_pass_by_value,
     reason = "the key is the page's name, small and by value at every call site; the container keeps a copy"

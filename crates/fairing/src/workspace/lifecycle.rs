@@ -283,7 +283,7 @@ impl Workspace {
         };
         outgoing.queue(Lifecycle::Paused);
         // The outgoing one is drawn off the stack, so its slot is stated (= the length after the pop, different from the new top's).
-        let depth = u32::try_from(task.len()).unwrap_or(u32::MAX);
+        let depth = u64::try_from(task.len()).unwrap_or(u64::MAX);
         outgoing.set_layer_slot(base.saturating_add(depth));
         if tokens.reduce {
             self.bury(outgoing);
@@ -504,7 +504,7 @@ impl Workspace {
         self.prune_empty_tasks(tokens);
         closed
     }
-    /// Frame stage 5: end the `Stopped` spawned instances whose `evict_after` has passed
+    /// During a state update, end the `Stopped` spawned instances whose `evict_after` has passed
     /// (`Instance::evict_due`). `now` is the shell's time.
     pub(crate) fn evict_expired(
         &mut self,

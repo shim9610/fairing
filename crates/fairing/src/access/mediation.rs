@@ -1,4 +1,4 @@
-//! The sole owner and invoker of application payloads. No extraction or Deref API.
+//! Storage and invocation of protected application payloads. No extraction or Deref API.
 #[macro_use]
 pub(crate) mod contract;
 

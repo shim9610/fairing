@@ -82,10 +82,9 @@ fn closure_screen_fills_the_inset_pane_rect() -> fairing::Result<()> {
     h.frames(2);
     let content = h.shell.layout().content;
     // **Read from the live theme, not from `Metrics::default()`.** `screen_inset` resolves from
-    // `MetricsSpec` at the frame's scale since the control vocabulary's adoption step 4, so 12 is
-    // its `du` floor rather than its value — at the default gloved finger it is 20.47. What this
-    // test is about is that the screen gets the content rect shrunk by *the* inset, whatever the
-    // panel resolved it to, so it has to ask.
+    // `MetricsSpec` at the frame's scale, so 12 is its `du` floor rather than necessarily its
+    // resolved value. The test checks that the screen gets the content rect shrunk
+    // by the actual resolved inset, so it reads that value from the live theme.
     let inset = h.shell.theme().metrics.screen_inset;
     assert!(
         inset >= 12.0,
@@ -385,11 +384,11 @@ fn a_resident_screen_keeps_its_state_and_a_factory_one_starts_over() -> fairing:
 }
 
 /// **A screen can draw another declaration's screen inside itself**, and a cycle stops
-/// instead of blowing up.
+/// without re-entering the active screen.
 ///
 /// While a resident screen is being drawn it is *out* of its declaration, so a screen that asks for
 /// itself — directly, or round a longer ring — is told no and draws nothing. That is the whole
-/// reason the loan is a move rather than a `&mut`: a shared cell would have panicked here.
+/// reason the implementation moves the active screen out of the declaration for the call.
 ///
 /// A factory declaration (`screen_with`) owns no screen between opens, so there is nothing to lend
 /// and it answers `false` too; the caller opens it instead.
@@ -456,15 +455,8 @@ fn draw_screen_embeds_a_registered_screen_and_a_cycle_stops() -> fairing::Result
     Ok(())
 }
 
-/// **The embedded screen gets a `Cx` of its own, not a borrowed lie**.
-///
-/// Handing the guest the host's `Cx` unchanged looked harmless and was not:
-///
-/// - `cx.pane.rect` was the host's whole pane, so `layout::page` built a scroll viewport taller
-///   than the column it was drawn in and the overrun could never be scrolled into view.
-/// - `cx.pane.instance` was the host's, so a guest calling `cx.finish()` closed **the host**.
-/// - `cx.event` still carried the host's lifecycle, and `cx.event` is the only route a closure
-///   screen has to one — so every guest saw `Created` and re-ran its initialisation.
+/// An embedded screen receives its own pane rectangle, instance identity and lifecycle events.
+/// These differ from the host screen so layout, finish and initialization use the guest context.
 #[test]
 fn an_embedded_screen_gets_its_own_pane_and_no_lifecycle() -> fairing::Result<()> {
     #[derive(Clone, Copy)]
@@ -582,13 +574,8 @@ fn an_embedded_screen_still_obeys_its_own_gate() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **The app owns its state and lends it to the screens**.
-///
-/// Until now the only way for three screens and the code outside the frame to reach one machine
-/// console was for each closure to capture an `Rc<RefCell<Console>>` — the guide said so in as many
-/// words and every one of this crate's examples did it. Then the first attempt at a fix had the
-/// **shell** own the value, which is the ownership upside down: the app's domain state living
-/// inside a UI library. The app owns both, and lends the state a frame at a time.
+/// The application owns its domain state and lends it to screen callbacks.
+/// This fixture shares one state value across three screens and out-of-frame host code.
 #[test]
 fn the_app_owns_its_state_and_lends_it_to_the_screens() -> fairing::Result<()> {
     #[derive(Default)]
@@ -1389,6 +1376,7 @@ fn nav_back_is_disabled_on_home() -> fairing::Result<()> {
 /// status bar (the clock, the Mock Wi-Fi and the battery) and the integrator's items for yourself" the demo's docs
 /// promise becomes impossible. It reads **the same file** as the demo, so a config that drifts is caught here.
 #[test]
+#[cfg(feature = "mock")]
 fn demo_config_keeps_status_bar_visible() -> fairing::Result<()> {
     use fairing::{status_item, Slot};
     let config = fairing::ShellConfig::from_toml(include_str!("../examples/demo.toml"))?;
@@ -1435,8 +1423,8 @@ fn removing_a_builtin_status_item_emits_decl_removed() -> fairing::Result<()> {
     Ok(())
 }
 
-/// With the clock taken out and no backend wake either, an idle frame schedules no repaint at all — waking at the clock's
-/// next minute boundary is a rule for when the clock is **visible** (repaints come only from input, a wake or an animation).
+/// With no visible clock, backend wake or active animation in this fixture,
+/// the settled idle frame records no repaint request.
 #[test]
 fn idle_without_a_visible_clock_schedules_no_repaint() -> fairing::Result<()> {
     let mut h = test_shell(single_level_access(), |_| {})?;

@@ -14,7 +14,7 @@ use std::time::Instant;
 /// The layer the regions are drawn on: above the screens and the shade, under the prompt.
 const REGION_LAYER: &str = "fairing.gesture_regions";
 
-/// The guard over each region: an `Area` of its own that takes every press inside it.
+/// The guard over each region: an `Area` that intercepts egui hit testing in its rectangle.
 const GUARD_AREA: &str = "fairing.gesture_regions.guard";
 
 /// Retire a guard without leaving an interactable area at its previous rectangle.
@@ -76,8 +76,8 @@ impl Shell {
     /// **Add a gesture handle**: a thin strip at the edge and the gestures it answers,
     /// the way One Hand Operation+ handles work. One with the same id is replaced.
     ///
-    /// Every press that begins in the strip is the handle's: nothing under it sees one,
-    /// and the shell's own edge gesture does not start there either. The back gesture starts just
+    /// The strip's guard intercepts ordinary egui widget presses, and the shell excludes its
+    /// region-owned press from its own edge gestures. The back gesture starts just
     /// inward of a side handle, and the rest of the edge keeps it. The bottom edge is the nav
     /// bar's or the handles': a bottom handle goes on only with the nav bar off, and
     /// stands aside while the bar is turned on again. See [`GestureHandle`].
@@ -148,13 +148,13 @@ impl Shell {
             .map(|slot| slot.id.as_str())
     }
 
-    /// **Add a gesture region of your own**: a stretch of the glass that takes every
-    /// touch beginning in it, placed, told and drawn by `region` — a part of a screen used as a
+    /// **Add a gesture region of your own**: an area whose touches are routed to
+    /// `region`, which places, receives and draws them — a part of a screen used as a
     /// trackpad, say. One with the same id is replaced.
     ///
-    /// Nothing under the region sees a press that begins in it, and no gesture of the shell's
-    /// starts from it. The emergency gesture still works through it, and a tap in it still counts
-    /// as a hidden entry's corner knock. Where regions overlap, the
+    /// Its guard intercepts ordinary egui widget presses beneath it, and shell edge gestures do
+    /// not start from its owned press. The emergency gesture remains independent, while the
+    /// region-owned press is excluded from hidden-entry corner knocks. Where regions overlap, the
     /// one added later is on top: a region added after a handle takes the presses in the strip
     /// it covers. See [`GestureRegion`].
     ///
@@ -477,10 +477,10 @@ impl Shell {
         self.region_out = out;
     }
 
-    /// **Lay a guard over each region in play**: an invisible `Area` that takes every
-    /// press beginning inside it, the way One Hand Operation+ handles do. Nothing under a region —
-    /// a screen's list or button, a desktop page — sees such a press; the engine reads the raw
-    /// pointer, so the region still does. Each guard goes to the top of `Foreground` every frame,
+    /// **Lay a guard over each region in play**: an invisible `Area` intercepting ordinary
+    /// egui widget presses beneath it. The engine reads raw pointer input independently;
+    /// this guard does not hide that raw input from application code.
+    /// Each guard goes to the top of `Foreground` every frame,
     /// in the regions' order, so a popup a screen opens over a region does not take its presses
     /// back.
     ///

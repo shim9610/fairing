@@ -1,0 +1,171 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1151pt" height="1239pt" viewBox="0.00 0.00 1151.33 1239.47" role="img" aria-labelledby="diagram-title diagram-description">
+<title id="diagram-title">Fairing protected security architecture</title><desc id="diagram-description">The application verifier owns session mutation. Read-only tokens and typed requirements feed the common mediation kernel before managed application payload entry. This is an API boundary within one process.</desc><g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(21.6 1217.87)">
+<title>security_architecture</title>
+<polygon fill="white" stroke="transparent" points="-21.6,21.6 -21.6,-1217.87 1129.73,-1217.87 1129.73,21.6 -21.6,21.6" />
+<text text-anchor="middle" x="554.06" y="-1173.07" font-family="DejaVu Sans, Arial, sans-serif" font-size="24.00">Protected execution: authority and enforcement</text>
+<g id="clust1" class="cluster">
+<title>cluster_issuer</title>
+<path fill="#fff9ed" stroke="#bfa16b" d="M225.13,-882.27C225.13,-882.27 721.13,-882.27 721.13,-882.27 727.13,-882.27 733.13,-888.27 733.13,-894.27 733.13,-894.27 733.13,-1142.27 733.13,-1142.27 733.13,-1148.27 727.13,-1154.27 721.13,-1154.27 721.13,-1154.27 225.13,-1154.27 225.13,-1154.27 219.13,-1154.27 213.13,-1148.27 213.13,-1142.27 213.13,-1142.27 213.13,-894.27 213.13,-894.27 213.13,-888.27 219.13,-882.27 225.13,-882.27" />
+<text text-anchor="middle" x="473.13" y="-1135.87" font-family="DejaVu Sans, Arial, sans-serif" font-size="18.00">Application authorization authority (trusted integration)</text>
+</g>
+<g id="clust2" class="cluster">
+<title>cluster_library</title>
+<path fill="#f0f6ff" stroke="#87a9ce" d="M196.13,-274C196.13,-274 1088.13,-274 1088.13,-274 1094.13,-274 1100.13,-280 1100.13,-286 1100.13,-286 1100.13,-845.27 1100.13,-845.27 1100.13,-851.27 1094.13,-857.27 1088.13,-857.27 1088.13,-857.27 196.13,-857.27 196.13,-857.27 190.13,-857.27 184.13,-851.27 184.13,-845.27 184.13,-845.27 184.13,-286 184.13,-286 184.13,-280 190.13,-274 196.13,-274" />
+<text text-anchor="middle" x="642.13" y="-838.87" font-family="DejaVu Sans, Arial, sans-serif" font-size="18.00">Fairing protected enforcement (same process)</text>
+</g>
+
+<g id="node1" class="node">
+<title>verifier</title>
+<path fill="#ffffff" stroke="#64748b" d="M700.13,-1118.27C700.13,-1118.27 348.13,-1118.27 348.13,-1118.27 342.13,-1118.27 336.13,-1112.27 336.13,-1106.27 336.13,-1106.27 336.13,-1056.27 336.13,-1056.27 336.13,-1050.27 342.13,-1044.27 348.13,-1044.27 348.13,-1044.27 700.13,-1044.27 700.13,-1044.27 706.13,-1044.27 712.13,-1050.27 712.13,-1056.27 712.13,-1056.27 712.13,-1106.27 712.13,-1106.27 712.13,-1112.27 706.13,-1118.27 700.13,-1118.27" />
+<text text-anchor="middle" x="524.13" y="-1095.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Authenticator implementation</text>
+<text text-anchor="middle" x="524.13" y="-1077.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Verify credentials; expand roles</text>
+<text text-anchor="middle" x="524.13" y="-1059.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Bind asynchronous result to AuthRequestId</text>
+</g>
+
+<g id="node2" class="node">
+<title>controller</title>
+<path fill="#ffffff" stroke="#64748b" d="M662.13,-982.27C662.13,-982.27 258.13,-982.27 258.13,-982.27 252.13,-982.27 246.13,-976.27 246.13,-970.27 246.13,-970.27 246.13,-902.27 246.13,-902.27 246.13,-896.27 252.13,-890.27 258.13,-890.27 258.13,-890.27 662.13,-890.27 662.13,-890.27 668.13,-890.27 674.13,-896.27 674.13,-902.27 674.13,-902.27 674.13,-970.27 674.13,-970.27 674.13,-976.27 668.13,-982.27 662.13,-982.27" />
+<text text-anchor="middle" x="460.13" y="-959.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">SessionController</text>
+<text text-anchor="middle" x="460.13" y="-941.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Issuer-only mutation capability</text>
+<text text-anchor="middle" x="460.13" y="-923.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Fixed gate catalog; replace_grants / revoke / Drop</text>
+<text text-anchor="middle" x="460.13" y="-905.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Caller supplies the shell Waker to issue</text>
+</g>
+
+<g id="edge1" class="edge">
+<title>verifier-&gt;controller</title>
+<path fill="none" stroke="#315e9b" d="M507.98,-1044.19C500.88,-1028.34 492.4,-1009.39 484.56,-991.87" />
+<polygon fill="#315e9b" stroke="#315e9b" points="487.57,-990.02 480.29,-982.32 481.18,-992.88 487.57,-990.02" />
+<text text-anchor="middle" x="577.63" y="-1009.87" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">verified subject + grants</text>
+</g>
+
+<g id="node6" class="node">
+<title>acceptance</title>
+<path fill="#ffffff" stroke="#64748b" d="M1080.13,-812.27C1080.13,-812.27 710.13,-812.27 710.13,-812.27 704.13,-812.27 698.13,-806.27 698.13,-800.27 698.13,-800.27 698.13,-768.27 698.13,-768.27 698.13,-762.27 704.13,-756.27 710.13,-756.27 710.13,-756.27 1080.13,-756.27 1080.13,-756.27 1086.13,-756.27 1092.13,-762.27 1092.13,-768.27 1092.13,-768.27 1092.13,-800.27 1092.13,-800.27 1092.13,-806.27 1086.13,-812.27 1080.13,-812.27" />
+<text text-anchor="middle" x="895.13" y="-789.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Correlated session installation</text>
+<text text-anchor="middle" x="895.13" y="-771.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Reject stale / canceled / consumed responses</text>
+</g>
+
+<g id="edge9" class="edge">
+<title>verifier-&gt;acceptance</title>
+<path fill="none" stroke="#315e9b" d="M625.64,-1044.19C640.41,-1037.19 655.04,-1029.2 668.13,-1020.27 752.24,-962.89 830,-870.43 868.97,-820.31" />
+<polygon fill="#315e9b" stroke="#315e9b" points="871.77,-822.4 875.11,-812.34 866.23,-818.13 871.77,-822.4" />
+<text text-anchor="middle" x="914.63" y="-939.87" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">AuthOutcome::Session(token)</text>
+<text text-anchor="middle" x="914.63" y="-925.87" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">with matching request</text>
+</g>
+
+<g id="node3" class="node">
+<title>bootstrap</title>
+<path fill="#ffffff" stroke="#64748b" d="M654.13,-821.27C654.13,-821.27 266.13,-821.27 266.13,-821.27 260.13,-821.27 254.13,-815.27 254.13,-809.27 254.13,-809.27 254.13,-759.27 254.13,-759.27 254.13,-753.27 260.13,-747.27 266.13,-747.27 266.13,-747.27 654.13,-747.27 654.13,-747.27 660.13,-747.27 666.13,-753.27 666.13,-759.27 666.13,-759.27 666.13,-809.27 666.13,-809.27 666.13,-815.27 660.13,-821.27 654.13,-821.27" />
+<text text-anchor="middle" x="460.13" y="-798.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">build_protected</text>
+<text text-anchor="middle" x="460.13" y="-780.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Requires token mode; rejects untyped hooks</text>
+<text text-anchor="middle" x="460.13" y="-762.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">ProtectedShell has no mutable Shell conversion</text>
+</g>
+
+
+<g id="node5" class="node">
+<title>token</title>
+<path fill="#e0f1ec" stroke="#64748b" d="M622.13,-685.27C622.13,-685.27 204.13,-685.27 204.13,-685.27 198.13,-685.27 192.13,-679.27 192.13,-673.27 192.13,-673.27 192.13,-623.27 192.13,-623.27 192.13,-617.27 198.13,-611.27 204.13,-611.27 204.13,-611.27 622.13,-611.27 622.13,-611.27 628.13,-611.27 634.13,-617.27 634.13,-623.27 634.13,-623.27 634.13,-673.27 634.13,-673.27 634.13,-679.27 628.13,-685.27 622.13,-685.27" />
+<text text-anchor="middle" x="413.13" y="-662.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Read-only SessionToken</text>
+<text text-anchor="middle" x="413.13" y="-644.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Shared publication; no credentials</text>
+<text text-anchor="middle" x="413.13" y="-626.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Coherent revision, grant and deadline observations</text>
+</g>
+
+<g id="edge10" class="edge">
+<title>controller-&gt;token</title>
+<path fill="none" stroke="#357a69" stroke-dasharray="5,2" d="M246,-922.61C150.48,-912.04 52.78,-892.69 23.13,-857.27 -8.26,-819.79 -6.94,-785.83 23.13,-747.27 44.88,-719.37 110.55,-698.2 181.94,-682.81" />
+<polygon fill="#357a69" stroke="#357a69" points="182.99,-686.17 192.05,-680.68 181.54,-679.32 182.99,-686.17" />
+<text text-anchor="middle" x="130.63" y="-787.87" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">publish / revoke shared state</text>
+<text text-anchor="middle" x="130.63" y="-773.87" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">Waker, outside command queue</text>
+</g>
+
+<g id="node4" class="node">
+<title>registration</title>
+<path fill="#ffffff" stroke="#64748b" d="M1080.13,-685.27C1080.13,-685.27 678.13,-685.27 678.13,-685.27 672.13,-685.27 666.13,-679.27 666.13,-673.27 666.13,-673.27 666.13,-623.27 666.13,-623.27 666.13,-617.27 672.13,-611.27 678.13,-611.27 678.13,-611.27 1080.13,-611.27 1080.13,-611.27 1086.13,-611.27 1092.13,-617.27 1092.13,-623.27 1092.13,-623.27 1092.13,-673.27 1092.13,-673.27 1092.13,-679.27 1086.13,-685.27 1080.13,-685.27" />
+<text text-anchor="middle" x="879.13" y="-662.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Typed registration</text>
+<text text-anchor="middle" x="879.13" y="-644.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Protected / PermissionBound / ElementTree</text>
+<text text-anchor="middle" x="879.13" y="-626.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Library owns opaque executable payload storage</text>
+</g>
+
+<g id="edge2" class="edge">
+<title>bootstrap-&gt;registration</title>
+<path fill="none" stroke="#315e9b" d="M542.6,-747.16C573.76,-734.25 609.75,-720.21 643.13,-709.27 666.08,-701.75 690.54,-694.6 714.69,-688.03" />
+<polygon fill="#315e9b" stroke="#315e9b" points="715.91,-691.33 724.65,-685.35 714.09,-684.57 715.91,-691.33" />
+<text text-anchor="middle" x="717.63" y="-712.87" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">validated construction</text>
+</g>
+
+<g id="node7" class="node">
+<title>monitor</title>
+<path fill="#daeaff" stroke="#64748b" d="M824.63,-549.27C824.63,-549.27 441.63,-549.27 441.63,-549.27 435.63,-549.27 429.63,-543.27 429.63,-537.27 429.63,-537.27 429.63,-469.27 429.63,-469.27 429.63,-463.27 435.63,-457.27 441.63,-457.27 441.63,-457.27 824.63,-457.27 824.63,-457.27 830.63,-457.27 836.63,-463.27 836.63,-469.27 836.63,-469.27 836.63,-537.27 836.63,-537.27 836.63,-543.27 830.63,-549.27 824.63,-549.27" />
+<text text-anchor="middle" x="633.13" y="-526.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Common mediation kernel</text>
+<text text-anchor="middle" x="633.13" y="-508.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Current token + narrowing policy + quarantine</text>
+<text text-anchor="middle" x="633.13" y="-490.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Session / revision stamp and inherited gates</text>
+<text text-anchor="middle" x="633.13" y="-472.47" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Recheck at each managed protected entry</text>
+</g>
+
+<g id="edge4" class="edge">
+<title>registration-&gt;monitor</title>
+<path fill="none" stroke="#315e9b" d="M817.05,-611.19C787.52,-594.02 751.71,-573.21 719.57,-554.53" />
+<polygon fill="#315e9b" stroke="#315e9b" points="721.02,-551.32 710.61,-549.32 717.5,-557.37 721.02,-551.32" />
+<text text-anchor="middle" x="887.13" y="-576.87" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">bound requirement / ancestor path</text>
+</g>
+
+<g id="edge5" class="edge">
+<title>token-&gt;monitor</title>
+<path fill="none" stroke="#357a69" stroke-dasharray="5,2" d="M467.42,-611.16C485.71,-599.06 506.27,-585.53 525.13,-573.27 534.36,-567.27 544.06,-561.01 553.71,-554.82" />
+<polygon fill="#357a69" stroke="#357a69" points="555.62,-557.75 562.15,-549.4 551.84,-551.86 555.62,-557.75" />
+<text text-anchor="middle" x="614.13" y="-576.87" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">live authority observations</text>
+</g>
+
+<g id="edge3" class="edge">
+<title>acceptance-&gt;token</title>
+<path fill="none" stroke="#315e9b" d="M866.74,-756.11C848.12,-739.89 822.43,-720.35 796.13,-709.27 791.93,-707.51 722.81,-696.51 644.41,-684.4" />
+<polygon fill="#315e9b" stroke="#315e9b" points="644.72,-680.9 634.31,-682.84 643.66,-687.82 644.72,-680.9" />
+<text text-anchor="middle" x="896.13" y="-712.87" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">retain accepted reader</text>
+</g>
+
+<g id="node8" class="node">
+<title>denied</title>
+<path fill="#fff0ef" stroke="#ae4242" d="M908.9,-327.12C908.9,-327.12 908.9,-350.15 908.9,-350.15 908.9,-356.15 902.99,-363.17 897.08,-364.18 897.08,-364.18 726.97,-393.38 726.97,-393.38 721.05,-394.4 709.14,-395.41 703.14,-395.41 703.14,-395.41 453.11,-395.41 453.11,-395.41 447.11,-395.41 435.2,-394.4 429.29,-393.38 429.29,-393.38 259.18,-364.18 259.18,-364.18 253.26,-363.17 247.35,-356.15 247.35,-350.15 247.35,-350.15 247.35,-327.12 247.35,-327.12 247.35,-321.12 253.26,-314.11 259.18,-313.09 259.18,-313.09 429.29,-283.89 429.29,-283.89 435.2,-282.88 447.11,-281.86 453.11,-281.86 453.11,-281.86 703.14,-281.86 703.14,-281.86 709.14,-281.86 721.05,-282.88 726.97,-283.89 726.97,-283.89 897.08,-313.09 897.08,-313.09 902.99,-314.11 908.9,-321.12 908.9,-327.12" />
+<text text-anchor="middle" x="578.13" y="-352.84" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">DENY</text>
+<text text-anchor="middle" x="578.13" y="-334.84" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">No protected payload invocation / result</text>
+<text text-anchor="middle" x="578.13" y="-316.84" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Denied tree children omitted before measurement</text>
+</g>
+
+<g id="edge6" class="edge">
+<title>monitor-&gt;denied</title>
+<path fill="none" stroke="#ae4242" d="M617.81,-456.97C612.36,-440.87 606.12,-422.41 600.22,-404.98" />
+<polygon fill="#ae4242" stroke="#ae4242" points="603.51,-403.77 596.99,-395.41 596.88,-406.01 603.51,-403.77" />
+<text text-anchor="middle" x="633.13" y="-422.87" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#8a2929">refused</text>
+</g>
+
+<g id="node9" class="node">
+<title>callback</title>
+<path fill="#fff9ed" stroke="#997737" d="M972.63,-233C972.63,-233 577.63,-233 577.63,-233 571.63,-233 565.63,-227 565.63,-221 565.63,-221 565.63,-135 565.63,-135 565.63,-129 571.63,-123 577.63,-123 577.63,-123 972.63,-123 972.63,-123 978.63,-123 984.63,-129 984.63,-135 984.63,-135 984.63,-221 984.63,-221 984.63,-227 978.63,-233 972.63,-233" />
+<text text-anchor="middle" x="775.13" y="-210.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">ADMIT: application payload</text>
+<text text-anchor="middle" x="775.13" y="-192.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Factory / lifecycle / measure / paint / action</text>
+<text text-anchor="middle" x="775.13" y="-174.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Original UI / app / backend access</text>
+<text text-anchor="middle" x="775.13" y="-156.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">where the callback signature provides it</text>
+<text text-anchor="middle" x="775.13" y="-138.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Arbitrary body effects remain application-owned</text>
+</g>
+
+<g id="edge11" class="edge">
+<title>monitor-&gt;callback</title>
+<path fill="none" stroke="#315e9b" d="M836.92,-464.13C871.62,-448.45 903.41,-426.37 925.13,-395.27 955.99,-351.09 951.11,-321.22 925.13,-274 918.06,-261.16 908.45,-249.82 897.48,-239.86" />
+<polygon fill="#315e9b" stroke="#315e9b" points="899.55,-237.02 889.68,-233.18 895,-242.34 899.55,-237.02" />
+<text text-anchor="middle" x="998.13" y="-335.24" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">admitted scope</text>
+</g>
+
+
+<g id="node10" class="node">
+<title>note</title>
+<polygon fill="#f7f7fa" stroke="#64748b" points="1060.13,-74 484.13,-74 484.13,0 1066.13,0 1066.13,-68 1060.13,-74" />
+<polyline fill="none" stroke="#64748b" points="1060.13,-74 1060.13,-68 " />
+<polyline fill="none" stroke="#64748b" points="1066.13,-68 1060.13,-68 " />
+<text text-anchor="middle" x="775.13" y="-51.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Boundaries are ownership and API boundaries, not process isolation.</text>
+<text text-anchor="middle" x="775.13" y="-33.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Ordinary Shell is a separate construction choice. Already-admitted</text>
+<text text-anchor="middle" x="775.13" y="-15.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">effects and already-disclosed data are not canceled or erased.</text>
+</g>
+
+</g>
+</svg>

@@ -1,11 +1,12 @@
 //! The backend traits the built-in UI leans on, and the custom backend slot.
 //!
-//! fairing ships no system code: the integrator plugs in backends. These tests stand in for an
+//! Device I/O adapters are application-supplied; clock implementations are included. These tests stand in for an
 //! integrator — the `Mock*` backends play the device — and check that what the shell draws and
 //! asks for follows them: the status items appear with the capability, the setting table reaches
 //! the audio backend, a new notification asks for a cue, the shade's volume tile reads the
 //! backend, and a backend of the integrator's own takes part in the frame.
 
+#[cfg(feature = "mock")]
 use fairing::services::mock::{MockAudio, MockDisplay, MockNetwork, NetworkMsg};
 use fairing::services::null::NullClock;
 use fairing::services::{AudioBackend, AudioSnapshot, Backend, Cue, ServiceResult, Waker};
@@ -28,17 +29,20 @@ fn harness(config: ShellConfig, services: Services) -> fairing::Result<Harness> 
     Ok(h)
 }
 
+#[cfg(feature = "mock")]
 fn with_status(ids: &[&str]) -> ShellConfig {
     let mut config = single_level_access();
     config.status_bar.right = ids.iter().map(|id| (*id).to_owned()).collect();
     config
 }
 
+#[cfg(feature = "mock")]
 const ITEMS: [&str; 3] = ["status.volume", "status.ethernet", "status.brightness"];
 
 /// With the `Null` defaults the three items stay hidden whatever the config lists; with backends
 /// that report the capability they are drawn: a capability not reported is not drawn.
 #[test]
+#[cfg(feature = "mock")]
 fn status_items_follow_the_backends_capabilities() -> fairing::Result<()> {
     let bare = harness(with_status(&ITEMS), Services::null())?;
     for id in ITEMS {
@@ -65,6 +69,7 @@ fn status_items_follow_the_backends_capabilities() -> fairing::Result<()> {
 
 /// A cable pulled out leaves the item on screen, dimmed — the cable is the thing to check.
 #[test]
+#[cfg(feature = "mock")]
 fn a_wired_link_going_down_keeps_the_item() -> fairing::Result<()> {
     let network = MockNetwork::new();
     let control = network.control();
@@ -85,6 +90,7 @@ fn a_wired_link_going_down_keeps_the_item() -> fairing::Result<()> {
 
 /// `audio.volume` and `audio.muted` reach the backend through the setting table.
 #[test]
+#[cfg(feature = "mock")]
 fn volume_and_mute_settings_reach_the_audio_backend() -> fairing::Result<()> {
     let services = Services::builder()
         .clock(NullClock)
@@ -161,7 +167,7 @@ fn a_new_notification_asks_for_a_cue_unless_silent() -> fairing::Result<()> {
 
 /// The shade's volume tile reads the audio backend, like the brightness tile reads the display:
 /// a change made outside the UI (the volume keys) shows on the next frame.
-#[cfg(feature = "overlay")]
+#[cfg(all(feature = "overlay", feature = "mock"))]
 #[test]
 fn the_volume_tile_reads_the_audio_backend() -> fairing::Result<()> {
     use fairing::overlay::TileState;

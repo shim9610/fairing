@@ -4,7 +4,7 @@
 //! `path` (`d`), `circle`, `ellipse`, `rect` (`rx`/`ry`), `line`, `polyline`, `polygon`, and the
 //! `svg` and `g` that hold them.
 //!
-//! **Anything outside the subset is an error, not something ignored.** An element such as `use`,
+//! Unsupported drawing elements and transforms are errors. An element such as `use`,
 //! `text` or `image`, or a `transform` attribute, stops the compile rather than producing an icon
 //! quietly missing a piece. A shape **inside** a container such as `defs`, `clipPath`, `mask` or
 //! `symbol` is not drawn on screen and so is skipped.
@@ -90,7 +90,7 @@ fn hidden(elements: &[Element], index: usize) -> bool {
         .any(|parent| HIDDEN.contains(&parent.name.as_str()))
 }
 
-/// An error where it is outside the supported subset. A dedicated parser does not throw away what it does not know.
+/// Reject drawing elements outside the supported subset.
 fn check_supported(element: &Element, icon: &str) -> Result<()> {
     let known = element.name == "svg"
         || element.name == "g"

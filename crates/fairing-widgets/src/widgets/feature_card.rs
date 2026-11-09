@@ -1,32 +1,8 @@
-//! `FeatureCard` — a card the **words** lead, with a drawing beside them and one way in.
+//! `FeatureCard` displays a title, supporting text and optional artwork or action.
 //!
-//! # What it is for, and why `MediaCard` could not be it
-//!
-//! A console's home screen is four or six of these: a name, a line saying what it does, a drawing
-//! that makes it findable at a glance, and a single action. "Quick Test / Use default settings and
-//! start immediately. / →".
-//!
-//! [`MediaCard`](super::MediaCard) is the other way round. There the picture leads — it takes the
-//! top of the card at a caller-chosen aspect, the title and the price sit under it, and the whole
-//! thing is sized from the image. That is a product tile. Here the picture is **decoration to the
-//! side**: it never sets the card's height, it can be left out entirely, and the card still reads.
-//! Sizing a tile from its image and a feature from its text are different rules, so they are
-//! different objects rather than one object with a flag.
-//!
-//! # The drawing is an [`IconRef`], not a texture
-//!
-//! There is no image decoder in this crate, and a feature card's art is a mark rather than a
-//! photograph — a chart, a droplet, a document. An `IconRef` covers a built-in glyph, an integrator
-//! SVG and a **draw callback** registered with `register_icon_painter`, which is how the
-//! `custom_chrome` example draws art the crate has never heard of. So the slot takes the thing the
-//! crate already has, and nothing new is invented to hold a picture.
-//!
-//! # Why the action is a disc and not a bar
-//!
-//! The card **is** the target: a tap anywhere on it opens the feature, and the response says so.
-//! The disc is there to show that it is openable and to give the finger something to aim at, which
-//! is [`super::IconButton`]'s whole job — so it is one, sharing `ButtonKind` and the
-//! press vocabulary rather than drawing a second circle that happens to look the same.
+//! Artwork uses `IconRef` and does not determine the card's height. The action is
+//! painted as a disc; layout and colour come from theme and component tokens.
+//! The application supplies the content and handles the resulting interaction.
 
 use super::button::ButtonKind;
 use super::icon_button::IconButton;
@@ -107,12 +83,7 @@ impl<'a> FeatureCard<'a> {
         self
     }
 
-    /// **Light this card up** — the one of a set the screen wants pressed first.
-    ///
-    /// It takes the accent at `fill_alpha` rather than a solid `Primary`, and its disc turns
-    /// primary with it. Solid was tried on the kiosk's tiles and flooded the card
-    /// (D-the quick-tile rule): once the whole card is the accent there is nothing left for the
-    /// action inside it to be, and a set of four becomes a wall.
+    /// Highlight this card using the accent at `fill_alpha`, with a primary action disc.
     #[must_use]
     pub fn lit(mut self, lit: bool) -> Self {
         self.lit = lit;
@@ -140,13 +111,9 @@ impl<'a> FeatureCard<'a> {
         self
     }
 
-    /// Draw it at the cursor, taking the width it is given.
-    ///
-    /// **The height comes from the content**, not from a number the caller guessed. Title, body and
-    /// disc are measured first and the card is made to hold them with an equal margin all round;
-    /// [`rows`](Self::rows) only sets a floor, so a row of cards with different amounts of text
-    /// still lines up. Sizing the frame independently of what goes in it is how the first version
-    /// put the title against the top edge and let the disc hang out of the bottom.
+    /// Draw at the current cursor, taking the available width.
+    /// Title, supporting text and action are measured before determining the height;
+    /// [`rows`](Self::rows) provides a minimum height.
     pub fn show(self, ui: &mut egui::Ui, cx: &mut Cx<'_>) -> FeatureCardPick {
         let m = &cx.theme.metrics;
         // **`content_inset`, on both axes.** That token is the crate's answer to this exact

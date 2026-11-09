@@ -1,21 +1,12 @@
-//! Secure input — **the shell does not keep what it was shown.**
+//! Password-field undo retention.
 //!
-//! The crate owns no secret. [`TextField::new`](fairing::widgets::TextField::new) borrows a
-//! `&mut String`, and [`WifiBackend::connect`](fairing::services::WifiBackend::connect) takes the
-//! PSK by `&str`, so an integrator can hold the buffer in whatever type they trust — a zeroizing
-//! wrapper, say — and hand it straight to the backend without it passing through the shell.
+//! The caller supplies the text buffer. These tests inspect egui's retained `TextEdit`
+//! state after input, checking that password-field undo snapshots are cleared. A
+//! plain field is the control, so absent typing or focus cannot make the password
+//! assertion pass by itself. This checks undo retention, not all credential storage
+//! or memory-erasure behavior.
 //!
-//! That leaves the crate exactly one obligation, and it is one the caller cannot discharge from
-//! outside: **the widget must not keep a copy of what it drew.** egui feeds the raw text into the
-//! `TextEdit` undoer every frame whatever `password` says (`text_edit/builder.rs` calls
-//! `feed_state` with `text.as_str().to_owned()` on both sides of input handling). The clipboard is
-//! guarded there by `copy_if_not_password` and the accessibility text by `mask_if_password`; the
-//! undoer is not. Those snapshots — up to `Undoer::max_undos`, a hundred of them — live in egui's
-//! memory under the widget's id and outlive the field, out of reach of anything the caller wraps
-//! its own buffer in.
-//!
-//! The rules are the other integration tests': written as `fairing::Result<()>` with no `panic!`
-//! and no `unwrap`.
+//! The tests use `fairing::Result<()>` without `panic!` or `unwrap`.
 
 #![cfg(feature = "mock")]
 
@@ -35,8 +26,8 @@ struct Typed {
 }
 
 /// It taps one field, types into it, and waits past `Undoer::stable_time` (1 s) so egui has had
-/// every chance to save an undo point. `password` picks which field is drawn.
-fn type_into_a_field(password: bool) -> fairing::Result<Typed> {
+/// every chance to save an undo point. `mask_input` selects masked or plain rendering.
+fn type_into_a_field(mask_input: bool, input: &str) -> fairing::Result<Typed> {
     let text = Rc::new(RefCell::new(String::new()));
     let place = Rc::new(Cell::new(None::<(egui::Id, egui::Rect)>));
     let (buffer, sink) = (Rc::clone(&text), Rc::clone(&place));
@@ -50,7 +41,7 @@ fn type_into_a_field(password: bool) -> fairing::Result<Typed> {
             move |ui: &mut egui::Ui, cx: &mut Cx<'_>| {
                 let mut held = buffer.borrow_mut();
                 let response = TextField::new(&mut held)
-                    .password(password)
+                    .password(mask_input)
                     .show(ui, &mut cx.widgets());
                 sink.set(Some((response.id, response.rect)));
             },
@@ -71,7 +62,7 @@ fn type_into_a_field(password: bool) -> fairing::Result<Typed> {
     };
     h.tap(rect.center());
     h.frames(2);
-    h.type_text("hunter2");
+    h.type_text(input);
     h.frames(2);
     // An undo point is saved once the text has been still for `Undoer::stable_time`.
     h.run_for(1.5);
@@ -93,9 +84,11 @@ fn type_into_a_field(password: bool) -> fairing::Result<Typed> {
 /// arrived — no focus, no events, the wrong id — would pass while proving nothing.
 #[test]
 fn a_password_field_keeps_no_plaintext_in_egui_memory() -> fairing::Result<()> {
-    let plain = type_into_a_field(false)?;
+    // Share one generated UI probe between the control and password cases.
+    let input = format!("undo-probe-{}", std::process::id());
+    let plain = type_into_a_field(false, &input)?;
     assert_eq!(
-        plain.text, "hunter2",
+        plain.text, input,
         "the typing never reached the field, so this test proves nothing"
     );
     assert!(
@@ -104,11 +97,8 @@ fn a_password_field_keeps_no_plaintext_in_egui_memory() -> fairing::Result<()> {
          so the password case below would pass for the wrong reason"
     );
 
-    let secret = type_into_a_field(true)?;
-    assert_eq!(
-        secret.text, "hunter2",
-        "the password field did not take input"
-    );
+    let secret = type_into_a_field(true, &input)?;
+    assert_eq!(secret.text, input, "the password field did not take input");
     assert!(
         !secret.undo_history,
         "the plaintext is still in egui's undo history under the widget's id - it outlives the \

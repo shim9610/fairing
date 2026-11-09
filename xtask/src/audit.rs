@@ -7,14 +7,15 @@
 //! back into numeric order to show.
 //!
 //! Any failed prebuild gate blocks the compiling stages: provenance, dependency approval,
-//! advisories and license checks must succeed before dependency code can run.
+//! advisories and license checks must succeed before those compiling stages run.
 //!
 //! 7 and 8 are installed plugins (`cargo-audit`, `cargo-deny`) rather than built into cargo. Absent,
 //! they print installation guidance and are skipped, and under `--strict` (CI) they count as failures.
 //! 9 (`cargo update --dry-run`) only reports and never counts as a failure.
 //!
-//! A stage that calls cargo passes `--locked`. Where a PR's stale lock file is quietly reinterpreted
-//! on the runner, the tree audited and the tree committed differ.
+//! Clippy, tests, docs, target checks and dependency-tree queries pass `--locked` so they use
+//! the committed dependency resolution. Formatting/plugin commands have their own flags;
+//! the informational `cargo update --dry-run` stage deliberately does not use `--locked`.
 
 use crate::util::{self, Result};
 use crate::{deps, dup, icons, integrity, licenses, sync, tree};
@@ -95,8 +96,8 @@ fn append_builds(steps: &mut Vec<Step>, build: impl FnOnce() -> Vec<Step>) {
 /// The stages that do not compile: integrity · blocking/sync · duplicate versions · the allowlist ·
 /// the notices file · the generated files · the two plugins.
 ///
-/// 13 (blocking/sync) comes right after 0. It is only a text scan and so is cheap, and on a tree that
-/// has taken a lock in it is better to say so before spending time on the compiling stages.
+/// 13 (blocking/sync) follows 0 and scans source text before the compiling stages,
+/// so a matched blocking-call pattern can stop those stages.
 fn gates(root: &Path, strict: bool) -> Vec<Step> {
     vec![
         internal(0, "integrity", "xtask integrity", || integrity::check(root)),
@@ -393,12 +394,12 @@ fn summarize(steps: &[Step]) {
         .collect();
     if !missing.is_empty() {
         println!(
-            "Compiling stages not run: {} (integrity failed)",
+            "Compiling stages not run: {} (a prebuild gate failed)",
             join(&missing)
         );
     }
     if failed.is_empty() {
-        println!("\nAll passed.");
+        println!("\nExecuted audit checks passed.");
     } else {
         println!("\nStages failed: {}", join(&failed));
     }

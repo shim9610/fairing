@@ -125,7 +125,7 @@ fn a_nested_backend_failure_stops_the_outer_command_batch() -> fairing::Result<(
     }
     let ctx = fairing::egui::Context::default();
     let mut shell = Shell::builder(fairing::testing::single_level_access()).build(&ctx)?;
-    shell.services_mut().display = Box::new(Fails(ctx.clone()));
+    shell.set_display_backend(Fails(ctx.clone()));
     let calls = Rc::new(Cell::new(0));
     let seen = Rc::clone(&calls);
     shell.add(action("pay", move |_| seen.set(seen.get() + 1)));

@@ -98,8 +98,7 @@ fn a_flick_carries_past_the_finger_and_settles_on_a_row() -> fairing::Result<()>
     Ok(())
 }
 
-/// **A tap on the row below the window turns the drum to it** — a finger that missed the
-/// window meant that row.
+/// A tap on the row below the window selects that row.
 #[test]
 fn a_tap_on_a_row_turns_the_drum_to_it() -> fairing::Result<()> {
     let mut h = bench(5, false)?;

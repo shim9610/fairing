@@ -8,7 +8,7 @@ straight to stderr or the log — it names the key.
 
 | Symptom | Message (verbatim) | Cause | Fix |
 |---|---|---|---|
-| More than one level and it will not start | `[access] default_gate is required once levels has more than one entry` | With several levels, something has to say where an unassigned gate goes. The shell will not quietly pick a side | Add `[access] default_gate = "top"`, `"bottom"`, or one of the `levels` names |
+| More than one level and it will not start | `[access] default_gate is required once levels has more than one entry` | In legacy mode with several levels, something has to say where an unassigned gate goes. The shell will not quietly pick a side | Add `[access] default_gate = "top"`, `"bottom"`, or one of the `levels` names |
 | Typo in `default_gate` | `[access] default_gate = "op" is not in levels` | Only `"top"`, `"bottom"` or an exact `levels` name is allowed | Match the spelling, or use `top` / `bottom` |
 | Gate assigned to a level that does not exist | `[access.gates] "settings.wifi" = "op" - no such level` | Values in `[access.gates]` must appear in `levels` too | Fix the typo |
 | `initial` names no level | `[access] initial = "x" is not in levels` | Same rule | Fix the typo |
@@ -17,10 +17,10 @@ straight to stderr or the log — it names the key.
 | A pattern that cannot be drawn | `[access.pattern_table] "x": invalid pattern; check dot range, minimum length, repeated dots and dots crossed by each stroke` | A stroke across a dot takes that dot. The error identifies the level and validation rules without printing the secret | Check the configured path against the grid, including intervening dots |
 | Empty `levels` | `[access] levels is empty` | `[access.levels]` needs at least one entry. One level bypasses legacy level checks; token mode still requires grants | Put something in, even `levels = ["default"]` |
 | Grid columns or rows too large | `[desktop] columns must be 0 (auto) or at most 12` (rows cap at 8) | `MAX_COLUMNS = 12`, `MAX_ROWS = 8`. A larger value allocates a `Vec` of empty cells per page and the renderer walks it every frame | Stay inside the cap, or use `0` for auto |
-| Bar height rejected | `[status_bar] height must be greater than 0` / `[nav_bar] height must be greater than 0` | An enabled bar needs a positive height | Fix the value, or set `enabled = false` |
+| Bar height rejected | `[status_bar] height must be a number greater than 0` / `[nav_bar] height must be a number greater than 0` | An enabled bar needs a positive height | Fix the value, or set `enabled = false` |
 | `[motion]` value out of range | e.g. `[motion] snap_ratio must be within 0..=1`, `[motion.spring] k must be greater than 0 and c at least 0` | Springs, ratios and pixel values that make no physical sense stop the start-up | Check the table in [07 §10](07-config-reference.md#10-motion) |
 | Odd value in `[nav_bar] back_edges` | ``[nav_bar] back_edges: `top` must be "left" or "right"`` | Only `"left"` and `"right"`; an empty array is fine and means "none" | Fix the typo |
-| `style = "gesture"` with no back edges | `[nav_bar] style = "gesture" has no back button, so an empty back_edges leaves no way back…` | A gesture bar has no back button, so with no back edge the screen is a dead end | Give it an edge, or set `style = "buttons"` |
+| `style = "gesture"` with no back edges | `[nav_bar] style = "gesture" has no back button, so an empty back_edges leaves no way back…` | A gesture bar has no back button, so this disables both built-in back mechanisms | Give it an edge, or set `style = "buttons"` |
 
 ## 2. Referring to an id that was never declared
 
@@ -38,7 +38,7 @@ source.
 | `[status_bar] left` / `center` / `right` undeclared | **Neither warning nor error** | An empty text slot (`StatusItem::Text("")`) takes up the space and draws nothing |
 | `[nav_bar] items` undeclared | **Neither warning nor error** | `NavItem::Custom(id)` with no matching `nav_item` declaration draws a fallback `•` glyph, **enabled**, and accepts taps — but there is no callback behind it, so nothing happens |
 | A `nav_item` that `[nav_bar] items` does not list | **Warns** on the frame after the `add` (``nav_item `{id}` will not be drawn: …``) — also on a bar that is off or in the gesture style | Nothing is drawn: a nav item is never appended |
-| `cx.open("settings.wifi")` (or any `settings.*`) without `settings::add_all` — or `settings.wifi`, `settings.bluetooth`, `settings.network` or `settings.power` with `add_all` but no backend that reports that capability | **Warns** (``launch: screen `settings.wifi` was never declared``) | Nothing opens. Add the built-in screens and the backend, or `SettingsConfig::ignoring_capabilities` ([01 §4.1](01-getting-started.md#41-the-built-in-settings-screens)) |
+| `cx.open("settings.wifi")` (or another `settings.*`) when no screen is registered under that id; for example, omitted default registration or a capability-filtered Wi-Fi, Bluetooth, network or power screen | **Warns** (``launch: screen `settings.wifi` was never declared``) | Nothing opens. Add the built-in screens and the backend, or `SettingsConfig::ignoring_capabilities` ([01 §4.1](01-getting-started.md#41-the-built-in-settings-screens)) |
 
 **So a typo in a bar slot shows up only as an empty gap or a dot that does
 nothing.** When an item is missing, check the id spelling against the built-in
@@ -46,16 +46,19 @@ tables in [03 Chrome](03-chrome.md) first. To reproduce it headless, use the
 harness from [01 §6](01-getting-started.md#6-testing-your-ui-headless) and check
 whether `shell.status_bar().item_rect("status.xxx")` is `None`.
 
-## 3. Confirming 0 fps when idle
+## 3. Checking idle repaint behavior
 
-With `[shell] repaint = "reactive"` (the default), the shell never calls
-`ctx.request_repaint()` when nothing is animating and no backend needs waking
-(`Shell::schedule_repaint`). Three ways to check.
+With `[shell] repaint = "reactive"` (the default), `Shell::schedule_repaint`
+requests immediate updates for active work and delayed updates for known wakes.
+These use egui's [`request_repaint`](https://docs.rs/egui/0.37.0/egui/struct.Context.html#method.request_repaint)
+and [`request_repaint_after`](https://docs.rs/egui/0.37.0/egui/struct.Context.html#method.request_repaint_after).
+egui input, application code and the host can also trigger updates. The OS and
+presentation host determine the delivered frame cadence. Three ways to investigate:
 
 1. **Look at the device.** Leave it alone for a few seconds and watch the process
-   in `top` or `htop`. CPU should fall to roughly zero. If it keeps a core busy,
-   something is asking for a repaint every frame.
-2. **Compare.** Switch to `[shell] repaint = "continuous"` for a forced 60 fps and
+   in `top` or `htop`. CPU use should decrease when application workers are also idle. If it stays high,
+   inspect repaint requests as well as background work.
+2. **Compare.** Switch to `[shell] repaint = "continuous"` for continuous repaint requests and
    compare CPU and repaint requests. Similar CPU use alone does not distinguish
    continuous repaint from other background work.
 3. **Read the log.** If a backend keeps returning a `next_wake()` in the past —
@@ -75,11 +78,10 @@ With an `hms` clock (seconds shown), waking on a 500 ms cadence around each seco
 boundary is normal. Idle 0 fps does not mean "never repaints" — it means "nothing
 scheduled, nothing requested".
 
-An indeterminate `ProgressRing` on screen asks for every frame while it is there. That is
-right for a few seconds of loading and wrong for a wait with no end in sight: give such a
-ring `.repaint_every(Duration::from_millis(250))` and it moves in coarser steps at a few
-frames a second. The unlock prompt's badge wait does this — a lock screen waiting for a
-badge can stand all night.
+An indeterminate `ProgressRing` requests continuous updates by default. Set
+`.repaint_every(Duration::from_millis(250))` when a lower update rate suits the
+interaction and rendering budget. The unlock prompt's badge wait uses that
+interval; the host still determines when frames are delivered.
 
 ## 4. Using an API without its feature
 
@@ -87,7 +89,7 @@ badge can stand all night.
 
 | Feature | With it off |
 |---|---|
-| `osk` | `Shell::osk()` and `osk_mut()` are behind `#[cfg(feature = "osk")]`, so they do not exist — a **compile error** (``no method named `osk` found``) |
+| `osk` | `Shell::osk()` and keyboard operations such as `set_osk_layout()` are behind `#[cfg(feature = "osk")]`, so they do not exist — a **compile error** (``no method named `osk` found``) |
 | `overlay` | `Shell::overlay()` is likewise a **compile error**. But `LaunchAction::OpenOverlay` — the in-shell path, reached through `cx.open` and friends — always compiles. Opening the shade with the feature off quietly logs ``the `overlay` feature is off, so the shade cannot open`` and **does nothing**. Not an error, not a panic |
 
 The `[overlay]` and `[osk]` config sections are parsed regardless
@@ -108,11 +110,11 @@ uses exactly that combination:
 
 ```sh
 xvfb-run -a -s "-screen 0 1024x600x24" env LIBGL_ALWAYS_SOFTWARE=1 \
-  cargo run -p fairing --features runner-x11 --example demo -- --size=1024x600
+  cargo run -p fairing --features runner-x11 --example demo -- --size=1024x600 --tour=target/tours/demo
 ```
 
-With only `runner` in an X11 environment — no `eframe/x11` — the window either never
-appears or you get an initialisation `Error::Runner`. Switch to `runner-x11`.
+The `runner` feature does not enable `eframe/x11`. Use `runner-x11` when the host requires
+an X11 backend.
 
 ## 6. Korean renders as tofu
 
@@ -152,7 +154,7 @@ let mut shell = Shell::builder(config)
 name contains `NotoSansKR`, `NotoSansCJK`, `NanumGothic` or `Pretendard`. For any
 other name, call `find_system_font(&["my-font"])` yourself.
 
-### 6.2 Embed it in the binary (the version that cannot go missing)
+### 6.2 Embed it in the binary
 
 ```rust,ignore
 let fonts = FontSet::new().with(FontSource::from_static(
@@ -170,11 +172,11 @@ let fonts = FontSet::new().with(FontSource::from_static(
 | One face out of a `.ttc` / `.otc` collection | `.index(1)` |
 | Several fonts | Call `FontSet::push` more than once; they install in order |
 
-Installation happens **once**, in `build`. `set_fonts` rebuilds the whole glyph
-atlas, so never call it from the frame loop.
+Installation happens once in `build`. Changing the font definitions can rebuild
+egui's glyph atlas and layout caches, so avoid reinstalling fonts each frame.
 
-Hand `from_path` something that is not a font and it stops with `Error::Config`
-(it checks the sfnt signature) before egui can panic.
+`from_path` rejects an unrecognized sfnt signature with `Error::Config`. These
+header checks do not parse every glyph or validate the complete font file.
 
 Shipping a freely licensed CJK font with the device image — Noto Sans KR is
 OFL-1.1, for instance — is the integrator's job; see "Bundling fonts and assets"
@@ -204,7 +206,7 @@ following examples record earlier corrections found through screenshot tours
 
 Earlier API workarounds are no longer needed: `fairing::egui` is
 re-exported, `runner::run_shell_with` exists, so does
-`services::clock::ChronoClock`, `Shell::remove` reaches built-in tiles, and
+`services::clock::ChronoClock`, `Shell::remove` reaches built-in status items, and
 `Lifecycle::Resized` is emitted. Changes affecting older checkouts are listed in
 [10 Migration](10-migration.md).
 
@@ -218,8 +220,10 @@ ownership before propagating to that boundary; they do not return `None` and
 continue the interrupted callback.
 
 The host can opt into `RecoveryUi` and use `take_restart_request()` to consume its
-button request. `Shell::restart_with` installs a host-built replacement; producers
-must obtain its new handle because old queues are not transferred. The supplied
+button request. `Shell::restart_with` installs a host-built ordinary replacement;
+`ProtectedShell::restart_with` requires a protected replacement. A failed protected
+replacement leaves dispatch quarantined. Producers must obtain the new handle
+because old queues are not transferred. The supplied
 `run_shell_with_recovery` and `run_app_with_recovery` runners expose host recovery
 callbacks. No automatic restart or replay policy is installed.
 
@@ -237,7 +241,7 @@ for payload cleanup, output scope and the recovery example.
 | `examples/bench` | `cargo run -p fairing --release --example bench` | p50/p95/max in ms per scenario, plus animation frame counts, as text on stdout |
 | `examples/motion_lab` | `cargo run -p fairing --features runner-x11 --example motion_lab -- --size=1024x600` | A graph of the last 180 frames top right (interval in ms, p50, p95, the 33 ms budget line) — **by eye** |
 | `Harness::frame_shapes()` | Inside a headless test | The shapes actually drawn this frame — use it to catch things being drawn that should not be |
-| `Shell::is_animating()` | Anywhere | Whether an animation is live this frame. Stuck at `true` while idle means something never finishes |
+| `Shell::is_animating()` | Anywhere | Whether an animation is live this frame. If it stays `true`, inspect active animations and repeated update requests |
 
 ### 8.2 Running the bench
 
@@ -249,17 +253,17 @@ cargo run -p fairing --release --example bench
 push/pop (A3), a 200-widget screen (idle and drag-scrolling), home, shade drag
 (A1), page swipe (A4) and OSK reveal (A5, feature `osk`). Run it on your device and keep the
 table it prints with the hardware, the commit and the conditions; compare runs on the same
-device. A p50 more than **30 %** above an earlier run is a
-regression.
+device. Treat a p50 increase of 30 % or more as a comparison heuristic to
+investigate and repeat under comparable conditions.
 
 ### 8.3 When it is slow
 
 | Check | Why |
 |---|---|
 | **Idle desktop p50 and heap counters** | Compare render time separately from allocation. The separate diagnostic allocator measures Rust allocation counts/live bytes; timing alone does not identify allocation. See [memory limits](../memory-limits.md) |
-| **How many fonts you loaded** | Every font added through `egui::Context::set_fonts` adds first-rasterisation and atlas-rebuild cost. If one Korean font is enough, do not stack several |
-| **Known render allocations** | `icons::paint` allocates one `Vec<Pos2>` per sub-path with three or more points (epaint's `PathShape` wants an owned Vec), plus one each for the parametric bluetooth and volume icons. On the M1 baseline (51 icons then), 69 of 146 sub-paths were allocation-free `LineSegment`s — worth knowing when you add custom icons |
-| **Debug versus release** | Debug numbers are a different order of magnitude (x86 baseline idle p95: 0.042 ms release, 0.75 ms debug). Always bench and compare with `--release` |
+| **How many fonts you loaded** | Fonts used by rendered text can add rasterisation and cache cost; replacing the font set invalidates font caches. If one Korean font is enough, do not stack several |
+| **Known render allocations** | Icon paths represented by epaint `PathShape` own vertex vectors; line segments use a different representation. Parametric icons can also construct vectors. Profile the current icon set and drawing paths for the target workload |
+| **Debug versus release** | Debug and release builds use different optimization settings. Use `--release` for comparable device measurements |
 
 ## 9. Passing the audit
 
@@ -282,7 +286,7 @@ missing `cargo-audit` or `cargo-deny` only prints an install hint and skips.
 | 10 | Notices | `xtask licenses --check` | Whether `THIRD_PARTY.md` is current |
 | 11 | Generated files | `xtask icons --check` | Whether `icons/generated.rs` matches `assets/icons/*.svg` |
 | 12 | Target build | `cargo check -p fairing --features runner --target aarch64-unknown-linux-gnu` | aarch64 portability — **a compile check, not a binary** |
-| 13 | Blocking sync | `xtask sync-check` | Bans eight identifiers across `crates/**/src/**/*.rs`: `Mutex`, `RwLock`, `Condvar`, `Barrier`, `OnceLock`, `LazyLock`, `parking_lot` and `tex_manager`. Only the last is not our own type — `Context::tex_manager()` hands back an `Arc<RwLock<..>>`, and the calling source never spells `RwLock`, so the name is the only handle. In `crates/fairing/src` and `crates/fairing-widgets/src` (the UI thread) it also bans `.recv(`, `.recv_timeout(`, a **no-argument `.join()`** and `thread::sleep`. Matching `.join(` broadly would need an exemption on every `Path::join`, so only the argument-less form counts |
+| 13 | Blocking sync | `xtask sync-check` | Bans eight identifiers across `crates/**/src/**/*.rs`: `Mutex`, `RwLock`, `Condvar`, `Barrier`, `OnceLock`, `LazyLock`, `parking_lot` and `tex_manager`. `tex_manager` is an accessor name rather than a type or crate identifier — `Context::tex_manager()` hands back an `Arc<RwLock<..>>`, and the calling source never spells `RwLock`, so the name is the only handle. In `crates/fairing/src` and `crates/fairing-widgets/src` (the UI thread) it also bans `.recv(`, `.recv_timeout(`, a **no-argument `.join()`** and `thread::sleep`. Matching `.join(` broadly would need an exemption on every `Path::join`, so only the argument-less form counts |
 
 Adding a dependency:
 
@@ -293,9 +297,9 @@ Adding a dependency:
    and licence fill themselves in; the reason column gets `TODO approve`.
 3. Write the reason yourself as `explanation (approver, YYYY-MM-DD)`. A `TODO`
    with no date keeps `deps-check` failing.
-4. A PR touching `Cargo.toml`, `Cargo.lock` or `deps.allow` needs the repository
-   owner's review under `CODEOWNERS`. The reviewer decides from the tree delta in
-   the `deps-check` output — how many new crates, how many duplicate versions.
+4. `CODEOWNERS` assigns the repository owner to `Cargo.toml`, `Cargo.lock` and
+   `deps.allow`; required review enforcement depends on repository rules. Review the tree delta in
+   the `deps-check` output — new crates and duplicate versions.
 5. Confirm `cargo xtask audit --strict` passes locally before pushing.
 
 ## 10. Deployment
@@ -303,8 +307,8 @@ Adding a dependency:
 ### 10.1 The release profile
 
 The workspace root deliberately has no `[profile.release]`: a profile set by a
-library never propagates to the integrator's binary, and `panic = "abort"` breaks
-`cargo test --release`. Put it in **your own** root `Cargo.toml`
+dependency does not control the integrator's binary. Choose the release profile in **your own**
+root `Cargo.toml`
 ([01 §3](01-getting-started.md#3-the-device-binary-profile)).
 
 ```toml
@@ -313,7 +317,7 @@ lto = "fat"
 codegen-units = 1
 panic = "unwind"
 strip = true
-opt-level = 3      # for a UI, 3 beats "s"; strip wins the size back
+opt-level = 3      # optimize for execution speed; measure speed/size on the target
 ```
 
 Use `panic = "unwind"` for runtime callback containment. `panic = "abort"` bypasses
@@ -371,23 +375,24 @@ panel is. Both log a warning at startup. Give it a bold with `ShellBuilder::font
 `ShellBuilder::physical_mm` ([01 §4.3](01-getting-started.md#43-the-panels-size)).
 
 **Q1. Is a screen really an app?**
-No. Not a separate process, not a separate window — a virtual layer that one
-`Screen` implementation (or closure) draws inside the same egui frame loop. See
+A screen is a virtual layer drawn by one `Screen` implementation or closure inside
+the shared egui frame loop. It shares the host process and window. See
 the crate docs in [lib.rs](../../crates/fairing/src/lib.rs).
 
 **Q2. Why can I not use `Mutex` or `RwLock`?**
-You cannot. `cargo xtask sync-check` (audit stage 13) fails the build when
-`Mutex`, `RwLock`, `Condvar`, `Barrier`, `OnceLock`, `LazyLock` or `parking_lot`
-appears as an identifier in `crates/**/src/**/*.rs`, and inside
-`crates/fairing/src` it also bans `.recv(`, `.join(` and `thread::sleep`. The
-`disallowed-types` list in the root `clippy.toml` catches the same thing at
-compile time. Blocking the UI thread stops the frame. A justified exception gets
-`// sync-check: allow: <reason>` on the same line.
+This is a repository UI-source policy, not a type-system restriction on an
+integrating application. `cargo xtask sync-check` (audit stage 13) rejects the
+listed synchronization identifiers under `crates/**/src/**/*.rs`. In the two UI
+libraries it also checks blocking receives, no-argument `.join()` and
+`thread::sleep`; see the exact scope in §9. Clippy adds resolved-type/method bans.
+A reviewed repository exception needs the source-scan marker and any applicable
+lint allowance. Application backends choose their own worker synchronization,
+but UI-side methods must return promptly.
 
 **Q3. How do I change the wallpaper?**
 For a flat colour, `[desktop] wallpaper = "#RRGGBB"` or a palette role name.
 Anything more — gradients, images, procedural patterns — goes through code:
-`shell.desktop_mut().set_wallpaper(Wallpaper::Painter(..))` and friends
+`shell.set_wallpaper(Wallpaper::Painter(..))` and friends
 ([04 §5](04-customization.md#5-painting-the-wallpaper-yourself),
 [03 §3.7](03-chrome.md#37-wallpaper)).
 
@@ -411,23 +416,24 @@ a whole `Theme` while running; that is decided once, at start-up, through
 
 **Q6. What are the limits on desktop icons, rows, columns and the dock?**
 The grid caps at `columns` 12 and `rows` 8 (`0` means auto,
-[07 §5](07-config-reference.md#5-desktop)). **The dock has no count limit.** Five
-is a phone convention, not a device requirement — twelve along the bottom of a
-1920 bar panel is fine, and so is eight down the left rail of a 480×800. What the
-shell does instead is shrink the cells, and it stops shrinking at the physical
-minimum touch size.
+[07 §5](07-config-reference.md#5-desktop)). Dock configuration has no icon-count cap.
+Its layout shares the available band between icons; check fit and touch sizing
+with the intended icon count and panel dimensions.
 
 **Q7. I set `[access] mode = "prompt"` and a locked icon opens no PIN pad.**
 `prompt` draws the shell's prompt only when there is something to ask: PINs in
 `[access.pin_table]`, or an authenticator from `ShellBuilder::authenticator`.
 With neither it behaves as `routing` — the gated launch opens nothing and emits
-`AccessEvent::UnlockRequested`. A single-level table never prompts at all. Add a
+`AccessEvent::UnlockRequested`. A single-level table bypasses the prompt only in
+legacy mode. Token mode still requires issuer grants and can request authentication
+with one level; PIN tables alone do not issue tokens. For the legacy keypad, add a
 PIN table (or your authenticator) and the keypad comes up
 ([05 §5](05-access-control.md#5-the-shells-prompt-and-the-authenticator)).
 
 **Q8. Does `[shell] locale = "ko"` give me Korean text?**
-Yes, for everything the shell draws: the shade, the lock screen, the unlock prompt
-and the `settings` screens. Your screens' words come out in Korean once you look
+Yes, for built-in translated labels in the shade, lock screen, unlock prompt
+and `settings` screens. Application labels, backend messages and other supplied content
+need their own translations. Your screens' words come out in Korean once you look
 them up with `cx.strings.get(..)` and give them a Korean entry through
 `ShellBuilder::translations`; a word with no entry stays English. You need a font
 with Hangul too (§6) — without one the shell logs a warning and the text is boxes.
@@ -437,7 +443,8 @@ The `ui.locale` setting switches the language while the shell runs
 **Q9. Why does `cargo xtask audit` skip stages locally?**
 Without `cargo-audit` (stage 7) and `cargo-deny` (stage 8) installed, the local
 run prints an install hint and skips them. CI runs with `--strict`, where a
-missing plugin fails. Run `cargo install cargo-audit cargo-deny` and then
+missing plugin fails. Install the versions pinned in `xtask/tools.lock`, as shown
+in [Contributing](../../CONTRIBUTING.md#setting-up), then run
 `cargo xtask audit --strict` to reproduce CI before you push.
 
 **Q10. I set `[shell] idle_lock_secs = 300` and the log warns about it.**

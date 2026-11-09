@@ -1,4 +1,4 @@
-//! **Saved settings come back through one explicit call**. The shell writes no files: a
+//! Ordinary Shell startup restoration uses one explicit call. The shell writes no files: a
 //! change reaches the integrator as `SettingChanged`, to store where the device keeps such things,
 //! and `Shell::restore_settings` hands the stored values back at start — into the table, to the
 //! backends, the theme and the language — with no gate and no event of its own.

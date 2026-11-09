@@ -1,35 +1,15 @@
-//! The hidden entry point. The **invisible** door into a device's service menu.
+//! Triggered entry points for service menus and other non-desktop destinations.
 //!
-//! # The crate does not decide the trigger
+//! [`KnockTrigger`] receives input from the shell. The built-in [`TapKnock`] and
+//! [`ZoneKnock`] implement repeated taps and region sequences; applications can
+//! supply other triggers.
 //!
-//! Android wants the build number pressed seven times; an industrial HMI wants the corners touched
-//! in order; some devices use a hardware key combination; somewhere else it is particular
-//! coordinates on the screen tapped in a set order. **None of that is the crate's to decide** — the
-//! crate does not set policy, here as everywhere.
+//! When a trigger completes, the shell checks the entry's optional gate before
+//! running its action. A trigger alone does not authenticate a caller. The gate
+//! configuration must match the authority required by the destination or operation.
 //!
-//! So what this module offers is not a **list** of triggers but one [`KnockTrigger`] **trait**. An
-//! integrator implements their own trigger, and the crate feeds it every frame and checks the gate
-//! once it completes. The two common ones ([`TapKnock`] · [`ZoneKnock`]) come along as examples and
-//! as defaults.
-//!
-//! # This is **not** a security boundary
-//!
-//! A hidden entry point is **concealment**, not authentication. It only makes the door hard to
-//! find; it does not stop whoever finds it. What stops them is a [`Gate`](crate::Gate) — give
-//! [`HiddenEntry::gate`] one and pulling the trigger still has to pass the gate, and on a failure
-//! the shell raises
-//! [`AccessEvent::UnlockRequested`](crate::access::AccessEvent::UnlockRequested).
-//!
-//! **A hidden entry point with no gate is a door anyone can walk through.** Leave it that way only
-//! for something harmless to look at, like a diagnostics screen. Anything like a factory reset or
-//! writing calibration values takes a gate, without exception.
-//!
-//! # It leaves a trace
-//!
-//! On completion the shell raises [`ShellEvent::HiddenEntry`](crate::ShellEvent::HiddenEntry).
-//! Entering a service menu on a device is **auditable**, so an integrator has to be able to record
-//! it — it does not open quietly (the counterpart of a configuration error never opening the door
-//! quietly: a quiet **success** goes unrecorded too).
+//! Completion emits [`ShellEvent::HiddenEntry`](crate::ShellEvent::HiddenEntry).
+//! The application decides whether and how to persist that event as an audit record.
 
 use crate::gesture::Edge;
 use egui::{Pos2, Rect};
@@ -62,7 +42,7 @@ impl Tap {
 /// Everything a trigger sees this frame.
 ///
 /// `#[non_exhaustive]`, since new fields may be added — it is a value the shell builds and hands
-/// over rather than one an integrator makes, so nothing breaks on it.
+/// over rather than one an integrator makes, allowing future fields without requiring callers to construct an exhaustive literal.
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub struct KnockInput<'a> {
@@ -100,7 +80,7 @@ pub enum KnockStep {
     Advanced,
     /// It went back to the beginning (wrong input, or a timeout).
     Reset,
-    /// **Complete.** The shell checks the gate and runs the action.
+    /// **Complete.** The shell checks the gate and runs the action if admitted.
     Opened,
 }
 
@@ -176,11 +156,8 @@ pub trait KnockTrigger: fmt::Debug + Send + 'static {
 
 // ── The two triggers provided ─────────────────────────────────────────────────
 
-/// Knock on the same spot `count` times. Android's "the build number seven times" is this one.
-///
-/// **The crate does not know where the knocking happens** — when a screen calls
-/// [`Cx::knock`](crate::Cx::knock) from its own secret widget, that is one knock. Were the shell to
-/// decide the spot, it would be the same on every device and no longer concealment.
+/// Count repeated [`Cx::knock`](crate::Cx::knock) calls for one entry point.
+/// The application chooses which UI interaction makes those calls.
 #[derive(Debug, Clone)]
 pub struct TapKnock {
     count: u8,
@@ -463,17 +440,14 @@ impl KnockTrigger for ZoneKnock {
 
 // ── Registration ──────────────────────────────────────────────────────────────
 
-/// One registered hidden entry point.
-///
-/// **The gate is the security and the trigger is the concealment.** Leave [`HiddenEntry::gate`]
-/// empty and whoever finds the door walks in — leave it that way only for a screen that is harmless
-/// to look at.
+/// One registered trigger, optional gate and action.
+/// With no gate, trigger completion runs the action without an entry-level check.
 pub struct HiddenEntry {
     /// The entry point's id. [`Cx::knock`](crate::Cx::knock) pokes it by this name.
     pub id: String,
     /// The trigger. **An integrator's own implementation goes in here too.**
     pub trigger: Box<dyn KnockTrigger>,
-    /// The gate to pass. `None` means **anyone walks in**.
+    /// The gate to check before running the action. `None` skips this entry-level check.
     pub gate: Option<crate::Gate>,
     /// What to run on completion.
     pub action: crate::LaunchAction,
@@ -529,7 +503,7 @@ impl HiddenEntry {
         Self::new(id, ZoneKnock::corners(order), action)
     }
 
-    /// Put a gate on it. **Anything irreversible, like a factory reset or a calibration value, takes one without exception.**
+    /// Set the gate checked before running this entry's action.
     #[must_use]
     pub fn gate(mut self, gate: impl Into<crate::Gate>) -> Self {
         self.gate = Some(gate.into());

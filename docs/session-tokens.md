@@ -6,6 +6,9 @@ Fairing retains an `Option<SessionToken>`. Tokens contain no credentials and exp
 no mutation API. The controller is not cloneable. Token clones read one shared
 session, and controller disposal terminally revokes all of them.
 
+The [security architecture](security-architecture.md) diagrams ownership, runtime
+admission and the distinction between issuer revocation and local detachment.
+
 ## Issue after authentication
 
 The existing `Authenticator` trait handles credentials, request cancellation and
@@ -48,9 +51,15 @@ new pair. This bounds each controller's authority to its issued catalog.
 
 Use the shell's monotonic `now` when issuing and updating sessions. Scheduled
 session and temporary-grant deadlines participate in Fairing's next-wake selection.
-The controller wakes the UI after publication or revocation. Issuance and updates
-allocate on the issuer side; token reads allocate nothing and do not wait or retry.
-Their work is bounded by the issued catalog, not by a universal execution-time bound.
+Pass the shell-connected `Waker` to `issue`: retain the value supplied to
+`Authenticator::attach`, or clone `shell.handle().waker()` for a host-owned issuer.
+Token installation does not rebind that waker. Publication and revocation use it
+to request a UI update. Issuance and updates
+allocate on the issuer side. `snapshot(now)` and direct gate-name checks borrow
+the published state; they do not allocate or retry an overlapping publication.
+Typed convenience checks also invoke the application's `Permission::gate` mapping,
+whose allocation behavior belongs to that implementation. Lookup work depends on
+the issued catalog and gate-name lengths, without a universal execution-time bound.
 
 In `routing` mode, or without a built-in prompt method, token mode emits
 `AccessEvent::SessionRequested { request, gate }`. The host authenticates and calls
@@ -124,8 +133,10 @@ are host/platform responsibilities.
 `SessionController::revoke()` is terminal. Fairing drops revoked/expired tokens,
 invalidates pending authentication and denies further protected work. Fairing's
 logout, lock, timeout, subject replacement, authenticator replacement and fault
-quarantine detach local authority before notifying
-`Authenticator::session_ended(session_id, now)`. Implement that callback to revoke
+quarantine detach local authority before notifying an attached authenticator via
+`Authenticator::session_ended(session_id, now)`. The default hook does nothing.
+Without an attached authenticator, the host-owned issuer coordinates controller
+revocation itself. Implement that callback to revoke
 only the matching controller; an old session's notification must not revoke a newer
 controller. Local detachment already denies work even if notification fails.
 Other readers of the pair are revoked by its controller owner.

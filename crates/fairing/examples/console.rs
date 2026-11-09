@@ -1,36 +1,18 @@
-//! **The crate's own console**: the L-shaped chrome over fairing's brand, at a desk-shaped panel.
+//! Bench-console example with a left rail, application pages and split shade.
 //!
 //! ```text
 //! cargo run -p fairing --features runner-x11,mock --example console -- --size=1280x800
 //! ```
 //!
-//! `demo` shows the same material as a phone does — a desktop of icons, a screen at a time, the
-//! nav bar underneath. This shows it the way a bench instrument does: a rail down the left that is
-//! part of the chrome, the page in its elbow, and no screen stack at all. It is one screen with
-//! five pages, which is what a machine bolted to a desk actually is.
+//! The example uses one registered screen with five pages. It combines Fairing
+//! layout helpers and widgets with application drawing and configuration.
 //!
-//! Everything here is a `layout::` or `widgets::` call.
-//!
-//! What it is for:
-//!
-//! * `layout::Rail` — the arm takes the status bar's own fill, so the two read as one L and there
-//!   is no rule between them. Folding is on here, so a swipe across the arm drops it to
-//!   icons — or away entirely with `--fold=away` — and a flick anywhere on the page does
-//!   the same (`FoldGesture::Anywhere`, the default). Folding, the bar beside the
-//!   live entry melts into a disc behind its icon.
-//! * `layout::SelectMark` — the rail's selection, in the console's own idiom.
-//! * `layout::transit` — the pages come and go: the one leaving plays its exit, then the one
-//!   arriving plays its entry, and each page says which way (`Transit for Page`):
-//!   the rail pages follow the mark, the overview is home, and an alert flies in from the right
-//!   and lands with a little give.
-//! * `[overlay] layout = "split"` — the left of the top edge opens the notifications and the
-//!   right the controls, each a panel filling the height and holding only its own; a pull or a
-//!   bar tap on the other side crosses between them.
-//! * `[overlay] reveal = "card"` — each panel is a floating card that materialises on its own
-//!   side, rather than a curtain drawn down over the run. It lies on a frosted copy of
-//!   the page, and `--glass=0.65` sets how opaque it is over it (`[overlay] card_glass`, 0.7 by
-//!   default). It stands off the page with the light along its top edge, and
-//!   `--relief=0` lays it flat (`[overlay] card_relief`).
+//! - `layout::Rail` selects and folds the page navigation; `--fold=away` hides it.
+//! - `layout::SelectMark` chooses the rail selection marker.
+//! - `layout::transit` handles sequential page exits and entries.
+//! - Split overlay layout separates notifications and controls.
+//! - Card reveal uses `card_glass` and `card_relief`; `--glass` and `--relief`
+//!   override those values for comparison.
 
 mod common;
 
@@ -103,15 +85,9 @@ impl Page {
     }
 }
 
-/// **How the console's pages come and go**. Three characters, not five styles, each
-/// with a reason:
-///
-/// - a rail page **follows the mark**: further down the rail it comes up from below as the page
-///   before goes up, and back the other way — the rule an index already has;
-/// - the overview is **home**: leaving it, the next page comes up over it; coming home, the page
-///   in hand drops back down and the overview grows in from a step behind, the way a task closes;
-/// - an alert **arrives**: it flies in from beyond the right edge and lands with a little give,
-///   because an alert is not browsed to, and it leaves the way it came.
+/// Page-transition policy for this example.
+/// Rail pages follow their index direction, Overview uses a home transition,
+/// and Alerts enters and leaves from the right.
 impl layout::Transit for Page {
     fn enter(&self, from: &Self) -> layout::Motion {
         match self {
@@ -132,17 +108,9 @@ impl layout::Transit for Page {
     }
 }
 
-/// **The console's palette** — a light instrument panel: a near-neutral chrome, a lighter page in
-/// its elbow, and one restrained accent.
-///
-/// Not a preset: a product's colours are the product's, and `ShellBuilder::palettes` is the door
-/// for them. The crate's own contrast gate binds only the presets it ships, so nothing here
-/// is checked by it.
-///
-/// **The ramp runs the way the roles do.** `Surface` is what `chrome::status_bar` and
-/// `layout::Rail` both fill with, so it is the chrome's colour; `SurfaceVariant` is the page
-/// panel's, one step lighter. Read the other way round the L comes out lighter than the page it
-/// frames and the shape reads inside out.
+/// Example light palette. `Surface` supplies chrome/rail fill and
+/// `SurfaceVariant` supplies the page fill. The library preset contrast tests
+/// do not validate these application-supplied colours.
 fn console_palette() -> fairing::theme::Palette {
     use egui::Color32;
     fairing::theme::Palette {
@@ -415,20 +383,12 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
     let mut builder = fairing::Shell::builder(config)
         .fonts(common::korean_fonts())
         .metrics_spec(spec)
-        // **All three specs, because a `Theme` is injected below.** `ShellBuilder::theme` is how a
-        // product's colours reach the first frame, and a `Theme` carries *resolved* metrics as well
-        // as a palette — so handing one over turns off the spec resolution for anything a spec was
-        // not also given for. Leave these out and the switch, the slider thumb and every component
-        // metric freeze at the default scale: on this panel the switch came out 49 du tall beside
-        // rows sized for reading, which looks like a broken widget and is the shell being told to
-        // use the numbers it was handed.
+        // Pass all three size specs with the injected theme so control and component
+        // metrics resolve using this panel's scale.
         .component_spec(fairing::theme::ComponentSpec::default())
         .control_spec(fairing::theme::ControlSpec::default());
-    // **A 15-inch desk panel unless told otherwise.** Without this the density chain falls all the
-    // way through to `assume_px_per_mm` and warns, and every physical token comes
-    // out sized for a panel a third the real size — which is not a rendering bug, it is the crate
-    // correctly drawing for the panel it was told about. An example that ships a size is an example
-    // that shows what the tokens do.
+    // Supply the example's panel size unless overridden, rather than using the
+    // unknown-density fallback.
     let (mm_w, mm_h) = common::arg_panel_mm(&args).unwrap_or((345.0, 215.0));
     builder = builder.physical_mm(mm_w, mm_h);
     // A bench instrument is read over the work, a little further off than the hand-held 360 mm
@@ -449,9 +409,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
         dark: false,
         ..fairing::Theme::default()
     };
-    // **The Mock backends, so the bar has something to show.** Without them `status.wifi` and
-    // `status.battery` are items with no source and draw nothing, which reads as a status bar
-    // missing its glyphs rather than as a device that was never told about its radio.
+    // Install Mock backends to supply status-item values.
     let mut power = MockPower::new(72, false);
     power.drain_per_min = 3;
     let services = Services::builder()
@@ -486,7 +444,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
     );
     shell.add(brand_item());
     // The built-in settings screens, for the Settings page's tiles to open. No desktop icon:
-    // this console has no desktop, and the rail is the only way in.
+    // this console uses rail navigation, with Settings tiles linking to these screens.
     fairing::settings::add_all(
         &mut shell,
         &fairing::settings::SettingsConfig::default().without_home_icon(),
@@ -498,9 +456,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
 /// The rail down the left and the page beside it — **one `Rail::show` call**.
 fn console(ui: &mut egui::Ui, cx: &mut Cx<'_>, state: &mut Console) {
     let open = state.page;
-    // Folding is on, and the gesture is read anywhere (the default): a bench has one hand free
-    // and it lands where it lands, so a flick across the page folds the arm as readily as a drag
-    // across it.
+    // Read fold gestures across the page as well as on the rail.
     let out = layout::Rail::new()
         .collapsible(true)
         .fold_to(state.fold)
@@ -553,12 +509,7 @@ fn page(ui: &mut egui::Ui, cx: &mut Cx<'_>, open: Page, state: &mut Console) {
     }
 }
 
-/// **The page is symbol-led.** A rail that is one word an entry does not want a wall of prose
-/// beside it: the eye has already been told where it is, so the page's job is to show the state and
-/// offer the few big things a hand reaches for. Cards of body text belong on a settings screen,
-/// which this is not.
-///
-/// One tile: a large glyph over a short label, lit when it is the live one.
+/// Example control tile: glyph, label and optional value, with selected styling.
 fn tile(ui: &mut egui::Ui, cx: &mut Cx<'_>, cell: &layout::Cell<'_, Tile>, lit: bool) {
     let m = &cx.theme.metrics;
     let glyph = (cell.visual.height() * 0.42).min(cell.visual.width() * 0.42);
@@ -587,8 +538,7 @@ fn tile(ui: &mut egui::Ui, cx: &mut Cx<'_>, cell: &layout::Cell<'_, Tile>, lit: 
         egui::FontId::proportional(m.type_scale.body),
         cx.theme.color(ink),
     );
-    // The reading goes under the word, in the display face: on a console the number is the thing
-    // being looked at and the word is only there to say what it is.
+    // Place the value below its label using the display face.
     if let Some(value) = cell.item.value {
         ui.painter().text(
             egui::pos2(
@@ -634,12 +584,7 @@ impl Tile {
     }
 }
 
-/// The overview: the run in progress, then the six things a hand reaches for.
-///
-/// The run block is the console reference's: a thick ring with the number inside it, and the
-/// readings in a column beside it — label small and muted, value in the display face. The ring
-/// carries the sweep, so the eye finds the head by colour rather than by remembering where twelve
-/// o'clock was.
+/// Gradient colours distinguish the start and end of the sweep.
 fn overview(ui: &mut egui::Ui, cx: &mut Cx<'_>) {
     let tiles = [
         Tile::new("Start run", icon::ACTIVITY),
@@ -728,8 +673,7 @@ fn reading(ui: &mut egui::Ui, cx: &mut Cx<'_>, label: &str, value: &str) {
     ui.add_space(cx.theme.control.line_gap);
 }
 
-/// The controls: big toggles, not rows of prose. One slider, because a lamp is a scalar and a
-/// scalar has no honest tile.
+/// Controls page with toggles and a scalar lamp-intensity slider.
 fn controls(ui: &mut egui::Ui, cx: &mut Cx<'_>, state: &mut Console) {
     let toggles = [
         Tile::new("Cooling fan", icon::GAUGE),
@@ -784,10 +728,7 @@ fn controls(ui: &mut egui::Ui, cx: &mut Cx<'_>, state: &mut Console) {
     });
 }
 
-/// The alerts: one tile a thing that could stop a run, lit when it wants attention.
-///
-/// A list of rows would be the settings-screen answer. On a console the question is "is anything
-/// wrong", and nine tiles answer it from across the bench in a way nine subtitles do not.
+/// Alerts page: one status tile for each simulated condition.
 fn alerts(ui: &mut egui::Ui, cx: &mut Cx<'_>) {
     let items = [
         Tile::reading("Lamp hours", icon::GAUGE, "412"),
@@ -866,16 +807,9 @@ fn settings(ui: &mut egui::Ui, cx: &mut Cx<'_>, state: &mut Console) {
     }
 }
 
-/// **The page shape these three share**: a full-bleed board of tiles and nothing else.
-///
-/// Written once because it is one decision — that a console page is a board — and three copies of
-/// it would be three places for that decision to drift, which is the same thing the crate's own
-/// layout functions exist to stop an integrator doing.
-///
-/// One shape, but **one page id each**: the id is the scroll position's identity, and the three
-/// boards under one id shared one offset — scrolled halfway on Alerts, Storage opened halfway.
-///
-/// The label of the tile pressed this frame, where one was.
+/// Shared full-width tile-board layout for three pages.
+/// Each page supplies its own ID so its scroll position is independent.
+/// Returns the label of the tile pressed this frame, if any.
 fn board(
     ui: &mut egui::Ui,
     cx: &mut Cx<'_>,

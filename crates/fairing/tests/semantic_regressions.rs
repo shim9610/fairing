@@ -360,11 +360,17 @@ fn synchronous_confirmation_does_not_mask_a_later_external_radio_change() -> fai
     for target in [false, true] {
         let mut h = shell()?;
         h.frames(2);
-        assert!(h.shell.services_mut().wifi.set_enabled(!target).is_ok());
+        assert!(h
+            .shell
+            .request_service(fairing::services::ServiceRequest::WifiEnabled(!target))
+            .is_ok());
         h.shell
             .set_setting(keys::WIFI_ENABLED.into(), SettingValue::Bool(target));
         assert_eq!(h.shell.services().wifi.enabled(), target);
-        assert!(h.shell.services_mut().wifi.set_enabled(!target).is_ok());
+        assert!(h
+            .shell
+            .request_service(fairing::services::ServiceRequest::WifiEnabled(!target))
+            .is_ok());
         h.shell
             .launch(LaunchAction::Toggle(keys::WIFI_ENABLED.into()));
         assert_eq!(h.shell.services().wifi.enabled(), target);
@@ -473,7 +479,7 @@ fn revoked_policy_closes_existing_screens_without_a_session_reset() -> fairing::
         let policy = MutablePolicy(Rc::clone(&allowed), "restricted");
         let mut h = Harness::from_builder(move |ctx| {
             let mut sh = Shell::builder(cfg).build(ctx)?;
-            sh.access_mut().set_policy(Box::new(policy));
+            sh.set_policy(Box::new(policy));
             sh.add(screen("restricted", |ui: &mut egui::Ui, _: &mut Cx<'_>| {
                 ui.label("RESTRICTED-CONTENT");
             }));
@@ -483,7 +489,7 @@ fn revoked_policy_closes_existing_screens_without_a_session_reset() -> fairing::
         h.frames(5);
         assert!(h.texts().iter().any(|(t, _)| t == "RESTRICTED-CONTENT"));
         if replace_policy {
-            h.shell.access_mut().set_policy(Box::new(MutablePolicy(
+            h.shell.set_policy(Box::new(MutablePolicy(
                 Rc::new(Cell::new(false)),
                 "restricted",
             )));
@@ -512,7 +518,6 @@ fn policy_revocation_hides_panels_in_one_frame_even_during_an_animated_close() -
             cfg.motion.reduce = false;
             let mut h = Harness::new(cfg, fairing::services::mock::services())?;
             h.shell
-                .access_mut()
                 .set_policy(Box::new(MutablePolicy(Rc::clone(&allowed), gate)));
             h.frames(3);
             h.shell.launch(if gate == "overlay.open" {

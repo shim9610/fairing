@@ -16,10 +16,7 @@ use fairing::chrome::{NavItem, NavStyle};
 use fairing::motion::Easing;
 use fairing::osk::OskLayout;
 use fairing::screen::OskMode;
-use fairing::services::mock::{MockPower, MockWifi, WifiMsg};
-use fairing::services::WifiState;
 use fairing::testing::{single_level_access, Harness, FRAME_DT_F32};
-use fairing::theme::Palette;
 use fairing::widgets::{BigButton, Switch, TouchSlider};
 use fairing::{screen, ChromePolicy, Cx, LaunchAction, Services, ShellEvent};
 use std::cell::RefCell;
@@ -176,7 +173,7 @@ fn a_toast_stands_on_the_keyboard() -> fairing::Result<()> {
         "and stands on it rather than at the top: toast={toast:?} osk={osk:?}"
     );
     // The keyboard goes, and the toast comes back down to the content's bottom.
-    h.shell.osk_mut().hide();
+    h.shell.hide_osk();
     h.frames(30);
     let content = h.shell.layout().content;
     let toast = need(
@@ -269,7 +266,8 @@ fn osk_show_curve_at_frame_five_and_debounce() -> fairing::Result<()> {
     Ok(())
 }
 
-/// `OskMode::Off` does not show even with focus, and `Manual` opens only from the nav's `Custom("osk")`.
+/// `OskMode::Off` does not show on focus. In Manual mode, focus alone does not show
+/// the keyboard, while the nav item's Custom("osk") action toggles it.
 #[test]
 fn osk_mode_off_and_manual_toggle() -> fairing::Result<()> {
     let off = ChromePolicy {
@@ -287,13 +285,13 @@ fn osk_mode_off_and_manual_toggle() -> fairing::Result<()> {
         ..ChromePolicy::default()
     };
     let (mut h, form) = form_harness(true, manual)?;
-    h.shell.nav_bar_mut().style = NavStyle::Buttons {
+    h.shell.set_nav_style(NavStyle::Buttons {
         items: vec![
             NavItem::Back,
             NavItem::Home,
             NavItem::Custom("osk".to_owned()),
         ],
-    };
+    });
     h.frames(2);
     let field = form.borrow().rect_a.center();
     tap(&mut h, field);
@@ -379,12 +377,13 @@ fn tap_jamo(h: &mut Harness, jamo: &[&str]) -> fairing::Result<()> {
     Ok(())
 }
 
-/// Typing dubeolsik jamo has `HangulComposer` compose them into syllables and put them in as IME
-/// `Preedit`/`Commit`. It does not imitate backspace, so the `TextEdit`'s real contents are the result.
+/// Dubeolsik jamo are composed into syllables and committed into the field.
+/// Composition updates replace the preceding syllable through synthetic key/text
+/// events; the test checks the resulting `TextEdit` buffer, not IME preedit state.
 #[test]
 fn hangul_keys_compose_syllables_in_the_focused_edit() -> fairing::Result<()> {
     let (mut h, form) = form_harness(true, ChromePolicy::default())?;
-    h.shell.osk_mut().set_layout(OskLayout::Hangul);
+    h.shell.set_osk_layout(OskLayout::Hangul);
     let field = form.borrow().rect_a.center();
     tap(&mut h, field);
     assert!(h.shell.osk().is_visible());
@@ -415,7 +414,7 @@ fn hangul_keys_compose_syllables_in_the_focused_edit() -> fairing::Result<()> {
 #[test]
 fn backspace_unwinds_one_jamo_while_composing() -> fairing::Result<()> {
     let (mut h, form) = form_harness(true, ChromePolicy::default())?;
-    h.shell.osk_mut().set_layout(OskLayout::Hangul);
+    h.shell.set_osk_layout(OskLayout::Hangul);
     let field = form.borrow().rect_a.center();
     tap(&mut h, field);
 
@@ -445,7 +444,7 @@ fn backspace_unwinds_one_jamo_while_composing() -> fairing::Result<()> {
 #[test]
 fn the_lang_key_switches_between_hangul_and_qwerty() -> fairing::Result<()> {
     let (mut h, form) = form_harness(true, ChromePolicy::default())?;
-    h.shell.osk_mut().set_layout(OskLayout::Hangul);
+    h.shell.set_osk_layout(OskLayout::Hangul);
     let field = form.borrow().rect_a.center();
     tap(&mut h, field);
 
@@ -479,7 +478,7 @@ fn the_lang_key_switches_between_hangul_and_qwerty() -> fairing::Result<()> {
 #[test]
 fn moving_focus_drops_the_composition_without_repeating_it() -> fairing::Result<()> {
     let (mut h, form) = form_harness(true, ChromePolicy::default())?;
-    h.shell.osk_mut().set_layout(OskLayout::Hangul);
+    h.shell.set_osk_layout(OskLayout::Hangul);
     let field_a = form.borrow().rect_a.center();
     tap(&mut h, field_a);
     tap_jamo(&mut h, &["ㄱ", "ㅏ"])?;
@@ -784,7 +783,13 @@ fn switch_and_long_press_and_slider() -> fairing::Result<()> {
 /// A7: a change in the Wi-Fi strength crossfades the status bar icon over 120 ms, and a theme change interpolates
 /// the palette over 200 ms.
 #[test]
+#[cfg(feature = "mock")]
 fn parametric_and_theme_crossfade() -> fairing::Result<()> {
+    use fairing::services::{
+        mock::{MockPower, MockWifi, WifiMsg},
+        WifiState,
+    };
+    use fairing::theme::Palette;
     let wifi = MockWifi::new();
     let control = wifi.control();
     let services = Services::builder()
@@ -848,27 +853,21 @@ fn the_language_key_survives_a_layout_change() -> fairing::Result<()> {
     let mut h = Harness::new(single_level_access(), Services::null())?;
     h.frames(2);
     // Starting on qwerty: no pair.
-    h.shell
-        .osk_mut()
-        .set_layout(fairing::osk::OskLayout::Qwerty);
+    h.shell.set_osk_layout(fairing::osk::OskLayout::Qwerty);
     assert!(
         !h.shell.osk().has_lang_key(),
         "it started on qwerty and a 한/영 key was attached"
     );
 
     // Dubeolsik: the pair is attached.
-    h.shell
-        .osk_mut()
-        .set_layout(fairing::osk::OskLayout::Hangul);
+    h.shell.set_osk_layout(fairing::osk::OskLayout::Hangul);
     assert!(
         h.shell.osk().has_lang_key(),
         "it is dubeolsik and there is no 한/영 key"
     );
 
     // Moving to English keeps it — there has to be a way back.
-    h.shell
-        .osk_mut()
-        .set_layout(fairing::osk::OskLayout::Qwerty);
+    h.shell.set_osk_layout(fairing::osk::OskLayout::Qwerty);
     assert!(
         h.shell.osk().has_lang_key(),
         "the 한/영 key went on the way to English — there is no way back"
@@ -876,12 +875,11 @@ fn the_language_key_survives_a_layout_change() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **The intermediate composition shows in the field at every jamo.** Appearing only once committed leaves
-/// the user unable to see what they are typing — the most conspicuous defect there is in Hangul input.
+/// Intermediate Hangul composition is present in the field after each supplied jamo.
 #[test]
 fn every_jamo_shows_its_half_built_syllable() -> fairing::Result<()> {
     let (mut h, form) = form_harness(true, ChromePolicy::default())?;
-    h.shell.osk_mut().set_layout(OskLayout::Hangul);
+    h.shell.set_osk_layout(OskLayout::Hangul);
     let field = form.borrow().rect_a.center();
     tap(&mut h, field);
 
@@ -908,7 +906,7 @@ fn every_jamo_shows_its_half_built_syllable() -> fairing::Result<()> {
 #[test]
 fn a_stray_empty_preedit_does_not_wipe_the_syllable() -> fairing::Result<()> {
     let (mut h, form) = form_harness(true, ChromePolicy::default())?;
-    h.shell.osk_mut().set_layout(OskLayout::Hangul);
+    h.shell.set_osk_layout(OskLayout::Hangul);
     let field = form.borrow().rect_a.center();
     tap(&mut h, field);
 
@@ -940,7 +938,7 @@ fn a_stray_empty_preedit_does_not_wipe_the_syllable() -> fairing::Result<()> {
 #[test]
 fn pressing_outside_the_keyboard_ends_the_composition() -> fairing::Result<()> {
     let (mut h, form) = form_harness(true, ChromePolicy::default())?;
-    h.shell.osk_mut().set_layout(OskLayout::Hangul);
+    h.shell.set_osk_layout(OskLayout::Hangul);
     let field = form.borrow().rect_a.center();
     tap(&mut h, field);
     tap_jamo(&mut h, &["ㅎ", "ㅏ"])?;

@@ -1,42 +1,9 @@
-//! `NumberField` — a figure you can both step and type.
+//! `NumberField` edits an `f64` through stepping controls and a numeric text field.
 //!
-//! # The gap this closes
-//!
-//! The instrument-panel reference this was measured from carries **six** on one screen — Current
-//! 120.0 mA, Temperature 25.0 °C, Piezo 45.0 V, Modulation Freq. 25.0 MHz, Lock Gain 3.0,
-//! Integrator 100 ms — and the crate had nothing that could draw one. A machine panel is the thing
-//! this crate says it is for, and a machine panel is mostly numbers with units on them.
-//!
-//! # Why the arrows are beside the figure and not stacked above one another
-//!
-//! The reference stacks a ▲ over a ▼ to the right of each field, each about 0.62 of the field's own
-//! height. That is a **desk instrument**: a mouse at 400 mm, where a 4 mm target is comfortable.
-//! This crate's default finger is a gloved 13 mm, so two stacked arrows would each need a full
-//! `touch_target` and the row would come out **two targets tall** — a six-field screen would be
-//! twelve targets deep and would not fit a seven-inch panel.
-//!
-//! Laid side by side they cost one target of height and some width, which a panel has. So a number
-//! field is [`Stepper`](super::Stepper)'s track with a wider middle: the same pill, the same end
-//! discs, the same concentric corner. They are one family and they are documented as one.
-//!
-//! # Why the unit sits outside the track
-//!
-//! The reference puts it there too, and there is a second reason: what is inside the track is
-//! **editable**, and a unit is not. Drawing `mA` inside the cell would make the caret walk through
-//! it, backspace eat it, and a numeric keypad type into it.
-//!
-//! # Why a bad entry reverts rather than clearing
-//!
-//! A field left mid-edit — the operator typed `12.` and walked away — parses as nothing. Clearing
-//! to zero would command a machine to zero; leaving the text would leave the panel disagreeing
-//! with the equipment. So the last value that parsed is restored, which is the only one of the
-//! three that is certainly still true.
-//!
-//! # Why it takes an `f64`
-//!
-//! Alone among this crate's controls, because a setpoint is not a pixel: `25.0 °C` in an `f32`
-//! carries about seven digits, and an instrument reading `1234.567 kPa` has already spent them.
-//! The rest of the crate is `f32` because the rest of the crate is geometry.
+//! Decrement and increment controls sit beside the editable value. The unit is
+//! painted outside the editable text. Invalid input reverts to the last parsed
+//! value rather than replacing it with zero. The application owns the value and
+//! is responsible for validating and applying it to a device.
 
 use super::{NumberFieldLook, StepEnd};
 use crate::cx::WidgetCx as Cx;
@@ -95,8 +62,7 @@ impl<'a> NumberField<'a> {
         self
     }
 
-    /// How many decimal places are shown, and typed back. Capped at six — past that the figure is
-    /// wider than the panel and the operator is reading noise.
+    /// Decimal places shown and parsed back, capped at six.
     #[must_use]
     pub fn decimals(mut self, decimals: usize) -> Self {
         self.decimals = decimals.min(6);

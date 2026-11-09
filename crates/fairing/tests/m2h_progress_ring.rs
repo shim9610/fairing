@@ -1,9 +1,7 @@
-//! **A progress ring is trusted only while it behaves like a clock** — `ProgressRing`.
+//! `ProgressRing` value-animation regressions.
 //!
-//! Two things the ring promises about the value it *shows*, as opposed to the value it is handed:
-//! it eases towards each reported value rather than jumping, and it does not go backwards unless
-//! the caller says a rewind is meant. Both are read off the frame: the filled band is a mesh, and
-//! how far round it reaches is the value on screen.
+//! Tests inspect the painted mesh to check easing toward a reported value and the
+//! rewind policy. The visible fraction is derived from the filled band's vertices.
 
 use fairing::testing::{single_level_access, Harness};
 use fairing::widgets::ProgressRing;

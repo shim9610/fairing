@@ -157,9 +157,9 @@ impl IconInfo {
         }
     }
 
-    /// Draw it (frame stage 9, after everything the desktop draws). `root` is the whole screen —
-    /// the shield takes every press there — and `bounds` what the card keeps inside: the space
-    /// between the bars. `slot` is the icon it is about, `None` where it is gone.
+    /// Draw it at frame stage 9, after the desktop. `root` is the screen rectangle covered by
+    /// the shield's click-and-drag target; `bounds` keeps the card between the bars.
+    /// `slot` is the icon it describes, or `None` if that icon is gone.
     pub(crate) fn ui(
         &mut self,
         ctx: &egui::Context,
@@ -208,8 +208,8 @@ impl IconInfo {
     }
 }
 
-/// Every press while the popover is up lands here — over the desktop, the bars, everything the
-/// shell drew below it — so nothing under it sees the press that puts it away.
+/// Register a foreground click-and-drag target across `root` beneath the popover.
+/// Its target intercepts pointer interactions over lower egui layers.
 fn shield(ctx: &egui::Context, root: Rect) {
     egui::Area::new(egui::Id::unique("fairing.desktop.info.shield"))
         .order(egui::Order::Foreground)

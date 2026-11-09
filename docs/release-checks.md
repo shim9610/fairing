@@ -36,6 +36,23 @@ lockfiles and Cargo source configuration are not rewritten.
 The script rejects new third-party identities/versions in temporary resolution and
 checks that the repository lockfile hash is unchanged.
 
+## Fresh consumer resolution on the minimum Rust version
+
+Install the declared minimum toolchain and the pinned `cargo-deny`, then run:
+
+```sh
+python3 tools/fresh_consumer_check.py
+```
+
+This separate CI gate extracts both archives and creates an external application
+without a lockfile. It resolves permitted registry versions online, runs the
+minimal/default/all-feature consumer with the declared minimum Rust version,
+and checks advisories, bans, licences and sources with `deny.toml` for its
+configured Linux targets. Only the unpublished sibling uses a local patch.
+The repository lockfile is unchanged. Logs, the newly resolved lockfile, metadata,
+archive hashes and results are retained under `target/fresh-consumer-check/`.
+Use `--allow-dirty` for local uncommitted reviews.
+
 ## Guide tests and package tests
 
 The full guide reads `docs/guide/` outside the `fairing` crate directory. Those

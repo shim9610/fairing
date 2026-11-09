@@ -2,10 +2,9 @@
 //!
 //! # A card is a title and an icon
 //!
-//! v1 draws no thumbnails (a shell that does not know its render backend has no snapshot
-//! to give), so a card is the task's icon, its title, when it was last used and the level its
-//! screen needs. Coming in, the screen on show shrinks into its card — the real content, scaled
-//! whole by its layer's transform (A10) — and the card takes over from it at the end.
+//! Cards show no thumbnails. They contain the task's icon, title, last-used time and an optional
+//! hint for the top screen's gate. Coming in, the screen on show shrinks into its card — the
+//! real content, scaled whole by its layer's transform (A10) — and the card takes over from it at the end.
 //!
 //! # One drag, two meanings
 //!
@@ -23,7 +22,7 @@
 //! # Above the panes, below the chrome
 //!
 //! The cards are an `Area` at `Order::Middle`, over every screen layer and under the shade and the
-//! prompt, so no screen raising its own layer can come up through them. The backdrop under the
+//! prompt. Registered screen Areas use the lower Background order. The backdrop under the
 //! shrinking screen is the desktop's layer, painted plain while the overview is up over a task.
 
 use crate::i18n::Strings;
@@ -78,7 +77,7 @@ pub(crate) struct Card {
     pub(crate) title: String,
     pub(crate) icon: Option<IconRef>,
     pub(crate) last_active: Instant,
-    /// The level its screen needs, where it needs more than everyone has.
+    /// The top screen's gate hint, omitted when absent or equal to the level table's bottom label.
     pub(crate) badge: Option<String>,
     /// Whether its split button shows — it can go beside the focused pane.
     pub(crate) beside: bool,
@@ -841,7 +840,7 @@ fn split_button(header: Rect, theme: &Theme) -> Rect {
     )
 }
 
-/// One card: its face, the header (icon, title, when, level), and the task's icon large in the
+/// One card: its face, the header (icon, title, when, gate hint), and the task's icon large in the
 /// middle. `text` is the title and the when line, worded.
 fn paint_card(
     painter: &egui::Painter,

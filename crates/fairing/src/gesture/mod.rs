@@ -1,6 +1,7 @@
-//! The gesture engine. egui only unifies pointers and touch, so higher-level
-//! gestures like an "edge swipe" or a "long press" are recognised here, reading `ctx.input()`
-//! every frame.
+//! Shell gesture recognition and routing. egui supplies pointer/touch state and
+//! widget interaction through [its input APIs](https://docs.rs/egui/0.37.0/egui/struct.InputState.html).
+//! Fairing reads that state to recognize shell-level edge swipes, holds and gesture
+//! regions according to the configuration below.
 //!
 //! The contract:
 //! - Recognition order: a press in an edge zone → movement inward past `slop` →
@@ -8,9 +9,9 @@
 //!   ordinary tap ([`Recognizer::Passed`]).
 //! - Progress is **the inward-axis movement from the press point (px)** — the slop is not
 //!   subtracted (A1's "y = 146 at frame 6" is this contract).
-//! - The velocity is `pointer.velocity()` (egui smooths it over a 100 ms window). It is valid on
-//!   the release frame too (`interact_pos` also survives to the release frame — egui 0.36.1
-//!   `input_state`).
+//! - Velocity and release position come from egui
+//!   [`PointerState`](https://docs.rs/egui/0.37.0/egui/struct.PointerState.html),
+//!   including its velocity smoothing and `interact_pos` release-frame behavior.
 //! - **An edge tap**: released within the slop in an edge zone, the engine emits nothing. The
 //!   shield only goes up past the slop, so that tap reaches the widget underneath (the status
 //!   bar → `tap_opens_shade`). The tap window (`tap`, 300 ms) is the widget's rule; the engine
@@ -167,7 +168,7 @@ impl GestureEngine {
         self.screen = frame.screen;
         // `enabled = false`: no gesture (an edge swipe, a long press, a fling) is raised, but **the press
         // tracking is kept** — the emergency gesture, decided through [`GestureEngine::hold`], is
-        // a safety device and stays. Every edge is treated as blocked.
+        // retained as a shell shortcut. Every edge is treated as blocked.
         let disabled = GestureFrame {
             blocked: EdgeMask::ALL,
             regions: RegionZones::NONE,

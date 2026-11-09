@@ -14,7 +14,7 @@ enum Refusal {
     Closed,
 }
 
-// An application adapter used only by these tests. The library supplies no queue.
+// An application adapter used only by these tests. The transport traits supply no queue.
 struct Slot<T> {
     pending: Option<T>,
     closed: bool,

@@ -1,8 +1,8 @@
 # Kiosk showcase asset spec
 
-The authoring requirements and generation prompts for the 33 image assets used by
-`examples/kiosk.rs`. Dimensions and composition below are authoring targets; exported
-file metadata records the delivered sizes. The final section preserves the original
+The authoring requirements and generation prompts for the 33 image assets in this
+directory, prepared for `examples/kiosk.rs`. Dimensions and composition below are
+authoring targets; exported file metadata records the delivered sizes. The final section preserves the original
 layout proposals rather than describing pending library work.
 
 **Provenance and licence.** The images in this folder were made for this project from these
@@ -17,27 +17,29 @@ under the MIT licence, the same as the repository's code (`LICENSE`).
 | Payment and receipt icons | 7 | Single-colour white, transparent |
 | State graphics | 4 | 1 photo · 2 icons · 1 background |
 
-The example uses product photos and state graphics where available, with drawn
-shapes as fallbacks.
+The current example embeds the referenced assets at compile time and decodes
+them during startup. Missing embedded files fail the build; decoding errors
+propagate from startup. Some drawing paths have fallbacks for absent item or
+payment-method lookup entries, not for failure to load the required asset set.
 
 ---
 
 ## 0. Shared art direction
 
-**For the 33 to read as one brand, everything below has to match.** It is repeated in each
-prompt, but if the model drifts, prefix this section and run it again.
+Use the following art direction for the asset set. Repeat it in each prompt and
+compare generated results for consistency before selecting them.
 
 | Axis | Value |
 |---|---|
 | Scene | On a dark matte counter (around deep charcoal `#14181F`), with a shop interior falling out of focus behind |
 | Light | One softbox at upper left 45° plus a weak fill from the right. Shadows soft and not long |
-| Colour temperature | **Warm amber and caramel highlights, cool blue-grey shadows.** The UI accent is `#4C8DFF` (a cool blue), so the photos have to be warm for the contrast to work |
+| Colour temperature | **Warm amber and caramel highlights, cool blue-grey shadows.** The target photo palette uses warm highlights alongside the cool-blue UI accent `#4C8DFF` |
 | Lens | 50 mm equivalent, f/2.8 shallow depth of field. The product sharp, only the background soft |
 | Angle | Drinks from a 3/4 high angle, desserts from the front slightly high, bean bags straight on |
 | Finish | Photographic studio product work. No illustration or 3D-render feel |
 | Never | **No text, logos, watermarks, people or hands.** Nothing cropped by the frame. No strong colour backgrounds |
 
-Always append to the prompt:
+Append to the prompt:
 
 ```
 photorealistic studio product photography, single soft key light from upper left 45 degrees,
@@ -51,7 +53,7 @@ centered, full subject visible with margin
 ## 1. Backgrounds and brand (4)
 
 The attract background is designed as a full-bleed photo with a gradient scrim at
-the bottom. The example retains a drawn fallback when an asset is unavailable.
+the bottom. Its embedded background image is required by the current example.
 
 | # | File | Size | Background | Format | Where it is used |
 |---|---|---|---|---|---|
@@ -79,7 +81,7 @@ horizontal 16:9 composition
 ```
 
 **3 · `logo-wordmark.png` — the wordmark**
-> The only image with real lettering in it. The shop is called `페어링 커피` (Fairing Coffee);
+> The wordmark contains the shop name. The shop is called `페어링 커피` (Fairing Coffee);
 > change it and the example's strings change with it. Only the Korean screen (`--lang=ko`)
 > shows it: the English screen sets "Fairing Coffee" as text in the display face, in the same
 > cream.
@@ -100,9 +102,9 @@ background, flat vector style, square composition, no text
 
 ## 2. Product photos (16)
 
-**The photo fills the top 62 % of a tile and the name and price take the bottom 38 %.** So they
-all have to be **square transparent PNGs** — an opaque rectangle gets its corners clipped by the
-tile and stops reading as a card.
+The design target allocates the upper 62 % of a tile to the photo and the lower
+38 % to name and price. Supply square transparent PNGs to avoid an opaque image
+background inside the tile.
 
 | Shared | Value |
 |---|---|
@@ -183,14 +185,15 @@ to distinguish dine-in from takeout.
 
 ## 4. Payment and receipt icons (7)
 
-These are **icons, not photos** — the only group that is. The crate's 80 built-ins have no
-payment domain, so they live with the example (`assets/kiosk/icons/`).
+These payment and receipt assets are icons rather than product photos. The crate's
+80 built-ins have no payment-domain icons, so these live with the example
+(`assets/kiosk/icons/`).
 
 | Shared | Value |
 |---|---|
 | Size | 512×512 |
 | Background | **Transparent** |
-| Format | PNG (SVG is better still — it scales without limit) |
+| Format | PNG; use SVG when the integrating renderer supports vector assets |
 | Colour | **Solid white `#FFFFFF`.** The UI tints them with a role colour, and more than one colour breaks the tint |
 | Style | Outline at a uniform stroke weight, rounded caps, 2 px on a 24 grid (about 42 px at 512) |
 | Margin | 10 % clear on every side |
@@ -260,12 +263,12 @@ assets/kiosk/
 - [ ] Nothing that should be transparent has a white plate under it (check the alpha channel)
 - [ ] No text, logos or watermarks (the wordmark is the one exception)
 - [ ] The 7 icons are **solid white** (grey or a gradient breaks the tint)
-- [ ] The 16 product photos share a light direction and colour temperature — **get this wrong and
-      they do not read as one brand**
+- [ ] Compare the 16 product photos for consistent light direction and colour temperature
 - [ ] Nothing touches the frame
 
-Partial deliveries are fine; whatever arrives gets wired in, and the current shapes stay as the
-fallback for the rest.
+The original authoring brief allowed partial deliveries. The current example
+expects the files referenced by `include_bytes!`; using a partial asset set
+requires changing that embedding and loading code.
 
 ---
 
@@ -279,7 +282,7 @@ The original brief paired the assets with these layout changes. Consult
 | Attract | Black background and a drawn cup | A full-bleed photo with a gradient scrim at the bottom, the wordmark, three recommendation photos, and the call-to-action button over the scrim |
 | Menu tiles | A shape of a cup, a name, a price | **The photo across the top 62 %** of the tile, name and price in the bottom 38 %. Sold out desaturates the photo and lays `state-sold-out` over it |
 | Dine-in / takeout | A shape of a cup versus a shape of a bag | Two real photographs |
-| Payment methods | A card, a QR and a banknote drawn in code | A refined icon set |
+| Payment methods | A card, a QR and a banknote drawn in code | The payment/receipt icon set |
 | Mid-payment | Just the progress ring | The `state-insert-card` photo plus the progress ring |
 | Receipt | A big number on black | A big number over `bg-ticket`, with the completion check |
 | Customer display | Three lines of text | `logo-mark` plus the large amount |

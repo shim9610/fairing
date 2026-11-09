@@ -26,7 +26,7 @@ use std::fmt;
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::{Duration, Instant};
 
-/// The handle that sends messages to a mock backend. `Clone + Send`.
+/// The handle that sends messages to a mock backend. `Clone`, and `Send` when `M: Send`.
 pub struct MockControl<M> {
     tx: ConfiguredSender<M>,
 }
@@ -120,10 +120,9 @@ fn channel<M>(config: InboxConfig) -> Result<(MockControl<M>, MockInbox<M>), Que
     Ok((MockControl { tx }, MockInbox::new(rx, config.batch_limit)))
 }
 
-/// The deadline of a mock operation that takes time. **It is fixed on the first `poll_at`** — so
-/// that a `scan()` / `set_discovering()` called outside a frame does not reach for `Instant::now()`
-/// (a backend sees only the monotonic time the shell hands it). Before it is fixed
-/// `next_wake` is `None` too, and the first `poll_at` pins it at `now + delay`.
+/// A delayed mock operation uses the last supplied poll time when available.
+/// Before the first poll, its deadline remains unset and `next_wake` is `None`;
+/// the first `poll_at(now)` fixes it at `now + delay`. Neither path samples wall time.
 #[derive(Debug, Clone, Copy)]
 struct Deadline {
     due: Option<Instant>,
@@ -540,8 +539,8 @@ impl Backend for MockWifi {
                 }
             }
         }
-        // The expiry check is done borrowed — cloning the `Pending` every frame while waiting would
-        // allocate one SSID `String` per frame (zero heap allocation on the render and poll paths).
+        // Borrow Pending for the expiry check rather than cloning its SSID on every waiting poll.
+        // Completing a scan or connection can still allocate strings or grow the known-network list.
         let due = self.pending.as_mut().map(|(due, _)| due.resolve(now));
         if due.is_some_and(|due| now >= due) {
             if let Some((_, pending)) = self.pending.take() {
@@ -620,8 +619,7 @@ impl WifiBackend for MockWifi {
     }
 
     fn connect(&mut self, ssid: &str, _psk: Option<&str>, hidden: bool) -> ServiceResult {
-        // A backend drops the PSK the moment it is handed over and never logs it — this simulator
-        // does not store it either.
+        // This simulator neither stores nor logs the borrowed PSK.
         if !self.latest.enabled {
             return Err(ServiceError::new(super::ErrorKind::Denied, "wifi off"));
         }
@@ -674,7 +672,7 @@ pub struct MockBluetooth {
     pub discover_delay: Duration,
     /// The devices not discovered yet (moved into `devices` one at a time as they are found).
     undiscovered: Vec<BtDevice>,
-    /// When the next device turns up (fixed on the first `poll_at`).
+    /// When the next device turns up; unset until polling if no prior poll time is known.
     discover_due: Option<Deadline>,
     /// The time of the last `poll_at` — what `pair` and `set_discovering` reckon their deadlines from.
     now: Option<Instant>,
@@ -1228,7 +1226,7 @@ impl NetworkBackend for MockNetwork {
     }
 }
 
-/// Mock device information. The uptime counts from the first frame, in the shell's time.
+/// Mock device information. Uptime counts from the first poll, in the shell's time.
 pub struct MockInfo {
     info: DeviceInfo,
     first: Option<Instant>,
@@ -1565,7 +1563,7 @@ mod tests {
         assert_eq!(network.ethernet_up(), Some(false));
     }
 
-    /// The uptime is the shell's time since the first frame.
+    /// Uptime is the supplied shell time since the first poll.
     #[test]
     fn info_counts_uptime_in_shell_time() {
         let mut info = MockInfo::new();

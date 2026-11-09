@@ -28,7 +28,7 @@ use std::time::Duration;
 
 /// A screen with state. `ui` is the only required method.
 pub trait Screen {
-    /// Every frame. `ui` is the whole pane content rect.
+    /// Draw when the instance is visible and admitted. `ui` covers its pane content rect.
     fn ui(&mut self, ui: &mut egui::Ui, cx: &mut Cx<'_>);
 
     /// Back. `Consumed` if the screen has navigation of its own.
@@ -138,21 +138,23 @@ pub enum LaunchAction {
     Set(SettingKey, SettingValue),
     /// Toggle a setting (M4).
     Toggle(SettingKey),
-    /// Lock. Always reported as [`ShellEvent::LockRequested`](crate::ShellEvent::LockRequested);
-    /// in `prompt` mode with an authenticator the shell's lock screen comes up as well.
+    /// Lock. Dispatch emits [`ShellEvent::LockRequested`](crate::ShellEvent::LockRequested);
+    /// in token mode it resets local authority. In `prompt` mode with an authenticator,
+    /// it resets the session and shows the lock screen.
     Lock,
-    /// Log out. Always reported as
+    /// Log out. Dispatch emits
     /// [`ShellEvent::LogoutRequested`](crate::ShellEvent::LogoutRequested); in `prompt` mode with an
-    /// authenticator the session goes back to the starting subject as well.
+    /// authenticator the session goes back to the starting subject as well. In token mode,
+    /// logout detaches the local session token even without a prompt.
     Logout,
     /// Open the shade (M2).
     OpenOverlay,
-    /// The recent screens: up, or back down when they are up. Always reported as
+    /// The recent screens: up, or back down when they are up. Dispatch emits
     /// [`ShellEvent::OverviewRequested`](crate::ShellEvent::OverviewRequested); carried out where
     /// `[workspace] overview` is on and the session passes `nav.recents`.
     OpenOverview,
     /// The split control: back to one pane keeping the focused one, or two — the cards
-    /// as a picker, or the task used last. Always reported as
+    /// as a picker, or the task used last. Dispatch emits
     /// [`ShellEvent::SplitRequested`](crate::ShellEvent::SplitRequested); carried out where
     /// `[workspace] split` is on and, to enter a split, the session passes `workspace.split`.
     ToggleSplit,
@@ -208,7 +210,7 @@ pub(crate) enum ScreenSource {
     /// screen out for the length of one call and [`Registry::put_resident`] puts it back, so while
     /// it is being drawn the slot is empty and nothing can reach it a second time.
     Resident(Option<ScreenHandle>),
-    /// Factory: a call per open.
+    /// Factory: constructed lazily when an instance first needs its screen callback.
     Factory(crate::access::mediation::FactoryCallback),
 }
 
@@ -246,7 +248,7 @@ impl std::fmt::Debug for ScreenDecl {
     }
 }
 
-/// A resident screen declaration. The shortest form — this alone registers and runs.
+/// A resident screen declaration backed by a closure.
 pub fn screen(
     id: impl Into<String>,
     ui: impl FnMut(&mut egui::Ui, &mut Cx<'_>) + 'static,
@@ -261,12 +263,10 @@ pub fn screen(
 /// **A resident screen declaration from a value of your own** — a `struct` implementing
 /// [`Screen`], not a closure.
 ///
-/// [`screen`] takes a closure, which is the whole of the trait's `ui` and nothing else. A screen
-/// that wants [`Screen::on_back`] — "back cancels the edit I am in the middle of" — has to be a
-/// type, and until now the only way to register a type was [`screen_with`], which is a **factory**:
-/// a fresh value per open, its state dropped on close, and no screen owned between opens for
-/// [`Cx::draw_screen`] to embed. This is the missing third: the declaration owns your value for its
-/// whole life, exactly as it owns a closure.
+/// Use this for a `Screen` implementation with hooks such as `on_back`. The
+/// declaration retains the supplied value across close/reopen and supports
+/// embedding with [`Cx::draw_screen`]. A factory declaration instead creates
+/// instance-owned state at first dispatch.
 ///
 /// ```no_run
 /// # fn main() {
@@ -492,12 +492,12 @@ impl ScreenDecl {
     }
 
     /// Drop it from memory while it is not visible (factory screens). `Instance::evict_due(now)`
-    /// decides and `Workspace::evict_expired(now)` acts (frame stage 5).
+    /// decides and `Workspace::evict_expired(now)` acts during a shell state update.
     ///
     /// **Factory (`screen_with`) only.** A resident screen's state is held by the declaration
-    /// (the closure's captures), so dropping the instance reclaims nothing (a
-    /// closure screen has no state, so evicting is meaningless) — it warns and is ignored.
-    /// `Duration::ZERO` drops it on the frame after the `Stopped` notification.
+    /// (including a closure's captures), so dropping the instance does not reclaim that screen
+    /// state. This option warns and is ignored for resident screens.
+    /// `Duration::ZERO` makes a stopped factory instance eligible at the next eviction check.
     #[must_use]
     pub fn evict_after(mut self, after: Duration) -> Self {
         if matches!(self.source, ScreenSource::Resident(_)) {
@@ -537,10 +537,9 @@ impl ScreenDecl {
     /// # }
     /// ```
     ///
-    /// Before this the id was fixed at construction and only readable, so the one way to reuse a
-    /// built-in was to write its body again from `layout` - against a body the crate keeps private.
-    /// Replacing a built-in in place never needed it ([`Shell::add`](crate::Shell::add) replaces
-    /// by id); having a copy *beside* the original did.
+    /// This changes the registration ID while retaining the other declaration fields. An explicit
+    /// gate override is retained; without one, the default gate follows the new ID.
+    /// [`Shell::add`](crate::Shell::add) replaces an existing declaration with the same ID.
     #[must_use]
     pub fn with_id(mut self, id: impl Into<String>) -> Self {
         self.id = id.into();

@@ -58,3 +58,7 @@ pub struct MemoryLimits;
 #[cfg(doctest)]
 #[doc = include_str!("../../../docs/session-tokens.md")]
 pub struct SessionTokens;
+
+#[cfg(doctest)]
+#[doc = include_str!("../../../docs/host-api-decisions.md")]
+pub struct HostApiDecisions;

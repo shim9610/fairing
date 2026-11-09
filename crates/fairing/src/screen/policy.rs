@@ -37,7 +37,7 @@ pub struct ChromePolicy {
     pub nav_bar: BarMode,
     /// Let an edge pull reveal hidden chrome (true by default).
     pub allow_peek: bool,
-    /// Block edge gestures (false by default). The emergency gesture always remains.
+    /// Block edge gestures (false by default). This flag does not disable the emergency gesture.
     pub edge_guard: bool,
     /// The on-screen keyboard.
     pub osk: OskMode,
@@ -47,7 +47,7 @@ pub struct ChromePolicy {
     pub allow_split: bool,
     /// Override the pane background colour.
     pub background: Option<ColorRole>,
-    /// Override the padding inside the rect the screen receives (px). `None` means
+    /// Override the padding inside the rect the screen receives (egui points, or du). `None` means
     /// [`crate::theme::Metrics::screen_inset`] (12 by default). Only the rect the shell hands
     /// over shrinks; [`crate::shell::Layout`] and the pane background do not.
     pub inset: Option<f32>,
@@ -55,7 +55,7 @@ pub struct ChromePolicy {
 
 impl ChromePolicy {
     /// Both bars hidden, `allow_peek: true`, inset 0 (`.fullscreen()`).
-    /// A fullscreen screen draws to the edge of the display.
+    /// Its screen rect has no inset; in a split it still occupies only its own pane.
     #[must_use]
     pub fn fullscreen() -> Self {
         Self {
@@ -66,7 +66,7 @@ impl ChromePolicy {
         }
     }
 
-    /// The inset this policy uses (px). Without `inset` it is the theme default. Negatives clamp to 0.
+    /// The inset in egui points (du). Without `inset` it is the theme default. Negatives clamp to 0.
     #[must_use]
     pub fn inset_or(&self, default: f32) -> f32 {
         self.inset.unwrap_or(default).max(0.0)

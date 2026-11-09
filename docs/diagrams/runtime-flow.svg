@@ -1,0 +1,142 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="831pt" height="1115pt" viewBox="0.00 0.00 830.70 1115.20" role="img" aria-labelledby="diagram-title diagram-description">
+<title id="diagram-title">Fairing host update flow</title><desc id="diagram-description">Logic-only updates and UI frames share state processing. Matching UI frames reuse prepared state; both paths can produce events without requiring continuous redraw.</desc><g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(21.6 1093.6)">
+<title>runtime_flow</title>
+<polygon fill="white" stroke="transparent" points="-21.6,21.6 -21.6,-1093.6 809.1,-1093.6 809.1,21.6 -21.6,21.6" />
+<text text-anchor="middle" x="393.75" y="-1048.8" font-family="DejaVu Sans, Arial, sans-serif" font-size="24.00">Host updates: logic and rendering</text>
+
+<g id="node1" class="node">
+<title>host</title>
+<path fill="#fff9ed" stroke="#6986a8" d="M640,-1038C640,-1038 221,-1038 221,-1038 215,-1038 209,-1032 209,-1026 209,-1026 209,-994 209,-994 209,-988 215,-982 221,-982 221,-982 640,-982 640,-982 646,-982 652,-988 652,-994 652,-994 652,-1026 652,-1026 652,-1032 646,-1038 640,-1038" />
+<text text-anchor="middle" x="430.5" y="-1015.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Event-loop host</text>
+<text text-anchor="middle" x="430.5" y="-997.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Input, Waker notifications and scheduled deadlines</text>
+</g>
+
+<g id="node2" class="node">
+<title>logic</title>
+<path fill="#f0f6ff" stroke="#6986a8" d="M498,-928C498,-928 81,-928 81,-928 75,-928 69,-922 69,-916 69,-916 69,-884 69,-884 69,-878 75,-872 81,-872 81,-872 498,-872 498,-872 504,-872 510,-878 510,-884 510,-884 510,-916 510,-916 510,-922 504,-928 498,-928" />
+<text text-anchor="middle" x="289.5" y="-905.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">logic_with(ctx, app_state)</text>
+<text text-anchor="middle" x="289.5" y="-887.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Monotonic wall-time update; no input consumption</text>
+</g>
+
+<g id="edge1" class="edge">
+<title>host-&gt;logic</title>
+<path fill="none" stroke="#315e9b" d="M394.92,-981.75C376.13,-967.36 352.92,-949.58 333.06,-934.37" />
+<polygon fill="#315e9b" stroke="#315e9b" points="335.14,-931.55 325.07,-928.24 330.88,-937.1 335.14,-931.55" />
+<text text-anchor="middle" x="414" y="-951.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">logic callback</text>
+</g>
+
+<g id="node5" class="node">
+<title>ui</title>
+<path fill="#f0f6ff" stroke="#6986a8" d="M775.5,-552C775.5,-552 347.5,-552 347.5,-552 341.5,-552 335.5,-546 335.5,-540 335.5,-540 335.5,-490 335.5,-490 335.5,-484 341.5,-478 347.5,-478 347.5,-478 775.5,-478 775.5,-478 781.5,-478 787.5,-484 787.5,-490 787.5,-490 787.5,-540 787.5,-540 787.5,-546 781.5,-552 775.5,-552" />
+<text text-anchor="middle" x="561.5" y="-529.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">frame_with(ui, same app_state)</text>
+<text text-anchor="middle" x="561.5" y="-511.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Reuse matching prepared state OR run state update</text>
+<text text-anchor="middle" x="561.5" y="-493.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Recheck authority; record fresh input</text>
+</g>
+
+<g id="edge2" class="edge">
+<title>host-&gt;ui</title>
+<path fill="none" stroke="#315e9b" d="M503.94,-981.93C536.9,-964.6 568.5,-938.27 568.5,-901 568.5,-901 568.5,-901 568.5,-642 568.5,-615.57 566.95,-586.06 565.3,-562.26" />
+<polygon fill="#315e9b" stroke="#315e9b" points="568.78,-561.81 564.57,-552.09 561.8,-562.31 568.78,-561.81" />
+<text text-anchor="middle" x="605" y="-772.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">UI callback</text>
+</g>
+
+<g id="node3" class="node">
+<title>state</title>
+<path fill="#f0f6ff" stroke="#6986a8" d="M476.5,-831C476.5,-831 66.5,-831 66.5,-831 60.5,-831 54.5,-825 54.5,-819 54.5,-819 54.5,-733 54.5,-733 54.5,-727 60.5,-721 66.5,-721 66.5,-721 476.5,-721 476.5,-721 482.5,-721 488.5,-727 488.5,-733 488.5,-733 488.5,-819 488.5,-819 488.5,-825 482.5,-831 476.5,-831" />
+<text text-anchor="middle" x="271.5" y="-808.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Shared state update</text>
+<text text-anchor="middle" x="271.5" y="-790.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">1. Rebuild declarations; observe / expire authority</text>
+<text text-anchor="middle" x="271.5" y="-772.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">2. Drain commands within update budget</text>
+<text text-anchor="middle" x="271.5" y="-754.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">3. Poll backends and reconcile replies</text>
+<text text-anchor="middle" x="271.5" y="-736.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">4. Recheck access and poll authentication</text>
+</g>
+
+<g id="edge3" class="edge">
+<title>logic-&gt;state</title>
+<path fill="none" stroke="#315e9b" d="M285.51,-871.92C284.14,-862.68 282.55,-851.91 280.94,-841.01" />
+<polygon fill="#315e9b" stroke="#315e9b" points="284.39,-840.39 279.47,-831.01 277.47,-841.41 284.39,-840.39" />
+</g>
+
+<g id="node4" class="node">
+<title>settle</title>
+<path fill="#f0f6ff" stroke="#6986a8" d="M440.5,-680C440.5,-680 52.5,-680 52.5,-680 46.5,-680 40.5,-674 40.5,-668 40.5,-668 40.5,-618 40.5,-618 40.5,-612 46.5,-606 52.5,-606 52.5,-606 440.5,-606 440.5,-606 446.5,-606 452.5,-612 452.5,-618 452.5,-618 452.5,-668 452.5,-668 452.5,-674 446.5,-680 440.5,-680" />
+<text text-anchor="middle" x="246.5" y="-657.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Logic-only completion</text>
+<text text-anchor="middle" x="246.5" y="-639.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Evict expired screens; settle lifecycle / requests</text>
+<text text-anchor="middle" x="246.5" y="-621.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Schedule command, service and access wakes</text>
+</g>
+
+<g id="edge4" class="edge">
+<title>state-&gt;settle</title>
+<path fill="none" stroke="#315e9b" d="M261.19,-720.96C259.25,-710.81 257.24,-700.29 255.35,-690.4" />
+<polygon fill="#315e9b" stroke="#315e9b" points="258.75,-689.53 253.44,-680.36 251.88,-690.84 258.75,-689.53" />
+</g>
+
+<g id="edge5" class="edge">
+<title>settle-&gt;ui</title>
+<path fill="none" stroke="#357a69" stroke-dasharray="5,2" d="M235.09,-605.72C233.59,-593.79 234.75,-581.23 242.5,-572 255.67,-556.32 287.16,-545.03 325.49,-536.9" />
+<polygon fill="#357a69" stroke="#357a69" points="326.26,-540.31 335.37,-534.9 324.87,-533.45 326.26,-540.31" />
+<text text-anchor="middle" x="391.5" y="-575.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">prepared state, if a matching UI pass follows</text>
+</g>
+
+<g id="node8" class="node">
+<title>events</title>
+<path fill="#fff9ed" stroke="#6986a8" d="M400,-189C400,-189 15,-189 15,-189 9,-189 3,-183 3,-177 3,-177 3,-145 3,-145 3,-139 9,-133 15,-133 15,-133 400,-133 400,-133 406,-133 412,-139 412,-145 412,-145 412,-177 412,-177 412,-183 406,-189 400,-189" />
+<text text-anchor="middle" x="207.5" y="-166.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Host drains poll_events()</text>
+<text text-anchor="middle" x="207.5" y="-148.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">After either update; persist / process externally</text>
+</g>
+
+<g id="edge8" class="edge">
+<title>settle-&gt;events</title>
+<path fill="none" stroke="#315e9b" d="M218.78,-605.82C203.06,-581.71 186.5,-548.59 186.5,-516 186.5,-516 186.5,-516 186.5,-266 186.5,-243.41 191.32,-218.6 196.34,-198.88" />
+<polygon fill="#315e9b" stroke="#315e9b" points="199.76,-199.63 198.96,-189.07 193,-197.83 199.76,-199.63" />
+<text text-anchor="middle" x="247.5" y="-387.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">UI pass is optional</text>
+</g>
+
+<g id="node6" class="node">
+<title>draw</title>
+<path fill="#f0f6ff" stroke="#6986a8" d="M766,-437C766,-437 357,-437 357,-437 351,-437 345,-431 345,-425 345,-425 345,-357 345,-357 345,-351 351,-345 357,-345 357,-345 766,-345 766,-345 772,-345 778,-351 778,-357 778,-357 778,-425 778,-425 778,-431 772,-437 766,-437" />
+<text text-anchor="middle" x="561.5" y="-414.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">UI pass</text>
+<text text-anchor="middle" x="561.5" y="-396.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Gestures / animation → layout → chrome / screens</text>
+<text text-anchor="middle" x="561.5" y="-378.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Keyboard, overlay, prompts, notices</text>
+<text text-anchor="middle" x="561.5" y="-360.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Protected entries use live admission checks</text>
+</g>
+
+<g id="edge6" class="edge">
+<title>ui-&gt;draw</title>
+<path fill="none" stroke="#315e9b" d="M561.5,-477.73C561.5,-468.24 561.5,-457.8 561.5,-447.57" />
+<polygon fill="#315e9b" stroke="#315e9b" points="565,-447.44 561.5,-437.44 558,-447.44 565,-447.44" />
+</g>
+
+<g id="node7" class="node">
+<title>finish</title>
+<path fill="#f0f6ff" stroke="#6986a8" d="M629,-304C629,-304 334,-304 334,-304 328,-304 322,-298 322,-292 322,-292 322,-242 322,-242 322,-236 328,-230 334,-230 334,-230 629,-230 629,-230 635,-230 641,-236 641,-242 641,-242 641,-292 641,-292 641,-298 635,-304 629,-304" />
+<text text-anchor="middle" x="481.5" y="-281.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Finish UI pass</text>
+<text text-anchor="middle" x="481.5" y="-263.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Settle Cx requests and lifecycle</text>
+<text text-anchor="middle" x="481.5" y="-245.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Apply late actions; schedule repaint</text>
+</g>
+
+<g id="edge7" class="edge">
+<title>draw-&gt;finish</title>
+<path fill="none" stroke="#315e9b" d="M531.94,-344.92C525.05,-334.42 517.72,-323.24 510.85,-312.76" />
+<polygon fill="#315e9b" stroke="#315e9b" points="513.61,-310.58 505.2,-304.14 507.76,-314.42 513.61,-310.58" />
+</g>
+
+<g id="edge9" class="edge">
+<title>finish-&gt;events</title>
+<path fill="none" stroke="#315e9b" d="M386.44,-229.92C354.5,-217.8 319.2,-204.4 288.45,-192.72" />
+<polygon fill="#315e9b" stroke="#315e9b" points="289.65,-189.44 279.06,-189.16 287.17,-195.98 289.65,-189.44" />
+</g>
+
+<g id="node9" class="node">
+<title>note</title>
+<polygon fill="#fff9ed" stroke="#6986a8" points="409,-92 0,-92 0,0 415,0 415,-86 409,-92" />
+<polyline fill="none" stroke="#6986a8" points="409,-92 409,-86 " />
+<polyline fill="none" stroke="#6986a8" points="415,-86 409,-86 " />
+<text text-anchor="middle" x="207.5" y="-69.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Frame-only custom hosts remain supported.</text>
+<text text-anchor="middle" x="207.5" y="-51.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">They use egui input time and run state work</text>
+<text text-anchor="middle" x="207.5" y="-33.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">inside frame*. Calling logic* opts into wall time.</text>
+<text text-anchor="middle" x="207.5" y="-15.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Animation dt is distinct from deadline time.</text>
+</g>
+
+</g>
+</svg>

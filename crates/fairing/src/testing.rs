@@ -33,10 +33,10 @@ pub struct Harness<H: HostedShell = Shell> {
     /// `begin_pass`, so the value read after frame N is what frame N−1 requested. And one
     /// immediate request stays `true` for **two frames** by egui's rule ("each request results in
     /// two repaints", `outstanding = 1`) — so even on the frame E where a transition ends and
-    /// `is_animating()` is `false`, this stays `true` through E+1. So "0 fps at rest" is asserted
-    /// **three frames after** the last animated frame, and "reacts on the first frame" is
-    /// asserted from shell state like `shell.desktop().is_pressed()` rather than from this
-    /// (A7).
+    /// `is_animating()` is `false`, this stays `true` through E+1. Idle repaint tests
+    /// inspect it three passes after the last animated pass. First-pass interaction
+    /// checks use shell state such as `shell.desktop().is_pressed()` instead. This
+    /// field measures repaint requests, not physical frame delivery.
     pub repaint_requested: bool,
     /// The app's own state, lent to the screens each frame. `()` unless
     /// [`Harness::with_app`] put something there.
@@ -127,15 +127,16 @@ impl<H: HostedShell> Harness<H> {
         Rect::from_min_size(Pos2::ZERO, self.size)
     }
 
-    /// The shell's monotonic time (as of the last frame, `Shell::now`). It advances by exactly
-    /// [`FRAME_DT`] per frame — use it as the reference when asserting on
+    /// The shell's monotonic time (as of the last frame, `Shell::now`). Ordinary frame
+    /// calls advance virtual input by [`FRAME_DT`]; [`Harness::sleep`] adds a gap before its next frame.
+    /// Use this observed shell time as the reference when asserting on
     /// `evict_after` or a backend's `next_wake`.
     #[must_use]
     pub fn now(&self) -> std::time::Instant {
         self.shell.now()
     }
 
-    /// The next frame's `RawInput.time` (seconds). The frames run so far × [`FRAME_DT`].
+    /// The next frame's `RawInput.time` (seconds), including explicit time advances.
     #[must_use]
     pub fn time(&self) -> f64 {
         self.time
@@ -188,10 +189,9 @@ impl<H: HostedShell> Harness<H> {
         }
     }
 
-    /// Let `seconds` pass **without drawing** — a panel asleep between repaints, as a reactive
-    /// one is whenever nothing moves. The next frame sees the whole gap in `RawInput::time`, the
-    /// way a real wake does; the shell's deadlines (a temporary unlock, the session timeout, the
-    /// idle lock) are measured against it.
+    /// Advance virtual input time by `seconds` without drawing. The next pass sees
+    /// that gap in `RawInput::time`, allowing frame-only deadline tests without
+    /// waiting for wall-clock time.
     pub fn sleep(&mut self, seconds: f64) {
         self.time += seconds.max(0.0);
     }
@@ -324,9 +324,9 @@ impl<H: HostedShell> Harness<H> {
         self.pending.push(Event::Text(text.to_owned()));
     }
 
-    /// **Every text drawn in one frame, with where it was drawn** — the frame is run for it.
-    /// A text clipped away whole (scrolled out of its area) is left out: it is not on the glass,
-    /// so a finger cannot land on it. A wrapped or truncated label carries its full text.
+    /// Collect text shapes from one rendered frame with their rectangles.
+    /// Shapes outside their clip rectangles are omitted; occlusion by other layers is not tested.
+    /// A wrapped or truncated label carries its full text.
     #[must_use]
     pub fn texts(&mut self) -> Vec<(String, Rect)> {
         let mut out = Vec::new();
@@ -336,13 +336,12 @@ impl<H: HostedShell> Harness<H> {
         out
     }
 
-    /// **Where the one text reading `label` is this frame** — the rectangle to press, found by
-    /// what it says rather than where it was last seen, so a row that moves with the type scale
-    /// or the finger size is still the row pressed. The label is matched whole, trimmed. A
-    /// widget that paints its label twice over itself is one place.
+    /// Find the rectangle of a unique text shape reading `label` in the current frame.
+    /// Match the whole trimmed label, merging duplicate paints within one pixel.
+    /// This follows layout changes but does not test whether another layer intercepts a press.
     ///
     /// # Errors
-    /// [`crate::Error::Config`] with what *is* on the glass when nothing reads `label`, and
+    /// [`crate::Error::Config`] with the collected text when nothing reads `label`, and
     /// with where each is when more than one text does — name a text that is drawn once.
     pub fn text_rect(&mut self, label: &str) -> Result<Rect> {
         let texts = self.texts();
@@ -412,7 +411,7 @@ fn collect_texts(shape: &egui::Shape, clip: Rect, out: &mut Vec<(String, Rect)>)
     }
 }
 
-/// The texts on the glass, for a message about what was not among them.
+/// Collected text labels for a lookup-failure diagnostic.
 fn texts_seen(texts: &[(String, Rect)]) -> String {
     let mut names: Vec<&str> = texts
         .iter()
@@ -464,9 +463,8 @@ pub fn access_config_mode(levels: &[&str], default_gate: Option<&str>, mode: &st
 /// Build a shell on the `Null` backends (a fixed clock) and add declarations with `setup`
 /// (`test_shell`).
 ///
-/// **It forces `motion.reduce = true`** — transitions finish immediately, which is what makes
-/// the "two frames and it has landed" contract hold. To test the animation itself, pass a config
-/// to [`Harness::new`] directly.
+/// Sets `motion.reduce = true` to skip built-in transition animations.
+/// To test the animation itself, pass a config to [`Harness::new`] directly.
 ///
 /// # Errors
 /// A configuration error.

@@ -24,8 +24,8 @@ unmaintained = "all"
 ignore = []
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Licences. Permissive licences only. GPL/AGPL/LGPL/SSPL/BUSL/CC-BY-NC are not on the
-# allowlist and so are refused automatically (the allow list is the whitelist).
+# Licence alternatives must satisfy this allowlist. A dual-licence expression such
+# as Apache-2.0 OR GPL can use its Apache-2.0 alternative; GPL alone is not allowed.
 [licenses]
 allow = [
     "MIT",
@@ -60,14 +60,13 @@ external-default-features = "allow"
 
 deny = [
     { crate = "openssl-sys", reason = "no native TLS. The shell has no networking" },
-    { crate = "tokio", reason = "no async runtime. The backends are std threads" },
+    { crate = "tokio", reason = "no product-owned async runtime; application adapters choose their worker model" },
     { crate = "rusqlite", reason = "no DB (constraint 2)" },
-    { crate = "wgpu", reason = "GL (glow) only. It doubles the tree" },
+    { crate = "wgpu", reason = "the bundled runner uses glow; wgpu is outside the approved product dependency set" },
 ]
 
-# The eleven measured duplicate pairs. They arise only from platform/clipboard drift with the runner
-# feature on; with the core alone (egui/serde/toml/log) there are zero duplicates.
-# The policy: empty this list each release branch and confirm it is still needed.
+# Reviewed duplicate-version exceptions, including runner platform/clipboard dependencies.
+# Recheck each exception on release branches and remove entries no longer needed.
 skip = [
     { crate = "calloop@0.13", reason = "winit 0.30 ↔ smithay-client-toolkit 0.20 drift. Tracking upstream" },
     { crate = "calloop-wayland-source@0.3", reason = "winit 0.30 ↔ smithay-client-toolkit 0.20 drift" },

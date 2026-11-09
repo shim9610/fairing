@@ -164,7 +164,7 @@ fn a_grab_at_the_stop_that_lands_with_its_first_move_carries_on() -> fairing::Re
 /// The stop is read off the frame the panel drew, and the panel draws on every frame of the pull —
 /// so by the time the finger lets go the block's height has been known for a dozen frames. If this
 /// only worked from the second open, a device would go full-height once on boot and two-step ever
-/// after, which is worse than either.
+/// after; this test checks the first-open case.
 #[test]
 fn even_the_first_pull_of_the_session_stops() -> fairing::Result<()> {
     let mut h = shell(true)?;
@@ -177,13 +177,8 @@ fn even_the_first_pull_of_the_session_stops() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **The stop is under an undimmed screen.**
-///
-/// The scrim ramps with the pull, so on a shade that stops a quarter of the way down it has
-/// already taken a quarter of the contrast off everything behind — which is most of the reason to
-/// stop there gone. On a two-step shade it holds at nothing until the stop and takes its whole
-/// sweep over what is left, so the dimming belongs to the notification list rather than to the
-/// tiles.
+/// The two-step shade keeps scrim opacity at zero through the tile stop.
+/// Opacity then ramps over the remaining travel toward the notification view.
 #[test]
 fn the_tiles_come_down_over_an_undimmed_screen() -> fairing::Result<()> {
     let mut two = shell(true)?;
@@ -271,11 +266,8 @@ impl Default for Page {
     }
 }
 
-/// **At the stop, doing anything else closes it**. The tiles come down over an
-/// undimmed, live screen, so there is no scrim to take the tap that closes a full shade —
-/// and a shade pulled down to toggle Wi-Fi stayed over the top of the screen through everything
-/// the hand did next (user report). A press outside the panel now closes it, and still lands
-/// where it was aimed: the button under it is pressed.
+/// At the tile stop, a press outside the panel closes the shade and also
+/// reaches the page button underneath in this fixture.
 #[test]
 fn a_press_on_the_page_closes_a_shade_resting_at_the_stop() -> fairing::Result<()> {
     let mut h = Harness::from_builder(|ctx| {

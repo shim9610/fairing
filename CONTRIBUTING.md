@@ -28,21 +28,32 @@ cargo xtask audit
 cargo clippy -p fairing --no-default-features --features mock --all-targets -- -D warnings   # the build with `overlay`/`osk` off
 ```
 
-That runs stage 0 plus 13 more stages, listed in
+CI also checks the motion lab's exported TOML through the configuration parser.
+Run its example-only regression explicitly; the release archive excludes examples:
+
+```sh
+cargo test --locked -p fairing --all-features --example motion_lab -- export_tests::exported_motion_config_round_trips_root_and_nested_values --exact
+```
+
+The audit runs stage 0 plus 13 more stages, listed in
 [guide 08 §9](docs/guide/08-troubleshooting.md#9-passing-the-audit): integrity, formatting, lints, tests,
 docs, duplicate versions, the `deps.allow` comparison, `cargo audit`, `cargo deny`, making
 updates visible, the notices file, generated files, the target build, and the blocking/lock scan.
 
-They do not run in the order the table numbers them. The gates that do not compile anything
-(0, 13, 5, 6, 10, 11, 7, 8) run first and the compiling stages come after — so that an
-unapproved crate's `build.rs` cannot run before the approval gate does. If stage 0
-(`cargo xtask integrity`) or any other prebuild gate fails, the compiling stages do not run.
+They do not run in the order the table numbers them. The gates that do not start
+product compilation (0, 13, 5, 6, 10, 11, 7, 8) precede the audit's compiling stages.
+`cargo run` first builds `xtask` itself, which currently has no external
+dependencies; that executable and the installed audit tools are trusted inputs.
+If stage 0 (`cargo xtask integrity`) or any other prebuild gate fails, the later
+compiling stages do not run.
 
-Stage 13 (`cargo xtask sync-check`) blocks lock-based shared state (`Mutex`, `RwLock`,
-`Condvar`, `Barrier`, `OnceLock`, `LazyLock`, `parking_lot`) and blocking calls on the UI thread
-(`crates/fairing/src` and `crates/fairing-widgets/src`: `.recv(`, `.recv_timeout(`, `.join(`,
-`thread::sleep`), so product UI sources use non-waiting queue operations
-([architecture §5](docs/architecture.md#5-threads)). A legitimate exception carries
+Stage 13 (`cargo xtask sync-check`) reports configured lock identifiers (`Mutex`,
+`RwLock`, `Condvar`, `Barrier`, `OnceLock`, `LazyLock`, `parking_lot`) in scanned
+crate sources. Its UI-source rule checks literal call spellings such as `.recv(`,
+`.recv_timeout(`, `.join()` and `thread::sleep` in `crates/fairing/src` and
+`crates/fairing-widgets/src`. Application adapters and indirect calls still need
+review; this source scan does not establish non-blocking execution. See
+[architecture §5](docs/architecture.md#5-threads). A legitimate exception carries
 `// sync-check: allow: <reason>` on the same line (the reason is required).
 
 CI runs `cargo run -p xtask --locked -- audit --strict`, not the alias. The `cargo xtask` alias
@@ -73,8 +84,9 @@ The required `proofs` and `miri` jobs explicitly fail before checkout if input
 approval fails or is skipped, so they cannot hide rejected inputs behind skipped
 required checks. The input check remains useful as a direct merge requirement.
 PR workflows supersede obsolete revisions; main-branch and scheduled runs finish
-without cancellation by a newer revision. UI histories own their 18 native tests
-and three mutation controls; the general assurance jobs exclude those selections.
+without cancellation by a newer revision. UI histories own the widget-lifecycle
+tests and the deadline-reply regression, plus three mutation controls; the general
+assurance jobs exclude those selections.
 Coverage, Miri, Loom, package and cross-OS runs retain their distinct purposes.
 
 When enabling CodeQL on an existing repository, let the initial default-branch
@@ -118,20 +130,26 @@ so it is checked there rather than in the graphical example tours.
    `deps.allow` line. Without a date, or with a `TODO` left in, `cargo xtask deps-check` fails —
    so a `--write` dump cannot be merged on its own. If it is rejected, close the PR with the
    reason in it.
+   `--write` emits only the main workspace's selected normal-dependency graph.
+   Inspect the diff and preserve approvals needed outside that graph, such as
+   build/dev-only dependencies or verification-only crates; unselected rows are
+   not emitted by that command.
 5. Assets (icon SVGs, fonts) follow the same procedure and must include an update to
    `THIRD_PARTY.md`. That file is generated, but the region between `<!-- assets:begin -->` and
    `<!-- assets:end -->` is hand-written and survives regeneration.
 
 ## The example tours are checks
 
-`tools/tours.sh` runs every example's `--tour` script under Xvfb, stills only, and fails if any
-step of any script could not do what it asked. A script presses what it names
-(`Act::Tap(Spot::Text("Alerts"))` finds the label on the glass; there is no coordinate form) and says what it expects before each
-picture (`Act::Expect(Expect::Text("Lamp hours"))`), so a change that moves a row, renames a
-label or breaks a flow fails here rather than leaving a wrong picture under the right file name.
+`tools/tours.sh` runs the selected example tours under Xvfb, stills only. With no
+selector, it runs the script's configured tour set. Named targets use reported geometry
+(`Act::Tap(Spot::Text("Alerts"))`), and explicit assertions such as
+`Act::Expect(Expect::Text("Lamp hours"))` check selected states. Target lookup,
+assertion and capture/write failures fail the run. Screenshots do not each have a
+preceding assertion, and a settle timeout can warn and continue. Review captures
+for visual/content errors and behavior outside the explicit checks.
 The public repository's CI runs it on pull requests and pushes to `main`. When you change what a screen shows, run it; when you add a step to a
-script, name the thing you press and check what you expect to see — a coordinate written down
-is right for one row height only.
+script, name the target and assert the expected result. Named targets use the
+reported geometry when layout changes.
 
 ## Rebuilding the README's animations
 
@@ -142,11 +160,10 @@ alters what one of them shows, rebuild them and commit the result:
 tools/readme-gifs.sh
 ```
 
-It needs `xvfb-run`, Mesa and Pillow (`pip install pillow`). A tour that fails a check stops
-the script, so the images are never rebuilt from a flow that went wrong. Each tour runs with `--record` on a
-fixed 60 Hz clock, so the frames do not depend on how fast the machine draws, and
-`tools/make_gif.py` stitches them the same way every time: rerun on the machine that made them,
-the script reproduced the committed GIFs byte for byte.
+It needs `xvfb-run`, Mesa and Pillow (`pip install pillow`). A failed tour check
+stops the script. Recorded tours use a fixed 60 Hz input clock;
+`tools/make_gif.py` encodes the captured frames. Renderer, fonts and tool versions
+can affect the resulting pixels and files.
 
 The social preview card at the top of the README, `docs/images/social-preview.png`, comes from
 `tools/social_preview.py` (Pillow again). After rebuilding it, upload it under the repository's
@@ -161,14 +178,21 @@ The user guide (`docs/guide/*`, indexed by [`docs/guide/README.md`](docs/guide/R
 describes **what the code does today**, so a PR that changes a public API, a config key, a
 default or an error message fixes the relevant section too. The guide's non-ignored Rust blocks are compiled
 as doctests by the audit's test stage (`crates/fairing/src/guide_probe.rs`), so an example that
-stops compiling fails CI. Its toml blocks are checked by nothing: keep them values that
-`ShellConfig` parses and validates, by hand, when you edit an example. Something planned
+stops compiling fails CI. TOML blocks are not Rust doctests: when editing them,
+check syntax and, for device configuration, parsing and validation through
+`ShellConfig`. Cargo snippets need Cargo/TOML checks instead. Something planned
 but not in the code yet is written in the guide as "not there", and the
 [roadmap](docs/roadmap.md) lists it. A change to how the crate is put together updates
 [`docs/architecture.md`](docs/architecture.md), and a new limit goes in the roadmap's known limits.
 
 The documents, the README and the comments and doc comments in the source are written in
 English.
+
+Rust doc comments in examples and tests are also linted. After editing them, run
+`cargo clippy --locked --workspace --all-targets --all-features -- -D warnings`
+before pushing. A package-only Clippy run or a successful rustdoc build does not
+check the same set of targets. Put code identifiers in backticks to satisfy
+`clippy::doc_markdown`; keep the lint enabled.
 
 The audit enables repository-only guides with `RUSTDOCFLAGS="--cfg fairing_repo_docs"`.
 For a focused guide run, use that environment value with

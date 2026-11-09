@@ -1,60 +1,13 @@
-//! `TouchSlider` — a thick pill track with a mover that stands proud of it. The value follows the
-//! finger 1:1 (no easing), and pressing swells the track, tints it and raises a value label
-//! (A7, vocabulary).
+//! `TouchSlider` edits a numeric value by pointer interaction.
 //!
-//! # The thick track: the original argument, and what vindicated it
+//! The track, filled area and mover use theme and control tokens. `HandleStyle`
+//! selects a bar, circular knob, inset mover or hidden mover. The style changes
+//! painting, not whether the slider is interactive. Use `ProgressBar` for a
+//! read-only progress indicator.
 //!
-//! A thin line track with a large round knob is **a shape from the mouse era**. The knob is much
-//! bigger than the track, so a finger on it hides the very place it is holding, and a thin track
-//! does not tell a gloved hand where to press.
-//!
-//! A thick track solves three things at once.
-//!
-//! - **You can see where to press.** The track itself looks like a touch target.
-//! - **The value reads as an area.** The filled length is a bar chart, so a glance gives you the
-//!   rough value — which matters on an instrument panel.
-//! - **A finger does not hide it.** The mover overhangs the track by
-//!   `(metrics.slider_thumb − control.slider_track) / 2` — 8.60 du, 1.365 mm, on each side. That
-//!   is a small fraction of a 13 mm contact patch, so the finger still does not eat the view, and
-//!   when the finger lifts the mover still has a silhouette against the container's ground.
-//!
-//! Material 3 Expressive reached the same thick-track conclusion independently. What it got right
-//! and this module originally got wrong is one number: M3 Expressive makes its bar **2.75×** the
-//! track height, so the bar overhangs and can be found; the shipped fairing bar was **0.72×** and
-//! buried **inside** the track. Same shape, opposite proportion — and a mover buried in a track is
-//! a notch whose edges run parallel to the track's own edges a few du away, which is exactly the
-//! gap-closing that disappears under glare. So the sentence that used to stand here ("the handle
-//! is inside the track, so no knob eats the view") is wrong in its second half and has been
-//! replaced by the overhang above: containment was never what stopped the finger hiding the value
-//! — the small size of the mover is.
-//!
-//! # Which handle suits which panel
-//!
-//! [`HandleStyle`] is a choice, not a taste. The default is [`HandleStyle::Bar`], and the
-//! vocabulary picks it: a value track is one where the mover sits on a two-colour boundary
-//! anywhere along the length and must be **found** there, so it stands proud.
-//!
-//! - [`HandleStyle::Bar`] — the default, and the right answer on every panel a gloved finger
-//!   drives. A narrow proud pill: it marks the boundary without covering much of the filled area,
-//!   and stacked sliders keep a calm rhythm because the mover is thin along the track.
-//! - [`HandleStyle::Knob`] — a circle of the same proud diameter. Take it on **a panel driven by a
-//!   pointer** (mouse, trackball, rotary encoder in a rack) — the objection at the top of this
-//!   module is an objection to a 13 mm contact patch, not to a circle, and with no finger on the
-//!   glass a circle is the grab affordance a pointer user already knows. Take it also on **a wide,
-//!   low-density panel** (the 289 mm-wide 800×1280 reference): there the track's length grows with
-//!   the panel while the bar's width does not, so the bar thins to a scratch across a very long
-//!   track, and a disc of the mover's full diameter is the mark that still reads at 600 mm.
-//! - [`HandleStyle::Inset`] — the shipped shape, a bar set **inside** the track. It is the right
-//!   answer where a proud mover would overhang into something else: a dense stack of tracks (a
-//!   mixer strip, a gauge list whose row pitch is near the mover's diameter), or a track read far
-//!   more often than it is dragged, where the mover is a tick on a bar chart rather than a grip.
-//!   It is a deliberate departure from the proud rule and it costs legibility under glare.
-//! - [`HandleStyle::None`] — no mover at all. For a value that is displayed rather than dragged: a
-//!   level, a progress, a read-only gauge. Nothing is being found by hand, so nothing has to stand
-//!   proud, and the filled boundary carries the value on its own.
-//!
-//! The hit area is a whole `metrics.touch_target` row whichever style is chosen — what changes is
-//! what you see, not what you press (vocabulary Rule 1.1).
+//! The hit area uses the configured touch-target height. Choose a handle style
+//! and dimensions after checking visibility, spacing and operation on the target
+//! panel, including the intended gloves or pointing device.
 
 use super::SliderLook;
 use crate::cx::WidgetCx as Cx;
@@ -101,26 +54,9 @@ pub struct SliderColors {
     pub fill: ColorSpec,
     /// The remaining side. [`ColorRole::SurfaceVariant`] by default.
     pub track: ColorSpec,
-    /// The mover's **edge**. [`ColorRole::OnSurface`] by default.
-    ///
-    /// # Why it is the edge and no longer the whole handle
-    ///
-    /// A mover crosses both faces of the track, and measured across the four shipped palettes no
-    /// single role clears 3.0 against both `Primary` and `SurfaceVariant`. So the mover is
-    /// two-tone: a body that carries it over the filled side and this edge that carries it over
-    /// the empty one (11.94–17.38 for `OnSurface`). The old default of `OnSurface` therefore keeps
-    /// painting exactly what it painted, on the part of the mover it was always doing the work on.
-    ///
-    /// The body is [`ColorRole::OnPrimary`], the ink of the side it has to be seen against
-    /// (4.59–9.37). It used to be `Surface` — the container's own ground, which is near-white in a
-    /// light palette and near-black in a dark one, so the dark-theme mover came out as a black bar
-    /// inside a white outline and read as a **seam in the track** rather than a grip. The pair the
-    /// palette gate already holds is `on_primary/primary`, so this body cannot go quietly missing
-    /// on a new palette either.
-    ///
-    /// Overriding it is allowed and is the same kind of escape hatch as
-    /// [`TouchSlider::thickness`]: taking the track's own accent here loses the two-tone
-    /// guarantee, because on the filled side the edge then matches what it lies on.
+    /// Mover-edge colour, defaulting to [`ColorRole::OnSurface`].
+    /// The body uses `OnPrimary`; callers overriding these colours must check both
+    /// filled-side and empty-side contrast.
     pub handle: ColorSpec,
 }
 
@@ -203,9 +139,9 @@ impl<'a> TouchSlider<'a> {
         }
     }
 
-    /// Set the track thickness directly (du). The default is `control.slider_track`, which
-    /// follows the gloved-hand policy, so **setting it directly breaks that link** — use it only
-    /// when one slider has to be thicker.
+    /// Set the track thickness directly in du, bypassing `control.slider_track`.
+    /// The default token is text-relative with a du floor; a direct override does
+    /// not follow changes to that specification.
     ///
     /// It is floored at three × `control.stroke_edge`: below that the mover has no body left
     /// between its two edges.
@@ -215,8 +151,7 @@ impl<'a> TouchSlider<'a> {
         self
     }
 
-    /// Which mover to draw. See [`HandleStyle`] and the module docs — the default suits a gloved
-    /// finger, and the other three each suit a panel this one does not.
+    /// Select the mover style; see [`HandleStyle`]. The default is `Bar`.
     #[must_use]
     pub fn handle_style(mut self, style: HandleStyle) -> Self {
         self.style = style;
@@ -420,8 +355,7 @@ impl<'a> TouchSlider<'a> {
 pub struct Mover {
     /// Which shape.
     pub style: HandleStyle,
-    /// The body colour. `Surface` — the colour of the ground the control sits on, so the mover
-    /// reads as a cap punched through the track.
+    /// Mover-body colour. [`Mover::from_theme`] uses `ColorRole::OnPrimary`.
     pub body: Color32,
     /// Its size **across** the track: `metrics.slider_thumb`, larger than the track, which is what
     /// makes it stand proud. Also the [`HandleStyle::Knob`] diameter.
@@ -460,11 +394,7 @@ impl Mover {
     }
 }
 
-/// The arguments to [`paint_track`], bundled. Colours and thicknesses get their order confused loose.
-///
-/// **Public since the element split.** The shade's brightness control draws the same
-/// track and used to reach in as a crate sibling; across a crate boundary that has to be a stated
-/// part of the surface. Better stated than duplicated — two copies of the track arithmetic drift.
+/// Paint parameters shared by [`TouchSlider`] and other callers of [`paint_track`].
 #[derive(Debug, Clone, Copy)]
 pub struct TrackPaint {
     /// The **unswollen** thickness that fixes the value axis. Pressing does not shift where 0 % and 100 % are.
@@ -477,17 +407,15 @@ pub struct TrackPaint {
     pub todo: Color32,
     /// The mover's **edge** (see [`SliderColors::handle`]); its body is `Mover::body`.
     pub handle: Color32,
-    /// The track's own identifying edge — `Muted` at `control.stroke_edge`. `Stroke::NONE` draws
-    /// none, which is what a decorative read-out track wants.
+    /// Track boundary stroke. `Stroke::NONE` omits it.
     pub edge: Stroke,
     /// The mover.
     pub mover: Mover,
 }
 
 impl TrackPaint {
-    /// The vocabulary's track, resolved against a theme: `Primary` filled, `SurfaceVariant` empty,
-    /// a `Muted` edge and the two-tone mover. Recolour the fields that differ afterwards, so a
-    /// caller inherits every part it did not have an opinion about.
+    /// Resolve default track colours and geometry from the theme; callers can then
+    /// override individual fields.
     #[must_use]
     pub fn from_theme(theme: &Theme, base_track: f32, track_h: f32) -> Self {
         Self {
@@ -560,10 +488,8 @@ pub fn paint_track(painter: &egui::Painter, rect: Rect, t: f32, p: TrackPaint) -
         Stroke::NONE,
     ));
     if p.edge.width > 0.0 {
-        // The identifying boundary of the empty side. `Outline` is never a control's edge — it is
-        // 1.15–1.65 against both grounds, a ghost — and `Muted` is text at 4.5, which drew this
-        // line as loud as the label beside it. `ControlEdge` is the same job at WCAG 1.4.11's own
-        // 3.0 floor (Rule 3.1).
+        // Use ControlEdge for the empty-track boundary rather than the decorative
+        // Outline or text-oriented Muted role.
         painter.rect_stroke(full, radius, p.edge, StrokeKind::Inside);
     }
     paint_mover(painter, egui::pos2(x, y), &p, rect);
@@ -657,12 +583,8 @@ fn paint_mover(painter: &egui::Painter, at: egui::Pos2, p: &TrackPaint, slot: Re
     );
 }
 
-/// A shape of `width` held inside `slot`, centred where it does not fit.
-///
-/// The bounds are compared before the clamp because `f32::clamp` **panics** when its low bound is
-/// above its high one, and a slider laid in a column narrower than its own mover is a real case
-/// (a two-pane split at the narrow end, a gauge row beside a long label). A control that panics on
-/// a narrow column is worse than one that draws its mover a little off the value.
+/// Fit a shape of `width` inside `slot`, centring it when wider than the slot.
+/// Compare bounds before clamping so inverted bounds are not passed to `f32::clamp`.
 fn held_inside(x: f32, slot: Rect, width: f32) -> f32 {
     let (lo, hi) = (slot.min.x + width / 2.0, slot.max.x - width / 2.0);
     if lo > hi {
@@ -674,8 +596,8 @@ fn held_inside(x: f32, slot: Rect, width: f32) -> f32 {
 
 /// The focus ring: `Focus` at `control.stroke_mark`, `control.focus_gap` clear of the silhouette.
 ///
-/// **Outside is a contrast decision.** `Focus` against `Primary` measures 1.00–1.62, so a ring on
-/// the control's own edge fails 3.0 in every palette; against the container it is 3.10–11.53.
+/// The focus ring is placed outside the track so its colour can be checked
+/// against the container rather than the filled track.
 ///
 /// Vertically it clears the silhouette — the mover included, since the mover is the tallest part.
 /// Horizontally it takes the allocated rect's own edge instead: a full-width track has nothing
@@ -724,11 +646,7 @@ fn follow_finger(response: &mut Response, axis: Rect, value: &mut f32, lo: f32, 
     }
 }
 
-/// The press swell — [`TouchSlider`] and the shade use the same factor, `control.press_swell`.
-///
-/// It takes the theme because the factor is a token now: the private `PRESS_SWELL` constant it
-/// used to read could not be reached by an integrator, and press feedback that cannot be tuned
-/// per panel is the one piece of feedback a glove hides.
+/// Press-swell factor shared by the slider and shade, from `control.press_swell`.
 #[must_use]
 pub fn swollen(theme: &Theme, base_track: f32, grow: f32) -> f32 {
     base_track * (theme.control.press_swell - 1.0).mul_add(grow, 1.0)
@@ -829,13 +747,8 @@ mod tests {
     use crate::theme::{contrast, Palette, Preset, Theme};
     use crate::unit::Scale;
 
-    /// **The mover is visible on both sides of the boundary it sits on, in every palette.**
-    ///
-    /// Unlike the switch's knob, this one straddles the two faces at once — it marks the seam — so
-    /// it cannot cross-fade between them: the body carries the filled side and the edge carries the
-    /// empty one. The body used to be `Surface`, the container's own ground, which is near-black in
-    /// a dark palette; the mover then read as a gap in the track. It is now `OnPrimary`, and both
-    /// pairs below are ones `every_preset_meets_the_contrast_floor` already gates.
+    /// Check mover-body/filled-track and mover-edge/empty-track contrast in the
+    /// built-in palette pairs. This checks colour ratios, not physical visibility.
     #[test]
     fn the_mover_reads_on_both_sides_of_the_boundary() {
         for &preset in Preset::ALL {
@@ -921,7 +834,8 @@ mod tests {
         }
     }
 
-    /// Pressing only ever grows the track: press geometry never shrinks.
+    /// Check that the sampled press values grow the track with the default
+    /// reference-theme press-swell factor.
     #[test]
     fn the_press_swell_only_grows() {
         let theme = reference_theme();

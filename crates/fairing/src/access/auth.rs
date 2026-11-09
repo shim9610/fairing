@@ -1,14 +1,13 @@
 //! Authentication — the shell asks, the integrator answers.
 //!
-//! # The crate checks no credential of its own
+//! # Authentication adapters and reference implementation
 //!
-//! How a credential is stored, how it is compared and what a run of wrong guesses costs are the
-//! device's decisions, not the crate's. So the crate defines one [`Authenticator`] trait
-//! and draws whatever it asks for: a keypad for [`AuthMethod::Pin`], a square of dots for
-//! [`AuthMethod::Pattern`], a field and the on-screen keyboard for [`AuthMethod::Password`], a
-//! waiting card for [`AuthMethod::External`]. What the person entered goes to
-//! [`Authenticator::submit`] by value and the shell keeps no copy — not in a log, not in an event,
-//! not in its own state.
+//! [`Authenticator`] selects credential checking, storage and attempt accounting.
+//! The prompt draws the input declared by [`AuthMethod`]: PIN keypad, pattern grid,
+//! password field or external-method waiting card. Submission passes an owned
+//! [`Credential`] to [`Authenticator::submit`]. The built-in prompt moves PIN and
+//! password buffers; pattern submission copies the path while the prompt retains
+//! it for visual feedback.
 //!
 //! [`PinTable`] is the one implementation that ships: level name → PIN and level name → pattern
 //! tables read from `[access.pin_table]` and `[access.pattern_table]`, with an attempt limit kept
@@ -70,7 +69,7 @@ pub struct AuthResponse {
     pub(crate) outcome: AuthOutcome,
 }
 
-/// One way of proving who you are — what the prompt draws for it.
+/// An authentication method and the input UI the prompt draws for it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum AuthMethod {
@@ -83,8 +82,7 @@ pub enum AuthMethod {
         /// The most digits the keypad takes while `len` is 0. `0` is the keypad's own
         /// [`MAX_PIN_LEN`].
         max_len: u8,
-        /// Lay the digits out in a fresh order each time the prompt opens, so neither the smudges
-        /// on the glass nor someone watching the finger learns the PIN from where it pressed.
+        /// Generate a new digit order when the prompt opens.
         shuffle: bool,
     },
     /// A path drawn through a square of dots. What arrives is [`Credential::Pattern`].
@@ -94,8 +92,7 @@ pub enum AuthMethod {
         /// The fewest dots a path submits with. A shorter one is answered on the spot ("Connect
         /// at least 4 dots") and costs no attempt — it never reaches [`Authenticator::submit`].
         min_points: u8,
-        /// Draw the path as the finger draws it. Off leaves nothing on the glass to read over a
-        /// shoulder — the pattern's counterpart of `shuffle`.
+        /// Draw the path while the finger moves. With `false`, omit the path stroke.
         show_path: bool,
     },
     /// A secret typed on the on-screen keyboard, after a user name when `needs_user`.
@@ -123,10 +120,8 @@ pub enum AuthMethod {
 }
 
 impl AuthMethod {
-    /// What the prompt cannot draw as asked, a line each. It draws the nearest it can, which is
-    /// never what was meant — a 20-digit `len` submits on the keypad's 16th digit, so every try is
-    /// wrong until the lockout — and nothing on the screen says why. The shell logs these when
-    /// the prompt opens.
+    /// Unsupported method parameters, one diagnostic per line. For example, a 20-digit `len`
+    /// exceeds the keypad's 16-digit capacity. The shell logs these when the prompt opens.
     pub(crate) fn unhonoured(&self) -> Vec<String> {
         let mut lines = Vec::new();
         match self {
@@ -168,10 +163,11 @@ impl AuthMethod {
     }
 }
 
-/// What the person entered, on its way to [`Authenticator::submit`].
+/// A credential passed by value to [`Authenticator::submit`].
 ///
-/// The shell hands it over **by value** and keeps nothing. `Debug` prints the shape and
-/// never the contents — so a `{:?}` in an integrator's log line cannot leak a secret either.
+/// The built-in prompt moves PIN and password buffers into this value. Pattern
+/// submission copies the path while the prompt retains it for visual feedback.
+/// `Debug` prints the credential kind and redacts its contents.
 #[non_exhaustive]
 pub enum Credential {
     /// The digits from the keypad.
@@ -216,8 +212,8 @@ pub enum AuthOutcome {
     Granted(Subject),
     /// Issuer-controlled multi-permission session; requires `access.session_tokens = true`.
     Session(super::SessionToken),
-    /// No. The prompt shows `message` **as it is** — whether to say that a user does not exist is
-    /// the authenticator's call, so the shell never words a refusal itself.
+    /// Denied. The prompt resolves the supplied `message` through the string table. The
+    /// authenticator chooses whether that message reveals, for example, that a user does not exist.
     Denied {
         /// The line to show.
         message: LabelKey,
@@ -338,6 +334,8 @@ pub trait Authenticator {
     /// The shell detached this device session (logout, lock, expiry, replacement or fault).
     /// Revoke its controller to invalidate other readers. The shell already blocks this token
     /// locally before calling; return promptly and do not end unrelated web/device sessions.
+    /// The default implementation does nothing; implement this hook when the issuer
+    /// must invalidate other readers of the detached session.
     fn session_ended(&mut self, _session: super::SessionId, _now: Instant) {}
 
     /// Optional credential management, exposed behind the settings.credentials gate.
@@ -445,8 +443,8 @@ const DEFAULT_LOCK: Duration = Duration::from_secs(60);
 ///   takes the third, so `"1-3"` cannot be drawn — the finger records `"1-2-3"`, and the table
 ///   rejects it at start-up without printing the secret.
 /// - Wrong PINs and wrong patterns count against **one** attempt limit — two ways in are not two
-///   allowances. The count lives **in memory** and a restart clears it. The only input is the
-///   touchscreen and there is no remote API, so that is as far as a reference goes.
+///   allowances. The count lives **in memory** and a restart clears it. Application integrations must supply any additional rate limiting or
+///   persistent lockout policy they require.
 /// - The secrets sit in the config file in plain text, and keeping that file unreadable is the
 ///   integrator's job — the shell says so once at start-up.
 /// - There is no [`Authenticator::admin`]: the file is the source of truth, so the screen does
@@ -658,9 +656,8 @@ impl PinTable {
             }
             self.locked_until = None;
         }
-        // Every entry is compared, so the time taken does not depend on which level matched. The
-        // table offers a keypad and a pattern only; anything else can only be an integrator
-        // calling `submit` directly, and it is still an attempt.
+        // Compare the entries without returning on the first match. The table offers a keypad
+        // and a pattern; a credential submitted directly through the API is also an attempt.
         let (granted, wrong) = match &credential {
             Credential::Pin(pin) => (
                 self.pins.iter().fold(None, |hit, (level, expected)| {
@@ -852,9 +849,9 @@ pub(crate) fn pattern_text(dots: &[u8]) -> String {
     text
 }
 
-/// Byte equality with no early exit, so the time taken does not say how many leading digits (or
-/// dots) were right. The threat model has no remote timing channel; not having a local
-/// one costs nothing. The length is not hidden — the keypad shows it as dots anyway.
+/// Byte equality using an accumulated difference rather than returning at the first
+/// mismatch. Lengths remain observable. This implementation does not establish a
+/// compiler- and platform-independent constant-time guarantee.
 fn same(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }

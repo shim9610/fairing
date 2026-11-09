@@ -1,4 +1,4 @@
-//! `Cx` — the handle a screen uses to ask the shell for something. Most screens only use `ui`.
+//! `Cx` — the handle a screen uses to ask the shell for services and navigation.
 
 use super::{ChromePolicy, LaunchAction, Lifecycle, Registry, ScreenValue};
 use crate::access::{Access, Gate, LevelTable, Session};
@@ -134,7 +134,7 @@ pub(crate) struct CxParts<'a> {
     pub(crate) icons: &'a mut IconSet,
     /// The per-id animation store.
     pub(crate) animations: &'a mut AnimationStore,
-    /// The integrator's widget painters, lent to every widget call.
+    /// The integrator's widget painters, available to Fairing widgets through `widgets()`.
     pub(crate) widget_painters: &'a mut fairing_widgets::widgets::WidgetPainters,
     /// The request queue.
     pub(crate) requests: &'a mut Vec<CxRequest>,
@@ -189,7 +189,7 @@ impl CxParts<'_> {
 ///
 /// Its rect is the space it was really given rather than the host's pane, its instance is
 /// [`InstanceId::NONE`] because it has none, and the OSK inset is only however much of the keyboard
-/// reaches into its own rect — a guest drawn in the top half of the pane is not covered at all.
+/// reaches into its own rect — a guest above the keyboard has no inset.
 fn guest_pane(host: &PaneInfo, rect: egui::Rect) -> PaneInfo {
     // How far the OSK reaches up from the bottom of the host's pane, minus whatever of that lies
     // below the guest's own bottom edge.
@@ -302,11 +302,12 @@ impl<'a> Cx<'a> {
     }
 
     /// **The app's own state** — whatever it handed to
-    /// [`Shell::frame_with`](crate::Shell::frame_with) this frame.
+    /// [`Shell::frame_with`](crate::Shell::frame_with), or to
+    /// [`Shell::logic_with`](crate::Shell::logic_with) for a state-only update.
     ///
     /// The app owns its state and owns the shell; the shell borrows the state for the length of a
-    /// frame and lends it on to the screens. Nothing is captured, nothing is shared, and there is no
-    /// cell:
+    /// frame or state-only update and lends it on to callbacks. This API does not require
+    /// shared ownership or an interior-mutability wrapper:
     ///
     /// ```no_run
     /// # struct Console;
@@ -429,9 +430,9 @@ impl<'a> Cx<'a> {
         })
     }
 
-    /// **Whether [`Cx::draw_screen`] would draw this one here** — everything it needs, checked
-    /// before the press rather than after: registered, its gate passes, it is a **resident**
-    /// declaration, and its screen is not already out on loan.
+    /// Whether current registration, gate and loan state permit embedded drawing:
+    /// the declaration is a resident screen, its gate passes and its body is available.
+    /// [`Cx::draw_screen`] checks these conditions again when invoked.
     ///
     /// A factory declaration (`screen_with`) owns no screen between opens, so it can only be
     /// opened, never embedded — a list offering both has to know which a row is before it is
@@ -462,7 +463,7 @@ impl<'a> Cx<'a> {
     ///
     /// # What the guest gets
     ///
-    /// A `Cx` of its own in every way that would otherwise be a lie:
+    /// An embedded screen receives a `Cx` describing its own drawing context:
     ///
     /// - **`cx.pane.rect` is the space it was actually given** (`ui`'s), not the host's pane. A
     ///   scroll built on the host's height would run past the bottom of the column and the overrun
@@ -484,8 +485,9 @@ impl<'a> Cx<'a> {
     ///
     /// # When it answers `false`
     ///
-    /// Exactly when [`Cx::can_draw_screen`] is `false`, which is the one to ask before drawing a row
-    /// that leads here:
+    /// The availability conditions are the same as [`Cx::can_draw_screen`], which can be used
+    /// before drawing a row that leads here. Admission is checked again for this call, so a
+    /// session change after that observation can still refuse the draw:
     ///
     /// - Nothing is registered under `id`, or what is is not a screen.
     /// - **The screen's gate does not pass for this session.** The host cannot wave a guest past its
@@ -512,9 +514,9 @@ impl<'a> Cx<'a> {
 
     /// Take a resident screen out of its declaration for the length of one call, then put it back.
     ///
-    /// Taking rather than borrowing is what makes nesting safe — see
-    /// [`Registry::take_resident`](crate::screen::Registry::take_resident). `None` where there was
-    /// nothing to take.
+    /// The registry slot remains empty during the call, so a nested lookup cannot take the
+    /// same resident again. See [`Registry::take_resident`](crate::screen::Registry::take_resident).
+    /// Returns `None` when no resident is available to take.
     ///
     /// With unwinding enabled, a callback panic restores the resident screen and propagates to the shell boundary.
     /// This helper logs no payload, since an integrator's error may contain sensitive data.
@@ -526,8 +528,8 @@ impl<'a> Cx<'a> {
     ) -> Option<R> {
         let mut screen = self.registry.as_mut()?.take_resident(id)?;
         let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&mut screen, self)));
-        // Where the declaration went in the meantime (`shell.remove(id)` from inside its own `ui`)
-        // this drops the screen, which is right — there is nothing left for it to belong to.
+        // put_resident drops the screen if its declaration no longer exists. Commands posted
+        // through ShellHandle during ui are queued rather than removing the declaration here.
         if let Some(registry) = self.registry.as_mut() {
             registry.put_resident(id, screen);
         }
@@ -596,7 +598,7 @@ impl<'a> Cx<'a> {
     ///
     /// ```no_run
     /// # fn ui(cx: &mut fairing::Cx<'_>, ui: &mut egui::Ui) {
-    /// if ui.label("Model ACME-7").clicked() {
+    /// if ui.add(egui::Label::new("Model ACME-7").sense(egui::Sense::click())).clicked() {
     ///     cx.knock("service");
     /// }
     /// # }
@@ -620,7 +622,8 @@ impl<'a> Cx<'a> {
     /// **Change a setting**. The built-in settings screens and integrator screens
     /// take the same path.
     ///
-    /// It applies at the end of the frame and emits
+    /// If the request passes the setting gate, it applies at the end of the
+    /// frame and emits
     /// [`ShellEvent::SettingChanged`](crate::ShellEvent::SettingChanged) — **persisting it is the
     /// integrator's.** The crate does not write files (where, how often and with what
     /// transactional guarantees differs per device), and
@@ -749,7 +752,8 @@ impl<'a> Cx<'a> {
         self.requests.push(CxRequest::Launch(action));
     }
 
-    /// For hiding a section inside a screen (delegates to `policy.allows`).
+    /// Observe the current access decision for conditional content. Token mode checks
+    /// issuer authority and any narrowing policy; this observation does not dispatch work.
     #[must_use]
     pub fn allows(&self, gate: impl Into<Gate>) -> bool {
         self.access.allows(&gate.into())
@@ -773,11 +777,8 @@ impl<'a> Cx<'a> {
 
     /// The level table (`[access] levels`).
     ///
-    /// The [`Level`](crate::access::Level) from [`Cx::session`] is **a number**. Writing
-    /// "Service level" on screen needs the name, and that table is built from the config and
-    /// held by the shell — this is the only way to it. Without it the integrator writes
-    /// `[access] levels` a second time in code, and when the two drift the screen shows the
-    /// wrong level name. The demo actually did.
+    /// Look up the configured label for the subject's numeric level rather than
+    /// duplicating `[access] levels` in application code.
     ///
     /// ```no_run
     /// # fn draw(cx: &fairing::Cx<'_>) -> String {
@@ -816,12 +817,11 @@ impl<'a> Cx<'a> {
         self.animations.keep_animating();
     }
 
-    /// Lend a [`WidgetCx`](fairing_widgets::WidgetCx) — what a control needs, and nothing else.
+    /// Lend a [`WidgetCx`](fairing_widgets::WidgetCx) for a widget call.
     ///
-    /// The widgets live in [`fairing_widgets`] and take only the theme, the icons and one
-    /// animation call. This hands those three over for the length of a widget call, so
-    /// a control cannot reach the registry, the services or the access gate even by accident —
-    /// which is the whole reason the element layer is a crate of its own.
+    /// It supplies theme, icon, animation and painting context without exposing the
+    /// shell registry or backends through that value. Application widget code can
+    /// still use references it obtains independently.
     pub fn widgets(&mut self) -> fairing_widgets::WidgetCx<'_> {
         fairing_widgets::WidgetCx {
             theme: self.theme,

@@ -156,8 +156,8 @@ pub(super) fn swipe_hint(
 ///
 /// The structure divides into three — the icon column on the left, the text column in the middle,
 /// the close column on the right. The text starts on **one vertical line** and the icon's optical
-/// centre is matched to the title's line (not to the card's centre — with a long body the icon would
-/// drift away from the title, blurring which text it belongs to).
+/// centre is matched to the complete title/body text block rather than the whole
+/// card.
 #[expect(
     clippy::too_many_lines,
     reason = "it lays out one card's three columns in one place"

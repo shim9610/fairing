@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove the monitor and require automatic coverage of every protected contract."""
+"""Run common-monitor proofs and check protected-payload routing in the configured feature profiles."""
 import hashlib
 import json
 from pathlib import Path

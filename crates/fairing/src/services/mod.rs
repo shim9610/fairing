@@ -1,20 +1,22 @@
 //! The system backend traits and their implementations.
 //!
-//! The principle: the UI sees only the traits. Reads are `snapshot()` (a clone of the cache),
-//! writes are commands that return immediately, and the result arrives with the next snapshot
-//! and a [`Waker`]. **Never block the UI thread**, **no locks** — worker ↔ UI is an `mpsc`
-//! channel and the UI side only ever uses `try_recv`.
+//! UI code reads cached snapshots or narrower trait accessors and submits commands.
+//! Application adapters must return promptly and publish asynchronous results in
+//! subsequent snapshots. [`Waker`] forwards wake requests to egui's
+//! [`egui::Context::request_repaint`]; the host schedules the update.
 //!
-//! **The implementations are the integrator's**. The crate ships the traits, a `Null*`
-//! for each (the default for a backend you do not name) and a `Mock*` simulator for demos and
-//! tests — no system code. A device plugs in its own: sysfs, a vendor SDK, D-Bus, a PLC, whatever
-//! the hardware speaks. Anything the shell has no slot for goes in as a
-//! [custom backend](ServicesBuilder::custom) and takes part in the frame the same way.
+//! Device I/O belongs to application adapters. Fairing supplies the traits, `Null*`
+//! defaults, optional `Mock*` simulators and clock implementations. An adapter can
+//! use channels or another transport, but the traits do not enforce non-blocking
+//! execution or a time bound. Additional devices can use a
+//! [custom backend](ServicesBuilder::custom).
 
 pub mod clock;
 #[cfg(feature = "mock")]
 pub mod mock;
 pub mod null;
+mod request;
+pub use request::ServiceRequest;
 
 pub use crate::time::WallTime;
 use std::any::Any;
@@ -24,8 +26,8 @@ use std::time::Instant;
 
 /// A thin wrapper around `egui::Context`. When a backend changes state, `wake()` →
 /// `request_repaint()`. It is `Clone + Send + Sync`, so it can go to a worker thread. egui's own
-/// locking inside `Context` is its thread-safe API and is the one exception to the rule against
-/// lock-based shared state.
+/// synchronization is part of that upstream API; this wrapper does not provide a
+/// lock-free or presentation-time guarantee.
 #[derive(Clone)]
 pub struct Waker(egui::Context);
 
@@ -59,7 +61,7 @@ impl fmt::Debug for Waker {
     }
 }
 
-/// The backend capability bits (`Capabilities`). Unsupported entries disappear from the UI on their own.
+/// Backend capability bits used by built-in UI to select supported entries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Capabilities(pub u32);
 
@@ -113,7 +115,7 @@ pub enum ErrorKind {
     Other,
 }
 
-/// A backend error. The shell surfaces it as a toast or a notification and the UI does not die.
+/// A backend error value. Callers can return it or present it through shell notices.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceError {
     /// The kind.
@@ -156,16 +158,17 @@ pub type ServiceResult = Result<(), ServiceError>;
 /// What every backend shares. Polling runs on the event-loop thread for each state
 /// update, including logic-only ticks, and must not block.
 pub trait Backend {
-    /// Given once by the shell at startup. Hand it to a worker thread and `wake()` when the state changes.
+    /// Given when the backend is installed, at startup or replacement. A worker can
+    /// use it to request an update when the backend state changes.
     fn attach(&mut self, _waker: Waker) {}
-    /// Every state update (a UI frame or a logic-only tick): drain the channel with
-    /// `try_recv` and refresh the `latest` snapshot, on the event-loop thread.
+    /// Refresh backend state on each UI or logic-only state update, without blocking.
+    /// Channel-backed implementations can drain messages with `try_recv` into a cached snapshot.
     fn poll(&mut self) {}
     /// What frame stage 3 actually calls. `now` is the shell's monotonic time
-    /// ([`crate::Shell::now`]) — headless it is virtual time (1/60 s at a step), so a
-    /// time-dependent backend (a simulated scan delay, say) can be tested with no `sleep`.
+    /// ([`crate::Shell::now`]). Frame-only headless hosts can supply virtual input time,
+    /// allowing time-dependent simulations without `sleep`.
     /// The default delegates to [`Backend::poll`]. A backend that watches the
-    /// clock implements this and does not use `Instant::now()`.
+    /// clock should implement this using the supplied time rather than `Instant::now()`.
     fn poll_at(&mut self, _now: Instant) {
         self.poll();
     }
@@ -220,7 +223,8 @@ pub enum PowerRequest {
 pub trait PowerBackend: Backend {
     /// The battery. `None` on a machine without one.
     fn battery(&self) -> Option<BatterySnapshot>;
-    /// Reboot, shut down or suspend. Returns immediately.
+    /// Request reboot, shutdown or suspend. Implementations must submit the request
+    /// without waiting for the operation to complete.
     ///
     /// # Errors
     /// [`ServiceError`] if the backend does not support it (`Unsupported`) or it fails.
@@ -292,14 +296,14 @@ impl WifiSnapshot {
 pub trait WifiBackend: Backend {
     /// A clone of the snapshot.
     fn snapshot(&self) -> WifiSnapshot;
-    /// Whether it is on — a value the status bar asks for **every frame**. The default
-    /// implementation clones [`WifiBackend::snapshot`] (a heap allocation), so a backend should
+    /// Whether it is on — queried when the built-in status item needs it. The default
+    /// implementation calls [`WifiBackend::snapshot`] (which may allocate), so a backend should
     /// implement this and [`WifiBackend::strength`] directly.
     fn enabled(&self) -> bool {
         self.snapshot().enabled
     }
     /// The connection strength (the same as [`WifiSnapshot::strength`]; 0 when not connected).
-    /// Asked every frame — the default clones the snapshot, so implement it directly.
+    /// Queried while drawing the built-in status item; the default clones the snapshot.
     fn strength(&self) -> u8 {
         self.snapshot().strength()
     }
@@ -313,7 +317,8 @@ pub trait WifiBackend: Backend {
     /// # Errors
     /// [`ServiceError`] if the backend does not support it (`Unsupported`) or it fails.
     fn scan(&mut self) -> ServiceResult;
-    /// Connect. The PSK is dropped immediately after it is passed on.
+    /// Connect using a borrowed PSK. Any credential retention by the implementation
+    /// is the backend's responsibility.
     ///
     /// # Errors
     /// [`ServiceError`] if the backend does not support it (`Unsupported`) or it fails.
@@ -379,8 +384,8 @@ impl BtSnapshot {
 pub trait BluetoothBackend: Backend {
     /// A clone of the snapshot.
     fn snapshot(&self) -> BtSnapshot;
-    /// Whether it is on — a value the status bar asks for **every frame**. The default
-    /// implementation clones [`BluetoothBackend::snapshot`] (a heap allocation), so a backend
+    /// Whether it is on — queried when the built-in status item needs it. The default
+    /// implementation calls [`BluetoothBackend::snapshot`] (which may allocate), so a backend
     /// should implement this and [`BluetoothBackend::any_connected`] directly.
     fn enabled(&self) -> bool {
         self.snapshot().enabled
@@ -482,8 +487,8 @@ pub enum Cue {
 /// With the `Null` default the sound screen still writes `audio.volume` and `audio.muted`, so an
 /// integrator who would rather apply them from [`crate::ShellEvent::SettingChanged`] can.
 pub trait AudioBackend: Backend {
-    /// The level and mute. `None` if unknown (the status item hides). Asked every frame while
-    /// `status.volume` is shown, so keep it a copy of a cached value.
+    /// The level and mute. `None` if unknown (the status item hides). Queried while drawing
+    /// `status.volume`, so keep it a copy of a cached value.
     fn volume(&self) -> Option<AudioSnapshot>;
     /// Set the level, 0..=100.
     ///
@@ -577,9 +582,9 @@ pub trait NetworkBackend: Backend {
     /// The interfaces, in the order to list them.
     fn interfaces(&self) -> Vec<IfaceSnapshot>;
     /// Whether a wired link is up: `Some(true)` up, `Some(false)` a wired interface with no link,
-    /// `None` no wired interface at all (the status item hides). `status.ethernet` asks it every
-    /// frame and the default walks [`NetworkBackend::interfaces`] — an allocation — so a backend
-    /// should answer it from its cache directly.
+    /// `None` no wired interface at all (the status item hides). The built-in `status.ethernet`
+    /// item queries it while drawing. The default walks [`NetworkBackend::interfaces`], which may
+    /// allocate, so a backend should answer it from its cache directly.
     fn ethernet_up(&self) -> Option<bool> {
         let wired: Vec<bool> = self
             .interfaces()
@@ -589,8 +594,8 @@ pub trait NetworkBackend: Backend {
             .collect();
         (!wired.is_empty()).then(|| wired.contains(&true))
     }
-    /// Change how an interface is addressed. Returns at once; the change shows in a later
-    /// [`NetworkBackend::interfaces`].
+    /// Request an addressing change without blocking. Observe the reported configuration
+    /// through [`NetworkBackend::interfaces`].
     ///
     /// # Errors
     /// [`ServiceError`] if the backend does not support it (`Unsupported`) or it fails.
@@ -736,7 +741,8 @@ impl Services {
 
     /// Name every backend whose `next_wake` is at or before `now` — a built-in one by its field,
     /// a custom one by its type — for the shell's warning about a backend that keeps it from
-    /// going idle. No allocation.
+    /// going idle. Visits backends without building a temporary list; backend deadline
+    /// methods and the supplied callback determine their own allocation behavior.
     pub(crate) fn for_each_stale(&self, now: Instant, mut name: impl FnMut(&str)) {
         let builtin: [(&str, &dyn Backend); 8] = [
             ("clock", &*self.clock),
@@ -848,7 +854,7 @@ impl ServicesBuilder {
 
     /// **A backend of your own** — a GPIO line, a PLC link, a card reader, a door sensor:
     /// anything the shell has no slot for. It takes part in the frame like the built-in ones —
-    /// [`Backend::attach`] hands it the [`Waker`] at startup, [`Backend::poll_at`] runs every frame
+    /// [`Backend::attach`] hands it the [`Waker`] at startup, [`Backend::poll_at`] runs each state update
     /// and [`Backend::next_wake`] arms the next repaint — and a screen reaches it by its type with
     /// [`Services::custom`] / [`Services::custom_mut`].
     ///

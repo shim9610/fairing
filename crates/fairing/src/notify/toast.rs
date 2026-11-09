@@ -3,13 +3,12 @@
 //!
 //! Entering, y goes `24 → 0` and opacity `0 → 1` over 160 ms `CubicOut`; it holds for
 //! `duration`; leaving, opacity goes `1 → 0` over 200 ms. A new one lifts the existing ones by
-//! `components.toast.lift_step` over 120 ms. A tap leaves immediately.
-//! The slot spacing (16 px) is larger than that lift, so the boxes do not touch as they rise.
+//! `components.toast.lift_step` over 120 ms. A tap starts the exit animation.
+//! Stack spacing and lift use the toast component tokens; custom values and layouts
+//! can change their separation.
 //!
-//! **Zero heap allocations per frame**: [`ActiveToast`] holds the text galley
-//! and re-lays it out only when the content or the width changes, and the icon polylines are
-//! flattened once per size by the queue's [`IconCache`]. A drawing frame only stamps the galley
-//! and the polylines down.
+//! [`ActiveToast`] records the last drawn text height. Drawing submits its text to egui layout
+//! each frame; the queue's [`IconCache`] reuses flattened geometry for its current icon and size.
 
 use super::hooks::{kept, ToastCx, ToastLayout, ToastLayoutCx, ToastPainter};
 use super::model::{Level, Toast};
@@ -55,7 +54,6 @@ pub struct ActiveToast {
     pub until: Option<Instant>,
     /// Last frame's rect.
     pub rect: Rect,
-    /// The text galley cache — it is not re-laid out while the width is unchanged.
     /// Last frame's text height (du). Holding the galley itself would misalign the UVs when the
     /// atlas grows, so **only the height** is kept — the row height being one frame late is fine.
     text_h: f32,
@@ -84,7 +82,7 @@ impl ActiveToast {
 /// A tap on a toast.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ToastAction {
-    /// Tapped → leave immediately (by index).
+    /// Start leaving after a tap (by index).
     Tapped(usize),
 }
 
@@ -205,7 +203,7 @@ impl ToastQueue {
 
     /// Queue one (shown on the next `tick` if there is room).
     ///
-    /// **The same words again do not stack.** A toast that repeats one already showing renews
+    /// **The same text and severity do not stack.** A toast matching one already showing renews
     /// that one instead — its hold starts over, and if it was on its way out it comes back — and
     /// one that repeats a toast still waiting is dropped. Two "Saved" cards one under the other
     /// say nothing the first did not, and were the mess the demo showed.
@@ -399,7 +397,7 @@ impl ToastQueue {
             }
         }
         // How far it is lifted is settled again every frame as "the number of toasts that came in after
-        // me × 8 px" — a new one raises it, and it comes back down by itself as the ones before it go (A6).
+        // me × components.toast.lift_step" — a new one raises it, and it comes back down as older items go (A6).
         let count = self.visible.len();
         for (index, item) in self.visible.iter_mut().enumerate() {
             let later = u16::try_from(count - 1 - index).unwrap_or(u16::MAX);
@@ -424,7 +422,7 @@ impl ToastQueue {
         animating
     }
 
-    /// Leave immediately (from a tap, say).
+    /// Start the exit animation (from a tap, for example).
     pub fn dismiss(&mut self, index: usize, tokens: &MotionTokens) {
         if let Some(item) = self.visible.get_mut(index) {
             if item.phase == ToastPhase::Leaving {

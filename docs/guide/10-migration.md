@@ -1,9 +1,8 @@
 # 10. Migration from an earlier checkout
 
-The first crates.io release has not been published. This page compares the current
-pre-release implementation with `main` at `f4ca28ce21a3227d35805a3d9e325ec64f42b25f`,
-before the authentication, recovery and resource-boundary changes in PR #8.
-It describes changes for existing checkout users, not a published-version upgrade.
+The first crates.io release is unpublished. The migration baseline is `main` at
+`f4ca28ce21a3227d35805a3d9e325ec64f42b25f`, before the authentication, recovery and
+resource-boundary changes in PR #8.
 
 ## 1. Source changes
 
@@ -66,8 +65,10 @@ Set `[access] session_tokens = true` and return `AuthOutcome::Session(token)` to
 adopt split capabilities. The authenticator retains the non-cloneable controller.
 Existing authenticators keep their legacy behavior when this flag is false.
 `AccessConfig` now uses extensible construction: start with `Default` and set
-`session_tokens`, directly or through `.configure(...)`. The optional `Authenticator::session_ended` callback revokes
-the matching controller after local detachment. Direct subject injection does not
+`session_tokens`, directly or through `.configure(...)`. Implement
+`Authenticator::session_ended` to revoke the matching controller after local
+detachment. Its default implementation does nothing; detaching the shell reader
+does not revoke other readers. Direct subject injection does not
 authorize token-mode work; host-owned login flows use the request-bound
 `SessionRequested` / `accept_auth_response` path. See [session tokens](../session-tokens.md)
 for role expansion, catalog scope, grant expiry and proof boundaries.
@@ -212,10 +213,17 @@ crate version to upgrade from yet.
 
 | Before | Current migration |
 | --- | --- |
-| External literals for shell/widget configuration, including `..Default::default()` | `Type::default().configure(\|c\| { c.field = value; })` or direct field assignment on a default value; all configuration structs are non-exhaustive |
+| External literals for shell/widget configuration, including `..Default::default()` | `Type::default().configure(\|c\| { c.field = value; })` or direct field assignment on a default value; configuration structs in the product config modules are non-exhaustive |
 | `SessionGrant { gate, base, temporary_until }` | `SessionGrant::new(gate, base, temporary_until)`; read through `gate()`, `is_base()`, `temporary_until()` |
 | Exhaustive matches on `SessionError`, `SessionReadError`, `Decl`, `DeclKind` | Handle known cases and retain a fallback; these enums are non-exhaustive |
 | `screen::Registry`, `Shell::registry()` or `ProtectedShell::shell()` | `observe()` queries: `screen_ids`, `has_screen`, `screen_is_resident`, `nav_item_rect`, `settings`, `session_token`, `allows`, layout/time/fault/prompt state |
+| `Shell::desktop_mut()` | `set_wallpaper`, `set_desktop_page`, `swipe_desktop_to`, `set_dock_placement`, `set_desktop_legibility`, `set_desktop_slot_painter` |
+| `Shell::status_bar_mut()` | Edit a copied `status_item_spec(id)` and commit through `set_status_item_spec`; replace slots with `set_status_items`; use named visibility/height/background/icon/tap operations |
+| `Shell::nav_bar_mut()` | `set_nav_style`, `set_nav_enabled`, `set_nav_height`, `set_nav_background`; back availability is derived from workspace state |
+| `Shell::metrics_spec_mut()` | Edit an owned `metrics_spec()` then commit with `set_metrics_spec` |
+| `Shell::services_mut()` | `set_services`, `set_*_backend`, existing `set_clock`, and `request_service(ServiceRequest::...)`; retain a custom backend's command sender for host commands |
+| `Shell::access_mut()` | `set_policy`, `set_subject`, existing authenticator/response APIs; token mode never accepts an injected legacy subject |
+| `Shell::osk_mut()` | `set_osk_layout`, `toggle_osk_language`, `toggle_osk`, `hide_osk` (feature `osk`) |
 | `runner::run_app::<State>(...)` | Prefer inference or use `runner::run_app::<State, _>(...)`; the host type is now generic |
 
 Ordinary `Harness` type annotations still mean `Harness<Shell>`; annotate a
@@ -233,3 +241,32 @@ harness.frame();
 assert!(harness.shell.observe().session_token().is_none());
 # Ok::<(), fairing::Error>(())
 ```
+
+
+For individual host decisions, concrete call sites and owned-value migration,
+see [Host API decisions](../host-api-decisions.md). Backend replacement attaches
+its waker before publication; radio/audio acknowledgements from the old instance
+are discarded. Direct `ServiceRequest` commands retain trusted host authority;
+user-driven setting writes continue through `set_setting`, and `ProtectedShell`
+does not expose this host command API.
+
+## Component inputs and deep layer slots
+
+Unused component fields were removed before the first release. Use the input read
+by the built-in widget:
+
+| Removed value | Supported input |
+|---|---|
+| `ComponentSpec::button`, `ComponentMetrics::button`, `ButtonMetrics` | `MetricsSpec::content_inset` for side padding; `ControlSpec::gap`, `icon`, `stroke_mark` for icon spacing and hold-ring geometry |
+| `ComponentSpec::switch`, `ComponentMetrics::switch`, `SwitchMetrics` | `ControlSpec::mark_size`; `ControlRatios::switch_aspect` and `knob_ratio` |
+| `ComponentSpec::slider_track_ratio`, `SliderMetrics::track_ratio` | `ControlSpec::slider_track`; `TouchSlider::thickness` overrides one widget |
+
+An explicit per-widget slider thickness takes precedence over `ControlSpec`.
+Component spacing such as `slider_label_gap` and `list_row` remains in
+`ComponentSpec`. Default built-in rendering is unchanged.
+
+Diagnostic `Instance::layer_slot` and `Instance::slot_layer_id` now use `u64`.
+The high bit identifies the pane and the lower 63 bits identify stack depth.
+A `Vec<Instance>` allocation is bounded by `isize::MAX` bytes, so supported
+32/64-bit host stacks fit within that depth range. Slots are reused when a stack
+position is reused. Prefer `Instance::layer_id` when inspecting a live layer.

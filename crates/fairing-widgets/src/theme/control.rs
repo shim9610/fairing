@@ -1,53 +1,16 @@
-//! [`ControlSpec`] / [`ControlMetrics`] — the tokens every control shares.
+//! Shared control-size and appearance tokens.
 //!
-//! # Why a second spec next to [`ComponentSpec`](super::ComponentSpec)
+//! [`ControlSpec`] defines configurable lengths; [`ControlMetrics`] contains their
+//! resolved values. Text-relative and finger-relative sizes can have du floors;
+//! millimetre strokes can have pixel floors. [`Scale`] resolves these values into
+//! egui points using the configured policy and host scale.
 //!
-//! [`ComponentSpec`] holds tokens that belong to **one** thing each: a toast's stack gap, the
-//! shade's handle. What was missing was the set a *control* needs and that every control needs the
-//! same way — the gap beside a mark, the thickness of an edge, the alpha a disabled thing fades to.
-//! Those were literals scattered across six widget files, which is why a switch, a slider and a
-//! button ended up looking like three unrelated drawings rather than one family.
-//!
-//! # The two families
-//!
-//! Every length here is in exactly one of two, and the rule that sorts them is what a length is
-//! *for*:
-//!
-//! - **hand** — [`Dim::finger`] with a `du` floor. If a finger has to land on it, hit it, or clear
-//!   it, it belongs to the hand: touch targets, control bodies, marks, insets, gaps, radii.
-//! - **eye** — [`Dim::mm`] with a [`Dim::px`] floor. If only the eye has to find it, it belongs to
-//!   the eye: stroke widths. A hairline's job is to be seen at arm's length through glass, and a
-//!   glove does not change that job; the pixel floor stops it vanishing on a low-density panel.
-//!
-//! # The control rules
-//!
-//! Every built-in control keeps these (also listed in `docs/architecture.md`). The comments in
-//! the widget files cite them by number.
-//!
-//! - **Rule 1.1.** The slot is a full touch target on both axes, whatever size the control is
-//!   drawn at: what you see is not what you press.
-//! - **Rule 1.3.** Inside a row, the row owns the hit rect. A control drawn into it senses
-//!   nothing of its own, so pressing anywhere on the row is pressing the control.
-//! - **Rule 1.4.** A disabled control lets the tap through to whatever is beneath it, rather than
-//!   swallowing a tap it cannot act on.
-//! - **Rule 1.5.** A press only ever grows the painted shape. The allocated rect never moves, so
-//!   press geometry never shrinks and nothing beside it shifts.
-//! - **Rule 3.1.** A control's identifying boundary meets the 3.0 contrast floor of WCAG 1.4.11.
-//!   `Outline` is a divider, never a control's edge: against both grounds it is a ghost.
-//! - **Rule 4.1.** The pill shape is kept for movers that ride a track, such as a switch's knob,
-//!   so it stays the cue that something travels.
-//! - **Rule 7.1.** Colour alone is never the channel. A state also shows in shape or fill, so a
-//!   greyscale render still tells it apart.
-//!
-//! # Why the defaults are all `du` today
-//!
-//! **This is adoption step 1 and it is deliberate.** Every `Span` below is written with its `du`
-//! base only, so the render is byte-identical to before the vocabulary existed. The point of the
-//! step is that the tokens come into being and every widget starts reading them, with nothing
-//! moving. The finger terms go on afterwards, as their own reviewable change, and only *after* the
-//! shell's hand-drawn rows are composed out of [`ListRow`](crate::widgets::ListRow) — done the
-//! other way round, the four-du gap between a `ListRow` label and a hand-drawn one widens to
-//! fifteen instead of closing.
+//! The design conventions in `docs/architecture.md` cover touch allocation, row-owned
+//! interaction, press geometry, boundaries and state cues. They guide built-in
+//! implementations; custom painters and product screens need separate review.
+//! Boundary contrast follows the relevant colour-pair requirement in
+//! [WCAG 1.4.11](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html).
+//! The convention alone does not establish product accessibility conformance.
 
 use super::Metrics;
 use crate::unit::{Dim, Eye, Free, Hand, Scale, Span};
@@ -56,10 +19,8 @@ use crate::Result;
 /// The resolved control tokens (= `Theme::control`). Lengths are du; the ratios are unitless.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ControlMetrics {
-    /// **How tall a control is drawn.** Three body ems — see [`ControlSpec::height`].
-    ///
-    /// Read it through [`control_height`], never on its own: on a panel whose text is set small
-    /// this can fall under the hand, and that free function is where the floor is applied.
+    /// Drawn control height. Use [`control_height`] to include the configured
+    /// touch-target floor.
     pub height: f32,
     /// The gap between a control's mark and its label, and between a leading icon and text.
     pub gap: f32,
@@ -77,18 +38,11 @@ pub struct ControlMetrics {
     pub min_button_w: f32,
     /// The narrowest a row's label column may be before the row stacks into two lines.
     pub row_min_label: f32,
-    /// How much a pressed control's painted silhouette grows.
-    ///
-    /// It **grows**, never shrinks. A control that shrinks under the finger moves away from the
-    /// thing pressing it, and on a panel the finger already covers it.
+    /// Painted-silhouette growth distance applied during a press.
     pub press_grow: f32,
     /// A hairline — a separator, a divider inside a card.
     pub stroke_hairline: f32,
-    /// **The bar down a selected rail entry's leading edge**.
-    ///
-    /// Thicker than a hairline on purpose: a hairline is a boundary between two things, and this is
-    /// a mark pointing at one of them. Three times the hairline is where it stops reading as a
-    /// divider that happens to be coloured.
+    /// Selected rail entry's leading bar thickness.
     pub accent_bar: f32,
     /// A resting control's edge.
     pub stroke_edge: f32,
@@ -96,41 +50,22 @@ pub struct ControlMetrics {
     pub stroke_mark: f32,
     /// The gap between a control's silhouette and its focus ring.
     pub focus_gap: f32,
-    /// **An icon-only button's drawn disc.**
-    ///
-    /// 0.68 of a fingertip is iOS's system close button to three figures (30 pt in a 44 pt target).
-    /// Material 3's icon-button container is 40/48 = 0.833 and the reference kiosks' add buttons
-    /// measure 0.385–0.661 of the controls around them, so this sits inside the band and on a
-    /// published value. The du floor is 34.0 and not `0.68 × 48 = 32.64`, because a square of side
-    /// `control.icon` has to fit inside the disc and `icon`'s own floor is the legacy 24: `24/√2`
-    /// is 33.94.
+    /// Icon-only button disc size. The default du floor is 34.0 so the default
+    /// 24 du icon fits within the disc; touch allocation is configured separately.
     pub icon_button: f32,
-    /// **A badge's height** — fixed, not derived from its text, because that is what a badge is:
-    /// Material's `largeSize` is the height and nothing else. The du floor is the size the dock's
-    /// badge already drew.
+    /// Badge height. The du floor is independent of the displayed count.
     pub badge_h: f32,
     /// The padding on each side of a badge's digits.
     pub badge_pad: f32,
-    /// A checkbox's or radio's drawn size as a fraction of [`Self::mark_size`].
-    ///
-    /// **A box is not a switch track.** `mark_size` is `finger(0.6)`, which puts a switch at
-    /// 5.4 mm on a 9 mm panel — iOS's 5.1, One UI's 5.1. A checkbox at that size is far too big:
-    /// Material 3 draws 18 dp (2.86 mm), One UI about 24 dp (3.8 mm), and ours came out at the full
-    /// 5.4 because the two shared one token. 0.62 lands between the two references, and what a
-    /// finger can hit does not change - the slot stays a whole `touch_target`.
+    /// Checkbox/radio mark size as a fraction of [`Self::mark_size`].
+    /// The allocated touch target is configured separately.
     pub box_ratio: f32,
     /// A knob's diameter as a fraction of [`Self::mark_size`].
     pub knob_ratio: f32,
     /// A slider handle's width as a fraction of the track's thickness.
     pub handle_ratio: f32,
-    /// A switch track's width as a multiple of its height.
-    ///
-    /// **1.65, which is iOS's 51 × 31.** It was 1.8 — longer than everything but Windows 11's
-    /// 2.0 — while the knob stayed at 0.875, the *largest* of any shipped switch. Measured against
-    /// the references, nothing pairs those two: iOS puts the same big knob on a much shorter track
-    /// (1.65 / 0.87), Windows puts a small knob on a long one (2.0 / 0.60). Carrying both read as a
-    /// ball rattling in a tube. Shortening the track costs no touch area — what a switch senses is
-    /// a full `touch_target` slot, and only the drawn rect is allowed to be small.
+    /// Switch-track width as a multiple of its height.
+    /// The allocated touch target is configured separately.
     pub switch_aspect: f32,
     /// A radio's dot diameter as a fraction of its ring.
     pub dot_ratio: f32,
@@ -138,91 +73,43 @@ pub struct ControlMetrics {
     pub tick_ratio: f32,
     /// How much a slider's track swells while it is held.
     pub press_swell: f32,
-    /// The one alpha a disabled control fades to. There is exactly one, for every control.
+    /// Configured alpha multiplier for disabled control paint paths.
     pub disabled_alpha: f32,
     /// A tinted badge's alpha behind an icon.
     pub badge_alpha: f32,
     /// A card's radius as a multiple of `metrics.corner_radius`.
     pub card_radius_ratio: f32,
-    /// **A progress track's thickness as a fraction of a slider's.**
+    /// Progress track thickness as a fraction of slider-track thickness.
     ///
-    /// `slider_track` is 0.375 T because a gloved finger has to grab it, and the slider's own doc
-    /// spends four paragraphs on that. **Nothing grabs a progress bar**, and halving it is the only
-    /// change that follows from taking the hand away. 0.47 is a shade under half: the e-reader
-    /// reference measures an 11 px bar against a 63 px control, which is 0.1746 T, and
-    /// `0.47 x 0.375 T` is 0.17625 T — 0.9 % off.
-    ///
-    /// It is a ratio over the slider rather than a `Span` of its own so that the one question this
-    /// element has to answer lives in the token: a panel that thickens what you grab thickens what
-    /// it reports with, and the two cannot drift apart.
+    /// The default ratio is 0.47. Both thicknesses change together when the slider
+    /// track metric changes.
     pub progress_ratio: f32,
-    /// **A progress ring's stroke over its diameter.**
+    /// Progress-ring stroke thickness as a fraction of its diameter.
     ///
-    /// Measured off the console reference: a 14 px band on a 118 px ring, 0.12. Thicker than the
-    /// bar by design — a ring is read at a glance from across the bench, and a thin one at that
-    /// distance is a circle with a scratch on it. It is a ratio over the ring's own diameter and
-    /// not a `Span`, because a ring is sized by whatever it sits in (a tile, a card, a hero) and
-    /// the band has to keep its proportion at every one of those.
+    /// The default ratio is 0.12; check the resulting stroke at the intended size.
     pub ring_ratio: f32,
-    /// An indeterminate segment's length as a fraction of its track's.
+    /// Indeterminate segment length as a fraction of track length.
     ///
-    /// Under about a quarter the segment reads as a dot crossing a line at 600 mm. Material's
-    /// disjoint primary segment peaks near two thirds, which makes a bar look nearly full and then
-    /// empty again — the one thing an indeterminate bar must never imply. 0.30 leaves seven tenths
-    /// of the track visibly empty at every phase.
+    /// The default is 0.30.
     pub indeterminate_span: f32,
-    /// **A status lamp's outer diameter over the body text beside it.**
-    ///
-    /// It hangs off the *text* and not off `mark_size`, because the measurement says so: the
-    /// instrument-panel reference draws a 40 px lamp against an 18 px cap height, which is 2.22
-    /// cap heights, and against that panel's own 63 px control height it is 0.635 T while ours
-    /// would be 0.525 T. The two anchors disagree by 21 %, and the disagreement vanishes when both
-    /// are measured against the word beside them — which is how a lamp is read.
-    ///
-    /// Taking a cap at 0.70 em, `2.25 × 0.70 = 1.575`. It resolves to exactly a switch knob's
-    /// diameter today, and it is still a token of its own for the reason `box_ratio` was split out
-    /// of `mark_size`: a knob answers "how much travel fits in this track" and a lamp answers "how
-    /// far away can this be read", so tying them would let a switch retune silently retune the
-    /// panel's status strip.
+    /// Status-lamp outer diameter as a multiple of the adjacent body-text size.
+    /// It is independent of switch-knob geometry.
     pub lamp_ratio: f32,
-    /// **A badge's digit size over its height.** `0.625 × 16 du = 10 du`, which is exactly the
-    /// size the desktop's dock badge already drew, so promoting it changed no glyph. Material's is
-    /// 11 sp in a 16 dp badge (0.6875), so this sits 9 % under.
+    /// Badge digit size as a fraction of badge height.
     pub badge_text_ratio: f32,
-    /// **A dot badge's diameter over a badge's height.** Numerically equal to
-    /// [`Self::badge_text_ratio`] today and kept apart, because one answers "how big is a glyph"
-    /// and the other "how big is a mark that has no glyph to fall back on". Material's small badge
-    /// is 0.375 of its large one and Windows 11's dot is 0.25 of its numeric one; this crate is
-    /// deliberately above both, because 6 dp subtends under a millimetre at 600 mm.
+    /// Dot-badge diameter as a fraction of numeric-badge height.
     pub badge_dot_ratio: f32,
-    /// **The largest count a badge draws as itself**; above it it reads `99+`.
-    ///
-    /// The dock's hard-coded 99, promoted. Material makes the same thing settable and defaults to
-    /// four characters; 99 stays the default here because at the gloved size a four-cell badge is
-    /// about 12 mm wide and overhangs the icon it is badging.
+    /// Largest count shown without an overflow suffix; the default is 99.
+    /// Larger counts use `<max>+`.
     pub badge_max: u16,
-    /// **A translucent control face's alpha over whatever is behind it.**
-    ///
-    /// A neutral control's face is a tint of the ink rather than a colour of its own, the way iOS
-    /// defines its secondary fills, so the control reads as material and composites for free over
-    /// a card, a page or a wallpaper alike. It was a private constant in `button.rs` until a
-    /// second and a third control needed the same number — which is how the crate ended up with
-    /// five uncoordinated 1-du strokes the first time.
+    /// Translucent control-face alpha applied over its background.
     pub fill_alpha: f32,
-    /// **The least a chip's width may be as a multiple of its height**, so a one-word category is
-    /// not a stub between two long ones.
-    ///
-    /// Measured: six of the reference row's eight chips sit at 1.230 while their labels vary by
-    /// 2.7× — the floor is plainly an aspect and not the content. Windows 11's 40 epx target on a
-    /// 32 px control is 1.25 exactly, and Material's 48 dp target on a 32 dp chip works out at
-    /// 1.50. This is Fluent's value, 1.6 % off the measurement.
+    /// Minimum chip width as a multiple of its height.
     pub chip_min_aspect: f32,
     /// The most of a row's width a trailing value may take before it is elided.
     pub trailing_text_max: f32,
-    /// The most segments a [`SegmentedControl`](crate::widgets::SegmentedControl) may hold.
-    ///
-    /// Past four, every cell is narrower than a touch target on the smallest panel and the control
-    /// should have been a list.
+    /// Maximum number of segments accepted by a
+    /// [`SegmentedControl`](crate::widgets::SegmentedControl).
     pub segment_max: u8,
 }
 
@@ -235,20 +122,8 @@ impl Default for ControlMetrics {
 /// The control spec in physical units. Resolved each frame with a [`Scale`] into [`ControlMetrics`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ControlSpec {
-    /// The gap beside a mark.
-    /// **A control's drawn height** — `text(3.0)`, three body ems.
-    ///
-    /// The token that did not exist, and whose absence is why a standing kiosk came out with
-    /// phone-sized furniture on it. Eleven controls read `metrics.touch_target` for their size,
-    /// and that token answers a different question — *the least a finger may be asked to hit* — so
-    /// it is pinned to the hand and does not move when the text moves for the eye.
-    ///
-    /// 3.0 is not a new proportion. The old `finger(1.0)` was already 2.994 body ems at the
-    /// default policy, so this reproduces the shipped render to 0.2 % and states the relationship
-    /// the numbers already had. Everything else follows from it: a switch track is 0.6 of a
-    /// control, an icon button 0.68, a row a control plus 8 du.
-    ///
-    /// The `du` floor is `touch_target`'s own, and [`control_height`] puts the finger back under it.
+    /// Drawn control height, defaulting to three body ems.
+    /// Touch allocation uses a separate minimum based on the finger-size policy.
     pub height: Span<Eye>,
     /// The gap between a control's mark and its label.
     pub gap: Span<Eye>,
@@ -364,13 +239,10 @@ impl Default for ControlRatios {
 }
 
 impl Default for ControlSpec {
-    /// **Adoption step 4: the finger and millimetre terms are on.**
+    /// Default control-size specification.
     ///
-    /// Every length keeps its old value as a floor, so a panel resolving there renders as it did.
-    /// The strokes are the one `eye`-family group: `0.20 / 0.40 / 0.60 mm` on a 1 : 2 : 3 ladder,
-    /// falling back to exactly one, two and three device pixels where a millimetre would be under a
-    /// pixel. Today's five uncoordinated 1-du strokes are 0.159 mm, which is about 0.9 arcmin at
-    /// 600 mm — at the eye's resolving limit before glare, and before a glove smears the glass.
+    /// Lengths combine text/finger or millimetre terms with logical-unit and pixel floors.
+    /// The resulting size depends on the scale supplied to resolution.
     fn default() -> Self {
         Self {
             // **Adoption step 5: what is looked at is written in `text`, what is pressed in
@@ -394,9 +266,8 @@ impl Default for ControlSpec {
             gap: Span::fixed(Dim::text(0.5)).min(Dim::du(8.0)),
             line_gap: Span::fixed(Dim::text(0.25)).min(Dim::du(4.0)),
             mark_radius: Span::fixed(Dim::text(0.187)).min(Dim::du(3.0)),
-            // The one exception, and it is not a new value: this is `components.switch.height`
-            // moved here unchanged, finger term and all, because a switch that suddenly shrank on a
-            // gloved device would be a regression rather than a no-op.
+            // The drawn mark follows text size. Switch touch allocation separately
+            // retains the finger-size minimum through control_height.
             mark_size: Span::fixed(Dim::text(1.8)).min(Dim::du(28.8)),
             icon: Span::fixed(Dim::text(1.272)).min(Dim::du(24.0)),
             slider_track: Span::fixed(Dim::text(1.125)).min(Dim::du(18.0)),
@@ -426,18 +297,8 @@ impl Default for ControlSpec {
     }
 }
 
-/// **How tall to draw a control** — [`ControlSpec::height`], never below the hand.
-///
-/// The two facts a control's size answers to, in one place: it is sized to be *seen* beside its
-/// label ([`ControlSpec::height`], which follows
-/// [`ScalePolicy::viewing_distance_mm`](crate::unit::ScalePolicy::viewing_distance_mm)), and it is
-/// floored so a finger can still land on it (`metrics.touch_target`, which follows
-/// [`ScalePolicy::finger_mm`](crate::unit::ScalePolicy::finger_mm)). Neither is the other's proxy
-/// and neither is negotiable, so both are applied here rather than argued at each of the eleven
-/// call sites.
-///
-/// It is a free function for the same reason [`lamp_size`] is: the two tokens live in different
-/// structs, so nothing owns the answer.
+/// Resolve drawn control height as the maximum of `ControlSpec::height` and
+/// `metrics.touch_target`, combining text-relative sizing with the touch-size floor.
 #[must_use]
 pub fn control_height(metrics: &super::Metrics, control: &ControlMetrics) -> f32 {
     control.height.max(metrics.touch_target)

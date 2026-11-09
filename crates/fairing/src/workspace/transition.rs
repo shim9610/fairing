@@ -1,5 +1,5 @@
 //! The transition driver — the state machines and render mappings for home ↔ task (the A2 icon
-//! zoom) and screen push/pop (A3). Pure functions, so headless unit testing is easy.
+//! zoom) and screen push/pop (A3). Render mappings are tested without a window.
 //!
 //! The two mappings take their arguments differently: [`a2_open`] / `a2_close`
 //! take a **raw `t`** and ease it inside (the windows are reckoned on the raw `t`), while
@@ -33,7 +33,7 @@ pub(crate) const SHADOW_BAND_PX: f32 = 8.0;
 /// The shadow band's four alpha steps — from the outside (left) inwards (the layer's edge). Four steps of 2 px.
 pub(crate) const SHADOW_BAND_ALPHA: [f32; 4] = [0.04, 0.08, 0.14, 0.22];
 
-/// On the fallback (no icon Rect) the tween's duration becomes [`FALLBACK_MS`]. The curve is
+/// On the fallback (no icon Rect) the tween's duration becomes `FALLBACK_MS`. The curve is
 /// unchanged, and so is 0 ms (`reduce`).
 #[must_use]
 pub(crate) fn home_tween(icon_rect: Option<Rect>, tween: Tween) -> Tween {
@@ -96,7 +96,7 @@ impl HomeTransition {
     }
 
     /// Start opening. Mid-`Closing` it continues from `t` in reverse (the A2 interruption rule).
-    /// With no `icon_rect` the duration is [`FALLBACK_MS`] (`home_tween`).
+    /// With no `icon_rect` the duration is `FALLBACK_MS` (`home_tween`).
     pub fn open(&mut self, icon_rect: Option<Rect>, tween: Tween) {
         let start = match *self {
             Self::Closing { t, .. } => 1.0 - t.value(),
@@ -106,7 +106,7 @@ impl HomeTransition {
         *self = Self::Opening { t, icon_rect };
     }
 
-    /// Start closing. Mid-`Opening` it continues from `t` in reverse. With no `icon_rect` the duration is [`FALLBACK_MS`].
+    /// Start closing. Mid-`Opening` it continues from `t` in reverse. With no `icon_rect` the duration is `FALLBACK_MS`.
     pub fn close(&mut self, icon_rect: Option<Rect>, tween: Tween) {
         let start = match *self {
             Self::Opening { t, .. } => 1.0 - t.value(),

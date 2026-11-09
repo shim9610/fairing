@@ -2,7 +2,8 @@
 //! integrator items) — and `Gesture`, a band with the home indicator, where the bottom edge's
 //! swipes are home, recents and the next task (the gestures are the shell's).
 //!
-//! An item keeps the minimum touch target (48 px) and its press feedback follows A7 —
+//! Built-in cells use the resolved touch-target metric, subject to available bar
+//! width. Their press feedback follows A7 —
 //! it answers on the first frame with the `pressed` tint, and the scale shrinks `1 →
 //! press_scale` and comes back on release. The scale value lives in the shell-owned
 //! [`crate::motion::AnimationStore`], so the repaint policy (`is_animating`) applies to it
@@ -301,7 +302,7 @@ pub struct NavBar {
     /// The item Rects drawn last frame (in `items` order). Exposed as [`NavBar::item_rect`] so
     /// that tests need not duplicate the layout arithmetic.
     rects: Vec<Rect>,
-    /// The glyph fallback galley cache (in `items` order).
+    /// Glyph fallback size and colour keys (in `items` order).
     glyphs: Vec<GlyphCache>,
     /// This frame's cells, laid out the built-in way and then by the integrator's layout.
     /// A buffer whose values are overwritten each frame.
@@ -310,11 +311,8 @@ pub struct NavBar {
     live: Vec<bool>,
 }
 
-/// The font fallback galley cache for items with no built-in icon (`split` · `Custom`).
-/// `egui::Painter::text` **allocates a `String` on every call** (0.36.1 `painter.rs`:
-/// `layout_no_wrap(text.to_string())`), so even an idle frame allocates once per item — while the
-/// size and the colour are unchanged, the previous galley is reused (the same pattern as
-/// the status bar's `TextCache`).
+/// Size and colour key for font fallback glyphs (`split` · `Custom`).
+/// Drawing submits the glyph text to egui layout each frame; this record does not retain a galley.
 #[derive(Debug, Clone, Default)]
 struct GlyphCache {
     /// (the text size ×4 rounded, the colour's RGBA).
@@ -323,7 +321,7 @@ struct GlyphCache {
 
 impl PartialEq for GlyphCache {
     fn eq(&self, other: &Self) -> bool {
-        // The galleys are only a cache, so they are left out of the equality.
+        // Compare the stored rendering keys.
         self.key == other.key
     }
 }
@@ -373,13 +371,8 @@ impl NavBar {
         self.rects.get(index).copied().filter(Rect::is_positive)
     }
 
-    /// The same question by **id string**.
-    ///
-    /// "Give me last frame's Rect" is one question, and the three took different arguments — only
-    /// the nav bar took a `&NavItem`, while
-    /// [`StatusBar::item_rect`](crate::chrome::StatusBar::item_rect) and
-    /// [`DesktopView::icon_rect`](crate::desktop::DesktopView::icon_rect) take a `&str`. There is
-    /// no reason for tests and integrators to memorise different arguments for the same thing.
+    /// The last drawn rectangle identified by its string ID.
+    /// This accepts the same ID form as status-bar and desktop placement queries.
     #[must_use]
     pub fn item_rect_by_id(&self, id: &str) -> Option<Rect> {
         self.item_rect(&NavItem::parse(id))
@@ -404,8 +397,8 @@ impl NavBar {
     ///
     /// The item slots (their widths and order) are decided by `[nav_bar] items` — and by `layout`
     /// where it moves them — and where a slot's id has an integrator declaration, **that closure
-    /// draws the item** (in place of the built-in icon). There is no per-frame allocation beyond the
-    /// one child `Ui` handed to the closure — the same cost as an integrator item on the top bar.
+    /// draws the item** (in place of the built-in icon). The custom declaration receives a child `Ui`; its drawing and allocation behavior
+    /// depend on the callback and egui.
     pub(crate) fn ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -546,7 +539,8 @@ impl NavBar {
         painter(ui, &mut bar);
     }
 
-    /// Fill a buffer with the item list to hand to the painter (gate decisions included). No allocation.
+    /// Fill a buffer with the item list to hand to the painter (gate decisions included).
+    /// Reuses row storage; new rows or longer IDs can allocate, as can application permission policies.
     pub(crate) fn collect_items(
         &self,
         custom: &[NavItemDecl],

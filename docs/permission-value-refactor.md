@@ -108,8 +108,7 @@ Legacy `Shell` remains an explicit compatibility API. Protected construction kee
 rejecting untyped global builder hooks; they must not be silently treated as public.
 The new element tree provides a typed path for custom layout and paint. Raw egui
 calls inside an admitted user callback, trusted host/authentication/backend work
-and destructors retain their documented ownership boundary. This specification
-covers Fairing-owned protected element entry, not all arbitrary Rust execution.
+and destructors retain their documented ownership boundary.
 
 ## Verification and acceptance
 

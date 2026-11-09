@@ -6,11 +6,11 @@ Screens and chrome know nothing about hardware. The Wi-Fi screen sees a
 `WifiBackend` trait and cannot tell whether `nmcli`, D-Bus or a mock sits behind
 it. Four rules hold that up.
 
-1. **The UI only sees traits.** Concrete types are chosen once, when you assemble
-   `Services`.
-2. **Snapshot plus command.** Reads go through `snapshot()` — a cheap clone of a
-   cache. Writes are commands that return immediately; the result arrives in the
-   next snapshot, and the `Waker` tells the UI to look.
+1. **The built-in UI uses backend trait interfaces.** Concrete types are chosen when assembling
+   `Services`; ordinary host setters can replace them later without lending the live store.
+2. **Snapshot plus command.** Reads go through cached snapshots or the trait's
+   narrower accessors. Commands return acceptance/refusal promptly; asynchronous
+   completion is observed in subsequent snapshots, and `Waker` asks the host to update.
 3. **Keep transport waits off the UI thread.** A worker can exchange commands and
    updates through channels or another application-chosen transport. UI-side polling
    uses non-waiting operations; it must not wait for a worker, message or capacity.
@@ -18,12 +18,9 @@ it. Four rules hold that up.
    (`set_enabled`, `scan`, `connect`, …) must return immediately. Anything slow
    belongs to a worker thread or to a state machine inside the backend.
 
-This page covers the traits, the implementations and the assembly that exist in the crate
-today.
-
-**The implementations are yours.** fairing ships the traits, a `Null*` default for each
-and a `Mock*` simulator — no system code. Your device speaks sysfs, a
-vendor SDK, D-Bus or a PLC protocol; you write the backend against the trait, and
+**Device adapters are yours.** Fairing supplies the traits, `Null*` defaults,
+optional `Mock*` simulators and clock implementations, including `SystemClock`.
+For device I/O through sysfs, a vendor SDK, D-Bus or a PLC protocol, implement the trait;
 anything the shell has no slot for goes in as a custom backend (§5.1).
 
 ## 1. The traits
@@ -32,7 +29,7 @@ They live in `fairing::services` and all have `Backend` as a supertrait.
 
 ```rust,ignore
 pub trait Backend {
-    fn attach(&mut self, waker: Waker) {}                 // once, at start-up
+    fn attach(&mut self, waker: Waker) {}                 // when installed or replaced
     fn poll(&mut self) {}                                // every state update, including logic-only
     fn poll_at(&mut self, now: Instant) { self.poll(); }  // what actually gets called
     fn next_wake(&self) -> Option<Instant> { None }       // when to be woken next
@@ -65,16 +62,19 @@ Eight traits, one for each kind of hardware the built-in UI shows:
 | `NetworkBackend` | Interfaces, addresses, hostname | `interfaces() -> Vec<IfaceSnapshot>`, `ethernet_up() -> Option<bool>`, and optionally `configure(iface, IpConfig)`, `hostname()`, `set_hostname` |
 | `InfoBackend` | What the device says about itself | `device() -> DeviceInfo` — model, serial, firmware, OS, uptime, each optional |
 
-The default `enabled()`, `strength()` and `any_connected()` clone `snapshot()` and
-pick a field out of it — a heap allocation. The status bar asks for those **every
-frame**, so a real backend is better off implementing all three directly.
+The default `enabled()`, `strength()` and `any_connected()` accessors call
+`snapshot()` and select a field. A snapshot with owned strings or non-empty lists
+may allocate when cloned; an empty snapshot need not. Status items call these
+accessors when their eligible items are rendered, so direct cached-field
+implementations can avoid copying data that the item does not use.
 
 `DisplayBackend` drives `keep_awake` (idle inhibition, see
 `ChromePolicy::keep_awake` in [03 Chrome](03-chrome.md)), the `tile.brightness`
-slider and `status.brightness`. `set_power` is on the trait but nothing in the shell
-calls it yet. `AudioBackend` drives `settings.sound` and `status.volume`, and is asked
+slider and `status.brightness`. Built-in controls do not call `set_power`; trusted
+ordinary-host code can call it through `ServiceRequest::DisplayPower` and
+`Shell::request_service`. `AudioBackend` drives `settings.sound` and `status.volume`, and is asked
 for `Cue::Notify` when a new notification arrives (unless `ui.silent` is on).
-`NetworkBackend` drives `status.ethernet` — `ethernet_up()` is asked every frame, so
+`NetworkBackend` drives `status.ethernet` — `ethernet_up()` is queried when that item is rendered, so
 answer it from a cache — and `settings.network`: the interface cards, an IPv4 form (DHCP or a
 manual address, checked with `std::net` before `configure` is called) and the hostname, the
 editing behind the `settings.network.edit` gate. The screen is registered when the backend
@@ -88,10 +88,16 @@ pub struct WifiSnapshot { pub enabled: bool, pub state: WifiState, pub networks:
 pub struct BtSnapshot { pub enabled: bool, pub discovering: bool, pub devices: Vec<BtDevice>, pub pending: Option<PairingRequest> }
 ```
 
-A PSK handed to `connect` is the backend's business and ends there — neither the
-shell nor any UI state keeps a copy.
+`connect` borrows the application-supplied PSK. Application UI and the backend
+control their own buffers and any copies needed for asynchronous work.
 
 ### Connecting is yours
+
+The `request_service` examples below run in trusted host code with an ordinary
+`Shell`. This API does not apply access-gate checks and is unavailable on
+`ProtectedShell`. Do not use these calls as permission checks for user actions.
+User-driven setting writes use `set_setting`; custom device operations need an
+authorized application path and any device-side checks required by the product.
 
 The built-in `settings.wifi` screen **shows the networks and does not connect to
 them.** The radio toggle and the scan button are the screen's, because neither
@@ -108,7 +114,7 @@ for event in shell.poll_events() {
         if secured && !known {
             self.password_sheet = Some(ssid);   // your own sheet, your own buffer
         } else {
-            let _ = shell.services_mut().wifi.connect(&ssid, None, false);
+            let _ = shell.request_service(fairing::services::ServiceRequest::WifiConnect { ssid: &ssid, psk: None, hidden: false });
         }
     }
 }
@@ -125,11 +131,11 @@ Nothing stops you from connecting on every tap if that suits the machine.
 The application owns the password buffer. `connect` takes
 `psk: Option<&str>` and [`TextField`](04-customization.md) borrows a
 `&mut String`, so the buffer is yours from end to end — hold it in a zeroizing
-type if you want one, and reserve its capacity up front so growing it does not
-leave an unzeroed copy behind:
+type if you want one. Reserving capacity can reduce reallocations, but it neither
+limits input length nor prevents copies in egui, the allocator or the backend:
 
 ```rust,ignore
-let mut psk = zeroize::Zeroizing::new(String::with_capacity(64)); // WPA2 tops out at 63
+let mut psk = zeroize::Zeroizing::new(String::with_capacity(64)); // room for a 63-character WPA2 passphrase
 TextField::new(&mut psk).password(true).hint("Password").show(ui, &mut cx.widgets());
 ```
 
@@ -149,7 +155,7 @@ goes:
 # fn on_event(shell: &mut fairing::Shell, event: ShellEvent) {
 # match event {
 ShellEvent::WifiNetworkLongPressed { ssid, known } if known => {
-    let _ = shell.services_mut().wifi.forget(&ssid);
+    let _ = shell.request_service(fairing::services::ServiceRequest::WifiForget(&ssid));
 }
 # _ => {}
 # }
@@ -159,14 +165,14 @@ ShellEvent::WifiNetworkLongPressed { ssid, known } if known => {
 One press never means two things — the release that ends a hold does not also
 arrive as `WifiNetworkTapped`.
 
-Adding a hidden network needs nothing from the crate at all: collect the SSID
+For a hidden network, collect the SSID
 and the password in your own screen and call
-`shell.services_mut().wifi.connect(&ssid, psk, true)`.
+`shell.request_service(fairing::services::ServiceRequest::WifiConnect { ssid: &ssid, psk, hidden: true })`.
 
 ### Pairing a Bluetooth device
 
-Here the crate does draw the interaction, because there is no secret in it. The
-backend raises the request and picks the passkey; the screen shows the number so
+The crate provides a confirmation interaction for a backend-supplied passkey. The
+backend raises the request and supplies the number; the screen shows the number so
 it can be checked against the other device, and Confirm answers with
 `respond_pairing(true, None)`:
 
@@ -176,9 +182,9 @@ pub struct PairingRequest { pub addr: String, pub passkey: Option<u32> }
 fn respond_pairing(&mut self, accept: bool, passkey: Option<u32>) -> ServiceResult;
 ```
 
-Showing a number and taking "yes, that matches" collects nothing. A PIN the user
-has to **type** is the other case, and that one is yours the same way a Wi-Fi
-PSK is — collect it in your own sheet and pass it as the `passkey` argument.
+Passkey confirmation reports acceptance or rejection. For a PIN the user has to
+type, provide an application-owned input sheet and pass the result as the
+`passkey` argument.
 
 ## 2. `Capabilities` — declaring what works
 
@@ -197,10 +203,11 @@ impl Capabilities {
 }
 ```
 
-Anything backed by `Capabilities::NONE` — every `Null*` backend except the clock —
-disappears from the UI. It is treated as absence, not as an error. So with the `Null`
-defaults `status.ethernet`, `status.volume` and `status.brightness` stay hidden
-whatever you put in `[status_bar]`, and they appear once your backend reports the bit.
+Eligibility is specific to each surface. For example, `status.ethernet`,
+`status.volume` and `status.brightness` require their capability bits and the
+corresponding available values. A `Capabilities::NONE` backend does not remove
+all related UI: default settings registration still includes Display, Sound,
+Date & time and About. The clock can also be shown with `NullClock`.
 
 ## 3. Assembling `Services`
 
@@ -216,9 +223,8 @@ fn defaults() -> fairing::Services {
 ```
 
 The builder swaps in only what you name; everything else stays `Null*` — **except
-the clock**, which defaults to `clock::SystemClock`, because a device booting
-without a clock is the stranger outcome. For a deterministic fixed time, either
-say `.clock(NullClock)` or use `Services::null()`.
+the clock**, which defaults to `clock::SystemClock`. For a deterministic fixed
+time, either say `.clock(NullClock)` or use `Services::null()`.
 
 ```rust
 use fairing::services::clock::SystemClock;
@@ -457,12 +463,12 @@ impl WifiBackend for RealWifi {
 Three rules to keep:
 
 1. **`RealWifi` itself, on the UI thread, has no lock.** `latest` changes only in
-   `poll_at()`, and only the shell calls that, only on the UI thread.
+   `poll_at()` in this example; the shell calls it on the UI thread.
 2. **Command methods post to the channel and return.** `connect()` does not wait
    for the connection; completion shows up as a changed `snapshot()` after the
    next `poll_at()`.
 3. **When the worker changes state, call `Waker::wake()`.** Without it the screen
-   does not refresh until the next input — egui repaints reactively by default
+   may not refresh until another wake or input — egui repaints reactively by default
    (see `repaint` in [01 Getting started](01-getting-started.md)).
 
 Plug it in with `Services::builder().wifi(RealWifi::spawn(InboxConfig::default())?).build()`
@@ -471,15 +477,15 @@ queue returns `Busy` immediately; the application chooses whether to retry. The
 worker retains one pending update and waits for capacity before taking another
 command. Configure update storage and the per-poll budget for that connection;
 `Unbounded` storage remains an explicit option for a trusted producer. To resume a
-zero budget, call `set_inbox_batch_limit` and wake the shell. The snapshot
-construction above stands in for driver I/O, not a complete Wi-Fi driver.
+zero budget, call `set_inbox_batch_limit` and wake the shell. Replace the example
+snapshot construction with your driver I/O.
 
 ### 5.1 Anything else: a custom backend
 
 A door switch, a card reader, a PLC link, a scale — the shell has no slot for them,
 and it does not need one. `ServicesBuilder::custom` takes any `Backend`, and from then
 on it is treated like the built-in ones: `attach` hands it the `Waker` at start-up,
-`poll_at` runs every frame and `next_wake` arms the next repaint. A screen reaches it
+`poll_at` runs during operational state updates and `next_wake` requests the next repaint. A screen reaches it
 by its type with `cx.services.custom::<T>()` (or `custom_mut` to send it a command).
 One per type — a second of the same type replaces the first.
 
@@ -572,8 +578,7 @@ A status bar item or a tile of your own reads it the same way, through its `cx`.
 
 ## 6. Hiding what the hardware cannot do
 
-The status bar and the tiles ask `capabilities()` every frame and decide whether
-to draw.
+The status bar and tiles consult backend capabilities when refreshing their eligible items.
 
 ```rust,ignore
 // the status bar, from measure_builtin in crates/fairing/src/chrome/status_bar.rs
@@ -582,8 +587,8 @@ StatusItem::Battery => parts.services.power.battery().map(|_| style.size * 1.4),
 ```
 
 Battery presence is decided by `battery()` returning `Some`, not by
-`Capabilities::BATTERY`. A mains-only device with no battery still reports
-`POWER_CONTROL` for reboot and shutdown, and the battery item simply does not
+`Capabilities::BATTERY`. A mains-only device with no battery can report
+`POWER_CONTROL` if it supports reboot or shutdown, and the battery item simply does not
 appear.
 
 For "usable if supported, dimmed if not" — the rotation-lock tile — pull it into a
@@ -595,8 +600,8 @@ pub fn rotation_lock_available(display: Capabilities) -> bool {
 }
 ```
 
-Report exactly what your backend supports. Over-report and the UI appears but
-every command fails with `Unsupported`; under-report and working features hide.
+Report exactly what your backend supports. Over-reporting can expose controls whose commands return `Unsupported`; under-reporting
+can hide supported features.
 
 ## 7. Reading and writing settings
 
@@ -632,7 +637,7 @@ fn set_brightness(shell: &fairing::Shell) {
 ```
 
 **The gate is the key name.** Assign `[access.gates] "display.brightness" = "operator"`
-and anything below that level cannot change the brightness — the value stays put
+and a setting write below that level is refused — the setting value stays put
 and you get
 `ShellEvent::Access(AccessEvent::UnlockRequested { gate, then: Some(LaunchAction::Set(key, value)) })`
 instead ([05 §2.3](05-access-control.md#23-where-enforcement-happens)).
@@ -660,7 +665,8 @@ completion or failure and wake the UI, as for its other asynchronous operations.
 
 Changing `radio.airplane` also updates and emits `SettingChanged` for both radio keys.
 Enabling an individual radio clears airplane mode without enabling the other one.
-Persist every emitted change: the latest values then restore the same coupled state.
+Persist the emitted changes so the latest values retain the requested coupled configuration.
+Restoring backend-controlled values still depends on backend acceptance.
 
 Read inside a screen with `cx.settings.get(&key)`; `Cx::settings` is a read-only
 view.
@@ -672,8 +678,9 @@ EEPROM, a PLC — and how often and how safely it writes them is the device's bu
 
 - **Saving**: every change arrives as `ShellEvent::SettingChanged { key, value }`. Store it.
 - **Restoring**: `Shell::restore_settings` takes what you stored and puts it back — in the
-  table, at the backends, in the theme and the language. It checks no gate, since the values
-  passed one when they were set, and emits no `SettingChanged`, since they are stored already.
+  table, at the backends, in the theme and the language. This trusted startup API
+  does not check gates or emit `SettingChanged`; the host must select and validate
+  the stored values it supplies.
   The theme switches at once, without the crossfade, and `radio.airplane` is applied after the
   rest and only ever turns the radios off.
 
@@ -708,8 +715,7 @@ fn on_events(shell: &mut Shell, store: &mut Store) {
 
 Two things to mind on the saving side:
 
-- **A slider sends one event per step.** Writing the file on every event writes it dozens of
-  times a drag; keep the latest value per key and write after a pause.
+- **A slider can emit several changes during a drag.** Rather than writing a file per event, keep the latest value per key and write after a pause.
 - **Not on the UI thread.** File IO inside the frame stalls it. Hand the write to a thread of
   your own over a channel.
 
@@ -723,8 +729,8 @@ There are two clock backends.
 
 | Backend | Feature | Behaviour |
 |---|---|---|
-| `clock::SystemClock` | always | `SystemTime` plus a **fixed offset you supply**. No dependencies, and **no DST** — in a region with summer time it is an hour out twice a year unless you update the offset yourself |
-| `clock::ChronoClock` | `chrono` | Asks the OS timezone database for the offset **at that moment**, so March and November correct themselves. Costs three crates in the tree |
+| `clock::SystemClock` | always | `SystemTime` plus a **fixed offset you supply**. No additional clock dependency and no automatic daylight-saving adjustment; the host must update the offset when the applicable civil-time offset changes |
+| `clock::ChronoClock` | `chrono` | Asks the OS timezone database for the offset **at that moment**, so changes follow the installed time-zone data. Adds the optional `chrono` dependency tree |
 
 ```rust
 use fairing::services::clock::SystemClock;
@@ -759,7 +765,8 @@ fn go_to_kst(shell: &mut fairing::Shell) {
 }
 ```
 
-The shell never sets the clock itself — it asks yours what the time is.
+Built-in time displays read the clock backend. A host can request
+`ServiceRequest::SetTime`; the `ClockSource` implementation decides whether to accept it.
 
 ### 8.2 12- or 24-hour
 
@@ -797,7 +804,7 @@ fn running_2024() -> MockClock {
 }
 ```
 
-`fixed` never moves; `running` starts at the time of the first `poll_at` and
+`fixed` does not advance automatically; `running` starts at the time of the first `poll_at` and
 follows the shell's monotonic clock. Either one can be jumped to an arbitrary time
 by sending `ClockMsg::Set(WallTime)` to the `MockControl<ClockMsg>` from
 `control()`.

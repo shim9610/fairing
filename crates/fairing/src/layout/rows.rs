@@ -17,35 +17,13 @@ pub fn nav_row(ui: &mut Ui, cx: &mut Cx<'_>, title: &str, value: Option<&str>) -
     }
     row.show(ui, &mut cx.widgets())
 }
-/// **A full-bleed picture with a headline over it**, and page dots under it where there is more
-/// than one.
+/// Image band with overlaid content and optional page indicators.
 ///
-/// Both reference kiosks open with one: a 16:9 band carrying a promotion, a line of text and a CTA,
-/// with three or four dots at its foot. It is a [`layout`](crate::layout) function and not a widget because
-/// it divides the screen — it takes the width it is given and the height its aspect asks for, and
-/// hands the caller a `Ui` for whatever goes on top.
-///
-/// # Why the scrim is a gradient and not a role
-///
-/// Text over a photograph has **no guaranteed contrast** — the crate's own gate cannot help,
-/// because the ground is the integrator's picture. The shell already answers this for the desktop's
-/// wallpaper labels with [`LabelLegibility`](crate::desktop::LabelLegibility), and its middle
-/// answer is the right one here: a scrim, laid as a gradient from transparent at the top to
-/// [`Scrim`](fairing_widgets::theme::ColorRole::Scrim)'s own alpha at the foot, so the headline sits
-/// on something dark and the top of the picture is untouched.
-///
-/// A flat plate over the whole band (`Veil`) is certain and kills the photograph, which is the
-/// reason the band exists; a text shadow alone (`Shadow`) is not enough under a headline this size.
-/// The gradient is the crate's own `LabelLegibility::Veil` made directional.
-///
-/// # Why the dots are the caller's count and the crate's drawing
-///
-/// Which page is showing, and how paging happens, is the caller's — a promotion carousel is timed
-/// in one shop and swiped in another. What the crate settles is that the dots are there, that the
-/// live one is [`Primary`](fairing_widgets::theme::ColorRole::Primary) and the rest are
-/// `OnPrimary` at the `badge_alpha`, and that they sit inside the picture rather than under it, so
-/// the band costs exactly its own height. Past twelve pages twelve dots are drawn, a window that
-/// follows the live one.
+/// Height follows the available width and requested aspect ratio. The caller
+/// supplies the image, overlay content, current page and paging behavior.
+/// A gradient scrim is drawn behind the lower content. Check composited text
+/// contrast against the actual image; the scrim alone does not establish it.
+/// At most twelve page dots are drawn, following the selected page.
 pub fn hero<R>(
     ui: &mut Ui,
     cx: &mut Cx<'_>,
@@ -75,36 +53,12 @@ pub fn hero<R>(
     ui.add_space(m.row_height * CARD_GAP);
     out
 }
-/// **A strip of equal cells that switches what the whole screen shows.**
+/// Navigation bar of equal-width cells, returning the newly selected index.
 ///
-/// Draws at the cursor and takes `metrics.nav_bar_height`, so it sits against whichever edge the
-/// caller puts it — under a [`page`](crate::layout::page) for a bottom bar, before one for a top bar. Returns the index
-/// just picked, and only then. A label wider than its cell is cut with an ellipsis, and a glyph
-/// wider than its cell shrinks to fit, so nothing runs over the next cell.
-///
-/// # Which of the three to reach for
-///
-/// The crate now has three ways to show a row of choices, and they are three different objects:
-///
-/// | | What it is | Shape |
-/// |---|---|---|
-/// | [`SegmentedControl`](crate::widgets::SegmentedControl) | A **setting** with a few values | One track, 2–4 equal cells, capped at `segment_max` |
-/// | [`ChipRow`](crate::widgets::ChipRow) | A **filter** over a list | 5–8 separate objects, unequal, scrolls |
-/// | `tab_bar` | **Navigation** — which screen you are on | N equal cells, full width, pinned to an edge, no track |
-///
-/// A tab bar is chrome and the other two are content. That is why this is not "a segmented control
-/// with the cap lifted": a segmented control lives inside a card and edits a value, and lifting its
-/// cap would give a *setting* eight 6 mm cells on the smallest panel, which is the reason the cap
-/// is there.
-///
-/// # Why the active cell is not filled
-///
-/// The instrument-panel reference fills its active tab; the two consumer references colour the
-/// glyph and the word and add a short bar. This crate takes the second, for the reason task #5
-/// settled for the quick tiles: an accent that fills furniture has nothing left to say when
-/// something is actually selected. The mark is **three channels** — the glyph and the label go to
-/// `Primary`, and a bar sits against the bar's own inner edge — so it survives greyscale and it
-/// does not flood.
+/// Its height is `metrics.nav_bar_height`. Labels are ellipsized and icons shrink
+/// when needed to fit their cells. The active item uses the primary role for its
+/// label, icon and indicator bar. The application decides which body the selection
+/// displays. `SegmentedControl` and `ChipRow` provide other choice layouts.
 ///
 /// ```no_run
 /// # fn draw(ui: &mut egui::Ui, cx: &mut fairing::Cx<'_>) {
@@ -225,11 +179,9 @@ pub fn tab_bar(
     }
     picked
 }
-/// **A summary row heavier than the ones above it** — the last line of a bill, a cycle total, a
-/// run count.
-///
-/// Every reference screen this was measured from draws the same three-part figure: two or three
-/// quiet [`info_row`]s, a rule, and one loud row. This is the loud one.
+/// Summary row with a divider, larger text and a taller band than [`info_row`].
+/// The total uses text colour rather than the accent role. The caller supplies the
+/// label and formatted value.
 ///
 /// ```no_run
 /// # fn draw(ui: &mut egui::Ui, cx: &mut fairing::Cx<'_>) {
@@ -242,27 +194,6 @@ pub fn tab_bar(
 /// });
 /// # }
 /// ```
-///
-/// # Why the step is the type scale's own and not a new token
-///
-/// Measured off the three references, the total's text against the rows above it is 1.31 (Bella
-/// Tavola), 1.38 (the `McDonald's` kiosk) and 1.72 (the Sichuan kiosk, whose figures are CJK and whose total
-/// is deliberately enormous). `type_scale.heading / type_scale.body` is **1.375** — inside the
-/// band the two Latin screens set, and already what the crate means by "one size up". A token of
-/// its own would be a fourth number nobody could relate to the other three.
-///
-/// # Why the value is not the accent
-///
-/// All three references make the total the loudest text on the screen, and one paints it in its
-/// brand red. `Primary` measures 3.81 on `surface` in base dark, under the 4.5 a word needs, so
-/// **the accent is never a text colour** — the loudness here is size and weight, which is what the
-/// other two references use and what survives a palette swap.
-///
-/// # Why it is not `info_row` with a flag
-///
-/// A total is not a row that happens to be bold: it carries a rule above it, a taller band and a
-/// different type step. Folding three changes into a flag on the general row would give the
-/// general row a mode.
 pub fn total_row(ui: &mut Ui, cx: &mut Cx<'_>, title: &str, value: &str) -> Response {
     let m = &cx.theme.metrics;
     let height = m.row_height * TOTAL_ROW;
@@ -399,10 +330,8 @@ pub fn info_row(ui: &mut Ui, cx: &mut Cx<'_>, title: &str, value: &str) -> Respo
         .enabled(false)
         .show(ui, &mut cx.widgets())
 }
-/// A toggle row. `true` **only when the value changed**.
-///
-/// Pressing anywhere on the row toggles it — with only the switch as the touch target, a gloved hand
-/// cannot hit it.
+/// Toggle row, returning `true` when the value changes.
+/// Pressing the row toggles the value, not just pressing the painted switch.
 pub fn switch_row(
     ui: &mut Ui,
     cx: &mut Cx<'_>,

@@ -1,4 +1,4 @@
-//! The string table: every word the crate draws goes through [`Strings`], which
+//! The string table: built-in translation keys are resolved through [`Strings`], which
 //! looks it up in the active locale's table.
 //!
 //! **The English text is the key** ([`LabelKey`]). A key with no entry shows as written, so an

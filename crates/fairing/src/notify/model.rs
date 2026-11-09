@@ -50,9 +50,8 @@ impl Level {
         }
     }
 
-    /// The accent colour role (a toast's stripe, a heads-up icon). `Info` uses no accent and
-    /// keeps the body colour — colour on information notifications too would bury the warnings
-    /// and errors.
+    /// Severity colour role for toast stripes and heads-up icons.
+    /// `Info` uses the body-text role; other levels use their corresponding tone role.
     #[must_use]
     pub fn role(self) -> ColorRole {
         match self {
@@ -203,7 +202,8 @@ pub struct Toast {
     /// Severity (the colour).
     pub level: Level,
     /// How long it shows. `Duration::ZERO` means `[notify] toast_ms`; a duration too long for the
-    /// clock to count (`Duration::MAX`) holds it until it is tapped.
+    /// clock to count (`Duration::MAX`) has no timed expiry. Queue lifecycle or
+    /// reclamation can still remove it.
     pub duration: Duration,
     /// The icon.
     pub icon: Option<IconRef>,
@@ -249,7 +249,7 @@ impl Toast {
         self
     }
 
-    /// How long it shows. `Duration::MAX` keeps it up until it is tapped.
+    /// How long it shows. `Duration::MAX` disables timed expiry, not other removal.
     #[must_use]
     pub fn duration(mut self, duration: Duration) -> Self {
         self.duration = duration;
@@ -350,9 +350,7 @@ mod tests {
         assert_eq!(note("a").icon, None);
     }
 
-    /// The shade and the toast read severity off one table. They disagreed: the shade painted an
-    /// `Info` row in the accent — the loudest colour on screen on the least urgent row — while the
-    /// toast kept it at body colour. `Level::role` is now the only table.
+    /// Check the shared severity-to-colour mapping used by shade and toast views.
     #[test]
     fn info_carries_no_accent() {
         use crate::theme::ColorRole;

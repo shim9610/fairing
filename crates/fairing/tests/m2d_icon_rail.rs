@@ -121,7 +121,7 @@ fn the_rail_never_takes_more_than_half() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **Home is not left empty.** There is no such thing as a kiosk with only a menu and nothing beside it — the first item opens by itself.
+/// The rail opens its first registered item rather than leaving the home content blank.
 #[test]
 fn the_rail_opens_its_first_entry() -> fairing::Result<()> {
     let h = rail_shell("left", 1024.0, 600.0)?;
@@ -136,11 +136,8 @@ fn the_rail_opens_its_first_entry() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **Home is not empty.** Pressing the home button does not leave the space beside the rail blank either.
-///
-/// Which screen it goes back to is the workspace's rule as it is — it resumes the first item's task, so having gone
-/// deeper inside that task it comes back to that place (the same as an Android launcher). What the rail guarantees
-/// goes as far as "an empty home is never seen".
+/// Home resumes the first rail item's existing task.
+/// If that task has a deeper screen, the resumed screen is retained in this fixture.
 #[test]
 fn going_home_never_leaves_an_empty_pane() -> fairing::Result<()> {
     let mut h = rail_shell("left", 1024.0, 600.0)?;

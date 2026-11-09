@@ -1,14 +1,9 @@
-//! **A widget given a slot smaller than its own floor overflows it**.
+//! Control-space reservations in card and action-bar layouts.
 //!
-//! Every control in the crate floors its own size. Hand one a `max_rect` under that floor and it
-//! does not shrink to fit: it takes the floor and draws outside the rect it was given. So a caller
-//! reserving room for a control has to reserve *the control's* number, and the failures are all the
-//! same shape - a slot worked out from some other token that used to agree with it.
-//!
-//! `FeatureCard` reserved `metrics.touch_target` for its action disc while `IconButton` sizes
-//! itself from `control.icon_button`; the first is anchored to the hand and the second to the eye,
-//! so lowering `touch_target` for a mouse-driven console left the disc hanging out of
-//! the card's bottom edge. These hold the reservations to the widgets that fill them.
+//! A slot smaller than an embedded widget's minimum can let its drawing extend past
+//! the slot. These fixtures lower `touch_target` while retaining other control sizes
+//! to check that `FeatureCard` reserves space for its `IconButton` and that action-bar
+//! rows apply the intended inset once.
 
 use fairing::layout::{self, Container, Deco};
 use fairing::testing::{single_level_access, Harness};

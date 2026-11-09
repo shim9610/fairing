@@ -1,5 +1,5 @@
-//! The heads-up banner (A6): shows a new notification briefly at the top before
-//! it goes into the shade.
+//! The heads-up banner (A6): briefly presents a newly retained notification at the
+//! top. The notification is already in the centre used by the shade.
 //!
 //! `y: −H → 0` over 220 ms `CubicOut`; a 4 s hold (paused while held); leaving `0 → −H` over
 //! 200 ms `CubicIn`. Dragging up is 1:1, and on release `dy < −H/3` or a fling past
@@ -7,9 +7,9 @@
 //! away, otherwise it returns. A tap runs the action and then leaves. Opening the shade absorbs
 //! it immediately (it disappears with no exit).
 //!
-//! **Zero heap allocations per frame**: the banner holds the title and body
-//! galleys and re-lays them out only when the content or the width changes (the string buffers
-//! are reused too), and the icon is flattened once per size by the banner's [`IconCache`].
+//! The banner stores its title/body strings and the last drawn text height.
+//! Drawing submits the text to egui layout each frame; the banner's [`IconCache`] reuses
+//! flattened icon geometry for its current icon and size.
 
 use super::hooks::{BannerView, HeadsUpCx, HeadsUpLayout, HeadsUpLayoutCx, HeadsUpPainter};
 use super::model::{Level, Notification, NotificationId};
@@ -101,7 +101,7 @@ struct Banner {
     rect: Rect,
     /// Whether a finger is resting on the banner — the hold timer stops while it is (A6).
     pressed: bool,
-    /// The title and body galley cache, and the wrap width they were laid out at.
+    /// Last drawn title/body height and the wrap width used for it.
     wrap: f32,
     /// The height the content measured to on the last frame, 0 until it has been drawn. The
     /// banner is drawn at the larger of this and `heads_up_height`: the token is a floor, not
@@ -110,7 +110,7 @@ struct Banner {
 }
 
 impl Banner {
-    /// Overwrite the content (reusing the string buffers; the galleys are invalidated).
+    /// Stage new content and replace the banner fields after allocation succeeds.
     fn fill(&mut self, notification: &Notification) -> Option<()> {
         // Stage every allocating field before publishing new content; failure hides the banner.
         let title = crate::memory::try_string(&notification.title).ok()?;
@@ -190,7 +190,7 @@ impl HeadsUp {
         let until = now
             .checked_add(tokens.heads_up_in.duration)
             .and_then(|t| t.checked_add(tokens.heads_up_hold));
-        // A banner already up is reused — the string and galley buffers stay, so there are fewer allocations.
+        // Update an existing banner in place after staging the new content.
         if let Some(banner) = &mut self.current {
             if banner.fill(notification).is_none() {
                 self.current = None;

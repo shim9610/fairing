@@ -1,6 +1,6 @@
 # 02. Screens
 
-Everything about building a screen: declaration → builder → state → `Cx` → lifecycle → stack navigation → per-screen chrome.
+Screen declaration, builders, state, `Cx`, lifecycle, navigation and per-screen chrome.
 
 A screen is a registered UI body: an `FnMut(&mut egui::Ui, &mut Cx)` closure or a
 `Screen` implementation. It draws inside the rectangle the shell supplies.
@@ -15,9 +15,9 @@ See [typed registration](../session-tokens.md#typed-permission-requirements).
 All of them go in with `shell.add(..)` and come out with `shell.remove(id)`.
 
 > The samples in this section and in §3 · §6 call `ui.heading` · `ui.button` directly — they
-> exist to show the **declaration mechanism**, so the inside of each screen is kept to nothing.
-> Real screens are not written that way. Cards, grids, touch targets and scrolling are
-> [§8 `layout`](#8-building-the-inside-of-a-screen-with-layout)'s job.
+> show the declaration mechanism with small screen bodies. Applications can use egui
+> directly or use [§8 `layout`](#8-building-the-inside-of-a-screen-with-layout) for
+> Fairing's card, grid, spacing and touch-size conventions.
 
 | Declaration | Signature | Where it shows up |
 |---|---|---|
@@ -136,8 +136,8 @@ they do not come from a registry declaration but from the `[overlay] tiles` list
 
 ## 2. The `ScreenDecl` builder
 
-`screen` and `screen_with` both return a `ScreenDecl`. Every method below is optional and the
-order does not matter.
+`screen` and `screen_with` both return a `ScreenDecl`. The methods below are optional. Setters can override earlier values; for example,
+`.fullscreen()` and `.chrome(..)` both set the chrome policy.
 
 | Method | Default | What it does |
 |---|---|---|
@@ -169,9 +169,11 @@ first) · `.enabled(bool)`; `nav_item` takes `.gate` · `.enabled(bool)`; `tile`
 
 Gates and `Visibility` are [05 Access control](05-access-control.md).
 
-Queued badge updates run after changed declarations are rebuilt. Registering an icon
-and immediately calling `handle.set_badge` applies the badge on the next frame.
-The direct `shell.set_badge` call still reports `false` if the icon has not been placed yet.
+Accepted badge commands run after changed declarations are rebuilt, within the
+per-update command budget. A queued update can therefore run after a later logic
+or UI update rather than the next frame. The void `handle.set_badge` helper drops
+rejected commands; the direct `shell.set_badge` call reports `false` if the icon
+has not been placed yet.
 
 ## 3. Resident and factory screens
 
@@ -209,8 +211,7 @@ draw the same state in two places.
 ### 3.1 Drawing one screen inside another
 
 `cx.draw_screen(ui, id)` draws whatever declaration is registered under `id`, right where you call
-it. A master-detail layout is that one line: the list on the left, and on the right the screen the
-selected row points at. The built-in `settings.home` is written this way, which is why replacing
+it. A master-detail layout can use this to embed the selected screen beside a list. The built-in `settings.home` is written this way, which is why replacing
 `settings.wifi` under the same id changes what the wide-screen right column shows.
 
 ```rust
@@ -304,8 +305,7 @@ fn main() -> fairing::Result<()> {
 
 ## 4. The `Cx` handle
 
-`Cx` is how a screen asks the shell for something. A closure may ignore `cx` entirely, and most
-screens only ever touch `ui`.
+`Cx` is how a screen asks the shell for something. A closure may ignore `cx` entirely when it only needs to draw through `ui`.
 
 ### Fields
 
@@ -357,7 +357,9 @@ in order.
 `cx.shell` is the handle that does the same things from outside a frame: `launch` · `back` ·
 `home` · `close_screen` · `notify` · `toast` · `dismiss_notification` · `set_setting` ·
 `set_badge` · `set_subject` · `logout` · `request_unlock` · `toggle_overlay` · `set_motion` ·
-`waker()`. Those ride an mpsc channel and the shell drains it early in the next frame.
+`waker()`. Accepted commands are drained in order during subsequent logic/UI
+updates, within the configured command budget. Void helpers discard rejection;
+see [§9.2](#92-getting-results-back-from-background-work) for admission handling.
 
 ## 5. Lifecycle
 
@@ -456,21 +458,22 @@ screen — it is the workspace's `Home` view.
 `shell.back()` — where the nav bar's back button and the `ShellHandle::back` command both land —
 has a fixed priority:
 
-1. If the unlock prompt is up, back cancels it and stops; on the lock screen it does nothing at
-   all ([05 §5](05-access-control.md#5-the-shells-prompt-and-the-authenticator)).
-2. If the shade is open, close the shade and stop.
-3. If the OSK is up, close the OSK and stop.
-4. At home, do nothing.
-5. Call the top screen's `on_back`. `BackAction::Consumed` ends it (for a screen with navigation
-   of its own).
-6. On `BackAction::Pop`, pop. Popping the root ends the task and goes home (`WentHome`).
+1. A faulted shell ignores back. If the unlock prompt is up, back cancels it and stops;
+   on the lock screen it does nothing ([05 §5](05-access-control.md#5-the-shells-prompt-and-the-authenticator)).
+2. If an icon info popover is open, close it and stop.
+3. If the shade is open, close it and stop.
+4. If the OSK is up, hide it and stop.
+5. If the recent-screens overview is open, close it and stop.
+6. At home, do nothing.
+7. Call the top screen's `on_back`. `BackAction::Consumed` stops back handling.
+8. On `BackAction::Pop`, pop. Popping the root ends the task and goes home (`WentHome`).
 
 **Edge gestures do not take this path today.** An edge swipe from `[nav_bar] back_edges` is
 handled separately by `Shell::gesture_back`, which pops straight through
 `Workspace::release_gesture_back` — it does
 **not** ask `on_back`. So a screen with internal navigation that returns `BackAction::Consumed`
-still closes when a finger swipes the edge. Today the only defence is `[nav_bar] back_edges = []`
-on such a screen, which turns gesture-back off.
+still closes when a finger swipes the edge. Disable gesture-back globally with `[nav_bar] back_edges = []`, or suppress built-in
+edge gestures on that screen with `ChromePolicy::edge_guard = true`.
 
 `shell.home()` closes the shade with it and goes to the `Home` view. The task stays alive and the
 whole of it goes `Stopped`, so tapping the icon again brings the stack back as it was.
@@ -584,10 +587,10 @@ A `ChromePolicy` is set in two places: on the declaration (`.chrome()` · `.full
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `status_bar` | `BarMode` | `Show` | `Show` · `Hide` · `Overlay` (translucent, over the content) |
+| `status_bar` | `BarMode` | `Show` | `Show` · `Hide` · `Overlay` (over the content; opacity is `metrics.status_overlay_alpha`, opaque by default) |
 | `nav_bar` | `BarMode` | `Show` | `Show` · `Hide`. `Overlay` is treated as `Show` |
 | `allow_peek` | `bool` | `true` | Let an edge pull briefly reveal a hidden bar |
-| `edge_guard` | `bool` | `false` | Blocks every edge gesture. Only the emergency gesture is left |
+| `edge_guard` | `bool` | `false` | Suppresses built-in shell edge gestures; the emergency gesture remains. Custom gesture regions choose how to handle the blocked-edge flags |
 | `osk` | `OskMode` | `Auto` | `Auto` (follows focus) · `Manual` (toggle only) · `Off` |
 | `keep_awake` | `bool` | `false` | Stops the display idle timer |
 | `allow_split` | `bool` | `true` | Allow a split to come up while this screen is focused. Off, `open_in_other_pane` and the split control keep to one pane |
@@ -599,9 +602,10 @@ everything else at its default. `allow_peek` stays `true`, so pulling an edge br
 back. `inset_or(default)` uses the value you pass when `inset` is `None`, and clamps negatives
 to 0.
 
-`edge_guard = true` blocks every edge regardless of `allow_peek`, leaving only the emergency
-gesture: a 2-second press within 64 px of a top corner. It is for screens where a mis-touch
-causes an accident on the spot — cutting, driving. The full contract is in
+`edge_guard = true` suppresses built-in edge gestures regardless of `allow_peek`. The emergency
+gesture remains: a top-corner hold, 2 seconds by default (`[gesture] emergency_ms`).
+Custom gesture regions still receive the blocked-edge flags. Use this policy to suppress
+shell edge navigation on the screen. The full contract is in
 [03 Chrome](03-chrome.md).
 
 ```rust
@@ -632,7 +636,7 @@ fn main() -> fairing::Result<()> {
         .chrome(ChromePolicy {
             status_bar: BarMode::Overlay,
             nav_bar: BarMode::Hide,
-            edge_guard: true, // no mis-touch mid-cut; only the emergency gesture is left
+            edge_guard: true, // suppress built-in edge gestures; the emergency gesture remains
             inset: Some(0.0),
             ..ChromePolicy::default()
         }),
@@ -656,13 +660,14 @@ fn main() -> fairing::Result<()> {
 
 ## 8. Building the inside of a screen with `layout`
 
-Everything so far was about **declaring** a screen. The **inside** of one is built with
-`fairing::layout` — the crate's own settings screens are, and so are `examples/demo.rs`
-and `examples/kiosk.rs`.
+Screen bodies use [egui `Ui`](https://docs.rs/egui/0.37.0/egui/struct.Ui.html).
+Use egui directly or use `fairing::layout` for the theme and spacing conventions
+used by the built-in settings screens and `examples/demo.rs` / `examples/kiosk.rs`.
 
-Stacking `ui.heading` · `ui.button` · `egui::ScrollArea` by hand does work. It also means
-re-deciding touch targets, card backgrounds, role colours, scrolling and side
-margins on every screen — and the one screen that misses a decision just quietly looks different.
+The helpers build on egui layout and
+[`ScrollArea`](https://docs.rs/egui/0.37.0/egui/containers/scroll_area/struct.ScrollArea.html).
+Fairing adds shared margins, touch-size parameters, card styling and theme roles;
+scrolling itself is provided by egui.
 
 ### 8.1 Three layers
 
@@ -675,23 +680,23 @@ margins on every screen — and the one screen that misses a decision just quiet
 `layout`'s **row** helpers are not the same thing as the widgets in
 `widgets`. `widgets::Switch` **draws** a switch;
 `layout::switch_row` decides **where that switch goes** next to its label. Building a screen,
-the row helpers are usually all you need.
+the row helpers combine that placement with the shared styling.
 
 ### 8.2 One page
 
-`page` gives you vertical scrolling and side margins in one call — no per-screen `ScrollArea`.
+`page` wraps an egui `ScrollArea` with Fairing side margins and page styling.
 
 ```rust
 # fn add(shell: &mut fairing::Shell) {
 use fairing::{layout, screen, Cx};
 
-shell.add(screen("network", |ui: &mut egui::Ui, cx: &mut Cx<'_>| {
+let mut on = true; // Owned by this resident screen, so the value survives UI passes.
+shell.add(screen("network", move |ui: &mut egui::Ui, cx: &mut Cx<'_>| {
     layout::page(ui, cx, "network", |ui, cx| {
         layout::title(ui, cx, "Network");
 
         layout::section(ui, cx, "Wireless");
         layout::group(ui, cx, |ui, cx| {
-            let mut on = true;
             // (title, subtitle, value, enabled) — returns `true` on the frame it changed.
             if layout::switch_row(ui, cx, "Wi-Fi", Some("home-5g"), &mut on, true) {
                 // the value just changed
@@ -711,14 +716,13 @@ shell.add(screen("network", |ui: &mut egui::Ui, cx: &mut Cx<'_>| {
 # }
 ```
 
-There are no separators inside a card. The card boundary already expresses the grouping, and a
-line on top of it splits one card in two. Group related rows with `group` and let the gaps
-between cards do the work — the eye then reads card by card.
+The default card layout uses gaps between groups rather than separators between
+rows. Use `group` for related rows; custom layouts can choose another treatment.
 
 ### 8.3 A bar pinned to the bottom
 
 Buttons that must stay visible **however long the body gets** — confirm, pay — go in an
-`action_bar`. The body flows above it and scrolling never runs underneath. When the OSK comes up,
+`action_bar`. The layout reserves a band below the body for it. When the OSK comes up,
 the bar steps above it.
 
 ```rust
@@ -749,8 +753,8 @@ in absolute pixels but in multiples of the row height, so it follows the finger 
 
 | Handle | When |
 |---|---|
-| `max_columns(n)` | A strip with a fixed count. Five category chips or three payment methods want to be on one line first, and to be wide second |
-| `fill_height(ratio)` | Upright panels. A grid fills from the top and does not use the leftover height, so the bottom half goes empty. The ratio is a **height cap relative to tile width** |
+| `max_columns(n)` | An upper bound on columns. A narrow area can still produce fewer; pass the item count to avoid allocating widths for additional columns |
+| `fill_height(ratio)` | Upright panels. A grid fills from the top and does not use the leftover height, so the bottom half goes empty. The ratio caps height relative to tile width when that cap is above the configured minimum; otherwise the minimum wins |
 | `deco(Deco)` | Colour, corners, spacing |
 | `fill_with(f)` | A different background per item. Sold-out or recommended tiles |
 
@@ -797,8 +801,9 @@ if let Some(hero_h) = layout::split_height(ui, cx, 0.34) { /* top: look at. bott
 # }
 ```
 
-On a portrait kiosk the top of the screen is out of reach. `action_bar` pins a bar to the bottom
-but cannot move where the body **starts**, so dividing top from bottom is `split_height`'s job.
+On a tall mounted panel, the reachable area depends on mounting height and the
+operator. `action_bar` pins controls to the bottom; `split_height` can divide the
+body into upper and lower regions.
 
 ### 8.6 Photos
 
@@ -823,10 +828,10 @@ ui.painter().image(tex.id(), into, layout::cover_uv(tex.size_vec2(), into), tint
 
 ### 9.1 Sharing app state across screens
 
-**Your app owns its state, and owns the shell.** The shell is a field of your app, not a container
-for it. Once a frame you lend the state to the screens with `Shell::frame_with`, and they reach it
-through `cx.app` / `cx.app_mut` / `cx.with_app`. Nothing is captured, nothing is stored by the
-crate, and there is no cell.
+In a custom host, the application owns both its state and the shell. Lend that
+state during an update with `logic_with` / `frame_with`; callbacks access it through
+`cx.app` / `cx.app_mut` / `cx.with_app`. The shell borrows the supplied state for
+that call, so screen closures need not capture a shared mutable-state container.
 
 ```rust
 use fairing::{screen, Cx, Services, Shell, ShellConfig};
@@ -875,9 +880,15 @@ impl Kiosk {
         Ok(Self { shell, state: AppState::default() })
     }
 
+    // Connect this to the host's logic callback, even when no UI pass follows.
+    fn logic(&mut self, ctx: &egui::Context) {
+        self.shell.logic_with(ctx, &mut self.state);
+        let _ = self.shell.poll_events(); // dispatch these to your application
+    }
+
     fn frame(&mut self, ui: &mut egui::Ui) {
-        // The one line that lends it.
         self.shell.frame_with(ui, &mut self.state);
+        let _ = self.shell.poll_events(); // likewise after UI-driven work
     }
 
     /// Everything outside the frame — a poll loop, an engine reply — is just your own field.
@@ -887,12 +898,18 @@ impl Kiosk {
 }
 ```
 
-`runner::run_app` is the ready-made loop for this shape: `build` hands back `(Shell, S)` and the
-runner owns both and calls `frame_with` for you. `runner::run_shell` is the same thing for an app
-with no state of its own. Driving the loop yourself (`runner::run`, or eframe directly) works too —
-`frame_with` is one call.
+`runner::run_app` is the ready-made loop for this shape: the factory returns
+`(H, S)`, where `H` is `Shell` or `ProtectedShell`. The runner owns both and calls
+`logic_with` and `frame_with` with the same state, including logic-only updates
+while drawing is paused. `run_app_with` forwards the resulting events to your
+handler. `runner::run_shell` is the counterpart without application state.
 
-One value goes over per frame. Several things to share means one `struct` holding them.
+A custom host connects both methods above and handles events after either call.
+The closure-only `runner::run` does not tick shell logic automatically. A
+frame-only custom host remains supported but processes deadlines/backends only
+when it calls `frame_with`; see [host update flow](../architecture.md#4-one-frame).
+
+Each stateful logic/frame call lends one value. Put several shared values in one `struct`.
 
 `cx.app_mut::<T>()` borrows all of `cx`, so you cannot hold it and call `layout::title(ui, cx, ..)`
 in the same breath. When you need both, `cx.with_app` takes the reference out for the length of the
@@ -908,12 +925,12 @@ cx.with_app::<Order, _>(|order, cx| {
 # }
 ```
 
-`cx.app::<T>()` is `None` when the frame was driven by plain `Shell::frame`, or when `T` is not the
-type you lent.
+`cx.app::<T>()` is `None` when the host uses the non-stateful `frame` / `logic`
+methods, or when `T` is not the type lent to the current call.
 
-**Between frames the shell is not holding your state** — you are. So a call you make yourself
-outside the frame, which runs your code on the spot, runs it with `None`. There are three, and each
-has a pair that lends the state for its length:
+The host retains ownership between updates. Direct synchronous `launch`, `back`
+and `knock` calls do not implicitly borrow state stored in that host. Each has a
+stateful counterpart that lends it for the duration of the call:
 
 | Runs your code out of frame | With the state |
 |---|---|
@@ -921,9 +938,10 @@ has a pair that lends the state for its length:
 | `shell.back()` → the top screen's `on_back` | `shell.back_with(&mut self.state)` |
 | `shell.knock(id)` → the entry point's action | `shell.knock_with(id, &mut self.state)` |
 
-`shell.handle().launch(..)` works too — it queues, so it lands inside the next frame with the state
-in hand. `LaunchAction::Open` needs none of this: it puts a screen up and the screen's `ui` runs in
-the next frame, which has the state anyway.
+`shell.handle().launch(..)` queues work for a subsequent logic/frame update,
+subject to its command budget. It receives app state when that host update uses
+`logic_with` / `frame_with`. `LaunchAction::Open` schedules a screen whose UI
+callback receives the state of the later drawing pass.
 
 `Rc<T>` can share immutable data cheaply, such as a loaded image set. Use the
 state-lending APIs above when screens need mutable access to application state.

@@ -17,8 +17,9 @@ The script uses rustdoc's unstable JSON output with `RUSTC_BOOTSTRAP=1` only for
 these documentation commands. It records the compiler identity, extractor hash,
 source/manifests/lockfile hashes and four package/feature profiles. It inventories
 exported paths, inherent public methods, public fields, variants, trait items and
-emitted hidden diagnostic APIs. Foreign glob reexports remain explicit references;
-their upstream bodies are not expanded into Fairing's owned surface.
+emitted hidden diagnostic APIs. Local and foreign glob reexports remain explicit
+references; the individual names they export are not expanded. Foreign item
+bodies are not expanded into Fairing's owned surface.
 
 Create a baseline checkout and compare using the **same extractor and compiler**:
 
@@ -32,10 +33,9 @@ python3 tools/api_surface.py --compare target/api-surface/baseline.json \
 
 The baseline checkout needs its ordinary Cargo/system inputs. The output reports
 added, removed and structurally changed declarations per profile. Review every
-removal/change against the decisions below and the migration guide. This tool
-reports changes; its exit status does not certify semantic-version compatibility.
-Private representation, auto traits, macro expansion in downstream crates,
-layout, behavioral and timing changes need separate review and consumer tests.
+removal/change against the decisions below and the migration guide. The report
+covers declaration structure. Review private representation, auto traits, downstream
+macro expansion, layout, behavior and timing through code review and consumer tests.
 Keep the report and build logs with the implementation PR's evidence.
 
 ## Decisions by integration surface
@@ -50,9 +50,9 @@ Keep the report and build logs with the implementation PR's evidence.
 | Session errors/declaration kind enums | Non-exhaustive; future failure and registration categories can be added without forcing exhaustive downstream matches |
 | Closed value models such as levels, clock formats, geometry and gesture decisions | Keep their existing representation and matching contract. Exhaustiveness is useful for these models; extending one requires explicit compatibility review |
 | Declaration builders and element traits | Supported application integration APIs. Applications retain permission vocabularies and callback bodies; registration and dispatch stay library-owned |
-| Ordinary `desktop_mut` | Trusted legacy customization, retained for grid/painter editing. Prefer `set_dock_placement`, existing wallpaper loading or typed declaration replacement for those operations |
-| Ordinary `status_bar_mut`, `nav_bar_mut` | Retained for live bar/spec customization. Replacing declarations through `add` remains the registration path; new operations must preserve layout/authorization invalidation |
-| Ordinary `metrics_spec_mut`, `services_mut`, `access_mut`, `osk_mut` | Retained trusted host controls for device metrics, backend ownership, legacy policy and keyboard integration. Their concrete types are explicit compatibility commitments, not protected callback grants |
+| Ordinary desktop mutation | Remove `desktop_mut`. Use named background, page, dock, legibility and painter operations; icon placement still uses declaration add/remove and `set_badge` |
+| Ordinary status/navigation mutation | Remove `status_bar_mut` and `nav_bar_mut`. Commit owned item specs/slot lists or use named presentation operations. Status writes invalidate derived placements; bar heights update metrics instead of temporary resolved fields |
+| Metrics, backends, access and keyboard mutation | Remove the four remaining component loans. Use owned metrics replacement, attached backend replacement, concrete `ServiceRequest`, policy/legacy-subject operations and keyboard operations. No edit closure receives the original component |
 | Registry store | Private implementation; external queries move to `ShellView` and no declaration store is borrowed |
 | Protected observation | `observe()` lends `ShellView` only. No mutable shell/component conversion, backend loan or extension-store access is exposed |
 | Hidden prompt/animation/gesture/notification diagnostics | Retain existing read-only signatures as supported test instrumentation; adding a feature gate would itself require migration. Future observers expose only the required values |
@@ -72,6 +72,34 @@ contracts. Preserve object safety when extending `HostedShell`, for example by
 constraining generic convenience methods to `Self: Sized`. Non-exhaustive structs
 also require `..` in downstream destructuring patterns. Existing field types,
 serialization semantics and implemented public traits remain compatibility commitments.
+
+## Individual decisions and consumer evidence
+
+[The decision ledger](api-decisions.json) indexes each compiler-exported canonical
+contract, including fields, variants and trait methods. Shared usage forms and
+rationales are stored once and referenced explicitly by each entry. Each entry records its
+retain/change/add/remove decision, current usage form, reason, replacement,
+compatibility impact, feature-dependent contract hashes and the explicit exported
+aliases captured by the inventory.
+The baseline is `217373f`. The [host migration decisions](host-api-decisions.md)
+explain the individual component operations and their consumers.
+
+Consumer-reference candidates in the ledger are literal identifier matches in
+repository tests, examples, assurance clients and the package consumer. They are
+review aids, not type resolution or evidence that every API has a test. The
+standalone package consumer is compiled and executed in minimal/default/all
+configurations; execution records remain separate from this design ledger.
+
+After generating a fresh compiler inventory, run:
+
+```sh
+python3 tools/api_decisions.py
+```
+
+This fails on missing/changed decisions, missing explicit aliases from the inventory or any of the
+seven removed mutable Shell loans, even if a ledger entry tries to approve one.
+To review a deliberate API change, regenerate with `--write --baseline <inventory>`
+and inspect the ledger diff; CI never updates the decisions automatically.
 
 ## Required evidence for future changes
 

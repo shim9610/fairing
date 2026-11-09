@@ -2,8 +2,8 @@
 //! argument parsing, installing a Hangul font, the screenshot tour driver (a synthetic finger
 //! included) and a PNG encoder written with std alone.
 //!
-//! Each example gives only its own **script** (a list of [`Act`]s) and its shell-building function,
-//! and takes the rest from here. This module is compiled whole into each example through `mod
+//! For a gallery tour, each example supplies its **script** (a list of [`Act`]s) and shell-building
+//! function to the shared driver. This module is compiled whole into each example through `mod
 //! common;`, so a different part of it is used by each — which is why `dead_code` is lifted for the
 //! whole file (this is not library code).
 #![allow(dead_code)]
@@ -41,23 +41,11 @@ pub fn init_logger() {
     let _ = log::set_logger(&LOGGER).map(|()| log::set_max_level(log::LevelFilter::Info));
 }
 
-/// Find a Hangul font installed on the device and load it.
+/// Bundled Noto Sans KR regular subset for the examples.
 ///
-/// The crate goes as far as finding the path ([`fairing::fonts::korean_font`]) — which font to load
-/// under which name is the app's, and rightly so. But **those ten lines of loading came out identical
-/// in every example** (`demo.rs` and `kiosk.rs`), so they were brought down here. It is not a hole in
-/// the crate's API but a share common to the examples.
-///
-/// Where none is found, or it cannot be read, the set is empty, egui's default fonts are used as they
-/// are and Hangul comes out as □ — **it warns and carries on.** The old `kiosk.rs` version swallowed
-/// that failure whole, so an unreadable font left nothing but □ for no stated reason.
-///
-/// It takes no arguments and reads `std::env::args()` directly — all three callers are in the middle
-/// of a shell builder, and there is no reason to carry `args` that far.
-/// The Korean face the examples carry — Noto Sans KR, cut to Hangul, Latin and the symbols a
-/// panel uses (`assets/fonts/README.md`), **built into the example binaries** so an example
-/// cannot draw tofu wherever it is run from: not the source tree, not a machine with a font of
-/// its own. 2.8 MB a weight is the price of a demo that cannot break.
+/// `korean_fonts` prefers a readable system Korean font and otherwise loads this
+/// embedded fallback. The subset coverage is documented in `assets/fonts/README.md`;
+/// `--no-font` selects egui defaults for diagnostic comparison.
 const BUNDLED_KO: &[u8] = include_bytes!("../../../../assets/fonts/NotoSansKR-Regular.ttf");
 /// Its bold, for [`fairing::fonts::FontFamilies::Strong`].
 const BUNDLED_KO_BOLD: &[u8] = include_bytes!("../../../../assets/fonts/NotoSansKR-Bold.ttf");
@@ -152,7 +140,7 @@ fn our_shots(ctx: &egui::Context) -> Vec<Arc<egui::ColorImage>> {
     })
 }
 
-fn ask_for_frame(ctx: &egui::Context, path: PathBuf) {
+pub fn ask_for_frame(ctx: &egui::Context, path: PathBuf) {
     let ready = ctx.clone();
     ctx.request_screenshot(move |image| {
         ready.data_mut(|d| {
@@ -165,21 +153,15 @@ fn ask_for_frame(ctx: &egui::Context, path: PathBuf) {
     });
 }
 
-fn frame_shots(ctx: &egui::Context) -> Vec<(PathBuf, Arc<egui::ColorImage>)> {
+pub fn frame_shots(ctx: &egui::Context) -> Vec<(PathBuf, Arc<egui::ColorImage>)> {
     ctx.data_mut(|d| {
         std::mem::take(d.get_temp_mut_or_default(egui::Id::unique("fairing.examples.frames")))
     })
 }
 
-/// Take **one frame** with no tour — for an example with a frame loop of its own.
-///
-/// [`run_tour`] asks for a "closure that builds the shell", and an example that holds the shell itself
-/// and does something different every frame — recording frame times, the replay loop, the graph, as
-/// `motion_lab` does — does not fit into it. So those examples sat there **with nobody able to see
-/// them**.
-///
-/// eframe's screenshot is N → N+2 (see `Tour`'s docs). Here there is only the one, so it is requested
-/// on frame `after` and written when the callback answers, then the window closes.
+/// Capture one frame from an example with its own frame loop.
+/// The screenshot is requested at frame `after`, written when the callback returns,
+/// and followed by a window-close request.
 pub struct OneShot {
     dir: PathBuf,
     name: &'static str,
@@ -308,10 +290,9 @@ pub enum Act {
     /// Until the animations and transitions finish (capped at [`SETTLE_MAX`] frames).
     Settle,
     /// Wait N frames — for the frames a shot or a check needs after a change, never for a
-    /// span of time (a frame is 1/60 s only under `--record`; [`Act::WaitMs`] is the time).
+    /// span of time (tour input advances at 60 Hz; [`Act::WaitMs`] states a duration).
     Wait(u32),
-    /// Wait this long **on the input clock** (`RawInput::time`: the wall clock, or the fixed
-    /// 60 Hz clock under `--record`) — for a long press to complete, a toast to time out, a
+    /// Wait this long **on the fixed 60 Hz tour input clock** (`RawInput::time`) — for a long press to complete, a toast to time out, a
     /// pause to register. A frame count stood in for these and a fast rasteriser ran it short.
     WaitMs(u32),
     /// Capture this frame.
@@ -410,7 +391,7 @@ pub enum Act {
     /// **Look at the frame, and fail the tour where it is not what the script expects.** A tour
     /// that only photographs cannot tell a right screen from a wrong one; this is where a script
     /// says what it should be looking at before it takes the picture. A miss is logged with what
-    /// was there, and the script goes on, so one run reports every miss.
+    /// was there, and the script continues to later steps.
     Expect(Expect),
     /// [`Act::Expect`] with patience: looked for on every frame until it holds, and failed once
     /// `frames` have passed without it. For what arrives after an animation the shell does not
@@ -419,18 +400,9 @@ pub enum Act {
     Until(Expect, u32),
 }
 
-/// **Where a finger goes** — named by what is there, never by a number on the window.
-///
-/// # Why there is no `(x, y)` form
-///
-/// There was one. A `Tap(90, 210)` on a rail entry was right for one row height; when the rows
-/// shrank it landed on the entry below, the screenshot showed the wrong page under the right
-/// file name, and nothing said so — a tap on nothing is silent, and a tour only took pictures.
-/// Four scripts carried some fifty such numbers, each right for the day it was written. So the
-/// vocabulary has no way to write one: a thing with a label is found by its label this frame
-/// ([`Spot::Text`], [`Spot::Near`]), a gesture starts at an edge of the glass ([`Spot::Edge`]) or
-/// at a share of the content area ([`Spot::Page`]), and every drag is a distance
-/// ([`Act::DragTo`]), never a distance. What cannot be found fails the tour.
+/// A tour target expressed as text, an edge location or a content-relative point.
+/// Drag steps resolve their destination at the beginning of the drag. A missing
+/// or ambiguous named target fails the tour step.
 #[derive(Debug, Clone, Copy)]
 pub enum Spot {
     /// The centre of the one text on the glass reading this. The label is matched whole against
@@ -467,8 +439,8 @@ pub enum Side {
     Right,
 }
 
-/// How far inside an edge of the glass an edge gesture is pressed (px). Within every edge zone
-/// (`metrics.edge_px` is 24 du and up), and clear of the window's own border.
+/// How far inside an edge of the glass a tour edge gesture is pressed (px).
+/// This inset avoids the window border with the examples' default edge zones.
 const EDGE_IN: f32 = 4.0;
 
 /// What an [`Act::Expect`] checks.
@@ -492,11 +464,10 @@ pub enum Expect {
     OskDown,
 }
 
-/// Every text painted this frame, with where on the glass — what [`Act::TapText`] and
-/// [`Expect::Text`] look through. The shell has drawn by the time the script runs in a frame, so
-/// this reads the frame being built. A text clipped away whole (scrolled out of its area) is left
-/// out: it is not on the glass, so a finger cannot land on it.
-fn drawn_texts(ctx: &egui::Context) -> Vec<(String, egui::Rect)> {
+/// Text-shape strings and clipped bounds from the frame being built, used by named
+/// tour targets and [`Expect::Text`]. Fully clipped shapes are omitted. This checks
+/// shape/clip intersection, not pixel visibility, contrast or occlusion by later layers.
+pub fn drawn_texts(ctx: &egui::Context) -> Vec<(String, egui::Rect)> {
     let mut layers = vec![egui::LayerId::background()];
     ctx.memory(|m| {
         for id in m.layer_ids() {
@@ -615,20 +586,17 @@ const PATTERN_STROKE: usize = 3;
 
 /// The egui plugin that attaches synthetic pointer events to **the next pass's `RawInput`**.
 ///
-/// `ctx.input_mut(|i| i.events.push(..))` will not do — egui 0.36.1 replaces `InputState::events`
-/// wholesale with `RawInput`'s on each pass (`begin_pass`), and refreshes the `pointer` state (the
-/// press, the position, the velocity) only from `RawInput` events at that moment. So they have to go
-/// in the same place the headless harness (`fairing::testing::Harness`) puts them, `RawInput.events`,
-/// for the gesture engine (`ctx.input().pointer`) to see them. The queue lives in `ctx.data`, so the
+/// Append events to `RawInput.events` before egui builds the pass's pointer state, as the
+/// headless harness (`fairing::testing::Harness`) does. Editing `InputState::events` afterwards
+/// would leave the pointer state used by the gesture engine out of sync with those events. The queue lives in `ctx.data`, so the
 /// plugin is an empty type (no lock types; the same frame as `crate::osk::inject`).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SyntheticInput;
 
-/// **`--record`'s clock.** Each frame is exactly [`RECORD_STEP`] after the one before, however long
-/// it took to draw, so every animation advances by the same step on every frame and a recording of
-/// it comes out smooth. The shell's time is the sum of egui's `stable_dt`, which follows
-/// `RawInput.time` while repaints are requested, so setting that time is all it takes. The clock
-/// starts from the real time it takes over at, so time never runs backwards.
+/// Fixed tour input clock.
+///
+/// Each input frame advances by `RECORD_STEP` regardless of wall-clock rendering
+/// time. The clock starts from the current input time to avoid moving backward.
 #[derive(Debug, Default, Clone, Copy)]
 struct VirtualClock {
     on: bool,
@@ -671,6 +639,13 @@ impl SyntheticInput {
         }
         ctx.add_plugin(Self);
         ctx.data_mut(|d| d.insert_temp(installed, true));
+    }
+
+    /// Install tour input with the same fixed clock for stills and recordings.
+    /// Renderer speed must not change gesture velocity or timer durations.
+    pub fn install_tour(ctx: &egui::Context) {
+        Self::install(ctx);
+        Self::start_clock(ctx);
     }
 
     /// Put one event into the next pass.
@@ -722,12 +697,8 @@ impl egui::Plugin for SyntheticInput {
     }
 
     fn input_hook(&mut self, ctx: &egui::Context, input: &mut RawInput) {
-        // **Pin the window as focused.** The tour runs on Xvfb with no window manager, where winit
-        // never once sends `Focused(true)`. egui draws the caret and the IME composition underline only
-        // while `input.focused` is true (`viewport_has_focus` in `text_edit/builder.rs`), so without
-        // turning this on the caret and the composition marking drop out of the text-field pictures
-        // entirely — what is visible on a real device would be missing from the documentation images
-        // alone.
+        // Pin input focus for Xvfb tours without a window manager, so egui includes
+        // the caret and IME composition marking in text-field screenshots.
         input.focused = true;
         ctx.data_mut(|d| {
             let clock: &mut VirtualClock = d.get_temp_mut_or_default(Self::clock_id());
@@ -857,7 +828,7 @@ pub type BuildApp<S> = Box<dyn FnOnce(&egui::Context) -> fairing::Result<(fairin
 ///
 /// **A tour is a check as well as a camera.** A step that could not do what the script asked —
 /// a label that is not on the glass, an [`Act::Expect`] that does not hold, a shot that could not
-/// be written — is logged as an error, the script goes on so one run lists every miss, and the
+/// be written — is logged as an error, the script continues to later steps, and the
 /// run ends in `Err`. The examples return it from `main`, so a tour that went wrong exits
 /// non-zero, and `tools/tours.sh` and CI fail on it.
 ///
@@ -942,10 +913,7 @@ impl<S: std::any::Any> Tour<S> {
     /// The first frame: pin the DPI to 1.0 and build the shell. On a failure it closes the window.
     fn start(&mut self, ctx: &egui::Context) -> bool {
         ctx.set_pixels_per_point(1.0);
-        SyntheticInput::install(ctx);
-        if self.film.is_some() {
-            SyntheticInput::start_clock(ctx);
-        }
+        SyntheticInput::install_tour(ctx);
         let Some(build) = self.build.take() else {
             return false;
         };
@@ -1243,10 +1211,19 @@ impl<S: std::any::Any> Tour<S> {
                 );
             }),
             Act::Osk(name) => {
-                if let Some(layout) = fairing::osk::OskLayout::parse(name, true, false) {
-                    self.with_shell(|shell| shell.osk_mut().set_layout(layout))
-                } else {
-                    self.fail(&format!("Act::Osk({name:?}) - unknown layout"));
+                #[cfg(feature = "osk")]
+                {
+                    if let Some(layout) = fairing::osk::OskLayout::parse(name, true, false) {
+                        self.with_shell(|shell| shell.set_osk_layout(layout))
+                    } else {
+                        self.fail(&format!("Act::Osk({name:?}) - unknown layout"));
+                        self.next_step();
+                        Flow::Next
+                    }
+                }
+                #[cfg(not(feature = "osk"))]
+                {
+                    self.fail(&format!("Act::Osk({name:?}) requires the osk feature"));
                     self.next_step();
                     Flow::Next
                 }
@@ -1267,7 +1244,7 @@ impl<S: std::any::Any> Tour<S> {
     }
 
     /// A step that could not do what the script asked: logged, and the run exits non-zero at
-    /// the end. The script goes on, so one run lists every miss.
+    /// the end. The script continues to later steps.
     fn fail(&mut self, what: &str) {
         log::error!("{what}");
         self.failed.set(true);
@@ -1586,7 +1563,8 @@ impl<S: std::any::Any> Tour<S> {
     }
 
     /// [`Act::Key`]: find the OSK key by label, press it, and release it on the next frame. Where the
-    /// label cannot be found it fails the tour and moves on, so one run lists every miss.
+    /// label cannot be found it records a failure and continues to later steps.
+    #[cfg(feature = "osk")]
     fn key_step(&mut self, ctx: &egui::Context, label: &'static str) -> Flow {
         let Some(rect) = self.shell.as_ref().and_then(|s| s.osk().key_rect(label)) else {
             self.fail(&format!(
@@ -1603,6 +1581,13 @@ impl<S: std::any::Any> Tour<S> {
         SyntheticInput::release(ctx, self.finger);
         self.next_step();
         Flow::Wait
+    }
+
+    #[cfg(not(feature = "osk"))]
+    fn key_step(&mut self, _ctx: &egui::Context, label: &str) -> Flow {
+        self.fail(&format!("Act::Key({label:?}) requires the osk feature"));
+        self.next_step();
+        Flow::Next
     }
 
     /// [`Act::DragTo`]: move to the next point along the line each frame. On the frame it reaches
@@ -1789,9 +1774,9 @@ pub fn write_png(path: &Path, image: &egui::ColorImage) -> std::io::Result<usize
 
 /// The decoder an integrator wires into `ShellBuilder::image_loader` (guide 09 §1).
 ///
-/// **The crate does not decode images.** This function sitting among the examples is the evidence —
-/// `image` is a dev-dependency of `fairing` and never enters an integrator's tree, and an integrator
-/// writes these ten lines into their own code with the decoder they chose.
+/// Fairing delegates image decoding to this callback. `image` is a dev-dependency used by these
+/// examples; depending on the Fairing library does not add that dev-dependency to a consumer's tree.
+/// An integrator provides a callback using their chosen decoder.
 ///
 /// Wired up, one config line changes the wallpaper:
 ///
@@ -1849,10 +1834,7 @@ pub fn decode_texture(
     Ok(ctx.load_texture(name, image, egui::TextureOptions::LINEAR))
 }
 
-/// **The crate's own wallpaper**, picked for the panel's aspect — shared by `demo` and `console`.
-///
-/// It lived in `demo` and the console example needed the same five plates and the same light/dark
-/// pairing, which is the point at which a copy stops being cheaper than a move.
+/// Example wallpaper selection by panel aspect, shared by demo and console.
 type WallpaperPlate = (f32, &'static [u8], Option<&'static [u8]>);
 
 const WALLPAPERS: &[WallpaperPlate] = &[
@@ -1887,8 +1869,8 @@ const WALLPAPERS: &[WallpaperPlate] = &[
 
 /// The wallpaper for a screen's aspect ratio. The table is in ascending order of the aspect ratio's **upper bound**.
 fn wallpaper_for(aspect: f32) -> (&'static [u8], Option<&'static [u8]>) {
-    // The last row is `INFINITY`, so `find` always matches, but in case the table is ever edited it
-    // falls back to the portrait plate — better than choosing none.
+    // The final `INFINITY` bound covers finite aspect ratios. Fall back to the portrait
+    // plate if no row matches, including a NaN input.
     let fallback = WALLPAPERS
         .first()
         .map_or((&[][..], None), |(_, dark, light)| (*dark, *light));
@@ -1898,11 +1880,9 @@ fn wallpaper_for(aspect: f32) -> (&'static [u8], Option<&'static [u8]>) {
         .map_or(fallback, |(_, dark, light)| (*dark, *light))
 }
 
-/// Upload the default wallpaper as a texture. The shell comes up even on a failure — a demo failing
-/// to start over one wallpaper would be awkward (the same rule as guide 09 §1.2).
-///
-/// Given `--wallpaper=`, this is skipped — not because the config is stronger than the code, but
-/// because that argument exists **to try a different wallpaper**.
+/// Upload the default wallpaper texture. On a reported decode/upload error this
+/// helper logs the failure and leaves the existing wallpaper in place.
+/// `--wallpaper=` skips this helper so the supplied selection can be used.
 pub fn brand_wallpaper(ctx: &egui::Context) -> Option<fairing::desktop::Wallpaper> {
     // A tour given `--size=WxH` goes by that size; a run without it, by the window's. Where there is
     // no window yet (before the first frame) it assumes landscape — the first repaint sets it right.
@@ -1923,9 +1903,8 @@ pub fn brand_wallpaper(ctx: &egui::Context) -> Option<fairing::desktop::Wallpape
             return None;
         }
     };
-    // **The light half.** Without it the shell would keep this dark painting under its light
-    // palette. A plate with no light twin pairs with the flat background instead, which
-    // is honest: better a plain page than a night picture at noon.
+    // Pair a dark asset with its light version when available. Otherwise use the
+    // flat background for the light palette.
     let light = light_bytes
         .and_then(
             |bytes| match decode_texture(ctx, bytes, "fairing.brand.wallpaper.light") {

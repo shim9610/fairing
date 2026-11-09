@@ -1,10 +1,8 @@
-//! The ribbon mesh. It fills the space between two boundary curves with a strip and
-//! puts an alpha-0 feather only on the edges that meet the background.
+//! Mesh helpers for authored paired boundary curves.
 //!
-//! **Why a strip.** `epaint`'s convex fill is a triangle fan from point 0, so it cannot draw a
-//! concave silhouette. Sampling both curves N times at the same `t` and making a quad out of
-//! each neighbouring pair keeps the triangles right however concave the outline gets. This is an
-//! authored strip, not runtime triangulation.
+//! Matching samples form a strip between the boundaries, with alpha-zero feathering
+//! on edges that meet the background. Callers must provide curves whose paired
+//! samples define the intended strip; arbitrary concave outlines are not triangulated.
 
 // This is procedural geometry. The names in this file use the brand design's formula notation as it stands —
 // `s` (the object unit) · `w`/`h` (the screen) · `t` (a curve parameter) · `u`/`v` (screen fractions) ·
@@ -113,8 +111,8 @@ pub(super) fn strip(mesh: &mut Mesh, a: &[Pos2], b: &[Pos2], ca: Color32, cb: Co
 
 /// Put an alpha-0 band outside a closed outline. `width_pt` is a width in **logical points**.
 ///
-/// Outward is the normal of the tangent through each point's two neighbours, and whichever way
-/// the polygon winds, the **sign of its area** decides, so it always faces out.
+/// Estimate each normal from the tangent through its two neighbours, using the signed area
+/// to select its orientation. A degenerate tangent produces a zero-width band at that point.
 pub(super) fn feather(mesh: &mut Mesh, outline: &[Pos2], inner: Color32, width_pt: f32) {
     if outline.len() < 3 || width_pt <= 0.0 {
         return;

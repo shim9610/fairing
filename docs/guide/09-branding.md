@@ -1,9 +1,18 @@
 # 09. Product branding — giving the shell your machine's character
 
-This page collects, in one place, what a manufacturer touches and what they have to prepare in
-order to make a product look like their own. The optional Abyss styling (the manta and
-the abyss) can be changed — override one colour, or replace the background, the mark and the icons
-outright, all without patching the crate.
+Fonts and images use egui's [font configuration](https://docs.rs/egui/0.37.0/egui/struct.FontDefinitions.html)
+and [texture API](https://docs.rs/egui/0.37.0/egui/struct.Context.html#method.load_texture).
+Fairing adds installation helpers and theme/branding hooks; image decoding and
+asset selection belong to the application.
+
+Customize colours, fonts, backgrounds, marks and icons through configuration and
+builder hooks. The optional Abyss manta and background can also be replaced.
+
+The global painter, procedural wallpaper and image-loader hooks below describe
+ordinary `Shell` customization. Protected construction rejects untyped hooks;
+use themes/fonts and permission-bound UI elements for protected integration.
+See [security architecture](../security-architecture.md#2-construction-and-registration)
+for that boundary.
 
 Read first: [04 Customization](04-customization.md) (theme injection, painter hooks) and
 [07 Config reference](07-config-reference.md) (the TOML keys).
@@ -23,13 +32,13 @@ Choose the hook that matches the part of the product you want to change.
 | "Settings menus in our colours and layout" | `settings::add_all` + `SettingsConfig` (§8.3) | none |
 | "Our whole colour system" | The `[theme.palette]` roles, or `ShellBuilder::palettes(dark, light)` | none |
 | "Our typeface" | `ShellBuilder::fonts` (§3) — the crate carries no fonts | none |
-| "Change the feel of the layout" | `set_dock_placement` — a left rail, a floating band across the screen (§6.3) | none |
+| "Change the feel of the layout" | `set_dock_placement` — a vertical dock or a floating band across the desktop (§6.3) | none |
 | "Our own status bar and nav bar" | `ShellBuilder::status_bar_painter` / `nav_bar_painter` (§6.2) | none |
 | "Our photo or artwork as the background" | The `image_loader` hook + `[desktop] wallpaper = "file:…"` (§1) | yes (§2) |
 | "Our own procedural background art" | `Wallpaper::ThemedPainter` | none |
 | "Our icon set" | `register_icon_painter`, or replacing the SVGs (§4) | SVGs or reference art for the chosen route |
 | "Our logo mark" | Register a custom mesh painter (§5) | Reference art for authoring |
-| "No trace of the crate's brand at all" | Keep the `Base` preset (§8) | none |
+| "Neutral preset without the Abyss artwork" | Use the `Base` preset (§8) | none |
 
 Colour, typography and layout changes use configuration and code. Prepare image
 assets or reference art for the routes identified in the last column.
@@ -37,7 +46,9 @@ assets or reference art for the routes identified in the last column.
 > **Why the last row is "do nothing".** The default config has no brand in it. `[theme] preset`
 > is `"base"` (neutral) and `[desktop] wallpaper` is `"background"` (a flat colour). The manta
 > and the abyss are both **opt-in**, so writing nothing installs nothing. To drop them from the
-> build as well, turn the `brand` feature off with `--no-default-features`.
+> build as well, set `default-features = false` on the consuming `fairing` dependency and
+> explicitly enable the remaining features you need (§8.4). A consuming package's
+> `--no-default-features` does not itself disable dependency defaults.
 
 ---
 
@@ -47,13 +58,13 @@ assets or reference art for the routes identified in the last column.
 
 `fairing` delegates wallpaper decoding to the application's loader. It does not read
 PNG, JPEG or WebP for you — which codec fits depends on the machine (software `image`,
-`zune-image`, a hardware decoder …), and picking one in the crate makes every machine that does
-not want it pay for it.
+`zune-image`, a hardware decoder …). The application chooses the codec and its
+dependency, memory and decoding policy.
 
 **Instead there is a socket.** Register one function with [`ShellBuilder::image_loader`] and the
 config file takes it from there.
 
-### 1.1 The loader — ten lines
+### 1.1 Registering the loader
 
 ```rust,ignore
 // Your Cargo.toml. image, zune-image, stb — your choice.
@@ -78,7 +89,7 @@ let shell = fairing::Shell::builder(config)
 
 This is a dependency of **your binary**, not of `fairing` — it does not go through the crate's
 audit gate. The demo carries the same function (`image_loader` in `examples/common/mod.rs`), so
-copying it is fine.
+use it as a starting point and apply the loader limits described in §1.5.
 
 ### 1.2 After that, one config line
 
@@ -93,8 +104,9 @@ wallpaper_fit = "cover"     # cover (default) · contain · stretch
 ```
 
 It is read **once**, when the shell is built. On failure it logs the error and falls back to the
-`background` role colour — **one missing image never stops the machine from booting.** With no
-loader installed it logs a warning and takes the same fallback.
+`background` role colour. With no loader installed it logs a warning and uses the
+same fallback. This handles a reported wallpaper-load error; the application
+loader and the rest of device startup remain application responsibilities.
 
 Swapping at runtime (a shop owner picking a photo in a settings screen) is one line too:
 
@@ -118,14 +130,15 @@ texture, you do not need the loader:
 use fairing::desktop::{Fit, Wallpaper};
 
 let texture = ctx.load_texture("bg", decode(BG), opts);   // BG = include_bytes!("../art/bg.webp")
-shell.desktop_mut().set_wallpaper(Wallpaper::owned(texture, Fit::Cover));
+shell.set_wallpaper(Wallpaper::owned(texture, Fit::Cover));
 # }
 ```
 
-### 1.4 The most common way to get a black background
+### 1.4 Texture-handle lifetime
 
-`impl Drop for TextureHandle` frees the texture (epaint `texture_handle.rs`). Keep the handle in
-a local and pass only its `id()`, and **the texture disappears when the function returns.**
+egui/epaint releases a managed texture when its last `TextureHandle` is dropped.
+Passing an ID does not retain its handle; use `Wallpaper::owned` or retain a handle
+in application state.
 
 ```rust
 # use fairing::desktop::{Fit, Wallpaper};
@@ -133,46 +146,48 @@ a local and pass only its `id()`, and **the texture disappears when the function
 # let (name, opts) = ("bg", egui::TextureOptions::LINEAR);
 # let color = egui::ColorImage::filled([1, 1], egui::Color32::BLACK);
 # let source_size = egui::vec2(1.0, 1.0);
-// ✗ Wrong. `handle` dies here and the background comes out black.
-let handle = ctx.load_texture(name, color, opts);
-let bad = Wallpaper::TextureFit { id: handle.id(), source_size, fit: Fit::Cover };
+// ✗ The last handle is dropped at this block boundary; `bad` retains a released id.
+let bad = {
+    let handle = ctx.load_texture(name, color.clone(), opts);
+    Wallpaper::TextureFit { id: handle.id(), source_size, fit: Fit::Cover }
+};
 
-// ✓ The wallpaper holds the handle.
+// ✓ This independent texture stays owned by the wallpaper.
+let handle = ctx.load_texture(name, color, opts);
 let good = Wallpaper::owned(handle, Fit::Cover);
 # (bad, good) }
 ```
 
 `Wallpaper::owned` also reads the source size **once, at construction**, and caches it.
 `TextureHandle::size()` takes the texture manager's lock, so calling it in the paint loop
-breaks the crate's no-locks rule ([architecture §5](../architecture.md#5-threads)); the constructor does that one call for you.
+adds synchronization to that path. The constructor reads it once rather than
+repeating the lookup during painting ([architecture §5](../architecture.md#5-threads)).
 
 `Wallpaper::TextureFit` is the branch left for integrators who **manage textures themselves**
 (atlases, streaming). Otherwise use `Wallpaper::owned`.
 
 ### 1.5 Things to be careful about in a loader
 
-> **Decoding happens synchronously on the UI thread.** A 4 MPx image is tens of milliseconds, so
-> call it outside the frame budget: while building the shell, or before a screen transition.
-> **Never per frame** — hold on to the `Wallpaper::Owned` you built once.
+> **The loader is synchronous.** Its work runs on the calling UI thread. Decode
+> during setup or another deliberate loading step and retain the resulting
+> `Wallpaper::Owned`; measure the chosen decoder on the target hardware.
 
-> **Guard against decompression bombs.** A 100 KB PNG that expands to 30000 × 30000 is 3.6 GB of
-> RGBA and kills the machine. Read the size from the header first and return an error above your
-> limit (`image` reads headers only with `ImageReader::into_dimensions()`). 8K is 33 MPx, so
-> somewhere around there is a sane ceiling.
+> **Bound decoded image storage.** A 30000 × 30000 RGBA image requires about
+> 3.6 GB before decoder overhead. Read dimensions first, check width, height and
+> decoded-byte limits, and reject images above the product's budget. For `image`,
+> `ImageReader::into_dimensions()` reads the dimensions without full decoding.
 
-> **4096 px per side.** Embedded GPUs commonly cap textures at 4096 or 8192, and above that the
-> upload fails **silently** and the background comes out black. A warning in the loader makes
-> that much easier to diagnose later.
+> **Check texture limits.** Constrain dimensions to the limits of the selected
+> egui host and graphics backend. Report an unsupported image size from the loader
+> rather than relying on the upload failure's visual result.
 
-> **Match the egui version.** The loader is the **only** place where you touch egui types
-> (`ColorImage`, `TextureHandle`) directly. If the egui in your `Cargo.toml` is a different minor
-> from the one `fairing` uses, two copies of egui get linked, the types stop matching and the build
-> breaks. Ask for the same minor with `egui = "0.37"` ([01 Getting started](01-getting-started.md)).
+> **Match the egui version.** The loader uses egui types such as `ColorImage` and
+> `TextureHandle`, as do other UI extension points. Use `fairing::egui`, or select
+> the matching egui version for a direct dependency ([01 Getting started](01-getting-started.md)).
 
-> **There are no mipmaps.** `TextureOptions::LINEAR` means `mipmap_mode: None`. Putting a
-> 2560×1440 image on an 800×480 panel is a 3.2× downscale with no mipmaps, so it **shimmers even
-> on a still screen** — most visibly on exactly the quiet low-contrast gradients §2.2 asks for.
-> On the glow backend, upload with
+> **Choose texture filtering for the displayed size.** `TextureOptions::LINEAR`
+> leaves `mipmap_mode` unset. Strong minification can alias detailed source images.
+> On the glow backend, mipmaps can be requested with
 > `TextureOptions { mipmap_mode: Some(egui::TextureFilter::Linear), ..Default::default() }`, or
 > prepare an image closer to the panel's size.
 
@@ -184,27 +199,26 @@ breaks the crate's no-locks rule ([architecture §5](../architecture.md#5-thread
 
 ### 2.1 How many do you prepare?
 
-**This crate assumes there is no fixed screen size.** Try to cover every panel with one image and
-something will be squashed or cropped somewhere. Pick one of two strategies.
+Prepare assets for the supported content rectangles. A shared image can be
+cropped with `Cover` or letterboxed with `Contain`; separate aspect-ratio variants
+can preserve different compositions.
 
-**Strategy A — one image with `Fit::Cover` (recommended; most people stop here)**
+**Strategy A — one image with `Fit::Cover`**
 
-Make **one generous image** at the most common panel ratio (1.6–1.8 landscape) and accept the
-cropping.
+For a landscape product, the following sizes are possible starting assets. Check
+the crop against each supported content rectangle.
 
 | Item | Spec |
 |---|---|
 | Size | **2560×1440** (16:9) or **2400×1600** (3:2) |
-| Safe area | Everything that matters inside the middle **75 %** (see the note) |
+| Composition margin | Keep important content within the middle 75 % as a starting layout, then verify the actual crop |
 | Format | PNG or WebP. No alpha needed |
-| Colour space | **sRGB** (gamma 2.2). Deliver Display P3 and the saturation will be off |
+| Colour space | sRGB; convert other source colour spaces to the colour space expected by the texture upload |
 
 > **Cropping is computed against the content ratio, not the panel ratio.** The background is
-> drawn into the **content rect** — the screen minus the status bar and nav bar — not the whole
-> screen. On a 1920×1080 panel the two bars take about a tenth of the height between them (their
-> sizes follow the finger and the panel's density), so the content is wider in ratio than the
-> panel — about 1.93 against 1.78 — and a 2560×1440 source (ratio 1.778) loses **another 4 %**
-> off the top and bottom. That is why the safe area is 75 % and not 80 %.
+> drawn into the **content rect**, after the current chrome policy reserves bar space,
+> not necessarily the whole screen. Bar dimensions, chrome policy and panel metadata change the resulting
+> content ratio. Verify the crop with the supported chrome and panel configurations.
 
 **Strategy B — one per ratio (when you ship instrument panels and portrait panels together)**
 
@@ -220,24 +234,23 @@ repository (`assets/brand/`) is:
 | 0.56 | 940×1672 | Portrait panels |
 
 Pick **whichever is closest to the real panel ratio**; it does not have to match exactly, since
-`TextureFit` preserves the aspect.
+`Cover` and `Contain` preserve the source aspect (`Stretch` does not).
 
 ### 2.2 What a background has to do — legibility
 
-A background cannot only be pretty. **Icon labels sit on top of it with no shadow.**
+Desktop icon labels are drawn over the background without a shadow by default.
 
 > **The shell does not lay a veil over a raster background — not by default.** The legibility
 > veil is baked **into the mesh** by `brand::abyss` (`fn veil` in `brand/abyss.rs`) and exists
 > only when `wallpaper = "abyss"`. A texture background is a single `painter.image(..)` —
-> **the artwork itself is responsible for legibility.** §2.2a is the escape hatch for when you
-> cannot change the artwork.
+> choose the image and overlaid colours together. §2.2a describes optional label
+> treatments.
 
 #### 2.2a When you cannot change the artwork — `label_legibility`
 
-Photo and artwork backgrounds routinely put a bright area right where the icon grid is. The
-manta reference art does exactly that — **the white belly crosses the middle of the grid** and
-swallows that row's labels and white-stroke icons. Redrawing the background is the real answer,
-but for integrators who cannot, there are two prescriptions.
+Bright image regions can reduce the contrast of overlaid labels and icons.
+Change the artwork or select a label-legibility treatment, then inspect the
+composited result. The reference manta's pale belly is one such region.
 
 ```toml
 [desktop]
@@ -247,8 +260,8 @@ label_legibility = "shadow"   # none (default) · shadow · veil
 | Value | What it does | When |
 |---|---|---|
 | `none` | Nothing | **Default.** Flat, gradient, or deliberately dark artwork |
-| `shadow` | One dark copy behind labels and icons | **Photo and artwork backgrounds.** Saves the text without flattening the picture |
-| `veil` | A translucent `scrim` sheet over the whole content | When the background is bright everywhere. Certain, but it lays the picture down |
+| `shadow` | One dark copy behind labels and icons | Photo and artwork backgrounds where a local dark outline improves contrast |
+| `veil` | A translucent `scrim` sheet over the whole content | Bright backgrounds where a full-content tint is preferable; check resulting contrast |
 
 Change it along with the background at runtime — `Shadow` when switching to a photo, `None` when
 going back to a flat colour:
@@ -260,34 +273,32 @@ going back to a flat colour:
 use fairing::desktop::LabelLegibility;
 
 shell.load_wallpaper(ctx, path, Fit::Cover)?;
-shell.desktop_mut().set_legibility(LabelLegibility::Shadow);
+shell.set_desktop_legibility(LabelLegibility::Shadow);
 # Ok(()) }
 ```
 
-> **`shadow` is not a cure-all either.** egui has no blur, so it approximates with a dark copy
-> offset by one step; with extreme background contrast (a white icon on a white ground) it is
-> still not enough. Then either fix the artwork or use `veil`. Either way, confirm it with the
-> capture review in §9.2.
+> Fairing's `shadow` treatment draws an offset dark copy rather than a blurred
+> shadow. It does not ensure contrast for every image/label pair. Inspect the
+> composited result as described in §9.2.
 
-**Only three things actually sit on the background.** The status bar and the nav bar do **not** —
-the shell draws the background into the `content` rect with those two removed, and the
-status bar lays down its own opaque `Surface`. Effort spent keeping the top of the image clear is
-wasted unless the screen uses `BarMode::Overlay`.
+The main desktop elements over the wallpaper are listed below. With ordinary
+shown bars, the background is drawn into `content`, and the bars draw their own
+surfaces. `BarMode::Overlay` changes that relationship for the status bar.
 
 | What sits on the background | Where | What the background owes it |
 |---|---|---|
-| **The icon grid and its labels** | Most of the content's middle | Dark and low contrast (luminance 60 or below, for dark themes). Labels get no shadow and no plate by default (§2.2a) |
-| **Dock labels** | The bottom `dock_height` of the content (96 du by default) | A bright band here kills the dock labels outright |
-| **The page indicator** | `page_indicator_height` (24 du) above the dock. **Only with two or more pages** | Tiny dots; without contrast they vanish |
+| **The icon grid and its labels** | Most of the content's middle | Check contrast with the rendered labels in each supported theme. Labels get no shadow or plate by default (§2.2a) |
+| **Dock labels** | The dock band, at its configured edge or floating position | Check the composited label/background contrast in that band |
+| **The page indicator** | `page_indicator_height` (24 du) above the dock. Only with two or more pages | Check selected and unselected dot contrast |
 
 | Rule | Why |
 |---|---|
-| Push bright areas into the **top 25 % of the content** | There is slack above the first icon row. The bottom is taken by the dock |
-| Contrast between the label colour (`on_surface`) and the background **at least 4.5:1** | The accessibility floor. Confirm it with the review in §9 |
-| Never put text, logos or watermarks **inside the image** | They get cropped, rotated, and never translated |
+| Keep bright details clear of icon and dock labels | Inspect their actual configured rectangles; no fixed top percentage is reserved for wallpaper artwork |
+| Check label/background contrast against the product's text requirements | 4.5:1 is the WCAG normal-text criterion; size, content and the rendered background also matter (§9) |
+| Keep text and logos outside the wallpaper when they need stable placement or runtime translation | Cropping and rotation affect embedded artwork; the translation table does not translate image pixels |
 
-If you are shipping a light theme too, make **a separate bright image**. Dark labels on a dark
-background cannot be rescued by any veil.
+For a light theme, consider a separate light image or an adjusted veil. Check
+contrast with the dark label colours actually rendered.
 
 ### 2.3 The code
 
@@ -318,27 +329,30 @@ Directly, without a loader:
 use fairing::desktop::{Fit, Wallpaper};
 
 let texture = ctx.load_texture("bg", my_decode(BYTES), egui::TextureOptions::LINEAR);
-shell.desktop_mut().set_wallpaper(Wallpaper::owned(texture, Fit::Cover));
+shell.set_wallpaper(Wallpaper::owned(texture, Fit::Cover));
 # }
 ```
 
 | `Fit` | Behaviour | When |
 |---|---|---|
-| `Cover` | Fills the short side and **crops** the long one | Default. Photo and artwork backgrounds |
+| `Cover` | Fills the destination, cropping source area as needed to match its aspect ratio | Default. Photo and artwork backgrounds |
 | `Contain` | Fits it all in; the remainder is the `background` role colour | Drawings and logos that must not be cropped |
-| `Stretch` | Stretches (the same as `Wallpaper::Texture`) | Only when the source already has that ratio |
+| `Stretch` | Stretches (the same as `Wallpaper::Texture`) | When distortion is acceptable; matching the source and destination ratios avoids it |
 
 The config string is read by `Fit::parse` — `"cover"` · `"contain"` · `"stretch"`,
 case-insensitive. An unknown name warns and falls back to `cover`.
 
 > `Wallpaper::Texture { id }` and `Wallpaper::TextureFit { .. }` still exist. The first pins UV
-> to `0..1` and **stretches**; the second keeps the aspect but **does not hold the texture**
+> to `0..1` and **stretches**; the second uses its `Fit` argument but **does not hold the texture**
 > (§1.4). Unless you manage an atlas yourself, use `Wallpaper::owned`.
 
-### 2.4 When the background has to follow the theme — a painter, not a raster
+### 2.4 Theme-responsive backgrounds
 
-If the machine switches dark and light, or the background has to follow `[theme.palette]`
-overrides, a raster cannot do it. Use `ThemedPainter`.
+Use `Wallpaper::themed(dark, light)` to switch between paired image backgrounds.
+Each branch must be a non-`Themed` wallpaper: selecting a nested pair logs a warning
+and omits that wallpaper drawing.
+Use `ThemedPainter` when drawing should respond to the current palette or other
+theme values, including `[theme.palette]` overrides.
 
 ```rust
 # fn my_art(_painter: &egui::Painter, _rect: egui::Rect, _palette: &fairing::theme::Palette) {}
@@ -346,7 +360,7 @@ overrides, a raster cannot do it. Use `ThemedPainter`.
 use fairing::{ColorRole, Theme};
 use fairing::desktop::Wallpaper;
 
-shell.desktop_mut().set_wallpaper(Wallpaper::ThemedPainter(Box::new(
+shell.set_wallpaper(Wallpaper::ThemedPainter(Box::new(
     |painter: &egui::Painter, rect: egui::Rect, theme: &Theme| {
         // Do not capture colours — **read them from `theme` every frame** so they follow.
         painter.rect_filled(rect, 0.0, theme.color(ColorRole::Background));
@@ -356,23 +370,23 @@ shell.desktop_mut().set_wallpaper(Wallpaper::ThemedPainter(Box::new(
 # }
 ```
 
-**Do not allocate inside the callback.** It runs every frame. Put heavy work in a `RefCell`
-cache and re-bake only when the size or the colours change — `brand::Abyss` is the worked
-example (one mesh, one draw call, zero rebakes at rest).
+The callback runs when that wallpaper is drawn. Cache costly geometry where appropriate and
+rebuild it when its inputs change. `brand::Abyss` is an example of a cached mesh;
+the graphics host determines the resulting GPU draw calls.
 
-> **A naive cache key blows up on a theme switch.** `Shell::set_theme_dark` runs a 200 ms
-> crossfade and writes **a different palette every frame** into `theme.palette` — a cache keyed
-> on colour misses twelve frames in a row and re-bakes on each one. `Abyss` blocks this with two
-> devices, and your painter needs both.
+> During the 200 ms theme crossfade, `theme.palette` can change on each UI pass.
+> A cache keyed on the current colours can therefore rebuild repeatedly. `Abyss`
+> uses the following policies to limit those rebuilds; adapt them to the painter's
+> actual inputs and cost.
 >
 > | Device | What it does |
 > |---|---|
-> | `Abyss::tick_freeze` | When `theme.dark` flips, it **freezes** rebaking for the crossfade's duration and bakes exactly once on the frame it ends |
+> | `Abyss::tick_freeze` | On a dark/light change, defers rebaking with a paint-call countdown estimated from `theme_fade` duration. Changed inputs can rebuild after that countdown; this is not elapsed-time synchronization |
 > | `BakeKey` quantisation | Rounds the rect to **4 device px** and `pixels_per_point` to **1/64**, so a resize does not bake once per pixel |
 
 ---
 
-## 3. Type — half of branding, and the crate carries no fonts
+## 3. Type — font installation
 
 **There are no fonts in the crate.** egui's `default_fonts` has no CJK glyphs, so Korean, Chinese
 and Japanese come out as **□**. If you use those locales, injecting a typeface is not optional.
@@ -397,17 +411,18 @@ let shell = fairing::Shell::builder(config).fonts(fonts).build(ctx)?;
 | Item | Spec |
 |---|---|
 | Format | TrueType `.ttf` · OpenType `.otf` · collections `.ttc` (a face index can be given) |
-| Coverage | Check the glyphs for your locales are actually in there. For Korean, **the 2,350 characters of KS X 1001 are not enough** — the full 11,172 precomposed syllables are recommended |
-| Size | Subset before embedding. A full CJK font is 5–20 MB each |
-| Priority | `FontPriority` orders the families. Product typeface for Latin, system font for CJK is a common combination |
-| Licence | **A webfont licence does not cover embedded distribution.** Check that redistribution in a binary is allowed (OFL usually is) |
+| Coverage | Include the glyphs used by the UI. For arbitrary modern Korean input, the 11,172 precomposed Hangul syllables provide broader coverage than the 2,350-character KS X 1001 subset |
+| Size | Measure the chosen font files and subset where appropriate; size depends on coverage, format and included faces |
+| Priority | `FontPriority` sets a face's position within its selected families. Product typeface for Latin, system font for CJK is a common combination |
+| Licence | Check that the font licence permits the chosen binary/device distribution; web-use permission alone may not cover it |
 
-> **`set_fonts` is expensive.** It throws away the glyph atlas and the galley cache.
-> `ShellBuilder::fonts` installs it **once at startup**; never call it in the frame loop.
+> Changing egui font definitions can rebuild the glyph atlas and layout caches.
+> `ShellBuilder::fonts` installs them during setup; avoid reinstalling the same
+> definitions every frame.
 
-> **Changing the typeface moves the metrics.** Row height is the maximum across the **whole**
-> font family list, so adding a CJK fallback thickens label rows. Re-run the capture review in §9
-> after installing a typeface.
+> **Changing the typeface can change text layout.** Glyph metrics, fallback selection and
+> wrapping can alter the space labels need. Re-run the capture review in §9 after installing
+> the product's fonts.
 
 ---
 
@@ -437,21 +452,20 @@ Swap the files in `assets/icons/*.svg` and run `cargo xtask icons`; it regenerat
 > point at `x = 0` or `x = 24` bleeds half the stroke width outside the cell. The effective safe
 > area is `[1, 23]`.
 
-> **Replacing the whole set is a bigger job than it looks.** Expect three things.
-> 1. **The tests pin the names** — `builtin_names_resolve` ·
->    `the_generated_table_covers_the_v1_set` (which asserts on `NAMES.len()`) ·
->    `the_generated_table_has_no_strays`. All three break, and the constants in
->    `icons/builtin.rs` have to change with them.
+> When replacing built-in assets, keep these repository relationships consistent:
+> 1. **Names and constants** — `builtin_names_resolve`,
+>    `the_generated_table_covers_the_v1_set` and `the_generated_table_has_no_strays`
+>    check the generated set against `icons/builtin.rs`. Update the constants and
+>    expected set when names are added or removed.
 > 2. **The attribution obligations change.** Today `assets/icons/` is a Lucide subset (ISC/MIT),
 >    declared by `assets/icons/LICENSE-lucide` · `MAPPING.md` · `THIRD_PARTY.md`. Replacing the
->    set means replacing those three with your own provenance — **the first thing legal asks
->    about.**
-> 3. It requires a fork. Which is why looking at the painter route in §4.2 first is usually
->    better.
+>    set requires corresponding provenance and licence notices.
+> 3. This route changes the repository assets. §4.2 provides application-local
+>    registration when a fork is not needed.
 
 ### 4.2 Replacing them with painters (no fork; recommended)
 
-Register one closure under one name. The crate is untouched.
+Register a drawing closure and use its returned `CustomIconId`. The crate is untouched.
 
 ```rust
 # fn f(shell: &mut fairing::Shell, ctx: &egui::Context) -> fairing::Result<()> {
@@ -470,11 +484,12 @@ let id = shell.register_icon_painter(Box::new(
 
 Two constraints:
 
-- **It is `Fn`, not `FnMut`.** `IconPainter = Box<dyn Fn(..)>`, so it cannot hold `&mut` state.
+- **It is `Fn`, not `FnMut`.** `IconPainter = Box<dyn Fn(..)>`; invocation does not provide mutable
+  access to captures through `FnMut`.
   If you need a cache, capture a `RefCell` — that is what `brand::manta_painter` does.
   (`Mutex` / `RwLock` / `OnceLock` are banned in this crate.)
-- **It is called once per icon drawn per frame.** The "no heap allocation" rule from §2.4 applies
-  here too. Twelve icons on a desktop page means twelve calls a frame.
+- **Each custom icon draw invokes its painter.** Cache reusable geometry where useful and measure
+  repeated work on the target workload; the callback type does not enforce allocation behavior.
 
 > To draw a **whole desktop cell** (icon + label + badge + press state), the hook is
 > `ShellBuilder::slot_painter`, not an icon painter — that one is `FnMut` and gets the cell rect,
@@ -482,17 +497,17 @@ Two constraints:
 
 ### 4.3 Raster icons
 
-Possible, not recommended — on a machine with no fixed size, a raster icon will be mushy at some
-resolution. If you do it anyway, prepare them at **3× the display size** (72 px or more for a
-24 pt icon) and pass `IconRef::Texture { id, tint }`. With `tint = true` they are multiplied by
-the role colour, so author them as **white silhouettes**.
+Use `IconRef::Texture { id, tint }` for raster icons. Choose source resolution and
+filtering for the supported display sizes; 72 px for a 24-point icon is one
+starting asset size. With `tint = true`, the source is multiplied by the role
+colour, so a white silhouette preserves that tint.
 
 ---
 
 ## 5. Logo marks — requirements
 
-A mark does not fit the icon pipeline (two tones, and the silhouette is concave). There are two
-routes.
+The reference manta has a concave silhouette and two colour regions, so it uses
+a custom mesh painter rather than a single-colour filled icon path.
 
 ### 5.1 Authoring one the way we did (a vector mesh)
 
@@ -506,29 +521,30 @@ The repository's manta was made this way, and **the procedure is written down in
 
 The procedure that extracts coordinates from those two (threshold → opening → sub-pixel contour
 tracing → PCA axis split → least-squares cubic Bézier fit) is in `assets/brand/README.md`, under
-the section on where the mark's coordinates came from. The repository's manta reaches an IoU of
-0.976 against the reference art, with 1.1 px of error at 96 px.
+the section on where the mark's coordinates came from. Check the resulting mesh
+against the reference images at the intended display sizes.
 
 **How the crate's manta is drawn**, for a mark of your own with concave edges and two tones —
-epaint fills only convex shapes, so a raw `egui::Mesh` is the way. The crate's own helpers live
+epaint's convex-polygon fill expects convex geometry; a triangulated `egui::Mesh`
+can represent other shapes. The crate's own helpers live
 in a private module (`brand::ribbon`; only `Cubic` is public), so a painter of yours writes these
 four steps on top of `egui::Mesh`:
 
 | Step | What it does |
 |---|---|
 | Sample each curve to a fixed count | A cubic Bézier chain becomes `n` points **regardless of its knot count**. Two curves used as a pair must use the same `n` |
-| A strip between two boundaries | Fill between them with quads. **The boundaries may be arbitrarily concave** — this is how you get around the convexity constraint |
+| A strip between two boundaries | Fill between them with quads. Paired boundaries can describe concave strips; check that their sampling and triangulation do not cross |
 | A feather | An alpha-0 band on edges that meet the background. It fakes the antialiasing a raw `Mesh` does not get from epaint |
 | Fan fill | Only for pieces that are convex |
 
-The way to get two tones is **not** to split along a centre line but to lay down one body ribbon
-and **overlap** a lighter piece on top of it — abutting leaves a seam, overlapping does not.
+The reference mark draws a body ribbon and overlaps a lighter region. Check mesh
+coverage and antialiasing at the shared edge when authoring another mark.
 
-### 5.2 Drawing it with a painter (the most freedom)
+### 5.2 Drawing it with a painter
 
-Register a closure that draws your mark, the same way as §4.2. Concave, multi-colour, gradients —
-all fine. Keep the icon contract (colour comes in as an argument, size comes from `rect`) and it
-fits anywhere an icon fits.
+Register a drawing closure as in §4.2. The closure receives a rectangle and
+resolved colour and can submit suitable egui shapes or meshes. Its geometry,
+colour handling and fit are the application's implementation.
 
 ### 5.3 Keeping the default mark but changing its tone
 
@@ -545,17 +561,16 @@ let id = shell.register_icon_painter(manta_painter(MantaStyle {
 # Ok(()) }
 ```
 
-> **It is only free in cells that hold still.** `MantaCache`'s key includes the **absolute screen
-> position and size** (because `Shape::mesh` takes an `Arc<Mesh>`, which cannot be moved). Press
-> animations and page swipes change the rect every frame, so it re-bakes every frame while they
-> run. A desktop cell at rest hits 100 %; while it moves it misses — and it is repainting anyway.
+> `MantaCache` keys its mesh on absolute position and size. Repeated calls with
+> the same key reuse it; rectangle changes during press animation or page swipes
+> can require regeneration. Measure that work when using the painter in moving cells.
 
 ---
 
 ## 6. Chrome — status bar, nav bar, dock placement
 
-These are **the two surfaces a manufacturer sees first and longest**. The status bar is on screen
-100 % of the time. And none of the three needs an image.
+Bar visibility follows configuration and per-screen chrome policy. Status/nav
+bar styling and dock placement can be changed without raster image assets.
 
 ### 6.1 What config alone can do
 
@@ -573,7 +588,7 @@ style  = "buttons"          # or "gesture": the home indicator in place of the b
 items  = ["back", "home", "recents"]
 ```
 
-For per-item captions, text sizes and padding, take `status_bar_mut().spec_mut(id)` in code —
+For per-item captions, text sizes and padding, edit an owned `status_item_spec(id)` and commit it with `set_status_item_spec(id, spec)` —
 that is how the instrument-panel look (a caption under each icon) comes out.
 
 ### 6.2 Painting a bar entirely yourself
@@ -595,25 +610,29 @@ let shell = fairing::Shell::builder(config)
 
 > **Parametric icons do not change when you replace icons.** The status bar's Wi-Fi, battery,
 > Bluetooth and signal glyphs are **parametric** drawings that take state as an argument, so an
-> `IconRef` cannot point at them (nor can the painter registration in §4.2). The only way to make
-> those four yours is `status_bar_painter`.
+> `IconRef` cannot point at them (nor can the painter registration in §4.2). Replace a built-in
+> item with a `status_item` declaration under the same id for per-item UI, or use
+> `status_bar_painter` to replace the whole bar.
 
-### 6.3 Dock placement — the biggest change of impression for zero images
+### 6.3 Dock placement
 
 ```rust
 # fn f(shell: &mut fairing::Shell) {
 use fairing::desktop::{Axis, DockPlacement};
 use fairing::gesture::Edge;
 
-shell.desktop_mut().set_dock_placement(DockPlacement::Edge(Edge::Left));      // a left rail
-shell.desktop_mut().set_dock_placement(DockPlacement::Band {                  // a floating band
+shell.set_dock_placement(DockPlacement::Edge(Edge::Left));      // a left-side dock
+shell.set_dock_placement(DockPlacement::Band {                  // a floating band
     axis: Axis::Horizontal,
     at: 0.66,
 });
 # }
 ```
 
-In TOML that is `[desktop] dock_edge = "left"` and `dock_band = 0.66`.
+In TOML, `dock_edge = "left"` selects the edge dock. For the horizontal band shown above,
+use `dock_edge = "bottom"` with `dock_band = 0.66`; `left` / `right` make a band vertical.
+These settings move dock icons. The persistent icon rail beside open screens is the
+separate `[desktop] rail` / `rail_width` feature.
 
 | Placement | Impression |
 |---|---|
@@ -625,18 +644,19 @@ In TOML that is `[desktop] dock_edge = "left"` and `dock_band = 0.66`.
 ### 6.4 Different chrome per screen
 
 `.background(role)` on a declaration gives that screen a different ground colour;
-`ChromePolicy` with `status_bar = BarMode::Overlay` puts **the status bar over the content** so
-the background shows through underneath (that is the one case where §2.2's "keep the top clear"
-means anything). `ChromePolicy::fullscreen()` hides both bars.
+`ChromePolicy` with `status_bar = BarMode::Overlay` puts **the status bar over the content**.
+Its opacity comes from `metrics.status_overlay_alpha`, which is 1.0 (opaque) by default;
+positioning it over content does not itself make it transparent. `ChromePolicy::fullscreen()`
+hides both bars.
 
 ---
 
 ## 7. Splash / boot screens (**no API yet**)
 
 > There is no `Splash` and no `ShellBuilder::splash` in the crate. It is planned, and the
-> implementation is still on the to-do list. For now the integrator
-> draws it before the first frame. The image spec below is what it will want, and it will fit
-> the API when that arrives.
+> implementation is still on the to-do list. The host can draw its own startup
+> screen before the shell's first frame. The table below gives example assets
+> for that host-owned UI.
 
 | Item | Spec |
 |---|---|
@@ -650,10 +670,10 @@ code. Then a change of locale, resolution or theme does not mean remaking the as
 
 ---
 
-## 8. Overriding everything — what is ours, and how deep
+## 8. Branding customization scope
 
-This section is the page's **audit table**. It counts everything the crate leaves on screen and
-says what replaces each one. It gets deeper as it goes down.
+The tables below describe configuration, registration and painting hooks for
+built-in surfaces. Protected-shell restrictions still apply to these hooks.
 
 ### 8.1 One line on, one line off
 
@@ -681,8 +701,9 @@ the neutral palette and a flat background — no manta, no abyss. That is why th
 
 ### 8.2 The layer-by-layer override table
 
-Whatever is called **after** `preset` wins. The rows are independent, so you can change only the
-colours and keep our background.
+`preset` sets a paired palette and a wallpaper. Later `.palettes(..)` or `.wallpaper(..)` calls
+replace those respective values. An injected `.theme(..)` supplies its own palette, metrics and
+motion; configuration overrides follow the precedence described in [04](04-customization.md).
 
 | # | What the crate produces | How to override it | Where |
 |---|---|---|---|
@@ -692,7 +713,7 @@ colours and keep our background.
 | 4 | Type | `.fonts(FontSet)` — **the crate carries no fonts** | §3 |
 | 5 | The background | `.wallpaper(..)` · `[desktop] wallpaper` · `image_loader` + `file:` | §1 · §2 |
 | 6 | 80 vector icons | `register_icon_painter` (recommended), or replacing the SVGs | §4 |
-| 7 | 4 parametric icons (wifi/battery/bluetooth/signal) | **An `IconRef` cannot point at them** — take the whole bar with `status_bar_painter` | §6.2 |
+| 7 | 4 parametric icons (wifi/battery/bluetooth/signal) | **An `IconRef` cannot point at them** — replace the item with a same-id `status_item`, or the whole bar with `status_bar_painter` | §6.2 |
 | 8 | Status bar · nav bar | `.status_bar_painter(..)` / `.nav_bar_painter(..)` | §6.2 |
 | 9 | Desktop cells | `.slot_painter(..)` (`SlotCx` brings press state and gates) | 04 |
 | 9b | **Colour, corners and spacing of the layout inside a screen** | `layout::Deco` on `grid` · `group_with` · `action_bar_with` | — |
@@ -701,8 +722,8 @@ colours and keep our background.
 | 12 | The manta mark | Opt-in to begin with — do not call `manta_painter` and it is not there | §5 |
 | 13 | Strings | `.translations(Translations)` — an entry of yours wins over the built-in one, and a language of yours joins English and Korean. Replacing a screen replaces its labels too | 04 §9 · §8.3 |
 
-Row 7 is the only place you cannot change shallowly. Those four change shape with their state, so
-they cannot be expressed as a static icon slot.
+Row 7 uses state-dependent drawing rather than static icon slots. Replacing an item or the bar
+means supplying the corresponding drawing logic.
 
 ### 8.3 The built-in settings screens — three depths
 
@@ -710,21 +731,21 @@ they cannot be expressed as a static icon slot.
 # fn f(shell: &mut fairing::Shell) {
 use fairing::settings::{add_all, SettingsConfig};
 
-add_all(shell, &SettingsConfig::default());   // ← every built-in screen in one line
+add_all(shell, &SettingsConfig::default());   // Register the built-in screens eligible under the default filters.
 # }
 ```
 
-| Depth | How | What changes | Effort |
-|---|---|---|---|
-| Shallow | `[theme.palette]` / `.palettes(..)` | **The colours of all of them.** There is not one colour literal in the screen code | 1 min |
-| Shallow | `.metrics_spec(..)` / `.scale_policy(..)` | Row heights, padding, corners, touch targets | 5 min |
-| Middle | `SettingsConfig::without("settings.wifi")` | That screen **is not created** | 1 min |
-| Middle | `SettingsConfig::only([..])` | Only the ones listed are created | 1 min |
-| Middle | `.without_home_icon()` | Keeps the screen, drops the desktop icon | 1 min |
-| Middle | `add_all_with(shell, cfg, list)` | **Which rows the settings list offers** — yours in, built-ins out, in your order | 5 min |
-| Deep | `shell.add(screen("settings.wifi", ..))` | **That whole screen** (labels, layout, behaviour) | per screen |
-| All | Never call `add_all` | None of them exist | 0 |
-| Compile | Exclude `settings` under `default-features = false` | They leave the binary as well | — |
+| Depth | How | What changes |
+|---|---|---|
+| Shallow | `[theme.palette]` / `.palettes(..)` | Colours resolved through palette roles |
+| Shallow | `.metrics_spec(..)` / `.scale_policy(..)` | Row heights, padding, corners, touch targets |
+| Middle | `SettingsConfig::without("settings.wifi")` | That screen **is not created** |
+| Middle | `SettingsConfig::only([..])` | Only the ones listed are created |
+| Middle | `.without_home_icon()` | Keeps the screen, drops the desktop icon |
+| Middle | `add_all_with(shell, cfg, list)` | **Which rows the settings list offers** — yours in, built-ins out, in your order |
+| Deep | `shell.add(screen("settings.wifi", ..))` | **That whole screen** (labels, layout, behaviour) |
+| Automatic registration | Omit `add_all` | No built-ins are registered by that helper; you can still register screens individually |
+| Compile | Exclude `settings` under `default-features = false` | They leave the binary as well |
 
 **Registering the same id again replaces it** — the point being that there is no special API for
 it:
@@ -748,9 +769,10 @@ The right column draws **whatever is registered under the selected id** — the 
 included, so the deep row holds on a wide screen as well as a narrow one. It uses
 `Cx::draw_screen` ([02 §3.1](02-screens.md#31-drawing-one-screen-inside-another)), so a screen
 declared with `screen_with` goes up as a pushed screen instead of into the column: it owns no
-screen between opens, and there is nothing to draw there. A screen of yours that is a `struct` —
-because it wants `on_back`, say, so that back cancels an edit rather than leaving — registers with
-`screen_of(id, value)` and is resident, so it goes in the column like the built-ins do.
+screen between opens, and there is nothing to draw there. A resident struct registered with
+`screen_of(id, value)` can be embedded like the built-ins.
+Embedded bodies receive no lifecycle, back or result hooks; use in-body controls for an
+embedded edit flow, or open the screen independently when it needs stack navigation hooks.
 
 **The list of rows is a `Vec` you own.** `screens::entries()` hands back the built-in one; take
 rows out of it, put rows of your own in, reorder it, and `add_all_with` registers `settings.home`
@@ -775,15 +797,18 @@ add_all_with(shell, &SettingsConfig::default(), list);
 ```
 
 A row is drawn **only where a screen really is registered under its id and that screen's own gate
-passes**, so a row of your own comes with a screen of your own — and the row the crate has not
-written yet (`settings.credentials`) simply does not appear until someone registers it. A repeated id keeps its first row and warns; the selection is an id, so two rows for
-one screen cannot both be right.
+passes**, so add a screen for each application row. Default `add_all` registration
+makes `settings.credentials` eligible when the authenticator exposes administration
+support; `ignoring_capabilities()` also forces eligibility. `only` / `without`
+filters can still exclude it. A repeated row id keeps its first occurrence and
+logs a warning.
 
-Some screens the crate does not create at all. **No backend, no registration** — the worst
-outcome is a Wi-Fi entry on a machine with no Wi-Fi backend that says "not supported" once you
-press it. To see the screens during development, use `SettingsConfig::ignoring_capabilities()`.
+Capability-dependent screens are omitted when the backend does not report the
+needed capability. To register them during development regardless, use
+`SettingsConfig::ignoring_capabilities()`.
 
-> **Do not forget the gates.** A screen id is a gate name (05 §3). A high `default_gate` locks
+> **Do not forget the gates.** In legacy level mode, a screen's default gate name is its id
+> (05 §3). A high `default_gate` locks
 > the settings screens as a group — list the ones that should open in `[access.gates]`.
 > Conversely, **power and accounts are right to leave locked**: mis-pressing shutdown, and
 > editing accounts, should not be open to everyone on a machine.
@@ -791,16 +816,18 @@ press it. To see the screens during development, use `SettingsConfig::ignoring_c
 > **Power does not turn itself off.** Even when `settings.power` gets its confirmation, the shell
 > does not act; it emits `ShellEvent::PowerRequest`. The action happens when the integrator has
 > finished cleaning up and calls `shell.commit_power(request)` — **not calling it is the
-> refusal.** Machines routinely have to close a valve and flush logs before power goes, and the
-> crate cannot do that cleanup for you.
+> refusal.** The host performs application cleanup and decides whether to commit
+> the request.
 
 ### 8.4 Removing it from the build too
 
 ```toml
 # The default features are ["mock", "overlay", "osk", "brand", "settings"].
 # Drop what you want gone and **re-list the rest**, or it disappears quietly.
-fairing = { git = "https://github.com/shim9610/fairing", default-features = false,
-            features = ["mock", "overlay", "osk", "runner"] }
+[dependencies.fairing]
+git = "https://github.com/shim9610/fairing"
+default-features = false
+features = ["mock", "overlay", "osk", "runner"]
 #            ↑ without brand (manta, abyss) and settings (the built-in screens)
 ```
 
@@ -811,13 +838,12 @@ fairing = { git = "https://github.com/shim9610/fairing", default-features = fals
 | `overlay` | The shade and quick-settings tiles | — |
 | `osk` | The on-screen keyboard | — |
 
-> **One side fails to boot, the other falls back quietly.** When you sweep the brand keys out of
-> your TOML, a typo in `[theme] preset` is an **`Error::Config` at startup** (fail-closed —
-> better than hunting for why the brand did not come on), while a typo in `[desktop] wallpaper`
-> **warns and falls back to `background`** (fail-open — one image should not stop the shell).
+> An unknown `[theme] preset` returns `Error::Config` during startup. An
+> unrecognized `[desktop] wallpaper` value logs a warning and falls back to the
+> `background` colour.
 
 Turning `brand` off removes `brand::*` entirely. The `[desktop.abyss]` section is parsed and
-ignored, and `wallpaper = "abyss"` warns and falls back to the `background` role colour — the
+range-validated, and `wallpaper = "abyss"` warns and falls back to the `background` role colour — the
 build does not break just because the config still mentions them.
 
 ### 8.5 Checking that nothing of ours is left
@@ -845,53 +871,72 @@ When the branding is done, check these four. **Looking at it is not enough.**
 
 ### 9.1 The contrast floor
 
+Check opaque palette colour pairs using the
+[WCAG relative-luminance formula](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html).
+This example includes the helper rather than calling a public Fairing API:
+
 ```rust
-# fn main() {}
-# fn my_dark_palette() -> fairing::theme::Palette { fairing::theme::Palette::dark() }
-# fn contrast(_a: egui::Color32, _b: egui::Color32) -> f32 { 21.0 }
-#[test]
-fn my_palette_is_legible() {
-    let p = my_dark_palette();
-    // WCAG relative luminance. on_surface/surface >= 7.0, muted/surface >= 4.5,
-    // on_primary/primary >= 4.5, primary/background >= 3.0
-    assert!(contrast(p.on_surface, p.surface) >= 7.0);
-    assert!(contrast(p.on_primary, p.primary) >= 4.5);
+fn contrast(a: egui::Color32, b: egui::Color32) -> f32 {
+    fn luminance(c: egui::Color32) -> f32 {
+        fn channel(v: u8) -> f32 {
+            let v = f32::from(v) / 255.0;
+            if v <= 0.040_45 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        }
+        0.2126f32.mul_add(
+            channel(c.r()),
+            0.7152f32.mul_add(channel(c.g()), 0.0722 * channel(c.b())),
+        )
+    }
+    let (x, y) = (luminance(a), luminance(b));
+    let (hi, lo) = if x > y { (x, y) } else { (y, x) };
+    (hi + 0.05) / (lo + 0.05)
 }
+
+// Replace this with the palette used by your product.
+let p = fairing::theme::Palette::dark();
+assert!(contrast(p.on_surface, p.surface) >= 7.0);
+assert!(contrast(p.on_primary, p.primary) >= 4.5);
 ```
 
-> `contrast` and `luminance` are **not public API** — they live in `#[cfg(test)] mod tests` in
-> `theme/mod.rs`. To use the code above, **copy** those two functions into your own tests (they
-> are the WCAG 2.x relative luminance formula, under ten lines).
+The crate uses the same calculation in its test-only `theme::contrast` helper.
+These pair checks do not assess font size, composited transparency, background
+images or overall accessibility conformance.
 
 The crate's `every_preset_meets_the_contrast_floor` (`theme/mod.rs`) is the worked example.
 Check the actual `on_primary`/`primary` pair against the stated contrast floor.
-The default dark palette uses a dark `on_primary` rather than white.
+The Base dark palette uses white `on_primary`; the Abyss dark palette uses dark
+foreground ink on its brighter accent. Check the selected preset's actual pair.
 
 ### 9.2 Label legibility over the background
 
-**The headless harness cannot measure this.** The strongest thing `testing::Harness` gives you is
-`frame_shapes()` (a shape list); there is no pixel readback. And for a raster background the
-shell does not even hold the pixels (it has no decoder). So this check goes through **an actual
-window, captured**.
+`testing::Harness::frame_shapes()` returns shapes rather than rendered pixels.
+To assess composited label contrast over a raster background, capture a rendered
+window or obtain pixel output from the integrating host.
 
 - In this repository, `examples/demo.rs --tour <dir>` does exactly that — it opens a window on
   Xvfb with a software renderer and dumps frames as PNGs (the encoder uses std only).
 - On your side, bring your own `eframe` app up the same way once, capture it, and measure the
-  luminance of the pixels under the label rects (`Desktop::icon_rect(id)` gives you those).
-- Two resolutions × dark/light, four combinations, is enough.
+  contrast at the actual label locations. Record label/text-shape rectangles from egui output
+  or a matching headless layout, and convert logical points to capture pixels using its scale.
+  `Desktop::icon_rect(id)` records the icon graphic's rectangle, not the label bounds.
+- Include the supported display profiles, palettes, label lengths and image
+  backgrounds in the product review.
 
-### 9.3 Zero fps at rest
+### 9.3 Idle repaint behavior
 
-If branding drags animation in with it, the machine never sleeps. Run N frames with no input and
-check that no repaint was requested.
-
-There are three switches that wake it, and **all three have names.**
+Animations and application callbacks can keep requesting updates. In an idle
+scenario, inspect repaint requests as well as backend wakes and host input.
+Common sources include:
 
 | Switch | What it does |
 |---|---|
-| `[desktop.abyss] animate = true` | Moves the mantas every frame. Turning it on logs a warning at startup |
-| `[shell] repaint = "continuous"` | For debugging. Draws every frame |
-| A `ctx.request_repaint()` inside your own background callback | No warning at all. This one is the hardest to find |
+| `[desktop.abyss] animate = true` | Updates manta motion during wallpaper drawing and requests animation updates. Turning it on logs a warning at startup |
+| `[shell] repaint = "continuous"` | Requests continuous updates; the host controls the delivered frame cadence |
+| A `ctx.request_repaint()` inside your own background callback | Requests an update whenever that callback executes |
 
 ### 9.4 Draw calls and allocations
 
@@ -902,7 +947,7 @@ If you wrote a procedural background, count the shapes per frame. One baked mesh
 
 ## 10. Summary — the image checklist
 
-The **minimum** a manufacturer prepares to get "our character":
+Example asset sizes for the image-based customization routes:
 
 | # | File | Size | Format | Required? |
 |---|---|---|---|---|
@@ -913,18 +958,19 @@ The **minimum** a manufacturer prepares to get "our character":
 | 5 | Splash | 1920×1080 | PNG/WebP | If you use a boot screen (**no API yet**, §7) |
 | 6 | Icon set | 24×24 SVG | Stroke | To change the icons |
 
-If all you want is a colour change, **none of these are needed.** One line of `[theme.palette]`
-carries through to the water.
+Colour-only changes do not require image assets. `[theme.palette]` affects drawing that reads
+the overridden palette roles; the procedural background also has its own colour inputs.
 
-For 1, 2 and 5 (rasters) you plug a decoder into `ShellBuilder::image_loader` (§1.1) — ten lines.
-3 and 4 are **reference images** for authoring a mark and never ship on the machine, and the
-SVGs in 6 are converted to vectors at build time, so neither needs a decoder.
+For wallpaper images 1 and 2, register `ShellBuilder::image_loader` (§1.1).
+The host supplies decoding for its startup screen in row 5. Rows 3 and 4 are
+authoring references, not automatically bundled runtime assets. Built-in SVGs
+are converted to vector geometry at build time.
 
 > **A note on colour space.** Texture backgrounds pass the source through unchanged, using
-> `Color32::WHITE` as the multiplicative identity. `Gradient`, and every colour blend in the
-> crate, interpolates in **gamma (sRGB) space** (`lerp_to_gamma`). Pick a photo's colours to
-> match `[theme.palette]` values by eye and they will drift where the two meet — if they are
-> going to meet, render the boundary and check it.
+> `Color32::WHITE` as the multiplicative identity. Palette interpolation uses
+> `lerp_to_gamma`. Inspect rendered boundaries when combining texture colours
+> with palette-based fills; matching input RGB values alone does not assess the
+> full composited result.
 
 ---
 
@@ -936,39 +982,41 @@ when `wallpaper = "abyss"`.
 | Key | Default | Meaning |
 |---|---|---|
 | `colors` | `"palette"` | `"palette"` follows the theme · `"art"` uses fixed colours measured from the reference art |
-| `tier` | `"lite"` | `flat` (~100 vertices, for software renderers) · `lite` · `full` (~2100) |
-| `seed` | `0xFA12_1234` | Changes **the scatter only**. Formations, ray count and light position are authored constants |
+| `tier` | `"lite"` | `flat` · `lite` · `full`; the generated geometry depends on the tier, scene parameters and viewport |
+| `seed` | `0xFA12_1234` | Seeds procedural scatter. Element counts and light position have separate settings; the manta formation is authored |
 | `rays` | `10` | God rays (0..=16) |
 | `bubbles` | `32` | Bubbles (0..=64) |
 | `fish` | `40` | Fish (0..=64) |
 | `mantas` | `5` | Mantas (0..=6) |
 | `light_x` | `0.50` | Light source position across the screen (as a fraction of width) |
 | `veil_top` | `0.22` | **Legibility veil**, top alpha |
-| `veil_field` | `0.18` | The icon grid band. **Dropping it to 0 and losing the labels is the integrator's choice** |
+| `veil_field` | `0.18` | Veil opacity over the icon-grid band; check label contrast when changing it |
 | `veil_bottom` | `0.16` | The bottom band (dock, indicator) |
-| `animate` | `false` | **Breaks zero fps at rest.** Turning it on warns at startup |
-| `bake_budget_ms` | `1.5` | Over budget drops the tier one step and warns |
+| `animate` | `false` | Requests updates for animation. Turning it on warns at startup |
+| `bake_budget_ms` | `1.5` | A bake above the time or vertex budget retries at a lower tier with a warning, down to `flat`; this is not a bound on total bake time |
 
-## Appendix B. Every public hook that touches branding
+<a id="appendix-b-every-public-hook-that-touches-branding"></a>
+
+## Appendix B. Branding-related hooks
 
 | Hook | What it changes |
 |---|---|
 | `ShellBuilder::theme(Theme)` | Palette **plus metrics and motion tokens**. `[theme]` alone only changes colours |
 | `ShellBuilder::palettes(dark, light)` | The two palettes the theme toggle moves between |
 | `ShellBuilder::fonts(FontSet)` / `font(..)` | Type (§3) |
-| `ShellBuilder::scale_policy(..)` | **Defaults to a bare 9 mm finger** and text read at hand-held distance. The finger moves touch targets, rows, bar thickness and icon cells together; `ScalePolicy::gloved()` is 13 mm |
+| `ShellBuilder::scale_policy(..)` | **Defaults to a bare 9 mm finger** and text read at hand-held distance. Finger-based defaults affect touch targets, rows, nav-bar size and icon cells; fixed-mm status-bar sizing and viewing-distance text sizing have separate inputs. `ScalePolicy::gloved()` is 13 mm |
 | `ShellBuilder::metrics_spec(..)` | The shell's metrics, mixing mm, finger units and du |
-| `ShellBuilder::physical_mm(w, h)` | The escape hatch for a panel whose EDID lies |
+| `ShellBuilder::physical_mm(w, h)` | Explicit visible panel dimensions, overriding backend-reported physical size |
 | `ShellBuilder::status_bar_painter` / `nav_bar_painter` | A whole bar (§6.2) |
 | `ShellBuilder::slot_painter` | A whole **desktop cell** (`FnMut`; `SlotCx` brings press state and gates) |
 | `ShellBuilder::image_loader` | The file → texture decoder (§1). With it installed, `wallpaper = "file:…"` works |
-| `ShellBuilder::wallpaper(..)` | The background, from code. Beats `[desktop] wallpaper` |
+| `ShellBuilder::wallpaper(..)` | The background from code; takes precedence over `[desktop] wallpaper` |
 | `ShellBuilder::preset(Preset)` | **A crate default set** (palette + background) in one line (§8.1) |
 | `Shell::set_palettes` / `apply_palette` / `set_theme_dark` | Palettes at runtime |
 | `Shell::set_motion` | Motion tokens |
 | `Shell::register_icon` / `register_icon_painter` | A vector icon / a painter |
-| `Shell::status_bar_mut()` · `nav_bar_mut()` | Height, background role colour, per-item spec |
-| `Desktop::set_wallpaper` · `set_dock_placement` | Background · dock position |
+| `Shell::set_status_bar_height` · `set_nav_height` · `set_status_item_spec` | Persistent metrics and owned item configuration |
+| `Shell::set_wallpaper` · `set_dock_placement` | Background · dock position |
 | `Shell::load_wallpaper(ctx, path, fit)` | Swapping the background at runtime (needs a loader) |
 | `settings::add_all(shell, &SettingsConfig)` | The built-in settings screens (§8.3) |
 | `settings::add_all_with(shell, &SettingsConfig, list)` | The same, over a settings list of your own (§8.3) |

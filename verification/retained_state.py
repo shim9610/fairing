@@ -10,7 +10,8 @@ BASE = ROOT / "crates/fairing-widgets/src"
 
 
 def sites(source):
-    # Only calls, not identifiers in prose. Include all temporary/persisted access variants.
+    # Count source-text call patterns, including matches in comments or string literals.
+    # Include temporary/persisted access variants.
     return dict(sorted(collections.Counter(
         ["backend." + m for m in re.findall(
             r"\.\s*((?:get|insert|remove)_(?:temp|persisted)\w*)\s*(?=\(|::<)", source)]

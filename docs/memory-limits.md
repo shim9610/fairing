@@ -310,8 +310,8 @@ cannot continue after a nested backend failure.
 This is not transaction rollback. Callback mutations, backend writes or event-handler
 side effects performed before a panic may already have happened. Reconcile the
 business system and authorization in the application's recovery path. Closing the
-queue prevents new factories from starting; an already running producer factory may
-finish, but the faulted shell will not execute its command. Hosts with other UI in the
+queue refuses later admission; a producer with a pre-existing reservation may
+still run or finish its factory, but the faulted shell will not execute its command. Hosts with other UI in the
 same viewport must account for whole-viewport output being discarded on failure.
 
 The supported panic payload types are exactly `String`, `&'static str` and

@@ -7,7 +7,7 @@
 //! What it gives you instead is the way to install one. An integrator picks one of three:
 //!
 //! 1. **Bake it into the binary** — make a `&'static [u8]` with `include_bytes!` and use
-//!    [`FontSource::from_static`]. No deployment accident from a missing file.
+//!    [`FontSource::from_static`]. This avoids a separate runtime font-file lookup.
 //!    ```no_run
 //!    # use fairing_widgets::fonts::FontSource;
 //!    # let bytes: &'static [u8] = b"";  // in practice include_bytes!("NotoSansKR.ttf")
@@ -18,8 +18,10 @@
 //! 3. **Find one already on the device** — [`find_system_font`], [`korean_font`]. Ubuntu Core
 //!    images often carry `fonts-noto-cjk`.
 //!
-//! Either way the file IO happens **once, at startup**. Reading a font in the frame loop, or
-//! calling `set_fonts` again, rebuilds the entire glyph atlas.
+//! File reads and system-font searches run when their helpers are called; perform
+//! them during setup and reuse the resulting sources. egui's
+//! [`Context::set_fonts`](egui::Context::set_fonts) updates changed definitions and
+//! leaves already-installed identical definitions unchanged.
 //!
 //! ```no_run
 //! # fn main() -> fairing_widgets::Result<()> {
@@ -55,34 +57,19 @@ pub enum FontFamilies {
     /// Both — the default. A Korean fallback is usually needed in both.
     #[default]
     Both,
-    /// The **bold** face, [`STRONG_FAMILY`].
-    ///
-    /// Screen titles and list-row titles are drawn in it (`Theme::strong`). The family always
-    /// exists: with nothing registered here it holds the same faces as `Proportional`, so a shell
-    /// with no bold renders exactly as it did and one with a bold gains a weight axis. Register
-    /// with [`FontPriority::First`] — a bold added as a fallback would only be reached by
-    /// characters the regular face is missing, which is the opposite of the point.
+    /// Strong family used by `Theme::strong`. `FontSet::definitions` seeds it from
+    /// proportional faces before registered sources are applied. Use
+    /// [`FontPriority::First`] to prioritize a supplied bold face.
     Strong,
-    /// The **display** face, [`DISPLAY_FAMILY`] — the one a brand is recognised by.
+    /// Display family for screen titles.
     ///
-    /// [`Theme::display`](crate::theme::Theme::display) draws with it, and a screen title is the
-    /// only thing in the crate that asks for it. Like [`Self::Strong`] it is **always bound** —
-    /// but it is seeded from the *strong* faces rather than the regular ones, and only after every
-    /// source has been applied. So a shell that registers no display face draws its titles in
-    /// exactly the bold it drew them in before, and one that registers a serif gets the serif with
-    /// nothing else moving.
-    ///
-    /// A display face is the one place a typeface may be chosen for its character rather than its
-    /// coverage, which is why it is a slot of its own and not a second `Proportional`. It is also
-    /// why **nothing but a title uses it**: a face picked for a headline may carry no Hangul, no
-    /// tabular figures and no `℃`, and a body row cannot afford any of those to be missing.
-    ///
-    /// Register with [`FontPriority::First`], for the same reason [`Self::Strong`] does.
+    /// When no display face is registered, the family is seeded from the strong faces
+    /// after the supplied font sources are applied. Register with [`FontPriority::First`]
+    /// to give the supplied face priority. Check coverage for the product's title text.
     Display,
 }
 
-/// The egui family name the bold face is bound to. It is always bound; see
-/// [`FontFamilies::Strong`].
+/// Name of the strong family configured by [`FontSet::install`].
 pub const STRONG_FAMILY: &str = "fairing-strong";
 
 /// **Whether this crate's named font families are live on `ctx` yet.**
@@ -105,8 +92,7 @@ pub fn strong_family() -> egui::FontFamily {
     egui::FontFamily::Name(STRONG_FAMILY.into())
 }
 
-/// The egui family name the display face is bound to. It is always bound; see
-/// [`FontFamilies::Display`].
+/// Name of the display family configured by [`FontSet::install`].
 pub const DISPLAY_FAMILY: &str = "fairing-display";
 
 /// The [`egui::FontFamily`] for display text.
@@ -170,7 +156,8 @@ impl FontSource {
         }
     }
 
-    /// Read from a file. Call it **once, at startup** — there is no file IO in the frame loop.
+    /// Read the file on each call. Load during setup and reuse the resulting source
+    /// to keep this file operation out of the frame loop.
     ///
     /// # Errors
     /// [`Error::Io`] if the file cannot be read, [`Error::Config`] if the contents do not look
@@ -197,17 +184,11 @@ impl FontSource {
         self
     }
 
-    /// **Why this source cannot be handed to epaint**, or `None` when nothing is provably wrong.
+    /// Return a header-validation rejection reason, or `None`.
     ///
-    /// epaint does not report a bad font, it panics:
-    /// `Error parsing "name" TTF/OTF font file: ...`, from an
-    /// `unwrap_or_else(|| panic!(..))` around a `Result` it throws away. A library user who passed
-    /// the bytes cannot catch that, so what can be checked here is checked here.
-    ///
-    /// Two things are decidable without a parser: whether the file begins with a font signature at
-    /// all, and whether [`index`](Self::index) names a face the file actually holds. Both are the
-    /// ordinary mistakes — the wrong file, an empty `Vec`, a `.ttc` index copied from another
-    /// machine's font.
+    /// This checks the font signature and collection face index without parsing glyph
+    /// data. A plausible header can still contain a truncated or corrupt font that
+    /// epaint rejects by panicking when it parses the data.
     #[must_use]
     pub fn reject_reason(&self) -> Option<String> {
         let name = &self.name;
@@ -265,20 +246,13 @@ impl FontSet {
         self
     }
 
-    /// **Every source that will be left out, and why** — see [`FontSource::reject_reason`].
+    /// Sources omitted by [`Self::install`], with their rejection reasons.
     ///
-    /// [`Self::install`] drops these rather than handing them to epaint, because epaint's answer to
-    /// a font it cannot read is `panic!` and a shell must not die over one optional fallback face.
-    /// Dropping is the right shape for that — the remaining faces, and egui's own defaults beneath
-    /// them, still draw everything — but it must not be silent, so `install` also logs each one and
-    /// this is here to be checked programmatically at startup.
+    /// Installation logs these rejections and retains other sources and default faces.
+    /// Available glyph coverage depends on the remaining fonts.
     ///
-    /// # What this does **not** promise
-    ///
-    /// It is a header check, not a parse: a file that carries a font signature and a plausible face
-    /// count but is truncated or corrupt inside still reaches epaint, and epaint still panics on it.
-    /// Closing that would mean parsing the font ourselves, which needs a font-parser dependency —
-    /// a decision for the dependency-approval process, not something to take quietly.
+    /// These are header checks, not a full font parse: internally corrupt data with an
+    /// accepted signature and face count can still cause epaint to panic.
     #[must_use]
     pub fn rejected(&self) -> Vec<String> {
         self.sources
@@ -305,9 +279,9 @@ impl FontSet {
         &self.sources
     }
 
-    /// Whether a **bold** face is registered — a readable source attached to
-    /// [`FontFamilies::Strong`]. Without one the strong family holds the regular faces, so
-    /// `Theme::strong` (screen titles, list-row titles) draws in the regular weight.
+    /// Whether a source with an accepted header is registered for [`FontFamilies::Strong`].
+    /// This does not inspect glyph weight or fully parse the font. Supply a bold face
+    /// explicitly when that appearance is required; otherwise the family uses its fallback faces.
     #[must_use]
     pub fn has_bold(&self) -> bool {
         self.sources.iter().any(|source| {
@@ -317,14 +291,14 @@ impl FontSet {
 
     /// Install into egui.
     ///
-    /// It runs even for an empty set, because binding [`FontFamilies::Strong`] and
-    /// [`FontFamilies::Display`] is part of the job, so neither draws replacement glyphs. An
-    /// empty set therefore installs egui's own fonts plus those two families pointing at the same
-    /// faces — the same render as before, with the weight and display axes in place for anyone who
-    /// fills them.
+    /// It runs even for an empty set to bind [`FontFamilies::Strong`] and
+    /// [`FontFamilies::Display`] to fallback faces. This makes the named families
+    /// available; glyph coverage still depends on the installed fonts. An empty set
+    /// uses egui's default faces for these families.
     ///
-    /// `set_fonts` rebuilds the glyph atlas and is expensive, so call it **once, at startup**.
-    /// Pass it through `fairing::ShellBuilder::fonts` and the shell calls it once for you.
+    /// Pass through `fairing::ShellBuilder::fonts` for installation during shell
+    /// construction. egui applies changed definitions; identical installed
+    /// definitions are left unchanged by `Context::set_fonts`.
     ///
     /// egui 0.37 installs definitions immediately before text layout in the current pass,
     /// and otherwise defers them to the next pass. Ask [`families_are_live`] before drawing;
@@ -350,9 +324,9 @@ impl FontSet {
             .unwrap_or_default();
         defs.families.insert(strong_family(), regular);
         for source in &self.sources {
-            // **A source that cannot be read is left out, not handed over.** epaint panics on a
-            // font it cannot parse, and a panic is not something the integrator who passed the
-            // bytes can handle — see `FontSet::rejected`.
+            // Omit sources rejected by the header/index checks. This does not fully
+            // parse their glyph data; accepted but corrupt data may still panic in epaint.
+            // See `FontSet::rejected` for the sources omitted here.
             if let Some(reason) = source.reject_reason() {
                 log::warn!("[fonts] {reason}; leaving it out");
                 continue;
@@ -415,11 +389,9 @@ fn looks_like_font(bytes: &[u8]) -> bool {
     )
 }
 
-/// **How many faces the file holds**, or `None` when it is not a font file at all.
-///
-/// A collection (`ttcf`) states the count as a big-endian `u32` at offset 8, right after the tag and
-/// the version. Every other signature is a single face. This is header arithmetic, not parsing —
-/// see [`FontSet::rejected`] on what that can and cannot promise.
+/// Face count from a recognized font header, or `None` for an unrecognized or
+/// incomplete header. `ttcf` supplies a big-endian count at byte offset eight;
+/// other accepted signatures report one. This does not parse or validate glyph data.
 fn face_count(bytes: &[u8]) -> Option<u32> {
     match bytes.first_chunk::<4>()? {
         b"ttcf" => bytes
@@ -496,16 +468,10 @@ pub fn korean_font() -> Option<PathBuf> {
     ])
 }
 
-/// Find a common **bold** sans face for [`FontFamilies::Strong`]. `None` if there is none.
+/// Find a common bold sans face for [`FontFamilies::Strong`], or `None`.
 ///
-/// A device UI leans on weight for hierarchy — a screen title against a row title, a row title
-/// against its subtitle — and egui's own fonts ship one weight only (`Ubuntu-Light`), which is why
-/// a shell built on the defaults comes out flat however well its sizes and colours are chosen.
-/// This looks for a bold in the same places [`korean_font`] looks, so an image that carries a font
-/// stack gets the axis for free and one that carries nothing degrades to the regular face.
-///
-/// Korean first, because a bold Latin face with no Hangul would leave Korean titles falling back
-/// to the regular weight and the two would not match.
+/// Searches the same directories as [`korean_font`], preferring Korean-capable faces.
+/// Without a registered bold face, the strong family uses its regular-face fallback.
 #[must_use]
 pub fn strong_font() -> Option<PathBuf> {
     find_system_font(&[
@@ -525,17 +491,10 @@ pub fn strong_font() -> Option<PathBuf> {
     ])
 }
 
-/// Find a common **serif** face for [`FontFamilies::Display`]. `None` if there is none.
+/// Find a common serif face for [`FontFamilies::Display`], or `None`.
 ///
-/// A display face is the half of a brand a palette cannot carry: the two European-restaurant
-/// kiosks this crate was measured against are recognisable by their serif headline before any
-/// colour is read. This looks in the same places [`korean_font`] and [`strong_font`] look, so an
-/// image that already carries a font stack gets one for free.
-///
-/// Korean first, for the reason [`strong_font`] gives: a serif Latin face with no Hangul would
-/// leave a Korean title falling back to the sans and the two would not match. A serif is the only
-/// thing looked for — a display face is a choice, and guessing anything more opinionated than
-/// "the system's serif" on the integrator's behalf would be picking their brand for them.
+/// Searches the same directories as [`korean_font`] and [`strong_font`], preferring
+/// Korean-capable faces. Applications can supply another display face explicitly.
 #[must_use]
 pub fn display_font() -> Option<PathBuf> {
     find_system_font(&[
@@ -590,10 +549,8 @@ fn has_font_extension(path: &Path) -> bool {
 mod tests {
     use super::*;
 
-    /// **Every named family is bound, even when nothing is registered.**
-    ///
-    /// Missing named families draw missing-glyph boxes. Both slots are seeded with usable
-    /// faces, and a later slot must preserve that guarantee too.
+    /// Check that the strong and display families in default prepared definitions
+    /// are bound to nonempty font-name lists.
     #[test]
     fn every_named_family_is_bound_even_with_nothing_registered() {
         let defs = FontSet::default().definitions();
@@ -748,8 +705,8 @@ mod reject_tests {
         assert_eq!(face_count(b""), None, "and an empty file is not one either");
     }
 
-    /// **The panic this exists to prevent**: epaint answers a font it cannot parse with
-    /// `panic!`, so a source that cannot be read must never reach it.
+    /// Check rejection of the supplied invalid-signature and collection-index fixtures
+    /// before they are included in font definitions.
     #[test]
     fn a_source_that_cannot_be_read_is_rejected_rather_than_handed_over() {
         let junk = FontSource::from_bytes("junk", b"this is not a font".to_vec());

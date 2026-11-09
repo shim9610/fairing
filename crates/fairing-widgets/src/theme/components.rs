@@ -1,28 +1,8 @@
-//! **The component tokens** — the twenty visual dimensions of the widgets and notifications.
+//! Component-specific dimensions.
 //!
-//! # Why they are kept apart from the global [`Metrics`](super::Metrics)
-//!
-//! The global tokens are **what the shell divides the screen with**: bar thickness, touch
-//! targets, row heights. These twenty are what one widget draws itself with, inside that. In one
-//! bucket, `Metrics` would pass sixty fields and "does touching this move the layout" would not
-//! be answerable from the name.
-//!
-//! # Why they were promoted from constants
-//!
-//! Until they were, these twenty were `const`s inside their files. That leaves **rung 2 (the
-//! tokens) of the override ladder shut for the whole widget area** — an
-//! integrator changing one button's padding had to climb to rung 5 (the painter) and take over
-//! the drawing. A cliff.
-//!
-//! The values are held as [`Span`]s by [`ComponentSpec`] and resolved with a [`Scale`] each
-//! frame. So a device that knows its physical size can write them in mm or finger multiples, and
-//! one that does not gets exactly today's values.
-//!
-//! # What does not come here
-//!
-//! **Purely visual ratios** like `THUMB_SCALE` and `PRESS_SWELL`, and **times and velocities**
-//! like `POP_MS` and `FLING_UP`, do not. The former derive from other tokens and the latter
-//! belong to `[motion]`.
+//! [`ComponentSpec`] stores [`Span`] values for toast, shade, bar and other component
+//! geometry. Resolution with a [`Scale`] produces [`ComponentMetrics`]. These tokens
+//! complement the shared control metrics and motion configuration.
 
 use crate::unit::{Dim, Free, Hand, Rigid, Scale, Span};
 use crate::Result;
@@ -65,37 +45,11 @@ pub struct HeadsUpMetrics {
     pub progress_h: f32,
 }
 
-/// The button dimensions (4).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ButtonMetrics {
-    /// The side padding.
-    pub pad: f32,
-    /// Between the icon and the label.
-    pub icon_gap: f32,
-    /// The long-press progress ring's diameter.
-    pub ring: f32,
-    /// That ring's stroke width.
-    pub ring_stroke: f32,
-}
-
-/// The slider dimensions (2).
+/// Slider label spacing.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SliderMetrics {
     /// Between the label and the track.
     pub label_gap: f32,
-    /// The track thickness = `metrics.slider_thumb × this ratio`. A **ratio**
-    /// rather than a length, so it is not a [`Span`] and does not go through scale resolution —
-    /// a bigger thumb has to bring the track with it.
-    pub track_ratio: f32,
-}
-
-/// The switch dimensions (2).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct SwitchMetrics {
-    /// The padding between the knob and the track.
-    pub knob_inset: f32,
-    /// The **drawn** height. The hit rect keeps the touch target independently of it.
-    pub height: f32,
 }
 
 /// The list row dimensions (3).
@@ -119,9 +73,8 @@ pub struct ListRowMetrics {
 pub struct OverviewMetrics {
     /// The gap between two cards.
     pub card_gap: f32,
-    /// **The narrowest a card is drawn.** A card is `0.6 ×` the content (A10); on a panel
-    /// small enough for that to fall under this, the cards — and the screen shrinking into one —
-    /// stay this wide instead, so what a finger taps and throws stays a touch target's family.
+    /// Preferred minimum card width. Cards normally use `0.6 ×` the content width (A10);
+    /// narrower results are raised to this value, capped at the available content width.
     pub card_min_width: f32,
 }
 
@@ -141,20 +94,8 @@ pub struct PopoverMetrics {
     pub icon_gap: f32,
 }
 
-/// The shade dimensions (9) — **all of them ratios**.
-///
-/// The shade does not carry lengths; it **derives them from two axes**, so that the rhythm
-/// follows on its own when the density changes — no case of the icons growing on a 7-inch panel
-/// while the padding stays at 12 du.
-///
-/// * **The visual axis** — multiples of `metrics.corner_radius`. Padding and corners have
-///   nothing to do with fingers.
-/// * **The finger axis** — multiples of `metrics.touch_target`. What gets pressed follows the
-///   finger.
-///
-/// The four on the finger axis are **drawing sizes**. The hit rect is a full `touch_target`, so
-/// shrinking these does not shrink what a finger can land on — what made `switch.height`
-/// dangerous was that the hit shrank with it.
+/// Shade dimensions, expressed as ratios of `metrics.corner_radius` or
+/// `metrics.touch_target`. Drawn control sizes and interactive targets are separate.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ShadeMetrics {
     /// The panel's edge padding (× `corner_radius`).
@@ -175,25 +116,11 @@ pub struct ShadeMetrics {
     pub close: f32,
     /// The footer button's height (× `touch_target`).
     pub footer_button: f32,
-    /// **The card's corner radius** (× `corner_radius`) — `[overlay] reveal = "card"`.
-    ///
-    /// Measured off One UI 8's quick panel: a radius of 9 % of the card's width, which at the
-    /// default width is four `corner_radius`. A curtain rounds its two bottom corners with
-    /// `metrics.shade_corner`; a card rounds all four with this, and larger, because it is a plate
-    /// floating on the page rather than a sheet hanging from its top edge.
+    /// Card corner radius as a multiple of `corner_radius`, used by card reveal.
     pub card_corner: f32,
-    /// **The card's inner padding** (× `corner_radius`), on top of `pad`.
-    ///
-    /// One UI pads its card at 6 % of the card's width where the curtain pads at 3 %; the content
-    /// has to sit clear of a corner that large, and a card reads as a card by the air around what
-    /// it holds.
+    /// Additional card inner padding as a multiple of `corner_radius`.
     pub card_inset: f32,
-    /// **How far above its rest a card arrives from** (× `corner_radius`).
-    ///
-    /// One UI's panel comes down 4–6 % of the screen while it fades in — enough to give the arrival
-    /// a direction, not enough to be a journey; four `corner_radius` is 5.6 % of the console
-    /// example's 800 px. The drop is what makes a fade read as "came from above" rather than
-    /// "appeared". Under a visible status bar the card comes out from beneath it.
+    /// Card entry offset above its resting position, as a multiple of `corner_radius`.
     pub card_drop: f32,
 }
 
@@ -224,12 +151,8 @@ pub struct ComponentMetrics {
     pub toast: ToastMetrics,
     /// Heads-up.
     pub heads_up: HeadsUpMetrics,
-    /// Buttons.
-    pub button: ButtonMetrics,
     /// Sliders.
     pub slider: SliderMetrics,
-    /// Switches.
-    pub switch: SwitchMetrics,
     /// List rows.
     pub list_row: ListRowMetrics,
     /// The overview's cards.
@@ -256,14 +179,8 @@ pub struct ComponentSpec {
     pub toast: [Span<Rigid>; 6],
     /// Heads-up — `pad` · `icon_gap` · `progress_h`.
     pub heads_up: [Span<Rigid>; 3],
-    /// Buttons — `pad` · `icon_gap` · `ring` · `ring_stroke`.
-    pub button: [Span<Rigid>; 4],
     /// Sliders — `label_gap`.
     pub slider_label_gap: Span<Rigid>,
-    /// The slider track ratio (a multiplier rather than a length, so not a `Span`).
-    pub slider_track_ratio: f32,
-    /// Switches — `knob_inset` · `height`.
-    pub switch: [Span<Hand>; 2],
     /// List rows — `pad` (the gap between parts, not the side inset) · `two_line_offset` · `chevron_w`.
     pub list_row: [Span<Rigid>; 3],
     /// The overview — `card_gap` · `card_min_width`.
@@ -282,26 +199,12 @@ const fn du(v: f32) -> Span<Rigid> {
 }
 
 impl Default for ComponentSpec {
-    /// The default values. **Pixel-identical to today's render** — they are all
-    /// `du`, so scale-independent, and only `switch.height` has a finger term (see the comment
-    /// below).
+    /// Default component specification. Overview width follows the finger-size policy.
     fn default() -> Self {
         Self {
             toast: [du(24.0), du(8.0), du(16.0), du(16.0), du(12.0), du(3.0)],
             heads_up: [du(16.0), du(12.0), du(4.0)],
-            button: [du(12.0), du(8.0), du(24.0), du(3.0)],
             slider_label_gap: du(8.0),
-            slider_track_ratio: 0.64,
-            switch: [
-                du(3.0).pinned(),
-                // Today it is `touch_target × 0.6`. `touch_target` being `max(finger(1.0), du(48))`,
-                // **`finger(0.6)` with a `du(28.8)` floor** reproduces that value at any finger width —
-                // 49.1 with a 13 mm glove, 34.0 bare-fingered at 9 mm, and 28.8 where the finger is small
-                // enough for the du floor to bite. A bare `du(28.8)` is only the third case's
-                // value, and using only that would suddenly shrink the switch
-                // on a gloved device.
-                Span::fixed(Dim::finger(0.6)).min(Dim::du(28.8)),
-            ],
             list_row: [du(16.0), du(11.0), du(20.0)],
             overview: [
                 du(24.0).pinned(),
@@ -333,19 +236,8 @@ impl ComponentSpec {
                 icon_gap: self.heads_up[1].resolve(s),
                 progress_h: self.heads_up[2].resolve(s),
             },
-            button: ButtonMetrics {
-                pad: self.button[0].resolve(s),
-                icon_gap: self.button[1].resolve(s),
-                ring: self.button[2].resolve(s),
-                ring_stroke: self.button[3].resolve(s),
-            },
             slider: SliderMetrics {
                 label_gap: self.slider_label_gap.resolve(s),
-                track_ratio: self.slider_track_ratio.max(0.0),
-            },
-            switch: SwitchMetrics {
-                knob_inset: self.switch[0].resolve(s),
-                height: self.switch[1].resolve(s),
             },
             list_row: ListRowMetrics {
                 pad: self.list_row[0].resolve(s),
@@ -375,7 +267,7 @@ impl ComponentSpec {
     /// [`crate::Error::Config`] on any violation — the message names the token.
     pub fn validate(&self) -> Result<()> {
         let s = Scale::identity();
-        let named: [(&str, Span<Free>); 26] = [
+        let named: [(&str, Span<Free>); 20] = [
             ("toast.enter_offset", self.toast[0].erased()),
             ("toast.lift_step", self.toast[1].erased()),
             ("toast.stack_gap", self.toast[2].erased()),
@@ -385,13 +277,7 @@ impl ComponentSpec {
             ("heads_up.pad", self.heads_up[0].erased()),
             ("heads_up.icon_gap", self.heads_up[1].erased()),
             ("heads_up.progress_h", self.heads_up[2].erased()),
-            ("button.pad", self.button[0].erased()),
-            ("button.icon_gap", self.button[1].erased()),
-            ("button.ring", self.button[2].erased()),
-            ("button.ring_stroke", self.button[3].erased()),
             ("slider.label_gap", self.slider_label_gap.erased()),
-            ("switch.knob_inset", self.switch[0].erased()),
-            ("switch.height", self.switch[1].erased()),
             ("list_row.pad", self.list_row[0].erased()),
             ("list_row.two_line_offset", self.list_row[1].erased()),
             ("list_row.chevron_w", self.list_row[2].erased()),
@@ -411,8 +297,7 @@ impl ComponentSpec {
                 )));
             }
         }
-        let ratios: [(&str, f32); 13] = [
-            ("slider.track_ratio", self.slider_track_ratio),
+        let ratios: [(&str, f32); 12] = [
             ("shade.pad", self.shade.pad),
             ("shade.gap", self.shade.gap),
             ("shade.card_pad", self.shade.card_pad),
@@ -439,7 +324,7 @@ impl ComponentSpec {
 
 #[cfg(test)]
 mod tests {
-    use super::{ComponentMetrics, ComponentSpec};
+    use super::{ComponentMetrics, ComponentSpec, ShadeMetrics};
     use crate::unit::Scale;
 
     /// **Promotion does not change the values.** They have to be exactly the constants the
@@ -463,17 +348,7 @@ mod tests {
             (c.heads_up.pad, c.heads_up.icon_gap, c.heads_up.progress_h),
             (16.0, 12.0, 4.0)
         );
-        assert_eq!(
-            (
-                c.button.pad,
-                c.button.icon_gap,
-                c.button.ring,
-                c.button.ring_stroke
-            ),
-            (12.0, 8.0, 24.0, 3.0)
-        );
-        assert_eq!((c.slider.label_gap, c.slider.track_ratio), (8.0, 0.64));
-        assert!((c.switch.knob_inset - 3.0).abs() < f32::EPSILON);
+        assert_eq!(c.slider.label_gap, 8.0);
         assert_eq!(
             (
                 c.list_row.pad,
@@ -489,34 +364,8 @@ mod tests {
         assert_eq!((c.status_bar.item_gap, c.status_bar.user_dot), (10.0, 8.0));
     }
 
-    /// **The switch height follows the finger.** Today's formula (`touch_target × 0.6`) has to
-    /// be reproduced at any finger width — the plain `du(28.8)` the document writes suddenly
-    /// shrinks on a gloved device.
-    #[test]
-    fn the_switch_height_reproduces_todays_formula() {
-        let spec = ComponentSpec::default();
-        for finger_mm in [13.0_f32, 9.0, 5.0] {
-            let scale = Scale::resolve(
-                crate::unit::DU_PER_MM,
-                &crate::unit::ScalePolicy::default().with_finger_mm(finger_mm),
-                crate::unit::ScaleSource::Backend,
-                crate::unit::ScaleConfidence::Measured,
-                egui::vec2(1024.0, 600.0),
-            );
-            let metrics = crate::theme::MetricsSpec::default().resolve(&scale);
-            // scale-exempt: this multiplication **is what is under test** — the pre-promotion formula is
-            // written out as it was and the token checked against it (the ban on multiplying a touch
-            // token by a bare number is a rule for the drawing code).
-            let today = metrics.touch_target * 0.6;
-            let token = spec.resolve(&scale).switch.height;
-            assert!(
-                (today - token).abs() < 0.05,
-                "finger {finger_mm} mm: today {today} vs the token {token}"
-            );
-        }
-    }
-
-    /// **An overview card is never narrower than three touch targets**, at any finger width.
+    /// Check the default overview-card minimum width against three touch targets for
+    /// the sampled 5, 9 and 13 mm finger policies.
     #[test]
     fn the_overview_card_floor_is_three_touch_targets() {
         let spec = ComponentSpec::default();
@@ -545,14 +394,17 @@ mod tests {
     fn a_broken_token_is_a_config_error() {
         assert!(ComponentSpec::default().validate().is_ok());
         let mut bad = ComponentSpec::default();
-        bad.button[0] = crate::unit::Span::fixed(crate::unit::Dim::du(-4.0));
+        bad.toast[3] = crate::unit::Span::fixed(crate::unit::Dim::du(-4.0));
         let Err(err) = bad.validate() else {
             unreachable!("a negative token was let through")
         };
-        assert!(format!("{err}").contains("button.pad"), "{err}");
+        assert!(format!("{err}").contains("toast.pad_x"), "{err}");
 
         let ratio = ComponentSpec {
-            slider_track_ratio: 0.0,
+            shade: ShadeMetrics {
+                close: 0.0,
+                ..ShadeMetrics::default()
+            },
             ..ComponentSpec::default()
         };
         assert!(ratio.validate().is_err());

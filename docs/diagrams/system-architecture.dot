@@ -1,0 +1,38 @@
+digraph system_architecture {
+  graph [rankdir=TB, bgcolor="white", pad=0.3, nodesep=0.4, ranksep=0.65,
+    fontname="DejaVu Sans", fontsize=24, label="Fairing: components and ownership", labelloc=t, compound=true];
+  node [shape=box, style="rounded,filled", fillcolor="#ffffff", color="#64748b", fontcolor="#17253b", fontname="DejaVu Sans", fontsize=16, margin="0.18,0.13"];
+  edge [color="#315e9b", fontcolor="#294666", fontname="DejaVu Sans", fontsize=13, arrowsize=0.8];
+  subgraph cluster_app {
+    label="Application supplies and owns integration policy"; fontsize=18; color="#bfa16b"; style="rounded,filled"; fillcolor="#fff9ed";
+    host [label="Device binary / host\nApp state, event handling, recovery policy"];
+    ui [label="Application UI\nScreens, actions, permission-bound elements"];
+    adapters [label="Application implementations\nAuthenticator and backend adapters"];
+    {rank=same; host; ui; adapters;}
+  }
+  subgraph cluster_fairing {
+    label="fairing: library-owned runtime state"; fontsize=18; color="#87a9ce"; style="rounded,filled"; fillcolor="#f0f6ff";
+    entry [label="Construction and host interface\nbuild → Shell\nbuild_protected → ProtectedShell\nSealed HostedShell: logic / frame / events", fillcolor="#daeaff"];
+    core [label="Shell coordinator\nRegistry + workspace + access + Services\nSettings, commands, lifecycle, recovery", fillcolor="#daeaff"];
+    surfaces [label="UI surfaces\nDesktop, chrome, notifications\nOptional overlay / OSK / settings pages"];
+    {rank=same; core; surfaces;}
+  }
+  workers [label="Application workers / storage / device I/O\nSDK, sysfs, D-Bus, network or IPC\nNo concrete hardware driver supplied by Fairing", fillcolor="#fff9ed"];
+  widgets [label="fairing-widgets\nUnits, theme, motion, fonts, icons, controls", fillcolor="#eef8f1"];
+  egui [label="egui / epaint\nInput, layout, shapes and textures", fillcolor="#f2f0fb"];
+  presentation [label="Presentation host\nOptional Fairing runner → eframe / glow\nOR application-owned egui host\nCompositor / graphics driver / operating system", fillcolor="#f2f0fb"];
+  host -> entry [label="construct; lend app state"];
+  ui -> core [label="register executable declarations"];
+  adapters -> core [label="install trait objects"];
+  entry -> core [label="host updates"];
+  core -> surfaces [label="coordinate and dispatch"];
+  core -> workers [label="backend trait calls / app transport"];
+  workers -> core [style=dashed, color="#357a69", constraint=false, headport=w, tailport=w];
+  surfaces -> widgets [label="rendering vocabulary"];
+  widgets -> egui;
+  core -> egui [label="host context and UI pass"];
+  egui -> presentation [label="shapes / platform output"];
+  workers -> presentation [style=invis];
+  legend [shape=plaintext, fillcolor="white", label="Solid: calls / construction / rendering     Dashed: ShellHandle commands and Waker notifications", fontsize=13];
+  presentation -> legend [style=invis];
+}

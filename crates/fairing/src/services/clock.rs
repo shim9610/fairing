@@ -1,10 +1,9 @@
 //! Two clock backends — the default [`SystemClock`], and `ChronoClock` behind feature
 //! `chrono`.
 //!
-//! The default is `SystemTime` plus **an offset from the config**. It
-//! takes no dependency, and in exchange it does not know about DST — put it somewhere with
-//! summer time and it is an hour out twice a year. Devices where that matters turn on the
-//! `chrono` feature and use `ChronoClock` (measured: +3 crates).
+//! `SystemClock` uses `SystemTime` plus a configured UTC offset. The offset does
+//! not change automatically for daylight-saving transitions. `ChronoClock` uses
+//! the system's local time-zone configuration through the optional `chrono` dependency.
 
 use super::{Backend, Capabilities, ClockSource, WallTime};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -47,12 +46,10 @@ impl SystemClock {
     }
 }
 
-/// **A clock that follows the system time zone and DST** (feature `chrono`, and
-/// defect).
+/// A clock using the system's local time zone (feature `chrono`).
 ///
-/// [`SystemClock`]'s offset is a configured value, so it does not know about summer time. This
-/// implementation asks the OS's time zone database every frame and uses **the offset at that
-/// moment** — March and November come out right on their own.
+/// Each read uses the local offset reported through chrono, including the
+/// daylight-saving rules available in the system configuration.
 ///
 /// ```no_run
 /// # #[cfg(feature = "chrono")] {
@@ -103,9 +100,7 @@ impl ClockSource for ChronoClock {
 mod chrono_tests {
     use super::{ChronoClock, ClockSource};
 
-    /// **The feature is not a dead switch**. Turned on, it really does read the system
-    /// zone — the value itself differs per device, so this only checks that it is in a sane
-    /// range.
+    /// Check that the system-provided local offset is within the supported range.
     #[test]
     fn the_chrono_clock_reads_the_system_zone() {
         let now = ChronoClock::new().now();

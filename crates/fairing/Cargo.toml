@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
-description = "A general-purpose touchscreen shell for devices — a status bar, gestures, screens and settings, laid over egui"
+description = "A touchscreen shell built on egui, with screen navigation, chrome, device backend traits and access gates"
 readme = "README.md"
 documentation = "https://docs.rs/fairing"
 keywords = ["egui", "touchscreen", "kiosk", "embedded", "shell"]
@@ -14,8 +14,8 @@ categories = ["gui", "embedded"]
 # `assets/`, and the held guide gate `src/guide_probe.rs` reads `docs/guide/`, so neither builds
 # from a downloaded crate. The audit enables guides with the repository-only
 # `fairing_repo_docs` cfg. The examples live in the repository. `examples/demo.toml` stays, for a
-# test reads it.
-exclude = ["examples/*.rs", "examples/common/", "examples/kiosk.toml", "src/guide_probe.rs"]
+# test reads it. The tour-clock regression also depends on the excluded example driver.
+exclude = ["examples/*.rs", "examples/common/", "examples/protected/", "examples/kiosk.toml", "src/guide_probe.rs", "tests/tour_timing.rs"]
 
 [dependencies]
 fairing-widgets = { path = "../fairing-widgets", version = "0.1.0" }
@@ -33,7 +33,7 @@ chrono = { workspace = true, optional = true }
 image = { workspace = true }
 
 [features]
-# A large subsystem comes out whole behind a feature — on by default, compiled out when off.
+# Features gate subsystem code; shared configuration and value types can remain when disabled.
 # `overlay` = the shade, the quick-settings tiles and the scrim; `osk` = the on-screen keyboard.
 default = ["mock", "overlay", "osk", "brand", "settings"]
 mock = []
@@ -49,20 +49,21 @@ settings = []
 runner = ["dep:eframe"]
 runner-x11 = ["runner", "eframe/x11"]
 # `chrono` = a `ChronoClock` that follows the system time zone and DST. The default `SystemClock`
-# has its offset as a config value and so knows nothing of summer time. On, it measures at +3 crates.
+# uses a configured fixed offset. Enabling chrono adds its optional timezone dependency tree.
 chrono = ["dep:chrono"]
 
-# The smallest complete app, standing alone (no `mod common`) so it can be copied. It runs on
-# the null backends, so it needs no `mock`; `settings` is stated for the screens it adds.
+# Protected host and GUI smoke tour on Null backends, with typed settings registration.
 [[example]]
 name = "protected"
 required-features = ["runner", "settings"]
 
+# A standalone app example without `mod common`, intended for copying. It runs on
+# the null backends, so it needs no `mock`; `settings` is stated for the screens it adds.
 [[example]]
 name = "hello"
 required-features = ["runner", "settings"]
 
-# Every other example uses the Mock backends. `mock` is a default feature, but it is stated explicitly
+# Examples using Mock backends declare that feature explicitly as well as relying on its default
 # so that a `--no-default-features` build skips them quietly rather than failing to compile.
 
 [[example]]
@@ -100,8 +101,8 @@ required-features = ["runner-x11", "mock"]
 [lints]
 workspace = true
 
-# docs.rs builds the Linux target only: that is where the crate runs, and the runner's window
-# stack is the one part that differs per platform.
+# docs.rs builds the Linux API reference with all features. Window integration
+# on other platforms needs separate build validation.
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

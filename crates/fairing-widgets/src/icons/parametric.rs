@@ -1,11 +1,10 @@
 //! The parametric icons — drawing functions that take their state as an argument.
 //!
 //! Wi-Fi strength, battery level, volume, Bluetooth, signal and the progress ring. Drawn in code
-//! rather than as static SVGs. Every function draws on the 24-grid into **the largest square
-//! inside `rect`** and stays within that square, stroke width included (the test
-//! `parametric_shapes_stay_inside_the_rect`). The one exception is [`battery`] — a battery is a
-//! wide shape by nature, so it stretches the 24-grid horizontally and vertically and uses the
-//! whole `rect` (filling the space the status bar allots it at `size × 1.4`).
+//! rather than as static SVGs. Grid coordinates map into the largest square inside
+//! `rect`; [`battery`] instead maps to the whole rectangle. The supplied stroke
+//! width can extend painted bounds beyond `rect`. The
+//! `parametric_shapes_stay_inside_the_rect` test checks its fixed 2 px stroke style.
 //!
 //! # The crossfade (A7)
 //!
@@ -24,10 +23,9 @@
 //!
 //! # The per-frame cost
 //!
-//! Arcs accumulate their points in a stack buffer and go out as [`egui::Shape::LineSegment`]s,
-//! so there is no heap allocation. The same holds for fills, rectangles and circles. `epaint`'s
-//! `PathShape`, which wants an owned `Vec`, is used only where round joins are needed: the rune
-//! in [`bluetooth`] (6 points) and the cone in [`volume`] (4 points).
+//! Arc points use a stack buffer and are submitted as [`egui::Shape::LineSegment`]s.
+//! The Bluetooth rune and volume cone use owned `PathShape` point vectors for round
+//! joins. Shape submission and rendering can also allocate inside egui/epaint.
 
 // UI geometry: small integer counts and pixel values crossing to f32. The loss is meaningless in this
 // range, so the cast lints are lifted for the whole file (the rest of clippy's `pedantic` stays).
@@ -61,7 +59,7 @@ pub struct ParamStyle {
     pub muted: Color32,
     /// The danger colour (a battery at 20 % or below).
     pub danger: Color32,
-    /// The stroke in pixels.
+    /// The stroke in egui points (du).
     pub stroke_px: f32,
 }
 
@@ -113,14 +111,14 @@ impl Grid {
     }
 }
 
-/// The maximum subdivision count for an arc polyline. It fixes the stack buffer's size (zero heap allocations per frame).
+/// Maximum arc-subdivision count, which fixes the local stack buffer's size.
 const ARC_MAX: usize = 64;
 
-/// Draw an arc as a chain of segments plus round caps at each end. No heap allocation.
+/// Draw an arc as line segments with round end caps. Arc-point storage is on the
+/// stack; egui retains the submitted shapes in its output storage.
 ///
-/// Adjacent segments share an endpoint and the angle between them is small (about 2 px per
-/// subdivision), so the gap on the outside is `stroke/2 · tan(θ/2)` — under 0.1 px. No joint
-/// circles are stamped, so a colour with alpha does not double-composite.
+/// Adjacent segments share an endpoint. No joint circles are added, avoiding
+/// overlapping circle fills at those joins.
 fn arc(painter: &Painter, center: Pos2, radius: f32, start: f32, sweep: f32, stroke: Stroke) {
     if radius <= 0.0 || stroke.width <= 0.0 || stroke.color == Color32::TRANSPARENT {
         return;

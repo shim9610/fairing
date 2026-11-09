@@ -1,17 +1,21 @@
 //! `fairing` — a touchscreen shell for embedded devices, built on `egui`.
 //!
-//! The status bar, the pull-down shade with quick-settings tiles and notifications
-//! (feature `overlay`), the desktop, a screen stack with transitions, the navigation bar, an
-//! on-screen keyboard with numeric, QWERTY and two-set Hangul layouts (feature `osk`), toasts and
-//! heads-up banners ([`notify`]), device settings screens and access gates — the parts every
-//! kiosk, panel and bench instrument rebuilds, in one process and one `egui` frame loop.
+//! Fairing provides a status bar, pull-down shade (feature `overlay`), desktop,
+//! screen stack, navigation bar, on-screen keyboard (feature `osk`), notifications,
+//! device settings screens and access gates in the host process.
 //!
-//! It is not an OS, an app launcher or a window manager. A screen is a closure or a [`Screen`]
-//! you register, and fairing owns everything around it: the layout, touch targets sized in
-//! millimetres ([`unit`](mod@unit)), one gesture engine for edges, flings and long presses
-//! ([`gesture`]), the transitions, the gates and the repaint policy. Every chrome surface can be
-//! reconfigured, declared or repainted without forking the crate, and [`testing::Harness`] runs
-//! frames with no window and no GPU, so a test taps and drags where the shell actually drew.
+//! Applications register screen closures or [`Screen`] implementations and supply
+//! business state, credential verification and device backends. Fairing coordinates
+//! their lifecycle, shell layout, gesture routing, transitions and permission admission.
+//! [egui `Ui`](https://docs.rs/egui/0.37.0/egui/struct.Ui.html) provides the underlying
+//! layout and widget interaction; [egui `Painter`](https://docs.rs/egui/0.37.0/egui/struct.Painter.html)
+//! submits shapes. The optional runner uses [eframe](https://docs.rs/eframe/0.37.0/eframe/).
+//!
+//! Theme, metrics, declarations and supported drawing hooks customize the shell.
+//! Protected construction restricts untyped hooks, as described below. Physical-size
+//! conversion ([`unit`](mod@unit)) depends on panel metadata and host scale.
+//! [`testing::Harness`] drives egui with virtual input and time without a window
+//! or GPU; it checks UI behavior, not device presentation.
 //!
 //! The [integrator guide](https://github.com/shim9610/fairing/tree/HEAD/docs/guide) in the
 //! repository is the place to start. How the crate is put together is in
@@ -23,8 +27,9 @@
 //!
 //! Credential verification belongs to [`access::Authenticator`]. In opt-in token mode,
 //! the issuer retains a [`access::SessionController`] and Fairing reads its
-//! [`access::SessionToken`] for explicit operation grants. Independent web and device
-//! login states require separate controller/token pairs.
+//! [`access::SessionToken`] for explicit operation grants. When representing both web
+//! and device logins with Fairing sessions, use separate controller/token pairs to
+//! keep their authority and lifetime independent.
 //!
 //! [`ShellBuilder::build_protected`] requires token mode and returns [`ProtectedShell`].
 //! Define an application-owned [`access::Permission`] value and register
@@ -143,12 +148,8 @@ pub mod overlay;
 #[cfg(feature = "runner")]
 pub mod runner;
 
-/// **egui, re-exported verbatim**.
-///
-/// Screen closures receive an `&mut egui::Ui`, so the integrator has to get hold of egui one way
-/// or another. Left to take a direct dependency, a version mismatch links **two copies and the
-/// types stop matching** — and that failure is hard to diagnose, because the compiler says `Ui`
-/// is not `Ui`. Going through this re-export (`fairing::egui::Ui`) makes a mismatch impossible.
+/// Re-export the egui dependency selected by Fairing.
+/// Use `fairing::egui` for UI types that match Fairing callback signatures.
 pub use egui;
 
 /// **The element layer, re-exported verbatim.**
@@ -187,8 +188,8 @@ pub use workspace::InstanceId;
 /// The version string from this crate's `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-// The guide doctest gate: every Rust block in docs/guide is compiled — and run, unless it is
-// marked `no_run` — as a doctest of this module. The guide is written against the whole feature
+// The guide doctest gate compiles non-ignored Rust blocks in docs/guide and runs
+// those not marked `no_run` as doctests of this module. The guide is written against the whole feature
 // set (it shows the runner, chrono, the shade and the keyboard), so the gate needs every feature
 // on. The audit sets `--cfg fairing_repo_docs` in RUSTDOCFLAGS; the published package
 // excludes this repository-only module, so normal/all-feature package doctests omit it.

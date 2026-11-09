@@ -1,8 +1,9 @@
 //! The theme — the palette, metrics and motion tokens, and applying them to egui's `Style`
 //! (`theme/`, the render principles).
 //!
-//! Touch first: no hover colour, with the tuning done on the pressed (`active`) state. No large
-//! blurred shadows; flat surfaces with 1 px borders.
+//! Touch-oriented styling keeps hover colours equal to the inactive state and accents
+//! the pressed state. Container elevation can use cast shadows, rims or no elevation;
+//! [`Theme::elevate`] resolves that choice from the theme tokens.
 
 mod fade;
 
@@ -13,8 +14,8 @@ mod control;
 mod elevation;
 mod metrics_spec;
 pub use components::{
-    ButtonMetrics, ComponentMetrics, ComponentSpec, HeadsUpMetrics, ListRowMetrics,
-    OverviewMetrics, PopoverMetrics, ShadeMetrics, SliderMetrics, SwitchMetrics, ToastMetrics,
+    ComponentMetrics, ComponentSpec, HeadsUpMetrics, ListRowMetrics, OverviewMetrics,
+    PopoverMetrics, ShadeMetrics, SliderMetrics, ToastMetrics,
 };
 pub use control::{
     card_radius, control_height, lamp_size, ControlMetrics, ControlRatios, ControlSpec,
@@ -65,26 +66,17 @@ pub enum ColorRole {
     /// Borders — the decorative line between two containers: a divider inside a card, the hairline
     /// where one surface meets another. It measures 1.15–1.65 against the grounds on purpose.
     Outline,
-    /// **A control's own boundary** — the ring of an unticked checkbox, an unselected radio, an off
-    /// switch's track, a slider's empty side.
+    /// Control-boundary colour, distinct from decorative `Outline` and text `Muted`.
     ///
-    /// It is separate from both of its neighbours because it answers a different rule. `Outline` is
-    /// decoration and is allowed to be a ghost; this is what identifies a control at all, so it is
-    /// gated at WCAG 1.4.11's **3.0**. `Muted` is *text*, gated at 4.5 — borrowing it, as every
-    /// control did, drew each boundary as loud as the label beside it, and a card holding a
-    /// checkbox, a radio, a segmented strip and a slider came out as four bright outlines.
+    /// Palette tests check this role against the supported control backgrounds at a
+    /// contrast ratio of at least 3:1. Custom palettes and backgrounds need review.
     ControlEdge,
     /// The press tint.
     Pressed,
-    /// **Height.** The ink a container casts under itself on a light ground, and the rim it wears
-    /// on its own edge on a dark one — see [`Theme::elevate`].
+    /// Shadow/rim colour role used by [`Theme::elevate`].
     ///
-    /// It is an alpha role like [`Self::Scrim`] and [`Self::Pressed`], and like them it carries one
-    /// number whose polarity flips with the mode: `from_black_alpha(14)` light,
-    /// `from_white_alpha(14)` dark. It is **not** gated at 3.0, and that is deliberate — a cast
-    /// shadow measures about 1.11 against the ground it falls on, which is figure-ground help for a
-    /// sighted reader in bright light and not a boundary that identifies anything. What identifies
-    /// a card stays its fill step and, where a real boundary is wanted, [`Self::Outline`].
+    /// Defaults use black alpha in light mode and white alpha in dark mode. This is
+    /// decorative elevation styling, separate from control-boundary contrast checks.
     Shadow,
     /// **The face of the pull-down shade** — the curtain, or the floating card with
     /// `[overlay] reveal = "card"`, and the tile pucks on it. Unset, it is [`Self::Surface`], so a
@@ -165,9 +157,9 @@ pub struct Palette {
     pub shade_surface: Option<Color32>,
 }
 
-/// A hairline border — the thinnest thing the eye still catches. Unrelated to touch targets, so not a token.
+/// Hairline border width.
 const HAIRLINE: f32 = 1.0;
-/// The border width that **announces an event**, like a press or focus. Touch has no hover, so this is the only signal.
+/// Border width used for press or focus indication.
 const ACCENT_STROKE: f32 = 2.0;
 /// The opacity of the text selection background.
 const SELECTION_ALPHA: f32 = 0.35;
@@ -177,7 +169,7 @@ const BUTTON_PAD_X: f32 = 4.0 / 3.0;
 const BUTTON_PAD_Y: f32 = 5.0 / 6.0;
 /// The gap between widgets = `screen_inset × this`.
 const ITEM_GAP: f32 = 5.0 / 6.0;
-/// A text field's default width = `touch_target × this`. Enough for a one-line name or note.
+/// Default text-field width as a multiple of `touch_target`.
 const TEXT_EDIT_SPAN: f32 = 7.5;
 
 /// A palette preset.
@@ -195,14 +187,7 @@ pub enum Preset {
     Base,
     /// Abyss — the deep-sea palette drawn from the manta art.
     Abyss,
-    /// Linen — warm neutrals and a quiet sage, for an appliance that lives in a room.
-    ///
-    /// The other two are instrument palettes: they assume a panel that is looked *at*, in a
-    /// workshop or a dark cabin, and they are built dark-first. This one assumes a panel that sits
-    /// in a kitchen beside oak and wool and is mostly **not** being looked at — so it is built
-    /// light-first, its greys carry a little red and yellow rather than none at all, and the accent
-    /// is a sage that reads as a material rather than as a signal. The alarm colours stay
-    /// saturated, which is the point of restraining the accent: an alarm has to outrank it.
+    /// Linen: warm neutral surfaces with a sage accent.
     Linen,
 }
 
@@ -237,7 +222,7 @@ impl Preset {
 }
 
 impl Palette {
-    /// Preset × dark/light. **The single source of every palette**.
+    /// Resolve one built-in preset for the selected dark/light mode.
     #[must_use]
     pub fn preset(preset: Preset, dark: bool) -> Self {
         match (preset, dark) {
@@ -250,16 +235,9 @@ impl Palette {
         }
     }
 
-    /// **Linen light — the one this preset is for**.
+    /// Warm neutral palette with off-white surfaces.
     ///
-    /// Warm neutrals rather than neutral ones: every grey here carries a little red and yellow, so
-    /// the page sits beside oak and wool instead of against them. Nothing is pure white — the
-    /// lightest surface is `#FAF8F4`, because a white card in a room with daylight in it reads as a
-    /// hole rather than as paper.
-    ///
-    /// The accent is a **sage at 4.74 against the page**, deliberately quieter than its own
-    /// `danger` at 5.56. An appliance's accent marks what you chose; the alarm has to be able to
-    /// outrank it, and on a palette this soft that only happens if the accent gives way first.
+    /// The application can override its colour roles.
     fn linen_light() -> Self {
         Self {
             background: Color32::from_rgb(0xe4, 0xde, 0xd4),
@@ -282,11 +260,7 @@ impl Palette {
         }
     }
 
-    /// Linen dark — the same room after dark, not a different instrument.
-    ///
-    /// Smoked oak rather than black: the greys keep the warm cast the light form has, so switching
-    /// at dusk changes the light in the room and not the product. The sage is lifted only as far as
-    /// its `danger` still beats it (5.54 against 6.62).
+    /// Dark Linen palette with warm neutral surfaces and a sage accent.
     fn linen_dark() -> Self {
         Self {
             background: Color32::from_rgb(0x15, 0x13, 0x0f),
@@ -326,20 +300,9 @@ impl Palette {
             surface_variant: Color32::from_rgb(0x12, 0x30, 0x49),
             on_surface: Color32::from_rgb(0xe6, 0xf2, 0xfa),
             muted: Color32::from_rgb(0x7f, 0xa0, 0xb8),
-            // **Deep enough to let an alarm be louder than it.** `#38C6E8` measured **8.38** against
-            // this preset's page while its own `danger` measured 6.09 — so on the deep-sea preset
-            // the accent shouted over the error colour, and an error had nothing left to say with.
-            // `#00A2CA` is the same hue (192°) at the same full saturation, two steps down: 5.65 on
-            // the page, under danger's 6.09 and well under warning's 10.52 and success's 10.03.
-            //
-            // The order this restores is the one base dark already had, and it is the order a
-            // machine panel wants: the accent marks what is *chosen*, and the four severity colours
-            // are the only things allowed to interrupt.
+            // Keep the accent distinct from the severity colour roles.
             primary: Color32::from_rgb(0x00, 0xa2, 0xca),
-            // Not white — the contrast over `primary` falls to 3.4:1, under the 4.5 a label needs.
-            // The dark ink reads at 6.32, and unlike base dark this preset can afford it: a bright
-            // cyan is what the reference art *is*, and deepening it far enough to carry white would
-            // have cost the preset its identity rather than its loudness.
+            // Use dark foreground ink on the cyan accent; palette tests check contrast.
             on_primary: Color32::from_rgb(0x04, 0x12, 0x1f),
             danger: Color32::from_rgb(0xff, 0x6b, 0x6b),
             warning: Color32::from_rgb(0xff, 0xc2, 0x4d),
@@ -389,13 +352,7 @@ impl Palette {
         Self::base_dark()
     }
 
-    /// Base dark — the system-UI shape at the dark end.
-    ///
-    /// The three reference platforms agree here too: the page is a near-black neutral and the card
-    /// on it is a step **lighter** (iOS `#1C1C1E` on `#000000`, Windows 11 `#2B2B2B` on `#202020`),
-    /// so `surface_variant` stays above `surface` in both modes. The accent is the same steel blue
-    /// as the light end, one step lighter — deep enough to carry white text on a filled control,
-    /// which is why `on_primary` is white here and not the dark ink a pastel accent would force.
+    /// Dark Base palette with neutral surfaces and a blue accent.
     fn base_dark() -> Self {
         Self {
             background: Color32::from_rgb(0x0b, 0x0b, 0x0d),
@@ -404,23 +361,7 @@ impl Palette {
             on_surface: Color32::from_rgb(0xf0, 0xf0, 0xf3),
             muted: Color32::from_rgb(0x93, 0x93, 0x9d),
             primary: Color32::from_rgb(0x28, 0x78, 0xa9),
-            // **White, and the accent moved to meet it.** The rule used to be that a dark ground
-            // forces a light accent and therefore dark label text, and that is what produced a
-            // pastel `#57A9FF` with near-black on it — read, correctly, as toy plastic. The way out
-            // is not a lower floor but a deeper accent: `#2878A9` carries white at 4.83:1, clearing
-            // the 4.5 text floor outright. Its own contrast against the surfaces is 4.07 / 3.81 /
-            // 3.20, over the 3.0 a filled shape needs.
-            //
-            // It is a **steel** blue and not a pure one, and that is the second thing this value
-            // fixes. A fully saturated accent — `#1B6EF3`, which this replaces — is the one every
-            // stock panel ships, and at the sizes a device UI fills it with (a whole switch track,
-            // a whole slider) the saturation is what reads as cheap. Rotating the hue toward cyan
-            // and dropping the chroma keeps the job and leaves the four severity colours louder
-            // than the accent, which is the order a machine panel wants.
-            //
-            // The consequence has to be said: `Primary` is now **never** a text colour. 3.81 on
-            // `surface` clears the non-text floor and not the text one, so an accent tick, an
-            // accent fill and an accent icon are all fine and accent *words* are not.
+            // Use a less saturated accent for large filled areas.
             on_primary: Color32::WHITE,
             danger: Color32::from_rgb(0xff, 0x6b, 0x5e),
             warning: Color32::from_rgb(0xe9, 0xa8, 0x3b),
@@ -441,34 +382,9 @@ impl Palette {
         Self::base_light()
     }
 
-    /// Base light — **a grey page, white cards, one system blue**.
+    /// Light Base palette with a blue accent and neutral surfaces.
     ///
-    /// # Where the values come from
-    ///
-    /// The reference is the family this shell stands beside on real hardware — iOS, One UI and
-    /// Windows 11 — because a device shell's *default* has to read as a competent system UI, not as
-    /// a point of view. All three agree on three things and this preset takes all three:
-    ///
-    /// 1. **The page is a light grey and the card on it is white**, not the other way round. iOS
-    ///    groups `#FFFFFF` cards on a `#F2F2F7` page; Windows 11 puts `#FBFBFB` cards on `#F3F3F3`.
-    ///    So [`ColorRole::Surface`] (the screen ground and the bars) is the grey and
-    ///    [`ColorRole::SurfaceVariant`] (cards, tiles, plain buttons) is the white — a card is
-    ///    **lifted**, not recessed. [`ColorRole::Background`] is a step deeper again, which is what
-    ///    makes a text field read as a hole to write in.
-    /// 2. **The neutrals are neutral** — neither a warm tint nor the blue-grey ramp every UI kit
-    ///    ships. The three channels stay within a few points of each other.
-    /// 3. **The accent is a system blue.** Green, amber and red are already
-    ///    [`Success`](ColorRole::Success), [`Warning`](ColorRole::Warning) and
-    ///    [`Danger`](ColorRole::Danger), which is why every platform lands in the blue arc.
-    ///    `#106AA2` is a steel blue: deeper than Windows 11's `#0078D4`, and rotated off the pure
-    ///    arc those three sit on. Depth is the accessibility half — `#0078D4` is 4.53:1 against
-    ///    white text, clearing the 4.5 floor by 0.03 with no headroom, and iOS `#007AFF` (4.02) and
-    ///    One UI `#0381FE` (3.77) do not clear it at all, while `#106AA2` is 5.82:1. The rotation
-    ///    is the other half: a fully saturated blue filling a whole slider reads as cheap, and a
-    ///    device shell fills large areas with its accent.
-    ///
-    /// [`ColorRole::Focus`] is deliberately **not** `primary`: a focus ring drawn on top of a
-    /// pressed control has to be visible against the press.
+    /// Focus uses a separate role from the primary accent.
     fn base_light() -> Self {
         Self {
             background: Color32::from_rgb(0xe1, 0xe1, 0xe8),
@@ -571,9 +487,7 @@ impl Palette {
         Ok(())
     }
 
-    /// Interpolate between two palettes (A7, the theme switch: called every frame for
-    /// 200 ms and applied to `Visuals`). Every role is interpolated per channel with
-    /// `Color32::lerp_to_gamma`, so dark and light join with no colour jump.
+    /// Interpolate every palette role per channel with `Color32::lerp_to_gamma`.
     #[must_use]
     pub fn lerp(&self, other: &Self, t: f32) -> Self {
         let t = t.clamp(0.0, 1.0);
@@ -606,17 +520,7 @@ impl Palette {
     }
 }
 
-/// **The five text sizes**. They go out as egui `TextStyle`s.
-///
-/// # Why they have to be tokens
-///
-/// While these five were baked into `egui_style()`, **no rung of the override ladder
-/// could reach the text size.** Injecting a whole theme still had `egui_style()` write the
-/// constants again. And on a device UI the text size is the physical question "is this readable
-/// standing 70 cm away" — the archetypal value that has to differ per screen.
-///
-/// The defaults are exactly today's — a promotion is giving you a handle, not changing the
-/// render.
+/// Five configurable text sizes, mapped to egui text styles.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TypeScale {
     /// Secondary text (13).
@@ -664,26 +568,12 @@ pub struct Metrics {
     pub status_label_size: f32,
     /// The settings row height (48): one touch target.
     pub row_height: f32,
-    /// Where a row's, a card's or a bar's content starts, measured in from its edge (16).
-    ///
-    /// **One token for every row-like thing.** It used to be five: `list_row.pad`, `button.pad`,
-    /// `toast.pad_x`, `heads_up.pad` and, in the shell's hand-drawn rows, `screen_inset`. Two of
-    /// those were 16 and one was 12, so a switch row's label and a nav row's label in the same card
-    /// sat four du apart — measured at five pixels on a real render, and visible as sloppiness
-    /// without anyone being able to name it.
+    /// Content inset from a container edge (16 du by default).
     pub content_inset: f32,
     /// The corner radius of **a container** — a card, a window, a menu (12).
     pub corner_radius: f32,
-    /// The corner radius of **a control** — a button, a field, a combo (6).
-    ///
-    /// # Why it is not `corner_radius`
-    ///
-    /// While the two were one value, a button laid inside a card wore the card's own corner, so
-    /// the card and the thing inside it read as two cards; a settings page came out as boxes of
-    /// boxes with no hierarchy left to read. Half the container's radius is enough for the eye to
-    /// sort container from content, and it is still nowhere near egui's near-square default.
-    ///
-    /// A device that wants the old flat look sets it equal to `corner_radius`.
+    /// Control corner radius (6 du), separate from the container radius.
+    /// Applications can configure the two independently.
     pub control_radius: f32,
     /// A card's inner padding — the gap between its edge and the row inside it, and the `gap` of
     /// the concentric-corner rule (`inner = outer − gap`).
@@ -693,8 +583,8 @@ pub struct Metrics {
     /// The dock height.
     pub dock_height: f32,
     /// The padding inside the rect a screen receives (12). The shell shrinks the content rect by
-    /// this much before handing it over — the layout (`fairing_widgets::shell::Layout`) does not shrink.
-    /// Per screen it is overridden by `fairing_widgets::screen::ChromePolicy::inset`.
+    /// this much before handing it over — the layout (`fairing::shell::Layout`) does not shrink.
+    /// Per screen it is overridden by `fairing::screen::ChromePolicy::inset`.
     pub screen_inset: f32,
     /// The desktop label text size (13).
     pub desktop_label_size: f32,
@@ -748,22 +638,10 @@ pub struct Metrics {
     pub nav_indicator_thickness: f32,
     /// The status bar's side padding (12).
     pub status_edge_pad: f32,
-    /// **The background alpha of a `BarMode::Overlay` status bar (1.0 — opaque).**
+    /// Background alpha for an overlay status bar (1.0, opaque, by default).
     ///
-    /// It shipped at 0.72 and was never gated, and measured it does not hold: a bar at 0.72 over
-    /// arbitrary content puts `muted` caption text at **2.41** against the 4.5 a label needs, in
-    /// `base dark` over a white photograph. Every other preset fails too, in one direction or the
-    /// other.
-    ///
-    /// A scrim under the bar does not rescue it. [`ColorRole::Scrim`] is black in all four presets,
-    /// which is the right way for a dark palette and exactly the wrong way for a light one — with a
-    /// scrim under it, `base light`'s caption goes 5.06 → **2.57**. The general reason is that
-    /// `muted` and `danger` are *mid*-luminance by construction, and they clear the floor against an
-    /// opaque surface with 12 % and 6 % of headroom respectively; anything that moves the ground
-    /// toward the middle spends that headroom immediately, whichever way it moves.
-    ///
-    /// The token stays because an integrator who knows what is behind their bar may lower it (rung
-    /// 2 of the ladder), and `a_translucent_bar_is_gated_at_its_default` pins the shipped value.
+    /// Translucency changes contrast against content behind the bar. The default
+    /// compositing checks use opaque fill; review the actual background if lowering it.
     pub status_overlay_alpha: f32,
     /// The side of a quick-settings tile (72) (M2).
     pub tile_size: f32,
@@ -781,7 +659,8 @@ pub struct Metrics {
     /// tall panel, where a fraction of the screen made each row as big as a palm.
     /// `f32::INFINITY` lifts the cap — what [`MetricsSpec::osk_max_key`] set to `None` resolves to.
     pub osk_max_key: f32,
-    /// The default widget height — `BigButton` and `ListRow` (48): one touch target.
+    /// Legacy widget-height floor used by `ListRow` (48 du by default).
+    /// `BigButton` instead uses the maximum of `row_height` and `touch_target`.
     pub widget_height: f32,
     /// The slider thumb diameter (28) (M2, A7).
     pub slider_thumb: f32,
@@ -855,9 +734,9 @@ pub struct MotionTokens {
     pub spring: Spring,
     /// The release distance threshold.
     pub snap_ratio: f32,
-    /// The release velocity threshold (px/s).
+    /// The release velocity threshold in egui points (du) per second.
     pub fling_px_s: f32,
-    /// slop (px).
+    /// Drag-detection slop in egui points (du).
     pub slop_px: f32,
     /// The tap window.
     pub tap: Duration,
@@ -893,12 +772,8 @@ pub struct MotionTokens {
     pub osk_hide: Tween,
     /// The OSK hide debounce (A5, 100 ms).
     pub osk_hide_debounce: Duration,
-    /// **One sweep of an indeterminate progress bar**, and half the period of the pulse that
-    /// replaces it under [`Self::reduce`].
-    ///
-    /// A [`Duration`] and not a [`Tween`], so `reduce` cannot zero it — the reduced path *needs* a
-    /// clock. At 1.6 s the leading edge crosses a 245 du track at about 4 °/s at arm's length,
-    /// well inside smooth pursuit and nowhere near the rate at which the eye starts to saccade.
+    /// Indeterminate-progress cycle duration, also half the period of its reduced-motion
+    /// opacity pulse. This duration remains nonzero when tweens are disabled.
     pub progress_cycle: Duration,
     /// A toast entering (A6).
     pub toast_in: Tween,
@@ -1039,18 +914,18 @@ impl Default for MotionTokens {
     }
 }
 
-/// A theme = the palette + the metrics + the motion tokens.
+/// A theme combines palette, layout/component/control metrics, elevation and motion tokens.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Theme {
     /// The colours.
     pub palette: Palette,
     /// The metrics.
     pub metrics: Metrics,
-    /// The component metrics. The twenty values widgets and notifications draw
-    /// themselves with — named apart from [`Metrics`], which moves the layout.
+    /// Component-specific geometry for widgets, notifications and shell surfaces.
+    /// See [`ComponentMetrics`] for the fields, separate from shared layout [`Metrics`].
     pub components: ComponentMetrics,
-    /// The control tokens — what every control shares, so that a switch, a
-    /// slider and a button read as one family rather than three drawings. See [`ControlMetrics`].
+    /// Shared control metrics. Individual widgets can also use component metrics,
+    /// widget options and custom painting. See [`ControlMetrics`].
     pub control: ControlMetrics,
     /// How high a container sits — see [`Theme::elevate`].
     pub elevation: ElevationMetrics,
@@ -1075,8 +950,8 @@ fn preset_from_config(cfg: &ThemeConfig) -> Result<Preset> {
 
 /// The config a [`Theme`] is built from ([`Theme::from_inputs`]).
 ///
-/// Five values out of the shell's TOML, named rather than passed positionally so that adding one
-/// later does not silently reorder a call.
+/// Theme-related inputs gathered from shell configuration, named rather than passed
+/// positionally so that adding an input does not silently reorder a call.
 #[derive(Debug, Clone, Copy)]
 pub struct ThemeInputs<'a> {
     /// `[shell] theme` — `"dark"` or `"light"`. Anything else warns and takes dark.
@@ -1094,38 +969,16 @@ pub struct ThemeInputs<'a> {
 }
 
 impl Theme {
-    /// A **bold** [`egui::FontId`] at `size`.
+    /// Return a font ID at `size` in the named strong family.
     ///
-    /// # Why weight is used at all
-    ///
-    /// The rule used to be that hierarchy must never rest on weight, because a manufacturer can
-    /// swap in a typeface with no weight axis and the hierarchy would collapse with it. The rule
-    /// is right about the risk and wrong about the conclusion: iOS, One UI and Windows 11 all lean
-    /// on weight for the top of the hierarchy, and a shell that never uses it reads flat however
-    /// well its sizes and colours are chosen — which is what egui's own single-weight font
-    /// (`Ubuntu-Light`) leaves you with.
-    ///
-    /// The way out is to use weight **and** keep the size and colour separation that works without
-    /// it. [`crate::fonts::FontFamilies::Strong`] is always bound: with no bold registered it holds
-    /// the regular faces, so this returns a font that renders identically and nothing collapses.
+    /// Without a registered bold face, that family falls back to proportional faces.
     #[must_use]
     pub fn strong(&self, size: f32) -> egui::FontId {
         egui::FontId::new(size, crate::fonts::strong_family())
     }
 
-    /// A [`FontId`](egui::FontId) in the **display** face at `size`.
-    ///
-    /// The display face is the half of a brand a palette cannot carry — the two kiosk references
-    /// this crate was measured against are recognised by their serif headline before a single
-    /// colour is read — and until this existed the crate could not express it: `Proportional`,
-    /// `Monospace` and `Strong` are all the coverage faces, and swapping `Proportional` for a
-    /// headline face would have changed every label on every screen with it.
-    ///
-    /// [`crate::fonts::FontFamilies::Display`] is always bound, and seeded from the *strong* faces
-    /// rather than the regular ones, so this returns [`Self::strong`]'s font exactly until an
-    /// integrator registers a display face. A screen title is the only thing in the crate that
-    /// asks for it: a face chosen for a headline may carry no Hangul, no tabular figures and no
-    /// `℃`, and a row that must show a value cannot afford any of those to be missing.
+    /// Return a font ID at `size` in the named display family.
+    /// Without a registered display face, it is seeded from the strong-family faces.
     #[must_use]
     pub fn display(&self, size: f32) -> egui::FontId {
         egui::FontId::new(size, crate::fonts::display_family())
@@ -1161,9 +1014,9 @@ impl Theme {
 
     /// Built from the config sections that describe a theme ([`ThemeInputs`]).
     ///
-    /// The shell's own `ShellConfig` gathers these — `fairing_widgets::ShellConfig::build_theme` is the
-    /// one-argument form. This takes the five pieces directly, because a theme has no business
-    /// knowing what else is in the shell's config file.
+    /// The shell's own `ShellConfig` gathers these — `fairing::ShellConfig::build_theme` is the
+    /// one-argument form. This method accepts only the theme-related sections, without
+    /// depending on the rest of the shell configuration.
     ///
     /// # Errors
     /// [`Error::Config`] if `[theme] preset` is an unknown name, or a `[theme.palette]` role
@@ -1176,7 +1029,7 @@ impl Theme {
             );
         }
         let dark = inputs.theme_name != "light";
-        // Passing a typo quietly to the default preset makes "why is the brand not coming on" impossible to find.
+        // Reject unknown preset names instead of selecting a default.
         let preset = preset_from_config(inputs.theme)?;
         let mut theme = Self {
             palette: Palette::preset(preset, dark),
@@ -1201,20 +1054,10 @@ impl Theme {
         self.palette.get(role)
     }
 
-    /// An egui `Style` carrying this theme (with the touch-first adjustments).
+    /// Build egui `Style` values from Fairing role colours and metric tokens.
     ///
-    /// # Why it paints this far
-    ///
-    /// If only the crate's widgets ([`widgets`](crate::widgets)) followed the theme and **egui's own
-    /// widgets** the integrator uses (`TextEdit`, `Button`, `ComboBox`, `Checkbox`) kept egui's
-    /// defaults, two designs would mix inside one screen. That is what happened: card corners
-    /// were 26 du while the text field right beside them was egui's default 2 du, so they did
-    /// not read as one screen, and changing the palette left the field's hint text behind.
-    /// **A theme is only a theme if changing it changes the small things too.**
-    ///
-    /// So the role colours and the metric tokens go into egui's `Visuals` and `Spacing` **in
-    /// full**. An integrator writing one line of `ui.text_edit_singleline` gets corners, borders,
-    /// hint colour and the focus ring from the theme.
+    /// This includes `Visuals` and `Spacing` settings used by ordinary egui widgets,
+    /// such as corners, borders, hint colour and focus styling.
     #[must_use]
     pub fn egui_style(&self) -> egui::Style {
         let mut style = if self.dark {
@@ -1245,8 +1088,8 @@ impl Theme {
         }
         // **Labels are not selectable.** egui's default lets a drag across a label select its
         // text, and on a panel a drag across a label is a scroll: the demo's tour dragged a page
-        // and got a highlighted sentence instead of a moved one. There is no clipboard to paste
-        // into on a machine, so nothing is lost.
+        // and got a highlighted sentence instead of a moved one. Disabling label selection
+        // gives that drag to the surrounding interaction instead of selecting label text.
         style.interaction.selectable_labels = false;
         let p = &self.palette;
         let m = &self.metrics;
@@ -1430,12 +1273,9 @@ mod tests {
 
     use super::contrast;
 
-    /// **The shipped overlay status bar reads over anything that can be behind it.**
-    ///
-    /// The bar's own fill is composited over the screen below it, so unlike every other pair in
-    /// `every_preset_meets_the_contrast_floor` its ground is not a palette colour — it is whatever
-    /// the screen drew. The two extremes bound it. This is the test that did not exist while
-    /// `status_overlay_alpha` shipped at 0.72, which is how a 2.41 got out.
+    /// Check the default overlay-bar compositing against black and white backgrounds
+    /// for the tested palette text roles. This is a colour-pair test, not a screen
+    /// readability or presentation guarantee.
     #[test]
     fn a_translucent_bar_is_gated_at_its_default() {
         let alpha = Metrics::default().status_overlay_alpha;
@@ -1474,11 +1314,9 @@ mod tests {
         }
     }
 
-    /// **Every preset** × dark/light × four pairs clears the floor. Adding a
-    /// preset is caught automatically through [`Preset::ALL`] — which is why `ALL` exists.
-    ///
-    /// The alpha roles (`scrim`, `pressed`) are out of scope — they lie over a background, so
-    /// their contrast on their own means nothing.
+    /// Check the listed contrast pairs for each preset in [`Preset::ALL`] and both
+    /// modes. New presets must be added to that slice to be included.
+    /// Alpha-overlay roles require a composited background and are tested separately.
     #[test]
     fn every_preset_meets_the_contrast_floor() {
         for &preset in Preset::ALL {
@@ -1504,7 +1342,7 @@ mod tests {
                     ("on_primary/primary", p.on_primary, p.primary, 4.5),
                     ("danger/surface", p.danger, p.surface, 4.5),
                     ("danger/surface_variant", p.danger, p.surface_variant, 4.5),
-                    // Disabled: deliberately under the active state, never under legibility.
+                    // Check the disabled colour against the listed 3:1 contrast thresholds.
                     ("disabled/surface", dim, p.surface, 3.0),
                     ("disabled/surface_variant", dim, p.surface_variant, 3.0),
                     // Drawn shapes — a filled control, a track, a mover's edge, a focus ring.
@@ -1590,7 +1428,7 @@ mod tests {
         let dark = Palette::dark();
         let light = Palette::light();
         let mid = dark.lerp(&light, 0.5);
-        // All 14 roles have to lie between the two endpoints (linear interpolation, so each channel within
+        // The listed role channels stay between the two endpoint palettes (each channel within
         // min..=max) — it catches the regression of handing one palette back whole (the t<0.5 branch of the
         // original skeleton).
         for role in [

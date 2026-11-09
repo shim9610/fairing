@@ -1,31 +1,24 @@
 # fairing user guide
 
-Working documentation for device integrators. It carries what you need to put `fairing` into your
-own device binary, declare your screens, and reshape the shell into your product — nothing else.
-How the crate is put together is in [architecture](../architecture.md), and what comes next, with
-the limits it has today, is in the [roadmap](../roadmap.md).
+Integration documentation for using `fairing` in a device application: registering
+screens, configuring the shell and connecting application-owned backends.
+Component ownership and execution flow are in [system architecture](../architecture.md).
+Authentication, token authority and protected admission are in
+[security architecture](../security-architecture.md). Both include SVG diagrams.
+Planned work and current limits are in the [roadmap](../roadmap.md).
 
-Rust blocks on these pages, except those marked `ignore`, are compiled — and run
-unless marked `no_run` — by stage 3
-of `cargo xtask audit`, which CI runs on pull requests and pushes to `main`, and on a
-weekly schedule: `crates/fairing/src/guide_probe.rs`
-turns each page into doctests, with every feature on. So when the source moves, a block that no
-longer matches it fails the audit instead of quietly becoming false. The blocks marked `ignore`
-are of two kinds: **API outlines** (signatures without bodies, kept in step with the source by
-hand) and code that needs something outside this repository (a crate such as `image` or
-`zeroize`, or a font file of your own). Every `fairing.toml` fragment was put through
-`ShellConfig::from_toml` + `validate` by hand, once. Where the code cannot do something yet, that
-is written down as "it cannot".
+## Choose a shell mode
 
-The audit explicitly enables `fairing_repo_docs` in `RUSTDOCFLAGS` for this gate.
-An extracted release archive omits these repository-only pages and instead runs
-its public API doctests without that flag; [release checks](../release-checks.md)
-exercise both package tests and an external consumer.
+| Integration | Start here |
+|---|---|
+| Ordinary UI with trusted application callbacks and optional legacy level gates | [01 Getting started](01-getting-started.md), then [02 Screens](02-screens.md) |
+| Issuer-controlled sessions with typed requirements checked at managed UI entry points | [Session tokens](../session-tokens.md), then [typed registration](../session-tokens.md#typed-permission-requirements) and the [`protected` example](../../crates/fairing/examples/protected.rs) |
+| Existing application updating from an earlier checkout | [10 Migration](10-migration.md) |
 
-> **What this guide describes is the code in the repository today.** Where something is planned
-> but not in the code, the guide says so on the spot. Nothing has
-> been published yet. Applications using an earlier checkout should read
-> [10 Migration](10-migration.md) for the API and default changes.
+Choose the mode before copying registration examples. Chapters 01–04 primarily
+use ordinary `Shell`; their untyped hooks cannot be copied unchanged into
+`ProtectedShell`. Both modes can use the runners and headless harness. Authentication,
+permission assignment and device backends are supplied by the application.
 
 ## Reading order
 
@@ -59,9 +52,9 @@ at a time as you need it.
 | Use our company colour | [09 §0 Branding options](09-branding.md#0-branding-options) |
 | Use a background image (requirements) | [09 §2 Background images](09-branding.md#2-background-images--requirements) |
 | Change the logo mark | [09 §5 Logo marks](09-branding.md#5-logo-marks--requirements) |
-| Remove every trace of the brand | [09 §8.5](09-branding.md#85-checking-that-nothing-of-ours-is-left) |
+| Customize the branded surfaces | [09 §8.5](09-branding.md#85-checking-that-nothing-of-ours-is-left) |
 | Start a new project from a file that runs (`examples/hello.rs`) | [01 §4](01-getting-started.md#4-a-minimal-app) · [01 §5](01-getting-started.md#5-running-the-bundled-examples) |
-| Run the bundled examples (`hello` · `demo` · `console` · `kiosk` · `custom_chrome` · `motion_lab` · `palette_sheet`) | [01 §5](01-getting-started.md#5-running-the-bundled-examples) |
+| Run the bundled examples (`hello` · `protected` · `demo` · `console` · `kiosk` · `custom_chrome` · `motion_lab` · `palette_sheet`) | [01 §5](01-getting-started.md#5-running-the-bundled-examples) |
 | Test my UI with no window and no GPU | [01 §6 Headless](01-getting-started.md#6-testing-your-ui-headless) |
 | Add another screen | [02 §1 Five kinds of declaration](02-screens.md#1-five-kinds-of-declaration) |
 | Decide where a screen's state lives | [02 §3 Resident and factory](02-screens.md#3-resident-and-factory-screens) |
@@ -117,32 +110,21 @@ at a time as you need it.
 | [05 Access control](05-access-control.md) | Legacy levels, gates and prompts · `Authenticator` and routing · session/lock behavior · issuer-controlled sessions and typed UI links |
 | [06 Services](06-services.md) | The backend traits · `Capabilities` · assembling `Services` · mocks · writing a real backend · setting values · clocks |
 | [07 Config reference](07-config-reference.md) | Every section and key of `fairing.toml`, with defaults, validation rules and a complete example |
-| [08 Troubleshooting](08-troubleshooting.md) | Error messages · silent failures · confirming 0 fps at idle · fonts · performance · the 14 audit stages · deployment · FAQ |
+| [08 Troubleshooting](08-troubleshooting.md) | Error messages · silent failures · idle repaint behavior · fonts · performance · the 14 audit stages · deployment · FAQ |
 | [09 Product branding](09-branding.md) | Image loaders · background, type, icon and mark requirements · the override table · the pre-ship review |
 | [10 Migration](10-migration.md) | Request/session tokens · permission values and protected hooks · deferred factories/opaque screen ownership · command/display admission · transport and recovery |
 
-## What exists and what does not
+## Examples and compatibility
 
-Milestones M0 to M5 are done, and M6 is down to the 0.1.0 release. The milestone table, what
-comes after 0.1 and the known limits are in the [roadmap](../roadmap.md). The guide writes down
-what is not there as "it cannot" and shows the workaround that exists today.
+The first release is unpublished. For changes since the `f4ca28c` checkout, see
+[migration](10-migration.md); for planned work, see the [roadmap](../roadmap.md).
 
-## Coming from before 0.1
+Rust blocks are compiled by the repository's guide doctest gate unless marked
+`ignore`; `no_run` blocks are compiled without execution. Ignored blocks are API
+outlines listing selected members, or examples that need external crates or assets.
 
-Nothing has been published yet. The [migration guide](10-migration.md) compares the current
-code with the pre-hardening `main` checkout (`f4ca28c`). Two earlier design notes also differ
-from the implementation:
-
-- **Lengths are in du** — density-independent units, egui's points. Touch targets and bar sizes
-  are written in millimetres and resolve to du once the panel's size is known
-  (`ShellBuilder::physical_mm`, [01 §4](01-getting-started.md#4-a-minimal-app)); until then the
-  shell assumes a density and says so in the log.
-- **Part of the M2b plan was not built.** Planned only: the generic bars (a `Bar` on any edge,
-  rows of bars, bar layouts) and the desktop regions; the `[metrics]`, `[device]`, `[display]`
-  and `[scale]` sections; the `diag` feature and its scale reports; a closure over the resolved
-  metrics (`metrics_fn`); and `Cx`'s unit helpers (`cx.mm`, `cx.units`) — a screen reads the
-  resolved sizes from `cx.theme.metrics`. The shell has the status bar and the nav bar, the dock
-  and the icon rail, and its metrics are set in code (`ShellBuilder::metrics_spec`,
-  [04 §1](04-customization.md#1-injecting-a-theme)); only the three bar sizes also have TOML keys
-  ([03 §1.2](03-chrome.md#12-slot-placement), [03 §2.1](03-chrome.md#21-item-kinds)). The
-  [roadmap](../roadmap.md#3-after-01) lists them.
+The Rust doctest gate does not check TOML blocks. Cargo snippets belong in the
+application manifest. Device-configuration snippets belong in `fairing.toml` and
+need validation as part of the complete configuration with `ShellConfig::from_toml`
+and shell construction. See [Contributing](../../CONTRIBUTING.md#keeping-the-documents-up-to-date)
+for repository checks and [release checks](../release-checks.md) for package validation.

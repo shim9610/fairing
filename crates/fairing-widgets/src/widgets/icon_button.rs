@@ -1,54 +1,9 @@
-//! `IconButton` — a disc with a glyph and no words.
+//! `IconButton` is an icon-only button with a required descriptive name.
 //!
-//! # What it is for, and why `BigButton` could not be it
-//!
-//! Every reference kiosk puts one on every product card: the `+` that adds the item. It is the
-//! thing that lets a card be **information** and the button be the **action** — which is the
-//! difference between a menu and a wall of accent-filled tiles, and the reason the crate's own
-//! kiosk had to flood a whole card with `Primary` to say "picked".
-//!
-//! [`BigButton`](super::BigButton) is label-led: it lays an icon beside words and sizes itself to
-//! them, and there is no width at which it becomes a disc. The two share their vocabulary instead
-//! — [`ButtonKind`], [`LongPressResponse`] and the whole of `Dress` — so a `Primary` disc and a
-//! `Primary` bar are the same object at two sizes rather than two objects that happen to agree.
-//!
-//! # Why the name is a constructor argument
-//!
-//! An icon-only button has nothing but its drawing to say what it does. A name that is a builder
-//! option is a name that can be left off, so it is not one: `IconButton::new(icon::PLUS, "Add
-//! one")`. The crate does not yet speak to a screen reader, and when it does this is the string it
-//! will hand over; until then it is what a tooltip and a test both reach for.
-//!
-//! # Why the disc is 0.68 of a fingertip
-//!
-//! iOS's system close button is 30 pt inside a 44 pt target — 0.682. Material 3's icon-button
-//! container is 40 dp in a 48 dp target (0.833), and Fluent's whole target is 40 epx. Measured off
-//! the references, the `+` disc is 0.661 of Bella Tavola's circular language button, 0.607 of its
-//! primary button, 0.492 of `McDonald's` nav row and 0.385 of the Sichuan kiosk's. 0.68 is iOS's value to three
-//! figures and sits inside that band, and it puts `control.icon` at 0.625 of the disc against
-//! Material's 0.60.
-//!
-//! What is **pressed** is a whole `touch_target` either way, and larger where the focus ring would
-//! otherwise be clipped. Only the drawn disc is allowed to be small.
-//!
-//! # Why the long-press arc is the kind's colour and not the glyph's
-//!
-//! [`BigButton`](super::BigButton)'s ring sits *on* the face, so it takes the label's colour — it
-//! has to read against the fill. This one sits **outside** the disc, where its neighbour is the
-//! page: `OnPrimary` is white, and white on base light's `#ECECF1` page measures **1.10**. An arc
-//! nobody can see is worse than no arc, because the control's whole point is showing how long you
-//! have held it. So the arc takes the colour that identifies the kind — `Primary`, `OnSurface`,
-//! `Danger` — every one of which clears 3.0 against both grounds in all four palettes.
-//!
-//! Same rule ("the ring must read where it is drawn"), different answer, because it is drawn
-//! somewhere else.
-//!
-//! # Why the ring needs no half-stroke term
-//!
-//! epaint 0.36.1 forces `PathStroke::outside()` on a circle, so a circle stroked at radius `r`
-//! occupies `[r, r + w]`. Passing `r = R + focus_gap` therefore puts the ring's inner face exactly
-//! `focus_gap` clear of the disc with no correction — where [`Checkbox`](super::Checkbox) and
-//! `BigButton`, which stroke rects down the middle, must pass `focus_gap + stroke_mark / 2`.
+//! The name is used for interaction metadata. Theme roles select the disc, icon,
+//! press and disabled colours. The hit rectangle can be larger than the painted
+//! disc, and focus is painted outside the disc. Check icon recognition and target
+//! size in the integrating product.
 
 use crate::cx::WidgetCx as Cx;
 use crate::icons::IconRef;
@@ -305,10 +260,10 @@ struct Held {
     progress: f32,
 }
 
-/// The long press the arc tracks: linear `0 → 1` while held, back on the `press_release` tween
-/// on a release before the end — the same reverse as `Button`'s ring, from the same token, so
-/// the two agree and both go instant under `reduce`. Returns the progress and whether the hold
-/// is complete.
+/// Track hold progress linearly over the supplied duration while pressed.
+/// Release before completion uses `motion.press_release`; reduced-motion token
+/// construction can make that reverse instant without changing the hold duration.
+/// Return progress and whether the hold has reached completion.
 fn hold(cx: &mut Cx<'_>, id: egui::Id, pressed: bool, duration: Duration) -> (f32, bool) {
     let tween = if pressed {
         Tween {

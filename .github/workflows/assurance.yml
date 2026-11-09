@@ -76,7 +76,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install pinned compiler development components and solver
         run: python3 verification/install.py proofs
-      - name: Prove the common kernel and cover every protected contract
+      - name: Check kernel proofs and compiled protected routing
         run: |
           python3 verification/test_validation.py
           python3 -O verification/test_validation.py
@@ -113,7 +113,7 @@ jobs:
         run: python3 verification/install.py proofs
       - name: Check production permission metadata contracts
         run: python3 verification/check_extension.py --manifest-path Cargo.toml --all-features
-      - name: Reject effectful and incomplete downstream implementations
+      - name: Check downstream metadata acceptance and rejection fixtures
         run: python3 verification/metadata_controls.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()

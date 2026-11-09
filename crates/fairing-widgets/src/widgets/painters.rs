@@ -16,9 +16,9 @@ use std::ops::RangeInclusive;
 /// [`IconButton::long_press`]: super::IconButton::long_press
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HoldLook {
-    /// Where the built-in drawing puts it: a ring in a button's top-right corner, an arc round an
-    /// icon button's disc. On the frame the hold completes it pops — grows past its size and back
-    /// — and this rect grows with it.
+    /// Where the built-in drawing puts it: a ring in a button's top-right corner or an
+    /// arc round an icon button's disc. `BigButton` applies a completion pop to its ring;
+    /// `IconButton` supplies its arc rectangle without that completion-pop animation.
     pub rect: Rect,
     /// How far the hold has got: 0 at rest, filling while the finger stays down, back to 0 on a
     /// release before the end.
@@ -65,8 +65,7 @@ pub struct IconButtonLook<'a> {
     pub disc: Rect,
     /// The glyph.
     pub icon: &'a IconRef,
-    /// What it does, in words — the button has none on the glass, so this is for a screen reader
-    /// or a painter that wants a label.
+    /// Action name available to a custom painter or host metadata consumer.
     pub name: &'a str,
     /// What the button is for.
     pub kind: ButtonKind,
@@ -609,8 +608,8 @@ pub struct RowLook<'a> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub enum ProgressFill {
-    /// Determinate: from the start to this share, 0 to 1. Eased towards each reported value, and
-    /// never going back unless the caller allows it.
+    /// Determinate fill to the current animated share. Target clamping follows
+    /// the widget's rewind policy; intermediate values follow its easing curve.
     To(f32),
     /// Indeterminate: a segment between these two shares, moving along.
     Segment(f32, f32),
@@ -762,7 +761,7 @@ pub struct BadgeLook<'a> {
     pub rect: Rect,
     /// What it says.
     pub value: BadgeValue<'a>,
-    /// What the built-in badge writes: the count capped at `control.badge_max` (`99+`), the text,
+    /// What the built-in badge writes: `<max>+` above `control.badge_max` (`99+` by default), text,
     /// or nothing for a dot.
     pub text: &'a str,
     /// Which fill and ink.
@@ -892,14 +891,13 @@ pub type FeatureCardPainter = Box<dyn FnMut(&egui::Painter, &mut FeatureCardLook
 /// **The integrator's widget painters** — rung 5 of the override ladder for the element layer.
 ///
 /// A `WidgetPainters` holds one painter per kind of widget, each optional. A widget whose kind
-/// has one is drawn by it; the rest draw themselves. Either way the widget keeps everything that
-/// is not paint: the rect it takes in the layout and the rect that is pressed, the press and the
-/// drag, the value it changes and when, its animations, focus and the keyboard. The painter is
-/// handed the widget's **look** for the frame — where it is, what it says, what state it is in and
-/// how far each of its animations has got — and draws all of it, the focus ring included.
+/// has one passes its look data to that callback; otherwise it uses built-in drawing.
+/// The widget computes its layout and built-in interaction, then supplies geometry,
+/// content and state for the callback to paint. The callback replaces built-in drawing,
+/// including focus, disabled and hold cues; render those from the supplied look data.
 ///
-/// The shell lends its painters to every widget it draws and every widget a screen draws through
-/// `cx.widgets()`, its own screens and prompts among them; give them with
+/// A widget consults the bundle supplied through its `WidgetCx::painters`. Ordinary
+/// shells supply their bundle through `cx.widgets()` and built-in contexts; configure it with
 /// `ShellBuilder::widget_painters`. Outside the shell, put them in [`WidgetCx::painters`].
 ///
 /// A look's rects are in the coordinates of the `Ui` the widget is drawn in. Where that `Ui` is on
@@ -971,13 +969,13 @@ pub struct WidgetPainters {
 }
 
 impl WidgetPainters {
-    /// None yet: every widget draws itself.
+    /// Empty bundle: supported widgets use their built-in drawing.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Draw every [`BigButton`](super::BigButton) with `painter`. See [`ButtonLook`].
+    /// Set the painter used with this bundle for [`BigButton`](super::BigButton) with `painter`. See [`ButtonLook`].
     #[must_use]
     pub fn button(
         mut self,
@@ -987,7 +985,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`IconButton`](super::IconButton) with `painter`. See [`IconButtonLook`].
+    /// Set the painter used with this bundle for [`IconButton`](super::IconButton) with `painter`. See [`IconButtonLook`].
     #[must_use]
     pub fn icon_button(
         mut self,
@@ -997,7 +995,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`Switch`](super::Switch) with `painter`. See [`SwitchLook`].
+    /// Set the painter used with this bundle for [`Switch`](super::Switch) with `painter`. See [`SwitchLook`].
     #[must_use]
     pub fn switch(
         mut self,
@@ -1007,7 +1005,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`Checkbox`](super::Checkbox) with `painter`. See [`CheckboxLook`].
+    /// Set the painter used with this bundle for [`Checkbox`](super::Checkbox) with `painter`. See [`CheckboxLook`].
     #[must_use]
     pub fn checkbox(
         mut self,
@@ -1017,7 +1015,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every radio mark with `painter` — a [`Radio`](super::Radio)'s and a
+    /// Set the painter used with this bundle for radio mark with `painter` — a [`Radio`](super::Radio)'s and a
     /// [`RadioGroup`](super::RadioGroup)'s. See [`RadioLook`].
     #[must_use]
     pub fn radio(
@@ -1028,7 +1026,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`SegmentedControl`](super::SegmentedControl) strip with `painter`. See
+    /// Set the painter used with this bundle for [`SegmentedControl`](super::SegmentedControl) strip with `painter`. See
     /// [`SegmentedLook`].
     #[must_use]
     pub fn segmented(
@@ -1039,7 +1037,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`Chip`](super::Chip) with `painter`, a [`ChipRow`](super::ChipRow)'s
+    /// Set the painter used with this bundle for [`Chip`](super::Chip) with `painter`, a [`ChipRow`](super::ChipRow)'s
     /// included. See [`ChipLook`].
     #[must_use]
     pub fn chip(
@@ -1050,7 +1048,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`TouchSlider`](super::TouchSlider) with `painter`. See [`SliderLook`].
+    /// Set the painter used with this bundle for [`TouchSlider`](super::TouchSlider) with `painter`. See [`SliderLook`].
     #[must_use]
     pub fn slider(
         mut self,
@@ -1060,7 +1058,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`Stepper`](super::Stepper) with `painter`. See [`StepperLook`].
+    /// Set the painter used with this bundle for [`Stepper`](super::Stepper) with `painter`. See [`StepperLook`].
     #[must_use]
     pub fn stepper(
         mut self,
@@ -1070,7 +1068,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`NumberField`](super::NumberField) with `painter` — all but the figure being
+    /// Set the painter used with this bundle for [`NumberField`](super::NumberField) with `painter` — all but the figure being
     /// typed. See [`NumberFieldLook`].
     #[must_use]
     pub fn number_field(
@@ -1081,7 +1079,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`TextField`](super::TextField)'s field with `painter` — the text over it is
+    /// Set the painter used with this bundle for [`TextField`](super::TextField)'s field with `painter` — the text over it is
     /// egui's. See [`TextFieldLook`].
     #[must_use]
     pub fn text_field(
@@ -1092,7 +1090,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`WheelPicker`](super::WheelPicker) with `painter`. See [`WheelLook`].
+    /// Set the painter used with this bundle for [`WheelPicker`](super::WheelPicker) with `painter`. See [`WheelLook`].
     #[must_use]
     pub fn wheel(
         mut self,
@@ -1102,7 +1100,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`PinPad`](super::PinPad) with `painter`, a piece at a time — the unlock
+    /// Set the painter used with this bundle for [`PinPad`](super::PinPad) with `painter`, a piece at a time — the unlock
     /// prompt's included. See [`PinPadLook`].
     #[must_use]
     pub fn pin_pad(
@@ -1113,7 +1111,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`PatternPad`](super::PatternPad) with `painter` — the unlock prompt's
+    /// Set the painter used with this bundle for [`PatternPad`](super::PatternPad) with `painter` — the unlock prompt's
     /// included. See [`PatternPadLook`].
     #[must_use]
     pub fn pattern_pad(
@@ -1124,7 +1122,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`Dropdown`](super::Dropdown) with `painter`, a piece at a time. See
+    /// Set the painter used with this bundle for [`Dropdown`](super::Dropdown) with `painter`, a piece at a time. See
     /// [`DropdownLook`].
     #[must_use]
     pub fn dropdown(
@@ -1135,7 +1133,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`ListRow`](super::ListRow) with `painter` — the shell's settings rows
+    /// Set the painter used with this bundle for [`ListRow`](super::ListRow) with `painter` — the shell's settings rows
     /// included. A row's switch or radio is still drawn as its own kind. See [`RowLook`].
     #[must_use]
     pub fn row(mut self, painter: impl FnMut(&egui::Painter, &mut RowLook<'_>) + 'static) -> Self {
@@ -1143,7 +1141,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`ProgressBar`](super::ProgressBar) with `painter`. See [`ProgressBarLook`].
+    /// Set the painter used with this bundle for [`ProgressBar`](super::ProgressBar) with `painter`. See [`ProgressBarLook`].
     #[must_use]
     pub fn progress_bar(
         mut self,
@@ -1153,7 +1151,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`ProgressRing`](super::ProgressRing) with `painter`. See [`ProgressRingLook`].
+    /// Set the painter used with this bundle for [`ProgressRing`](super::ProgressRing) with `painter`. See [`ProgressRingLook`].
     #[must_use]
     pub fn progress_ring(
         mut self,
@@ -1163,7 +1161,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`Meter`](super::Meter) with `painter`. See [`MeterLook`].
+    /// Set the painter used with this bundle for [`Meter`](super::Meter) with `painter`. See [`MeterLook`].
     #[must_use]
     pub fn meter(
         mut self,
@@ -1173,7 +1171,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`StatusLamp`](super::StatusLamp) with `painter`. See [`LampLook`].
+    /// Set the painter used with this bundle for [`StatusLamp`](super::StatusLamp) with `painter`. See [`LampLook`].
     #[must_use]
     pub fn lamp(
         mut self,
@@ -1183,7 +1181,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`CountBadge`](super::CountBadge) shown in the layout with `painter`. See
+    /// Set the painter used with this bundle for [`CountBadge`](super::CountBadge) shown in the layout with `painter`. See
     /// [`BadgeLook`].
     #[must_use]
     pub fn badge(
@@ -1194,7 +1192,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`MediaCard`](super::MediaCard) with `painter`. See [`MediaCardLook`].
+    /// Set the painter used with this bundle for [`MediaCard`](super::MediaCard) with `painter`. See [`MediaCardLook`].
     #[must_use]
     pub fn media_card(
         mut self,
@@ -1204,7 +1202,7 @@ impl WidgetPainters {
         self
     }
 
-    /// Draw every [`FeatureCard`](super::FeatureCard) with `painter`. See [`FeatureCardLook`].
+    /// Set the painter used with this bundle for [`FeatureCard`](super::FeatureCard) with `painter`. See [`FeatureCardLook`].
     #[must_use]
     pub fn feature_card(
         mut self,

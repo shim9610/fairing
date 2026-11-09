@@ -1,14 +1,8 @@
-//! **The shade as a card** — `[overlay] reveal = "card"`.
+//! Card-style shade geometry and animation for `[overlay] reveal = "card"`.
 //!
-//! A curtain hangs from the top edge and is drawn down over the page: nothing in it moves but
-//! the edge, and the eye reads "a cloth lifted off something that was already there". A card is
-//! already its final size at its final place, inset from the sides with four round corners, and
-//! what the pull drives is how far it has *arrived*: it fades in, comes down a short way and its
-//! edge sharpens from a soft blob into a corner. It is gone in a fraction of the time it took to
-//! come, and on a wide screen it rests on the side it was pulled from.
-//!
-//! These read the plate the overlay draws under its content — the one rect shape on the panel's
-//! own Rect with no feather — rather than matching colours.
+//! Tests inspect plate rectangles, opacity, feathering, placement, opening/closing
+//! curves, two-step interaction and backdrop requests. Plate identification uses
+//! the panel rectangle and texture/feather properties rather than colour alone.
 
 #![cfg(feature = "overlay")]
 
@@ -191,10 +185,8 @@ fn tap_beside(h: &mut Harness, panel: egui::Rect) {
     h.frames(40);
 }
 
-/// **At rest a card is inset from both sides, under the status bar, with four round corners** —
-/// the width share and the corner measured off One UI 8 (0.445 of the width; a radius of 9 % of
-/// the card's width, four `corner_radius` here). On a screen wide enough that the share holds the
-/// tile row with room to spare, so the share is what decides the width.
+/// At rest, the card is inset from both sides, below the status bar and rounded.
+/// This fixture is wide enough for the configured width share to determine its width.
 #[test]
 fn a_card_rests_inset_with_four_round_corners() -> fairing::Result<()> {
     let mut h = shell("card", false, (1600.0, 900.0))?;

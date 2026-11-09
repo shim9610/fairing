@@ -1,9 +1,9 @@
-//! The motion system — no dependencies.
+//! Time-based easing, spring evaluation and retained animation state.
 //!
 //! Three principles: 1:1 while following a finger, a spring that inherits the velocity on
-//! release, and short easing for every other transition. All of it is time-based, so it is
-//! independent of the frame rate, and the spring evaluates **a closed-form solution** each frame
-//! rather than integrating numerically, so no `dt` makes it diverge.
+//! release, and easing for transitions. Springs use closed-form evaluation rather
+//! than numerical integration. `Animated::tick` accumulates elapsed time with a dt
+//! cap, so delayed frames can advance animation by less than physical elapsed time.
 
 mod drag;
 
@@ -32,7 +32,7 @@ pub enum Easing {
     BackOut,
 }
 
-/// How far [`Easing::BackOut`] overshoots — Penner's `c1`, the value every toolkit shares.
+/// Overshoot coefficient for [`Easing::BackOut`] (Penner's `c1`).
 const BACK: f32 = 1.701_58;
 
 impl Easing {
@@ -329,14 +329,14 @@ pub struct Animated<T: Lerp = f32> {
     target: T,
     velocity: T,
     mode: Mode<T>,
-    /// The scale on the spring's settle decision — [`SETTLE_DISTANCE`] and [`SETTLE_VELOCITY`]
-    /// are **in px**, so a normalised driving value (A3's `p ∈ [0, 1]` = `dx / W`) has to be
-    /// multiplied by `1 / W` or it settles on the first tick ([`Animated::release_scaled`]).
+    /// Scale applied to [`SETTLE_DISTANCE`] and [`SETTLE_VELOCITY`] thresholds.
+    /// For a value normalized by width `W`, [`Animated::release_scaled`] accepts
+    /// `1 / W` to convert pixel thresholds into that value's units.
     /// [`Animated::release`] uses 1.
     settle_scale: f32,
 }
 
-/// The dt cap. One late frame does not make it jump.
+/// Maximum elapsed-time increment applied by one animation tick.
 pub const MAX_DT: f32 = 0.05;
 
 /// The spring's settle decision — the offset (px).
@@ -386,11 +386,9 @@ impl<T: Lerp> Animated<T> {
         self.release_scaled(target, spring, 1.0);
     }
 
-    /// The same as [`Animated::release`] but with the settle decision scaled by `settle_scale`.
-    /// **A normalised driving value** (A3's `p = dx / W`, A4's page units) hits the
-    /// absolute px decision (0.5 px, 10 px/s) on the very first tick, making the spring
-    /// effectively instant — passing `1 / W` converts "0.5 px" into the value's own units. Zero
-    /// or below is treated as 1.
+    /// Like [`Animated::release`], with the settle thresholds scaled by `settle_scale`.
+    /// For a value normalized by width `W`, use `1 / W` to convert pixel thresholds
+    /// to that value's units. Non-finite, zero or negative scales use 1.0.
     pub fn release_scaled(&mut self, target: T, spring: Spring, settle_scale: f32) {
         self.target = target;
         self.settle_scale = if settle_scale > 0.0 && settle_scale.is_finite() {
@@ -736,7 +734,7 @@ mod tests {
     }
 
     /// The 50 ms dt cap: however late a real frame arrives (a large stall,
-    /// say), one `tick` advances by at most 50 ms, so it does not diverge.
+    /// say), one `tick` advances by at most 50 ms.
     #[test]
     fn dt_is_capped_and_never_diverges() {
         let mut a = Animated::new(0.0_f32);
@@ -764,9 +762,9 @@ mod tests {
         assert!((b.value() - 500.0).abs() < 1.0);
     }
 
-    /// Running to the same elapsed time at 60 fps and at 30 fps has to give the same value
-    /// (±1 px) — both the spring and the tween evaluate a closed form of the accumulated elapsed
-    /// time, so they are frame-rate independent.
+    /// Compare the spring at the same accumulated time using the 30 and 60 fps
+    /// fixture steps, both below `MAX_DT`. The values agree within one coordinate unit;
+    /// larger steps can lose elapsed time through the per-tick cap.
     #[test]
     fn spring_value_is_frame_rate_independent() {
         let spring = Spring::default();

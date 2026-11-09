@@ -4,8 +4,8 @@
 //! than the shell's behaviour, so they sit with the types that read them: [`ThemeConfig`] feeds
 //! [`Palette::apply_overrides`](crate::theme::Palette::apply_overrides) and
 //! [`MotionConfig`] feeds [`MotionTokens::from_config`](crate::theme::MotionTokens::from_config).
-//! The rest of the file they came from — the bars, the desktop, access, the OSK, gestures — stays
-//! with the shell, which is the only thing that knows what those mean.
+//! The remaining shell configuration — bars, desktop, access, keyboard and gestures —
+//! stays in Fairing's shell configuration module.
 //!
 //! `fairing` re-exports every type here from `fairing_widgets::config`, so a config written against the
 //! old paths still resolves.
@@ -21,10 +21,8 @@ use std::collections::BTreeMap;
 #[serde(default)]
 #[non_exhaustive]
 pub struct ThemeConfig {
-    /// `[theme] preset` — the palette preset name (`"base"` by default, `"abyss"` or `"linen"`). It is
-    /// the [`Preset`](crate::theme::Preset) of that name, and an unknown name is an
-    /// [`Error::Config`](crate::error::Error::Config) at startup (falling back to the default quietly leaves no way to find
-    /// out why the brand did not come on).
+    /// `[theme] preset`: `"base"` by default; also accepts `"abyss"` and `"linen"`.
+    /// An unknown name returns [`Error::Config`](crate::error::Error::Config).
     pub preset: String,
     /// `[theme.palette]` — role name (`"primary"`) → `"#RRGGBB"`. It overrides **both** of the
     /// preset's dark and light palettes. An unknown role name or format is an [`Error::Config`](crate::error::Error::Config)
@@ -46,15 +44,16 @@ impl Default for ThemeConfig {
 #[serde(default)]
 #[non_exhaustive]
 pub struct MotionConfig {
-    /// Every tween 0 ms, springs settle instantly.
+    /// Reduced-motion request. Motion-token construction uses zero-duration tweens;
+    /// consumers use the flag to select their reduced-motion behavior.
     pub reduce: bool,
     /// The default spring.
     pub spring: SpringConfig,
     /// The release distance threshold (a ratio).
     pub snap_ratio: f32,
-    /// The release velocity threshold (px/s).
+    /// The release velocity threshold in egui points (du) per second.
     pub fling_px_s: f32,
-    /// The drag detection slop (px).
+    /// The drag detection slop in egui points (du).
     pub slop_px: f32,
     /// The tap window (ms).
     pub tap_ms: u64,
@@ -181,12 +180,8 @@ pub struct ShadeConfig {
     pub rubber: f32,
     /// The rubber band's limit (px).
     pub rubber_max_px: f32,
-    /// **How long a card takes to go** (ms) — `[overlay] reveal = "card"` only.
-    ///
-    /// A card does not spring back shut the way a curtain is drawn up: it fades and lifts, and it
-    /// is gone well inside the time it took to arrive. One UI's panel is out in about 40 ms, which
-    /// on a 60 Hz panel is two frames and reads as a cut; 90 ms keeps it a motion while staying a
-    /// quarter of the open. Under `reduce` it is 0.
+    /// Card-close duration in milliseconds, used by `[overlay] reveal = "card"`.
+    /// The card fades and lifts over this duration. Reduced motion sets it to zero.
     pub card_close_ms: u64,
 }
 

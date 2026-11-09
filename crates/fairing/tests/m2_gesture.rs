@@ -9,8 +9,9 @@
 //! `step px/frame ≈ step × 60 px/s`. "Letting go at a velocity of 0" is made by dragging to the target, then
 //! stopping for longer than the window (6 frames) before letting go ([`still`]).
 
-use fairing::services::mock::MockDisplay;
-use fairing::testing::{single_level_access, test_shell, Harness};
+#[cfg(any(feature = "overlay", feature = "mock"))]
+use fairing::testing::test_shell;
+use fairing::testing::{single_level_access, Harness};
 use fairing::workspace::Instance;
 use fairing::{
     screen, screen_with, Cx, Error, LaunchAction, LaunchMode, Lifecycle, Screen, Services, Shell,
@@ -240,7 +241,7 @@ fn page_swipe_release_rules() -> fairing::Result<()> {
     assert_eq!(h.shell.desktop().page(), 1);
 
     // ② The same distance from page 0 but at velocity 0 → rounding leaves it where it was.
-    h.shell.desktop_mut().set_page(0);
+    h.shell.set_desktop_page(0);
     h.frames(2);
     h.press(start);
     h.frame();
@@ -252,7 +253,7 @@ fn page_swipe_release_rules() -> fairing::Result<()> {
     assert_eq!(h.shell.desktop().page(), 0, "page 0.293 rounds to 0");
 
     // ③ Dragging further at the last page rubber-bands: dx = −400 → pos = 2.117, and letting go gives 2.
-    h.shell.desktop_mut().set_page(2);
+    h.shell.set_desktop_page(2);
     h.frames(2);
     h.press(start);
     h.frame();
@@ -278,7 +279,7 @@ fn page_swipe_release_rules() -> fairing::Result<()> {
     assert!((h.shell.desktop().page_pos() - 2.0).abs() < 1e-3);
 
     // ④ In between, two dots are half lit each (only two pages are drawn).
-    h.shell.desktop_mut().set_page(0);
+    h.shell.set_desktop_page(0);
     h.frames(2);
     h.press(start);
     h.frame();
@@ -333,7 +334,7 @@ fn page_drag_cancels_the_icon_press() -> fairing::Result<()> {
     assert_eq!(h.shell.desktop().page(), 1);
 
     // A vertical drag does not drive the page.
-    h.shell.desktop_mut().set_page(0);
+    h.shell.set_desktop_page(0);
     h.frames(2);
     let from = require(h.shell.desktop().icon_rect("p0"), "the p0 icon")?.center();
     h.press(from);
@@ -497,7 +498,9 @@ fn allow_peek_false_blocks_the_hidden_bar_pull() -> fairing::Result<()> {
 /// The skeleton smoke test: opening a `keep_awake` screen gives `DisplayBackend::set_idle_inhibit(true)`
 /// and closing it gives false.
 #[test]
+#[cfg(feature = "mock")]
 fn keep_awake_screen_drives_idle_inhibit() -> fairing::Result<()> {
+    use fairing::services::mock::MockDisplay;
     let mut h = Harness::new(
         {
             let mut c = single_level_access();

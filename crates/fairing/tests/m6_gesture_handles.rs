@@ -537,7 +537,7 @@ fn the_bottom_edge_is_the_nav_bars_or_the_handles() -> fairing::Result<()> {
             HandleGesture::short(HandleDirection::Straight)
         )]
     );
-    h.shell.nav_bar_mut().enabled = true;
+    h.shell.set_nav_enabled(true);
     h.frames(3);
     if h.shell.layout().nav.is_none() {
         return Err(fail("the nav bar did not come back"));

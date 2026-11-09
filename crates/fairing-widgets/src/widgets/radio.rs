@@ -1,62 +1,9 @@
-//! `Radio` — one of a set, drawn as a ring that **never fills**.
+//! `Radio` displays one option's selected state and reports activation.
 //!
-//! # Why a radio exists at all, when a list of choice rows already works
-//!
-//! It is the narrow case, and the crate should say so out loud. A single choice among more than
-//! three options belongs in a full-width list of [`ListRow`](super::ListRow) choice rows carrying a
-//! trailing `check` — that reads at a glance, each option gets a whole row to press, and it already
-//! scrolls. The radio is for the **inline** form: two or three options that have to sit inside a
-//! card beside other settings, where a full-width list of rows would weigh more than the setting is
-//! worth. Anything longer than that, and [`RadioGroup`] is the wrong tool.
-//!
-//! # Why the ring never fills
-//!
-//! [`Checkbox`](super::Checkbox) and [`Radio`] are deliberately the same diameter
-//! (`control.mark_size`), so the only thing separating them is **square versus circle**. That is
-//! what lets a user tell "any of these" from "one of these" without reading a label, at a glance,
-//! and with the colour removed. A radio that filled its body on selection would be a checkbox with
-//! round corners: the shape cue would still be there, but nobody would be looking for it, because
-//! the state cue — the fill — would have become the checkbox's. So selection is carried by **the
-//! mark alone**: the dot appears *and* the ring goes `Muted` at `stroke_edge` → `Primary` at
-//! `stroke_mark`. Two carriers, both of which survive greyscale, and neither of which is a fill.
-//!
-//! # Why the value is a `bool` by value and not a `&mut bool`
-//!
-//! [`Switch`](super::Switch) and [`Checkbox`](super::Checkbox) take `&mut bool` because they own
-//! their bit: a tap flips it and nothing else on the screen has an opinion. A radio's bit is not
-//! its own — it is one cell of an exclusive set, and a radio that could write `false` into its own
-//! cell would leave the set with **nothing** selected, which is a state the set is not allowed to
-//! have. So [`Radio`] reads `selected: bool`, reports a tap through `Response::clicked()`, and the
-//! *caller* assigns the index. That is the same split `egui::Ui::radio_value` makes, for the same
-//! reason.
-//!
-//! [`RadioGroup`] is the form that owns the bookkeeping: it holds the `&mut usize` and is the only
-//! thing here that may write it, so the "exactly one" invariant lives in exactly one place. Both
-//! are public because they answer different questions — [`Radio`] is the control (and the piece a
-//! row composes), [`RadioGroup`] is the set — and shipping only the group would leave a screen that
-//! lays itself out no way to draw a radio at all.
-//!
-//! # How `fairing::layout::choice_rows` should be rebuilt on this
-//!
-//! `choice_rows` today builds the right thing for the wrong reason: a stack of `ListRow`s with the
-//! chevron off and a trailing `check` icon on the selected one. That shape stays right for a
-//! full-width card list — the trailing tick is the carrier, and a leading radio there would be a
-//! *second* carrier for one bit. What `choice_rows` should take from this file is the **contract**,
-//! not the drawing:
-//!
-//! - keep `choice_rows(ui, cx, options, selected) -> Option<usize>` as it stands, and keep the
-//!   `ListRow` plus trailing `check`; the tick moves to `control.icon` in `Primary`, and the
-//!   `strong(true)` title and `Primary` icon tint that `list_item` stacks on top of it go away.
-//! - add a sibling, `inline_choice(ui, cx, labels, &mut index)`, whose body is one line —
-//!   `RadioGroup::new(&mut index, labels).show(ui, &mut cx.widgets())` — for the two- and
-//!   three-option settings that already sit inside a card (the theme picker in `settings::screens`,
-//!   say) and do not deserve a screen of rows.
-//! - both then report a change the same way, `Option<usize>`, so a screen can move a setting from
-//!   one form to the other without touching its own state.
-//!
-//! A `ListRow` with a **leading** radio is the third form, and it is built by handing
-//! [`Radio::draw`] the row's leading column: the row owns the hit rect and the radio is drawn only
-//! (rule 1.3).
+//! `RadioGroup` borrows the caller's selected index for a group of options. Individual radio
+//! marks receive a Boolean selected value rather than independently toggling a
+//! shared selection. Selected marks use an inner dot; focus is painted outside the
+//! ring. Text and mark geometry use theme and control tokens.
 
 use super::RadioLook;
 use crate::cx::WidgetCx as Cx;
@@ -84,11 +31,8 @@ impl Radio {
         }
     }
 
-    /// Enabled.
-    ///
-    /// Disabled, it senses `hover()` rather than `click()`, so the tap **falls through** to
-    /// whatever is beneath it — a disabled control that swallows the press makes the row it sits in
-    /// feel broken rather than unavailable (rule 1.4).
+    /// Enabled state. A disabled control uses hover sensing rather than click/drag
+    /// sensing, allowing another eligible target to handle the press.
     #[must_use]
     pub fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
@@ -223,10 +167,8 @@ impl Radio {
         }
     }
 
-    /// Disabled is **one** `gamma_multiply` over every colour the control paints, at one call
-    /// site. Not a role swap, which loses the live state — a disabled *selected* radio must still
-    /// read as selected — and not a per-element alpha, which is the four-mechanism, seven-number
-    /// mess this replaces.
+    /// Apply the configured disabled alpha to all resolved colours without changing
+    /// the selected-state role mapping.
     fn fade(self, cx: &Cx<'_>, color: Color32) -> Color32 {
         if self.enabled {
             color
@@ -291,12 +233,8 @@ fn geometry(
     }
 }
 
-/// The focus ring, **outside** the silhouette.
-///
-/// Outside is a contrast decision, not a styling one: `Focus` measured against `Primary` is
-/// 1.00–1.62 in the shipped palettes, so a ring laid on the control's own edge is invisible on a
-/// selected radio in every one of them, while against the container behind it the same colour clears
-/// 3.0 everywhere. It also puts the ring outside the press growth, and outside the finger.
+/// Paint the focus outline outside the control's painted boundary.
+/// Check the focus colour against the surrounding background for custom palettes.
 fn paint_focus_ring(
     painter: &egui::Painter,
     cx: &Cx<'_>,
@@ -311,19 +249,9 @@ fn paint_focus_ring(
     painter.circle_stroke(center, radius, Stroke::new(width, color));
 }
 
-/// An exclusive choice among **two or three** options, laid out inline as a stack of rows.
-///
-/// It owns the `&mut usize` and is the only thing here that writes it, so "exactly one is selected"
-/// is enforced in one place. Each row is one target of the full width (rule 1.3) and the radio drawn
-/// inside it senses nothing.
-///
-/// # Why the options are bare labels
-///
-/// No subtitles, no icons, no per-option enable. The moment a choice needs a second line to explain
-/// itself it has outgrown the inline form and belongs in a list of [`ListRow`](super::ListRow)
-/// choice rows, where a subtitle has room and each option gets a whole row. Keeping the option type
-/// as `&str` makes that boundary something the compiler shows you rather than something a doc asks
-/// you to remember.
+/// A group of labelled radio rows editing a caller-owned `&mut usize`.
+/// Each row handles its full-width interaction; the radio mark is drawing-only.
+/// Options are bare labels. An out-of-range index selects no row until changed.
 #[derive(Debug)]
 pub struct RadioGroup<'a> {
     selected: &'a mut usize,
@@ -500,8 +428,8 @@ mod tests {
         assert!(on.dot + on.edge < on.radius, "the dot has reached the ring");
     }
 
-    /// Rule 1.5: a press only ever makes the painted silhouette bigger, by `press_grow`
-    /// on every side, and the dot goes with it instead of being left at its resting size.
+    /// Check painted-radio growth for the fixture's positive `press_grow`, including
+    /// the dot geometry.
     #[test]
     fn the_press_grows_the_whole_control() {
         let (ms, dot, se, sm) = REF;

@@ -1,43 +1,14 @@
-//! `PinPad` — the digits of a PIN, on keys a gloved finger lands on.
+//! `PinPad` collects PIN digits into a caller-owned `String`.
 //!
-//! # Why it is a widget and not a corner of the prompt
+//! The widget borrows the buffer; animation and egui memory do not store a second
+//! copy of the PIN. The application controls buffer lifetime and credential
+//! verification. `order` accepts a caller-owned key order; generate a shuffled order
+//! when opening the prompt rather than changing it while the user is typing.
 //!
-//! The shell's unlock prompt draws one, and so can an integrator: in `routing` mode the login
-//! screen is theirs, and the keypad is the part of it nobody should have to draw twice.
-//!
-//! # The crate owns no secret
-//!
-//! Like [`TextField`](super::TextField) it borrows the caller's `&mut String`. The digits go into
-//! that buffer and nowhere else — no animation entry and no egui memory holds them — so the
-//! caller decides how long they live and in what type.
-//!
-//! # Why the order is the caller's
-//!
-//! A shuffled layout is fresh **each time the prompt opens** — not each frame, and not
-//! each press: a keypad that moves under the finger cannot be used. The widget cannot tell
-//! "opened" from "drawn again", so the caller holds the order ([`PinPad::order`]) and makes a new
-//! one when it opens ([`PinPad::shuffled`]).
-//!
-//! # The bottom row is a row like the others
-//!
-//! Erase, 0 and OK — three keys with faces, the same size as every key above them. A first
-//! version left the bottom left empty and drew erase as a bare glyph, and the grid read as three
-//! rows and a stray: the one row with a hole in it was the row the eye checks last. Erase and OK
-//! dim, and stop listening, while there is nothing to erase or submit.
-//!
-//! # Auto-submit, and how long a PIN may be
-//!
-//! With a known length ([`PinPad::len`]) the last digit submits by itself — nobody looks for the
-//! OK key — and the dots say how many are left; OK still submits early, and the authenticator
-//! says what it thinks of a short PIN. With an unknown one the dots only count what went in, and
-//! [`PinPad::max_len`] caps how many digits the pad takes (sixteen when it is not set).
-//!
-//! # Why the keys are as tall as they are
-//!
-//! A key is `KEY_RATIO` touch targets tall, and shrinks to fit the height it is given but never
-//! below one target. The PIN is typed with the device held at arm's length or mounted on a
-//! machine, often in a glove, and a miss costs a wrong-PIN shake and an attempt off the limit —
-//! the one keypad where a mistyped key has a price.
+//! The bottom row contains erase, zero and submit. With `len`, the expected final
+//! digit requests submission; submit can also be requested early. `max_len` limits
+//! input length, defaulting to sixteen. Key geometry uses touch metrics and the
+//! available height; check the resulting fit on the target panel.
 
 use super::{PinKey, PinPadLook, PinPart};
 use crate::cx::WidgetCx as Cx;
@@ -119,8 +90,8 @@ pub struct PinPadResponse {
     pub response: Response,
     /// A digit went in or came out.
     pub changed: bool,
-    /// The PIN is complete — the last digit of a known length, or the OK key — and is the
-    /// caller's to take.
+    /// Submission was requested by the expected final digit or OK key. The caller
+    /// decides whether the supplied PIN is complete and valid.
     pub submitted: bool,
     /// Where each key was drawn, in key order.
     keys: [(PadKey, Rect); 12],
@@ -205,9 +176,9 @@ impl<'a> PinPad<'a> {
         self
     }
 
-    /// The digits in key order — top left to bottom middle, ten of them, each once.
-    /// [`PinPad::shuffled`] makes one; anything that is not a permutation of `0..=9` is ignored
-    /// for the telephone layout, since a pad missing a digit could lock someone out.
+    /// Set the digit order from top left to bottom middle, with each digit once.
+    /// [`PinPad::shuffled`] generates a permutation of `0..=9`. An invalid permutation
+    /// leaves the current order unchanged; a new pad starts with [`PHONE_ORDER`].
     #[must_use]
     pub fn order(mut self, order: [u8; 10]) -> Self {
         if is_permutation(order) {
@@ -231,11 +202,9 @@ impl<'a> PinPad<'a> {
         self
     }
 
-    /// A digit order from `seed`, every digit once (Fisher–Yates over xorshift64*).
-    ///
-    /// The seed is the caller's: what this protects against is a smudge pattern and a glance
-    /// over the shoulder, not someone predicting a random number, so any per-opening value will
-    /// do — `std::collections::hash_map::RandomState` hashing a counter is what the shell uses.
+    /// Generate a digit permutation from the seed using Fisher–Yates and xorshift64*.
+    /// The result is deterministic, not cryptographically unpredictable. The caller
+    /// chooses when to generate and install a new order.
     #[must_use]
     pub fn shuffled(seed: u64) -> [u8; 10] {
         let mut state = seed | 1;

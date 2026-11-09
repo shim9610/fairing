@@ -2,7 +2,7 @@
 //!
 //! - **The model**: [`Level`], [`LevelTable`], [`Gate`], [`Subject`].
 //! - **The decision**: [`AccessPolicy`], by default [`LevelPolicy`]'s ordered comparison, and the
-//!   "one level table means everything passes" skeleton ([`Access::allows`]).
+//!   legacy single-level bypass ([`Access::allows`]).
 //! - **Authentication**: [`Authenticator`], with [`PinTable`] as the reference implementation.
 //! - **The session**: [`Session`], temporary unlocks ([`UnlockMode`], [`Elevation`]), the timeout
 //!   and the idle lock.
@@ -67,7 +67,9 @@ pub struct LevelDef {
     pub color: Option<ColorRole>,
 }
 
-/// The level table. A length of 1 means no authentication. No upper bound.
+/// The application-defined level table.
+/// A single entry bypasses level gates in legacy mode; token mode still requires
+/// explicit current grants.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LevelTable(Vec<LevelDef>);
 
@@ -196,7 +198,7 @@ pub trait AccessPolicy {
 /// What happens to an unassigned gate. With two or more levels this **must** be stated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DefaultGate {
-    /// The lowest level (always open).
+    /// The lowest legacy level.
     Bottom,
     /// The highest level.
     Top,
@@ -714,8 +716,8 @@ fn secs_or_off(secs: u64) -> Option<Duration> {
     (secs > 0).then(|| Duration::from_secs(secs))
 }
 
-/// The longest any `[access]` timer may be: a year. Anything longer is a typo, and an `Instant`
-/// pushed that far out could overflow — a panic on the first frame, from a config value.
+/// Upper bound for `[access]` timer configuration: one year. Validation rejects longer spans
+/// before they are used to compute deadlines.
 pub(crate) const MAX_TIMER_SECS: u64 = 365 * 24 * 60 * 60;
 
 /// The `[access]` timers in range: none past [`MAX_TIMER_SECS`].
@@ -969,12 +971,10 @@ impl Access {
             .map(|observation| (token.id(), observation.revision()))
     }
 
-    /// The decision by name — for the fallback sites where the gate is `None` and **the id is
-    /// the gate**. The result matches [`Access::allows`], and with one level or
-    /// `mode = off` it passes before building a [`Gate`], so there is **no heap allocation**
-    /// (`Gate::from(&str)` is always `Owned`). Somewhere called every frame is
-    /// still better off **fixing the gate at declaration time** (`IconSlot` fills it in when it
-    /// is placed).
+    /// Check a gate by name, using the same decision as [`Access::allows`].
+    /// The legacy bypass can return without constructing a `Gate`. Token mode still
+    /// checks explicit authority. Store a normalized gate in a declaration when it is
+    /// reused on the rendering path.
     #[must_use]
     pub(crate) fn allows_name(&self, name: &str) -> bool {
         if self.quarantined {
@@ -1149,8 +1149,9 @@ impl Access {
     }
 
     /// Whether the shell draws its own prompt/lock screen: prompt mode with an authenticator,
-    /// and either token mode or multiple legacy levels. Otherwise a failed gate is an
-    /// [`AccessEvent::UnlockRequested`] and nothing more, as in `routing` mode.
+    /// and either token mode or multiple legacy levels. Without a built-in prompt,
+    /// failed unlock requests emit [`AccessEvent::UnlockRequested`]; token mode
+    /// additionally emits [`AccessEvent::SessionRequested`] for host-owned login.
     #[must_use]
     pub fn can_prompt(&self) -> bool {
         if self.quarantined {
@@ -1198,8 +1199,10 @@ impl Access {
     }
 
     #[cfg(feature = "settings")]
-    /// Whether the session may give `level`, or change an entry at it: anything at or below its
-    /// own. Levels mean nothing with one level or `mode = off`, and then everything may.
+    /// Whether credential administration may grant `level`.
+    /// Legacy mode applies the actor's level ceiling or its configured bypass.
+    /// Token mode requires the relevant current management-operation grant.
+    /// Quarantine rejects the operation.
     pub(crate) fn may_grant(&self, level: Level) -> bool {
         !self.quarantined
             && (self.levels_open()
@@ -1209,7 +1212,8 @@ impl Access {
                 || (!self.token_sessions && level <= self.session.subject.level))
     }
 
-    /// One level, or `mode = off`: every gate passes.
+    /// Whether the legacy single-level or mode-off bypass is active.
+    /// Token mode does not use these bypasses.
     pub(crate) fn levels_open(&self) -> bool {
         !self.token_sessions && (self.table.len() <= 1 || self.mode == AccessMode::Off)
     }
@@ -1244,9 +1248,10 @@ impl Access {
     /// password under the entry's id — and goes to the authenticator by value.
     ///
     /// `allowed` is whether the session still passes the screen's gate: the calls were asked for
-    /// while it was drawn, and the session can drop between then and now. Above that, nothing is
-    /// given or touched above the session's own level ([`Access::may_grant`]); the authenticator is
-    /// told who is asking and has the last word on the rest.
+    /// while it was drawn, and the session can drop between then and now. Legacy mode
+    /// applies its level ceiling unless the configured bypass is active. Token mode
+    /// checks each management-operation grant instead of ordering display levels.
+    /// The authenticator receives the actor and enforces its account/role rules.
     pub(crate) fn apply_admin(&mut self, ops: Vec<CredentialOp>, allowed: bool) {
         let seq = self
             .admin_note
@@ -1520,8 +1525,8 @@ impl Access {
         true
     }
 
-    /// The next moment the session changes by itself — for the idle repaint, so a timer
-    /// runs out on time on a panel nobody is touching.
+    /// The next access deadline, used to request a host update.
+    /// Expiry is enforced when the host supplies a logic or UI update.
     pub(crate) fn next_deadline(&self) -> Option<Instant> {
         let mut next: Option<Instant> = self
             .token

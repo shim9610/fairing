@@ -1,7 +1,8 @@
-//! [`ShellBuilder`] — the compile-time customisation entry point.
+//! [`ShellBuilder`] configures shell construction and registers extension hooks.
 //!
-//! This is where a device developer changes the shell **from code, without touching the crate**.
-//! Unlike what a config file does (layout and gate assignment), here the drawing itself changes:
+//! Builder methods select services, theme inputs and drawing/layout hooks. Untyped
+//! hooks below apply to ordinary `Shell`; [`build_protected`](ShellBuilder::build_protected)
+//! rejects them and uses typed application declarations instead.
 //!
 //! | Method | What it changes |
 //! |---|---|
@@ -18,7 +19,7 @@
 //! | `shade_tile_painter` · `shade_panel_painter` (feature `overlay`) | Each quick-settings tile · the panel's ground |
 //! | [`lock_screen_painter`](ShellBuilder::lock_screen_painter) · [`unlock_prompt_painter`](ShellBuilder::unlock_prompt_painter) | The lock screen's ground and clock · the unlock prompt's backdrop and card |
 //! | [`recents_card_painter`](ShellBuilder::recents_card_painter) · [`recents_ground_painter`](ShellBuilder::recents_ground_painter) | Each recent screen's card · the ground under them |
-//! | [`widget_painters`](ShellBuilder::widget_painters) | Each kind of widget, wherever it is drawn — the shell's own screens and prompt included |
+//! | [`widget_painters`](ShellBuilder::widget_painters) | Painter-enabled Fairing controls using the supplied widget context |
 //! | [`gesture_handle_painter`](ShellBuilder::gesture_handle_painter) | Each gesture handle's strip, and the arrow while it is swiped |
 //! | [`slot_painter`](ShellBuilder::slot_painter) | Each desktop cell |
 //! | [`authenticator`](ShellBuilder::authenticator) | Who may unlock what — the shell draws whatever it asks for |
@@ -247,7 +248,7 @@ impl ShellBuilder {
     ///
     /// # Errors
     /// Requires `access.session_tokens = true`. Untyped custom painters, layouts,
-    /// image loaders and wallpapers are rejected before any backend/authenticator
+    /// image loaders and procedural wallpapers are rejected before any backend/authenticator
     /// attachment or user hook execution. Use typed declarations for application UI;
     /// use `build` when unmediated host customization is intentional.
     pub fn build_protected(self, ctx: &egui::Context) -> crate::Result<super::ProtectedShell> {
@@ -448,8 +449,10 @@ impl ShellBuilder {
     /// [`Authenticator::methods`] returns and applies the answer; how a credential is stored and
     /// checked stays yours.
     ///
-    /// It only shows up in `[access] mode = "prompt"` with more than one level — in `routing` the
-    /// prompt is never drawn and in `off` nothing is gated.
+    /// Built-in prompting requires `mode = "prompt"` and supported authentication
+    /// methods. The multiple-level requirement applies to legacy level mode; token
+    /// mode still requires authentication with a single configured level. Routing
+    /// mode delegates authentication presentation to the host.
     ///
     /// ```no_run
     /// # use fairing::access::{AuthMethod, AuthOutcome, Authenticator, Credential};
@@ -529,9 +532,9 @@ impl ShellBuilder {
     }
 
     /// **Draw the widgets yourself** (rung 5) — a painter per kind,
-    /// each optional ([`WidgetPainters`](crate::widgets::WidgetPainters)). Every widget the shell
-    /// draws gets them: your screens' through `cx.widgets()`, and the shell's own — the settings
-    /// screens, the unlock prompt's keys and buttons, the recent screens' buttons. A widget keeps
+    /// each optional ([`WidgetPainters`](crate::widgets::WidgetPainters)). Painter-enabled Fairing
+    /// controls receive them through `cx.widgets()`, including the built-in settings, prompt
+    /// and recent-screen buttons. A widget keeps
     /// its press, its value and its motion; the painter is told its look and draws it.
     #[must_use]
     pub fn widget_painters(mut self, painters: crate::widgets::WidgetPainters) -> Self {
@@ -552,8 +555,9 @@ impl ShellBuilder {
     }
 
     /// Inject a theme **whole**. `[shell] theme` (dark|light) and `[theme.palette]` are then
-    /// ignored (with a warning logged at startup) and this value is used as it stands — every
-    /// palette, metric and motion token.
+    /// ignored (with a warning logged at startup). This supplies the initial theme;
+    /// explicit metric/component/control/elevation specs can override its resolved values.
+    /// An explicit palette pair determines later dark/light toggles.
     ///
     /// The bar heights have a single source in `theme.metrics.{status_bar_height,
     /// nav_bar_height}`: [`build`](Self::build) puts those values into `StatusBar::height` and
@@ -592,8 +596,9 @@ impl ShellBuilder {
     /// The fonts to load. egui's `default_fonts` has no CJK glyphs, so Hangul
     /// comes out as □ — to use it, hand a font over here. The crate embeds no font of its own.
     ///
-    /// Installing happens **once**, in [`ShellBuilder::build`]. `set_fonts` rebuilds the font
-    /// atlas and is a heavy call, so it is not made from the frame loop.
+    /// Configured font definitions are installed in [`ShellBuilder::build`]. Startup
+    /// passes may rebind Fairing family names if the host replaces those definitions.
+    /// Avoid repeated definition changes during normal rendering, which can rebuild the atlas.
     ///
     /// ```no_run
     /// # fn main() -> fairing::Result<()> {
@@ -651,10 +656,10 @@ impl ShellBuilder {
     /// The physical scale policy. Finger size, viewing magnification, the density fallback
     /// and the `ppp` range.
     ///
-    /// The default is a **bare finger** (`finger_mm = 9.0`) read at hand-held distance — the
-    /// density of a phone or a tablet. On a device worked with gloves or a stylus, hand over
-    /// [`ScalePolicy::gloved`](crate::unit::ScalePolicy::gloved) (13 mm) and every touch target,
-    /// row and bar grows with it.
+    /// Defaults use `finger_mm = 9.0` and a 360 mm viewing-distance parameter.
+    /// [`ScalePolicy::gloved`](crate::unit::ScalePolicy::gloved) selects 13 mm finger
+    /// sizing. Only dimensions that use finger terms follow that change; text and
+    /// fixed-size content have separate inputs. Check size on the target panel.
     ///
     /// ```no_run
     /// use fairing::unit::ScalePolicy;
@@ -681,8 +686,7 @@ impl ShellBuilder {
     /// rendering as it stands.
     ///
     /// This is the widget's share of rung 2 of the override ladder. Without this rung,
-    /// changing one button's padding would mean climbing to rung 5 (a painter) and taking the
-    /// drawing over whole.
+    /// changing component spacing would require a custom painter.
     ///
     /// ```no_run
     /// # fn build(ctx: &egui::Context) -> fairing::Result<()> {
@@ -690,8 +694,8 @@ impl ShellBuilder {
     /// use fairing::unit::{Dim, Span};
     ///
     /// let mut spec = ComponentSpec::default();
-    /// spec.button[0] = Span::fixed(Dim::mm(4.0)); // the side padding at a physical 4 mm
-    /// spec.slider_track_ratio = 0.8; // a thicker track
+    /// spec.toast[3] = Span::fixed(Dim::mm(4.0)); // toast side padding at a physical 4 mm
+    /// spec.slider_label_gap = Span::fixed(Dim::du(12.0));
     /// # let _ = spec;
     /// # Ok(())
     /// # }
@@ -724,12 +728,10 @@ impl ShellBuilder {
     /// millimetres with a device-pixel floor, and a spec frozen at `Scale::identity()` would cast
     /// the same penumbra on a 4 px/mm panel as on a 20 px/mm one.
     ///
-    /// The switch a manufacturer usually wants here is
-    /// [`ElevationSpec::flat`](crate::theme::ElevationSpec::flat): an e-ink or 16-level display
-    /// cannot reproduce a 5 % feather and dithers it into rings, so on those panels height should
-    /// not be drawn at all rather than drawn thinner. To keep the height but change how it is
-    /// expressed, set `ratios.style` to
-    /// [`ElevationStyle::Rim`](crate::theme::ElevationStyle::Rim) instead.
+    /// [`ElevationSpec::flat`](crate::theme::ElevationSpec::flat) disables elevation
+    /// painting. For a rim instead of a shadow, set `ratios.style` to
+    /// [`ElevationStyle::Rim`](crate::theme::ElevationStyle::Rim). Choose after
+    /// checking gradients and boundaries on the target display.
     #[must_use]
     pub fn elevation_spec(mut self, spec: ElevationSpec) -> Self {
         self.elevation_spec = Some(spec);
@@ -738,7 +740,8 @@ impl ShellBuilder {
 
     /// Pin the panel's physical size (in mm). It wins over the backend's `DisplayInfo::physical_mm`.
     ///
-    /// For a device with no EDID, or one that lies — an integrator knows their own device's inches.
+    /// Supply the visible panel width and height when backend metadata is missing
+    /// or inaccurate; physical-size accuracy depends on these values and host scale.
     #[must_use]
     pub fn physical_mm(mut self, width_mm: f32, height_mm: f32) -> Self {
         self.physical_mm = Some((width_mm, height_mm));
@@ -990,7 +993,7 @@ impl ShellBuilder {
         self
     }
 
-    /// Set the wallpaper from code. **Stronger** than `[desktop] wallpaper`.
+    /// Set the wallpaper from code, taking precedence over `[desktop] wallpaper`.
     ///
     /// The config file is the default for when an integrator has not decided in code, and this hook
     /// covers it. To read one from a file, wire up [`ShellBuilder::image_loader`] and write
@@ -1026,14 +1029,14 @@ impl ShellBuilder {
     /// |---|---|---|
     /// | [`Preset::Base`](crate::theme::Preset::Base) | Neutral dark/light | A flat `Background` role |
     /// | [`Preset::Abyss`](crate::theme::Preset::Abyss) | The deep sea drawn from the manta art | The procedural deep sea (feature `brand`) |
+    /// | [`Preset::Linen`](crate::theme::Preset::Linen) | Warm neutral surfaces with a sage accent | A flat `Background` role |
     ///
-    /// **The branding is opt-in.** Call none of it and there is not a trace of the crate — the
-    /// default is the neutral palette on a flat background, with neither the manta nor the deep sea
-    /// anywhere.
+    /// Without a configured or builder-selected art preset, the default uses a
+    /// neutral palette and flat background rather than the manta and deep-sea art.
     ///
     /// To override a piece at a time, call [`ShellBuilder::palettes`] or
     /// [`ShellBuilder::wallpaper`] **after** this. The later call wins. Guide 09 §8 has a table of
-    /// how to override all of it.
+    /// supported branding customization points and protected-shell restrictions.
     ///
     /// ```no_run
     /// # fn main() -> fairing::Result<()> {
@@ -1073,8 +1076,8 @@ impl ShellBuilder {
     /// Build the shell. `ctx` is the context [`Waker`] will wrap.
     ///
     /// # Errors
-    /// Config validation failure ([`crate::Error::Config`]) — a value out of range, two or more
-    /// level tables with no `default_gate`, or a bad role name or colour format in
+    /// Config validation failure ([`crate::Error::Config`]) — a value out of range, legacy
+    /// multi-level mode with no `default_gate`, or a bad role name or colour format in
     /// `[theme.palette]`.
     // Every part of the shell is assembled in one place — split up, the order between the parts (fonts →
     // theme → services → the handle) is scattered across several functions and reads worse.
@@ -1160,9 +1163,9 @@ impl ShellBuilder {
         let theme_injected = theme.is_some();
         let metrics_spec = resolve_metrics_spec(metrics_spec, theme_injected, &config);
         let (theme, palettes) = resolve_theme(theme, palettes, &config)?;
-        // The fonts come first — `set_fonts` throws the font atlas and the galley cache away whole, so it
-        // is called once, before the style. It runs even for an empty set — binding the strong
-        // family (`fonts::STRONG_FAMILY`) is part of it, so strong text always has fallback faces.
+        // Install configured definitions before applying the style, including regular-face
+        // fallbacks for the strong family even when the supplied font set is empty.
+        // Startup frame checks can restore family names after host definition replacement.
         fonts.install(ctx);
         if !fonts.has_bold() {
             // egui's own face has one weight, so the titles come out flat and nothing on the
@@ -1469,7 +1472,7 @@ fn warn_ignored_theme_config(config: &ShellConfig) {
     }
 }
 
-/// Assemble the gesture engine (which keeps `build` under 100 lines — clippy `too_many_lines`).
+/// Assemble the gesture engine from motion tokens and gesture configuration.
 /// The values come from two places only: the motion tokens and `[gesture]`.
 fn gesture_engine(config: &ShellConfig, tokens: &crate::theme::MotionTokens) -> GestureEngine {
     GestureEngine::new(GestureTuning {
@@ -1544,8 +1547,9 @@ fn warn_ignored_bar_sizes(keys: &[&str], why: &str) {
 /// Read `[desktop] wallpaper = "file:…"` through the integrator's loader and put it up as the
 /// wallpaper.
 ///
-/// **The shell comes up even on failure.** A device must not fail to start over one background, so
-/// the error is logged and the `background` fallback `wallpaper_from_config` set is left as it is.
+/// A reported loader error is logged and leaves the `background` fallback selected
+/// by `wallpaper_from_config`. This handles the loader's returned error, not other
+/// startup failures or an unwind inside application decoding code.
 ///
 /// The decode happens **once**, here — outside the frame loop, so even a large original is done
 /// before the first screen appears.

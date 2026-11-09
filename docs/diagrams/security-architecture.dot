@@ -1,0 +1,34 @@
+digraph security_architecture {
+  graph [rankdir=TB, bgcolor="white", pad=0.3, nodesep=0.45, ranksep=0.65,
+    fontname="DejaVu Sans", fontsize=24, label="Protected execution: authority and enforcement", labelloc=t, compound=true];
+  node [shape=box, style="rounded,filled", fillcolor="#ffffff", color="#64748b", fontcolor="#17253b", fontname="DejaVu Sans", fontsize=16, margin="0.18,0.14"];
+  edge [color="#315e9b", fontcolor="#294666", fontname="DejaVu Sans", fontsize=13];
+  subgraph cluster_issuer {
+    label="Application authorization authority (trusted integration)"; fontsize=18; color="#bfa16b"; style="rounded,filled"; fillcolor="#fff9ed";
+    verifier [label="Authenticator implementation\nVerify credentials; expand roles\nBind asynchronous result to AuthRequestId"];
+    controller [label="SessionController\nIssuer-only mutation capability\nFixed gate catalog; replace_grants / revoke / Drop\nCaller supplies the shell Waker to issue"];
+    verifier -> controller [label="verified subject + grants"];
+  }
+  subgraph cluster_library {
+    label="Fairing protected enforcement (same process)"; fontsize=18; color="#87a9ce"; style="rounded,filled"; fillcolor="#f0f6ff";
+    bootstrap [label="build_protected\nRequires token mode; rejects untyped hooks\nProtectedShell has no mutable Shell conversion"];
+    registration [label="Typed registration\nProtected / PermissionBound / ElementTree\nLibrary owns opaque executable payload storage"];
+    token [label="Read-only SessionToken\nShared publication; no credentials\nCoherent revision, grant and deadline observations", fillcolor="#e0f1ec"];
+    acceptance [label="Correlated session installation\nReject stale / canceled / consumed responses"];
+    monitor [label="Common mediation kernel\nCurrent token + narrowing policy + quarantine\nSession / revision stamp and inherited gates\nRecheck at each managed protected entry", fillcolor="#daeaff"];
+    denied [shape=octagon, label="DENY\nNo protected payload invocation / result\nDenied tree children omitted before measurement", color="#ae4242", fillcolor="#fff0ef"];
+    bootstrap -> registration [label="validated construction"];
+    acceptance -> token [label="retain accepted reader"];
+    registration -> monitor [label="bound requirement / ancestor path"];
+    token -> monitor [style=dashed, color="#357a69", label="live authority observations"];
+    monitor -> denied [color="#ae4242", fontcolor="#8a2929", label="refused"];
+  }
+  callback [label="ADMIT: application payload\nFactory / lifecycle / measure / paint / action\nOriginal UI / app / backend access\nwhere the callback signature provides it\nArbitrary body effects remain application-owned", color="#997737", fillcolor="#fff9ed"];
+  controller -> bootstrap [style=invis];
+  denied -> callback [style=invis];
+  verifier -> acceptance [label="AuthOutcome::Session(token)\nwith matching request"];
+  controller -> token [style=dashed, color="#357a69", label="publish / revoke shared state\nWaker, outside command queue"];
+  monitor -> callback [label="admitted scope"];
+  note [shape=note, label="Boundaries are ownership and API boundaries, not process isolation.\nOrdinary Shell is a separate construction choice. Already-admitted\neffects and already-disclosed data are not canceled or erased.", fillcolor="#f7f7fa"];
+  callback -> note [style=invis];
+}
