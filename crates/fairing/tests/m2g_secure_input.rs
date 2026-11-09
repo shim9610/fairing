@@ -26,8 +26,8 @@ struct Typed {
 }
 
 /// It taps one field, types into it, and waits past `Undoer::stable_time` (1 s) so egui has had
-/// every chance to save an undo point. `password` picks which field is drawn.
-fn type_into_a_field(password: bool, input: &str) -> fairing::Result<Typed> {
+/// every chance to save an undo point. `mask_input` selects masked or plain rendering.
+fn type_into_a_field(mask_input: bool, input: &str) -> fairing::Result<Typed> {
     let text = Rc::new(RefCell::new(String::new()));
     let place = Rc::new(Cell::new(None::<(egui::Id, egui::Rect)>));
     let (buffer, sink) = (Rc::clone(&text), Rc::clone(&place));
@@ -41,7 +41,7 @@ fn type_into_a_field(password: bool, input: &str) -> fairing::Result<Typed> {
             move |ui: &mut egui::Ui, cx: &mut Cx<'_>| {
                 let mut held = buffer.borrow_mut();
                 let response = TextField::new(&mut held)
-                    .password(password)
+                    .password(mask_input)
                     .show(ui, &mut cx.widgets());
                 sink.set(Some((response.id, response.rect)));
             },
