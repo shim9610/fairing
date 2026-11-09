@@ -686,8 +686,7 @@ impl ShellBuilder {
     /// rendering as it stands.
     ///
     /// This is the widget's share of rung 2 of the override ladder. Without this rung,
-    /// changing one button's padding would mean climbing to rung 5 (a painter) and taking the
-    /// drawing over whole.
+    /// changing component spacing would require a custom painter.
     ///
     /// ```no_run
     /// # fn build(ctx: &egui::Context) -> fairing::Result<()> {
@@ -695,8 +694,8 @@ impl ShellBuilder {
     /// use fairing::unit::{Dim, Span};
     ///
     /// let mut spec = ComponentSpec::default();
-    /// spec.button[0] = Span::fixed(Dim::mm(4.0)); // the side padding at a physical 4 mm
-    /// spec.slider_track_ratio = 0.8; // a thicker track
+    /// spec.toast[3] = Span::fixed(Dim::mm(4.0)); // toast side padding at a physical 4 mm
+    /// spec.slider_label_gap = Span::fixed(Dim::du(12.0));
     /// # let _ = spec;
     /// # Ok(())
     /// # }

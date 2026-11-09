@@ -11,6 +11,10 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Added
 
+- Fresh external-consumer CI checks: online dependency resolution without a seeded
+  lockfile, minimal/default/all features on the declared minimum Rust version,
+  and dependency-policy checks against the extracted release archives.
+
 - Sealed host support for ordinary/protected runners and headless harnesses;
   protected replacement/recovery and typed built-in settings registration.
 - Narrow `ShellView` state/diagnostic queries, focused dock placement, a protected
@@ -66,6 +70,10 @@ for source changes, queue/display defaults and recovery behavior.
   selected refusal/reclamation paths under real 16/64 MiB exhaustion.
 
 ### Changed
+
+- Remove seven unused button/switch/slider component values and their duplicate
+  containers. Use the documented `ControlSpec` and `MetricsSpec` inputs; default
+  built-in rendering is unchanged. Diagnostic layer slots widen to `u64`.
 
 - Pre-release API evolution: configuration structs are non-exhaustive with
   `Default`/`configure` construction; session grant fields use constructors and
@@ -135,6 +143,11 @@ for source changes, queue/display defaults and recovery behavior.
 - Pin external CI actions to verified commit SHAs.
 
 ### Fixed
+
+- Keep pane layer slots disjoint beyond 32 stack entries and warm the next deep
+  slot before drawing. Headless regressions cover two-pane input, push/pop and
+  transform cleanup; mutation controls reject the former slot spacing and frozen
+  widget-configuration inputs.
 
 - Avoid a `ProgressRing` thickness-clamp panic for requested diameters below 2 du.
   The thickness floor now stays within half the resolved diameter.

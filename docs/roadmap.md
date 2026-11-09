@@ -62,11 +62,6 @@ These are the current implementation and verification boundaries.
   not establish complete concrete UI-state coverage or universal interaction progress.
   See [formal operability](formal-operability.md) and [API contracts](api-contracts.md).
 
-- **Deep stacks can share layer identities across panes.** Layer slots use
-  `pane * 32 + zero_based_depth`. Pane 0's 33rd entry and pane 1's first entry
-  therefore have the same egui area/layer identity. Stack growth does not enforce
-  a 32-entry limit; cross-pane identity isolation at that depth needs an
-  implementation change, rather than relying on the slot spacing.
 - **Background logic cannot present a frame.** The shell/state runners use eframe 0.37's
   `App::logic` fallback for state processing, but drawing and animations still wait for a
   UI pass. Access can be revoked in state while a compositor retains its last presented

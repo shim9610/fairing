@@ -1,34 +1,19 @@
 //! Component-token regressions: geometry, style, metadata and validation.
 //!
-//! These tests observe selected response geometry and egui style, retained metadata,
-//! and validation. The switch, list-row, slider, lock-ring and shade-multiple checks
-//! do not establish their built-in paint paths. A token made while the widget goes on reading a
-//! file constant means nothing happens for the integrator — the defects fixed this round (`visual_inset` biting
-//! on `Grid` alone, the `PageSwipe` rubber band not being refreshed, the shade's scrim ignoring the role colour)
-//! all had that shape. A knob that does not turn is worse than no knob.
+//! Public builder configurations are checked against response geometry, painted shapes,
+//! rendered text and egui style. Value-model tests check validation separately.
 //!
-//! Fallible harness tests return `fairing::Result<()>`; the direct validation/default
-//! checks return `()`. There are no explicit `panic!` or `unwrap` calls in this file,
-//! but failed assertions still panic.
+//! A knob that does not turn is worse than no knob.
 
 #![cfg(feature = "mock")]
 
 use fairing::testing::{single_level_access, Harness};
 use fairing::theme::ComponentSpec;
 use fairing::unit::{Dim, Span};
-use fairing::widgets::{BigButton, ButtonKind, ListRow, Switch};
+use fairing::widgets::{BigButton, ButtonKind};
 use fairing::{screen, Cx, Shell};
 use std::cell::Cell;
 use std::rc::Rc;
-
-/// It gives back one value the screen measured. A `spec` of `None` means the default spec.
-fn measure(
-    // Borrow the component spec rather than copying the full configuration into this helper.
-    spec: Option<&ComponentSpec>,
-    draw: impl Fn(&mut egui::Ui, &mut Cx<'_>, &Cell<f32>) + 'static,
-) -> Option<f32> {
-    measure_with(spec, None, draw)
-}
 
 /// The same, but able to override a [`MetricsSpec`] token too.
 ///
@@ -116,88 +101,12 @@ fn the_button_padding_reaches_the_widget() -> fairing::Result<()> {
     Ok(())
 }
 
-/// Read the retained switch component height, clamped to the widget's interaction
-/// rectangle. This does not measure the painted switch height, which uses control metrics.
-#[test]
-fn the_switch_height_reaches_the_widget_and_keeps_todays_value() -> fairing::Result<()> {
-    fn draw(ui: &mut egui::Ui, cx: &mut Cx<'_>, sink: &Cell<f32>) {
-        let mut on = true;
-        let r = Switch::new(&mut on).show(ui, &mut cx.widgets());
-        // Observe retained component metadata, bounded by the interaction rect.
-        sink.set(cx.theme.components.switch.height.min(r.rect.height()));
-    }
-    let base = ComponentSpec::default();
-    let tall = ComponentSpec {
-        switch: [base.switch[0], du(60.0).pinned()],
-        ..base
-    };
-    let (Some(stock), Some(raised)) = (measure(None, draw), measure(Some(&tall), draw)) else {
-        return Err(fairing::Error::Config(
-            "the switch was not drawn".to_owned(),
-        ));
-    };
-    assert!(
-        raised > stock + 8.0,
-        "the switch's height did not reach: {stock} → {raised}"
-    );
-    Ok(())
-}
-
-/// Add retained row-padding metadata to the response's left edge. This checks the
-/// configured value, not the painted title position or chevron width.
-#[test]
-fn the_list_row_padding_reaches_the_widget() -> fairing::Result<()> {
-    /// Compute a candidate title x from the response rect and metadata; do not inspect text shapes.
-    fn draw(ui: &mut egui::Ui, cx: &mut Cx<'_>, sink: &Cell<f32>) {
-        let r = ListRow::new("row")
-            .chevron(false)
-            .show(ui, &mut cx.widgets());
-        sink.set(r.rect.left() + cx.theme.components.list_row.pad);
-    }
-    let base = ComponentSpec::default();
-    let roomy = ComponentSpec {
-        list_row: [du(40.0), base.list_row[1], base.list_row[2]],
-        ..base
-    };
-    let (Some(stock), Some(moved)) = (measure(None, draw), measure(Some(&roomy), draw)) else {
-        return Err(fairing::Error::Config("the row was not drawn".to_owned()));
-    };
-    assert!(
-        (moved - stock - 24.0).abs() < 1.0,
-        "the row's padding did not reach: {stock} → {moved}"
-    );
-    Ok(())
-}
-
-/// Resolve the retained slider component ratio against the thumb metric. This
-/// metadata-only check does not draw a slider; the built-in track uses control metrics.
-#[test]
-fn the_slider_track_is_a_ratio_of_the_thumb() -> fairing::Result<()> {
-    fn draw(_ui: &mut egui::Ui, cx: &mut Cx<'_>, sink: &Cell<f32>) {
-        sink.set(cx.theme.metrics.slider_thumb * cx.theme.components.slider.track_ratio);
-    }
-    let thick = ComponentSpec {
-        slider_track_ratio: 1.0,
-        ..ComponentSpec::default()
-    };
-    let (Some(stock), Some(fat)) = (measure(None, draw), measure(Some(&thick), draw)) else {
-        return Err(fairing::Error::Config(
-            "the slider was not drawn".to_owned(),
-        ));
-    };
-    assert!(
-        (stock / fat - 0.64).abs() < 0.01,
-        "the default ratio is not 0.64: {stock} / {fat}"
-    );
-    Ok(())
-}
-
 /// A broken spec is caught as **a config error** — it does not quietly draw a track of thickness 0.
 #[test]
 fn a_broken_spec_is_rejected() {
     assert!(ComponentSpec::default().validate().is_ok());
     let bad = ComponentSpec {
-        slider_track_ratio: f32::NAN,
+        slider_label_gap: du(f32::NAN),
         ..ComponentSpec::default()
     };
     assert!(bad.validate().is_err());
@@ -252,26 +161,10 @@ fn the_page_indicator_hit_band_is_a_token() -> fairing::Result<()> {
     Ok(())
 }
 
-/// Check the default lock-size and ring-padding metadata are distinct and sum to
-/// the expected value. No lock is rendered, so this does not check which shapes
-/// consume either metric.
-#[test]
-fn the_lock_ring_pad_is_not_the_lock_size() {
-    let m = fairing::theme::Metrics::default();
-    assert!(
-        m.desktop_lock_ring_pad < m.desktop_lock_size,
-        "the border padding is larger than the lock: {} vs {}",
-        m.desktop_lock_ring_pad,
-        m.desktop_lock_size
-    );
-    // The circle's diameter = the lock plus the padding. Today, 16 + 4 = 20.
-    assert!((m.desktop_lock_size + m.desktop_lock_ring_pad - 20.0).abs() < f32::EPSILON);
-}
-
 /// Check shade-multiple defaults, spec resolution and invalid-value rejection.
 /// This does not open a shade or inspect the panel's geometry or paint.
 #[test]
-fn the_shade_ratios_reach_the_panel() -> fairing::Result<()> {
+fn shade_ratios_resolve_and_reject_invalid_values() -> fairing::Result<()> {
     use fairing::theme::{ComponentSpec, ShadeMetrics};
 
     let base = ComponentSpec::default();

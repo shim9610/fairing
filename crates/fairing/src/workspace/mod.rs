@@ -7,7 +7,7 @@
 //! whole with `Context::set_transform_layer` and faded with `Ui::set_opacity`.
 //! The workspace supplies these transforms around the screen callback. It reuses
 //! layer IDs by pane/stack slot rather than issuing one per instance. The number used grows
-//! with stack depth; pane slot ranges are disjoint only below the `PANE_SLOTS` depth boundary.
+//! with stack depth; the high bit separates the two pane ranges.
 //! Transform and opacity handling use egui's
 //! [Context](https://docs.rs/egui/0.37.0/egui/struct.Context.html) and
 //! [Ui](https://docs.rs/egui/0.37.0/egui/struct.Ui.html) APIs.
@@ -80,11 +80,11 @@ use split::{Phase, Released, Split};
 use std::time::Instant;
 
 /// How many slots have a sizing pass run through them on the first frame (a stack depth of up to 4 is free).
-const WARM_SLOTS: u32 = 4;
+const WARM_SLOTS: u64 = 4;
 
-/// Each pane's layer range starts at `i × PANE_SLOTS`. Slots are distinct between panes
-/// while stack depths stay below this range width; deeper stacks can overlap the other pane's range.
-const PANE_SLOTS: u32 = 32;
+/// Two disjoint pane ranges. A `Vec` allocation is at most `isize::MAX` bytes,
+/// so every non-zero-sized `Instance` depth fits below bit 63 on supported 32/64-bit hosts.
+const PANE_SLOTS: u64 = 1 << 63;
 
 /// The divider's `Area` — the band, its grip, the focus line, and the handle a finger takes.
 const DIVIDER_ID: &str = "fairing.split.divider";
@@ -155,7 +155,7 @@ pub struct Workspace {
     layers_dirty: bool,
     /// How many slots of each pane have already had their sizing pass consumed (= the next slot
     /// number to warm up, from the pane's base).
-    warmed_slots: [u32; 2],
+    warmed_slots: [u64; 2],
     /// The instances being cleared by the clear-top cross-fade, **from the top down**.
     /// Only the first (originally the top) is drawn — those below it are covered anyway. All
     /// go to the graveyard at the end of the transition.
@@ -469,8 +469,8 @@ impl Workspace {
     }
 
     /// The first layer slot pane `pane` borrows.
-    fn slot_base(pane: usize) -> u32 {
-        u32::try_from(pane).unwrap_or(0).saturating_mul(PANE_SLOTS)
+    fn slot_base(pane: usize) -> u64 {
+        u64::try_from(pane).unwrap_or(0).saturating_mul(PANE_SLOTS)
     }
 
     /// Replace the motion-token cache. [`Workspace::ui`] calls it every frame with
@@ -493,7 +493,7 @@ impl Workspace {
 }
 
 /// Run one slot's sizing pass with nothing in it (see [`Workspace::warm_layer_slots`]).
-fn warm_slot(ctx: &egui::Context, slot: u32, content: Rect) {
+fn warm_slot(ctx: &egui::Context, slot: u64, content: Rect) {
     egui::Area::new(Instance::slot_area_id(slot))
         .order(egui::Order::Background)
         .fixed_pos(content.min)

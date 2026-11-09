@@ -14,8 +14,8 @@ mod control;
 mod elevation;
 mod metrics_spec;
 pub use components::{
-    ButtonMetrics, ComponentMetrics, ComponentSpec, HeadsUpMetrics, ListRowMetrics,
-    OverviewMetrics, PopoverMetrics, ShadeMetrics, SliderMetrics, SwitchMetrics, ToastMetrics,
+    ComponentMetrics, ComponentSpec, HeadsUpMetrics, ListRowMetrics, OverviewMetrics,
+    PopoverMetrics, ShadeMetrics, SliderMetrics, ToastMetrics,
 };
 pub use control::{
     card_radius, control_height, lamp_size, ControlMetrics, ControlRatios, ControlSpec,

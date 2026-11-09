@@ -163,6 +163,12 @@ control's expected diagnostic marker in its log. This check does not establish
 that the marker belongs to the failing assertion; that relationship requires log
 inspection. Working sources and published dependencies remain intact.
 
+Six additional native controls reconnect the former 32-slot pane spacing or
+freeze switch, slider, list-row, lock-badge and shade geometry inputs. Their real headless witnesses
+must fail on layer aliasing or painted geometry/text positions. The component
+checks inspect rendered output rather than calculating expected geometry from
+configuration metadata.
+
 `verification/coverage.py` reports product code executed by the contract suite.
 It fails if any of the declared production modules has no executed source
 lines. cargo-llvm-cov's dependency selection must explicitly instrument both

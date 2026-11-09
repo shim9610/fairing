@@ -250,17 +250,14 @@ fn snappy() -> Theme {
 ### 1.6 Widget metrics — `ComponentSpec`
 
 If §1.2's `Metrics` is what the **shell** divides the screen with, `Theme::components`
-(`ComponentMetrics`) holds component-specific values. The current readers differ by widget;
-the table below includes stored values that some built-in controls do not read. Shared control
-geometry also comes from `Theme::control` and `Metrics` (§1.7).
+(`ComponentMetrics`) holds component-specific spacing. Shared control geometry
+comes from `Theme::control` and `Metrics` (§1.7).
 
 | Group | Tokens | Default (du) |
 |---|---|---|
 | `toast` | `enter_offset` · `lift_step` · `stack_gap` · `pad_x` · `icon_gap` · `accent_w` | 24 · 8 · 16 · 16 · 12 · 3 |
 | `heads_up` | `pad` · `icon_gap` · `progress_h` | 16 · 12 · 4 |
-| `button` | `pad` · `icon_gap` · `ring` · `ring_stroke` | 12 · 8 · 24 · 3 — stored values; current `BigButton` uses `metrics.content_inset` and `control.gap`, `icon` and stroke tokens instead |
-| `slider` | `label_gap` · `track_ratio` | 8 · 0.64 — `TouchSlider` reads `label_gap`; its track thickness uses `control.slider_track` or `.thickness(..)`, not this stored ratio |
-| `switch` | `knob_inset` · `height` | 3 · `finger(0.6)` (floor 28.8) — stored values; current `Switch` uses `control.mark_size`, `switch_aspect` and `knob_ratio` instead |
+| `slider` | `label_gap` | 8 — track thickness uses `control.slider_track` or `.thickness(..)` |
 | `list_row` | `pad` · `two_line_offset` · `chevron_w` | 16 · 11 · 20 |
 | `overview` | `card_gap` · `card_min_width` | 24 · `finger(3.0)` (floor 144) — the recent screens' cards are `0.6 ×` the content, subject to this minimum and the available content width ([03 §2.3](03-chrome.md#23-recent-screens-and-the-split)) |
 | `popover` | `max_width` · `caret` · `icon_gap` | 420 · 8 · 12 — a desktop icon's info popover: the widest it is drawn, how far it stands off the icon, the gap beside its icons ([03 §3.8](03-chrome.md#38-holding-an-icon-the-info-popover)) |

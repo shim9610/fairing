@@ -249,3 +249,24 @@ its waker before publication; radio/audio acknowledgements from the old instance
 are discarded. Direct `ServiceRequest` commands retain trusted host authority;
 user-driven setting writes continue through `set_setting`, and `ProtectedShell`
 does not expose this host command API.
+
+## Component inputs and deep layer slots
+
+Unused component fields were removed before the first release. Use the input read
+by the built-in widget:
+
+| Removed value | Supported input |
+|---|---|
+| `ComponentSpec::button`, `ComponentMetrics::button`, `ButtonMetrics` | `MetricsSpec::content_inset` for side padding; `ControlSpec::gap`, `icon`, `stroke_mark` for icon spacing and hold-ring geometry |
+| `ComponentSpec::switch`, `ComponentMetrics::switch`, `SwitchMetrics` | `ControlSpec::mark_size`; `ControlRatios::switch_aspect` and `knob_ratio` |
+| `ComponentSpec::slider_track_ratio`, `SliderMetrics::track_ratio` | `ControlSpec::slider_track`; `TouchSlider::thickness` overrides one widget |
+
+An explicit per-widget slider thickness takes precedence over `ControlSpec`.
+Component spacing such as `slider_label_gap` and `list_row` remains in
+`ComponentSpec`. Default built-in rendering is unchanged.
+
+Diagnostic `Instance::layer_slot` and `Instance::slot_layer_id` now use `u64`.
+The high bit identifies the pane and the lower 63 bits identify stack depth.
+A `Vec<Instance>` allocation is bounded by `isize::MAX` bytes, so supported
+32/64-bit host stacks fit within that depth range. Slots are reused when a stack
+position is reused. Prefer `Instance::layer_id` when inspecting a live layer.

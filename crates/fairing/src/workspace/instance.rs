@@ -66,7 +66,7 @@ pub struct Instance {
     /// The declaration's `.evict_after(..)`.
     evict_after: Option<Duration>,
     /// The borrowed layer slot (= the stack depth inside the Pane). `Workspace::draw_panes` hands it over every frame.
-    layer_slot: u32,
+    layer_slot: u64,
     /// The pane size it was last told — `Resized`'s size, or the first one it was put in.
     told: Option<egui::Vec2>,
 }
@@ -156,8 +156,8 @@ impl Instance {
 
     /// The `Area` id = `("fairing.screen", slot)`. The **slot** (the stack depth), not the instance
     /// id — the two instances being drawn (the one coming in and the one going out) are at
-    /// different depths within their pane. Across panes, the slot ranges are distinct only
-    /// below the `PANE_SLOTS` depth boundary; identities are reused when a slot is reused.
+    /// different depths within their pane. Bit 63 separates the two pane ranges;
+    /// identities are reused when a slot is reused.
     #[must_use]
     pub(crate) fn area_id(&self) -> egui::Id {
         Self::slot_area_id(self.layer_slot)
@@ -166,26 +166,26 @@ impl Instance {
     /// An `Area` id made from the slot number alone. It can be named without an instance —
     /// used by the slot warm-up and the z-order tests.
     #[must_use]
-    pub(crate) fn slot_area_id(slot: u32) -> egui::Id {
+    pub(crate) fn slot_area_id(slot: u64) -> egui::Id {
         egui::Id::unique(("fairing.screen", slot))
     }
 
     /// An [`egui::LayerId`] made from the slot number alone. See `Instance::slot_area_id`.
     #[doc(hidden)]
     #[must_use]
-    pub fn slot_layer_id(slot: u32) -> egui::LayerId {
+    pub fn slot_layer_id(slot: u64) -> egui::LayerId {
         egui::LayerId::new(egui::Order::Background, Self::slot_area_id(slot))
     }
 
     /// Borrow a layer slot (the workspace hands the stack depth over just before drawing).
-    pub(crate) fn set_layer_slot(&mut self, slot: u32) {
+    pub(crate) fn set_layer_slot(&mut self, slot: u64) {
         self.layer_slot = slot;
     }
 
     /// The layer slot borrowed right now.
     #[doc(hidden)]
     #[must_use]
-    pub fn layer_slot(&self) -> u32 {
+    pub fn layer_slot(&self) -> u64 {
         self.layer_slot
     }
 

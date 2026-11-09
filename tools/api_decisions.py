@@ -101,9 +101,27 @@ RATIONALE = {
 }
 
 
+def component_replacement(path):
+    """Canonical inputs replacing unused pre-release component values."""
+    prefix = 'fairing_widgets::theme::components::'
+    if not path.startswith(prefix):
+        return None
+    name = path.removeprefix(prefix)
+    if name.startswith('ButtonMetrics') or name in {'ComponentSpec::button', 'ComponentMetrics::button'}:
+        return 'MetricsSpec::content_inset; ControlSpec::gap, icon and stroke_mark for BigButton padding, icon spacing and hold ring'
+    if name.startswith('SwitchMetrics') or name in {'ComponentSpec::switch', 'ComponentMetrics::switch'}:
+        return 'ControlSpec::mark_size and ControlRatios::switch_aspect/knob_ratio for Switch track and knob geometry'
+    if name in {'ComponentSpec::slider_track_ratio', 'SliderMetrics::track_ratio'}:
+        return 'ControlSpec::slider_track or the per-widget TouchSlider::thickness override'
+    return None
+
+
 def replacement(key):
     path, kind = key.rsplit('#', 1)
     member = path.rsplit('::', 1)[-1]
+    component = component_replacement(path)
+    if component is not None:
+        return component
     if '::Shell::' in path and member in MUTABLE_LOANS:
         return MUTABLE_LOANS[member]
     if '::Registry' in path:
@@ -128,6 +146,19 @@ def replacement(key):
 def change_details(key, decision):
     """Concrete decisions for every intentional removal/signature change."""
     path, kind = key.rsplit('#', 1)
+    if decision == 'remove' and component_replacement(path) is not None:
+        return {
+            'current_usage': 'Unused component value removed; configure the canonical input consumed by the built-in widget.',
+            'reason': 'Remove no-op duplicate settings before the first release; one control/metrics input owns each geometry choice.',
+            'replacement': component_replacement(path),
+            'compatibility': 'Pre-release source migration for component fields/types; default built-in rendering is unchanged.',
+        }
+    if decision == 'change' and path.endswith(('::Instance::layer_slot', '::Instance::slot_layer_id')):
+        return {
+            'reason': 'Use u64 layer slots with a high pane bit so supported Vec-backed stack depths cannot overlap across panes.',
+            'replacement': 'Use u64 for diagnostic slot values and slot_layer_id arguments; prefer observing Instance::layer_id.',
+            'compatibility': 'Diagnostic slot signatures widen from u32 to u64 before the first release.',
+        }
     if decision == 'remove':
         if '::SessionGrant::' in path:
             return {
