@@ -27,7 +27,7 @@ struct Typed {
 
 /// It taps one field, types into it, and waits past `Undoer::stable_time` (1 s) so egui has had
 /// every chance to save an undo point. `password` picks which field is drawn.
-fn type_into_a_field(password: bool) -> fairing::Result<Typed> {
+fn type_into_a_field(password: bool, input: &str) -> fairing::Result<Typed> {
     let text = Rc::new(RefCell::new(String::new()));
     let place = Rc::new(Cell::new(None::<(egui::Id, egui::Rect)>));
     let (buffer, sink) = (Rc::clone(&text), Rc::clone(&place));
@@ -62,7 +62,7 @@ fn type_into_a_field(password: bool) -> fairing::Result<Typed> {
     };
     h.tap(rect.center());
     h.frames(2);
-    h.type_text("hunter2");
+    h.type_text(input);
     h.frames(2);
     // An undo point is saved once the text has been still for `Undoer::stable_time`.
     h.run_for(1.5);
@@ -84,9 +84,11 @@ fn type_into_a_field(password: bool) -> fairing::Result<Typed> {
 /// arrived — no focus, no events, the wrong id — would pass while proving nothing.
 #[test]
 fn a_password_field_keeps_no_plaintext_in_egui_memory() -> fairing::Result<()> {
-    let plain = type_into_a_field(false)?;
+    // Share one generated UI probe between the control and password cases.
+    let input = format!("undo-probe-{}", std::process::id());
+    let plain = type_into_a_field(false, &input)?;
     assert_eq!(
-        plain.text, "hunter2",
+        plain.text, input,
         "the typing never reached the field, so this test proves nothing"
     );
     assert!(
@@ -95,11 +97,8 @@ fn a_password_field_keeps_no_plaintext_in_egui_memory() -> fairing::Result<()> {
          so the password case below would pass for the wrong reason"
     );
 
-    let secret = type_into_a_field(true)?;
-    assert_eq!(
-        secret.text, "hunter2",
-        "the password field did not take input"
-    );
+    let secret = type_into_a_field(true, &input)?;
+    assert_eq!(secret.text, input, "the password field did not take input");
     assert!(
         !secret.undo_history,
         "the plaintext is still in egui's undo history under the widget's id - it outlives the \
