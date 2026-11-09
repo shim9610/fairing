@@ -662,7 +662,7 @@ fn add_hidden_entries(shell: &mut fairing::Shell) {
                         ui,
                         cx,
                         "Opened through a hidden entry point",
-                        Some("A hidden entry point - customers never get this far"),
+                        Some("The default demo allows viewers here; hidden entry points do not replace authorization"),
                         Some(ColorRole::Warning),
                     );
                     layout::section(ui, cx, "Session");
@@ -1379,9 +1379,8 @@ fn add_widgets_screen(shell: &mut fairing::Shell) {
                 layout::note(
                     ui,
                     cx,
-                    "Tapping anywhere on the row toggles it - if only the switch \
-                     were the touch target, a gloved hand would keep missing. The \
-                     slider thumb grows 1.3x while you hold it.",
+                    "Tap the row or the switch to toggle it. The default slider \
+                     paints its press feedback on the track.",
                 );
 
                 // **The rest of the control set, on a screen.** `Checkbox` and `SegmentedControl`
@@ -1508,10 +1507,9 @@ fn add_dropdowns_screen(shell: &mut fairing::Shell) {
                 layout::note(
                     ui,
                     cx,
-                    "The count picks the form: up to four is a segmented control, five to \
-                     twelve a list, short symbols a gloved hand picks go in a grid, a phone's \
-                     habit is the sheet, and past twelve you search: the trigger itself becomes \
-                     the field, and the page keeps it clear of the keyboard.",
+                    "These examples select each presentation explicitly: an anchored list, \
+                     a grid, a bottom sheet or search. Choose the presentation for your \
+                     options when building the dropdown.",
                 );
                 layout::section(ui, cx, "Ordered values");
                 layout::group_with(ui, cx, layout::Deco::new().pad_content(), |ui, cx| {

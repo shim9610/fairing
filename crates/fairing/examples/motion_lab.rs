@@ -198,7 +198,7 @@ impl Knobs {
         MotionTokens::from_config(&cfg)
     }
 
-    /// The `[motion]` TOML. It can be pasted straight into a config file.
+    /// Serialize this tool's exposed motion values as a standalone TOML fragment.
     fn motion_toml(&self) -> String {
         let mut out = String::with_capacity(1024);
         let _ = writeln!(out, "[motion]");
@@ -209,6 +209,14 @@ impl Knobs {
         let _ = writeln!(out, "tap_ms = {}", ms(self.tap_ms));
         let _ = writeln!(out, "long_press_ms = {}", ms(self.long_press_ms));
         let _ = writeln!(out, "spring = {}", spring(self.spring_k, self.spring_c));
+        // Emit root keys before child-table headers instead of reopening `[motion]`.
+        let _ = writeln!(
+            out,
+            "crossfade_ms = {}\ntheme_fade_ms = {}\nclear_top_ms = {}",
+            ms(self.crossfade_ms),
+            ms(self.theme_fade_ms),
+            ms(self.clear_top_ms)
+        );
         let _ = writeln!(
             out,
             "\n[motion.push]\nms = {}\nparallax = {:.3}\ndim = {:.3}",
@@ -266,14 +274,6 @@ impl Knobs {
             self.press_scale
         );
         let _ = writeln!(out, "\n[motion.switch]\nms = {}", ms(self.switch_ms));
-        // Being a top-level `[motion]` key, the section header is written again at the end so it does not fall under an earlier section.
-        let _ = writeln!(
-            out,
-            "\n[motion]\ncrossfade_ms = {}\ntheme_fade_ms = {}\nclear_top_ms = {}",
-            ms(self.crossfade_ms),
-            ms(self.theme_fade_ms),
-            ms(self.clear_top_ms)
-        );
         out
     }
 }
@@ -883,4 +883,34 @@ fn lab_buttons(ui: &mut egui::Ui, cx: &mut Cx<'_>, guard: &mut Shared) {
             cx.shell.home();
         }
     });
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::{ms, Knobs, ShellConfig};
+
+    #[test]
+    fn exported_motion_config_round_trips_root_and_nested_values() -> fairing::Result<()> {
+        let base = ShellConfig::default();
+        let stock = Knobs::from_config(&base);
+        let mut edited = stock;
+        edited.reduce = true;
+        edited.crossfade_ms = 275.0;
+        edited.theme_fade_ms = 350.0;
+        edited.clear_top_ms = 425.0;
+        edited.push_ms = 190.0;
+        edited.switch_ms = 210.0;
+
+        for knobs in [stock, edited] {
+            let exported = ShellConfig::from_toml(&knobs.motion_toml())?;
+            exported.validate()?;
+            assert_eq!(exported.motion.reduce, knobs.reduce);
+            assert_eq!(exported.motion.crossfade_ms, ms(knobs.crossfade_ms));
+            assert_eq!(exported.motion.theme_fade_ms, ms(knobs.theme_fade_ms));
+            assert_eq!(exported.motion.clear_top_ms, ms(knobs.clear_top_ms));
+            assert_eq!(exported.motion.push.ms, ms(knobs.push_ms));
+            assert_eq!(exported.motion.switch.ms, ms(knobs.switch_ms));
+        }
+        Ok(())
+    }
 }

@@ -94,6 +94,9 @@ jobs:
 
       # Each feature profile produces its own large test executables. Release workspace
       # artifacts between profiles while keeping shared dependency artifacts cached.
+      - name: Check motion export round trip
+        run: cargo test --locked -p fairing --all-features --example motion_lab -- export_tests::exported_motion_config_round_trips_root_and_nested_values --exact
+
       - name: Check minimal, no-mock and default feature profiles
         run: |
           cargo clean -p fairing -p fairing-widgets

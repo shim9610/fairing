@@ -28,7 +28,14 @@ cargo xtask audit
 cargo clippy -p fairing --no-default-features --features mock --all-targets -- -D warnings   # the build with `overlay`/`osk` off
 ```
 
-That runs stage 0 plus 13 more stages, listed in
+CI also checks the motion lab's exported TOML through the configuration parser.
+Run its example-only regression explicitly; the release archive excludes examples:
+
+```sh
+cargo test --locked -p fairing --all-features --example motion_lab -- export_tests::exported_motion_config_round_trips_root_and_nested_values --exact
+```
+
+The audit runs stage 0 plus 13 more stages, listed in
 [guide 08 §9](docs/guide/08-troubleshooting.md#9-passing-the-audit): integrity, formatting, lints, tests,
 docs, duplicate versions, the `deps.allow` comparison, `cargo audit`, `cargo deny`, making
 updates visible, the notices file, generated files, the target build, and the blocking/lock scan.
