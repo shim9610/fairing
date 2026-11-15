@@ -141,6 +141,16 @@ an admitted callback or establish complete information-flow confinement.
 
 ## Controls and coverage
 
+The public-host rendering histories in `verification/src/protected_rendering.rs`
+exercise declared-screen UI/lifecycle/Back/result hooks, reject metadata drift and
+expiry, and inspect actual painted output from nested element trees as grants
+change. Revocation during measurement must block sibling measurement and painting.
+`verification/coverage-policy.json` requires line and function floors for these
+mediation modules alongside the existing API-contract production paths. Missing
+modules and coverage below a reviewed floor fail the gate. New source files under
+the mediation module require policy entries before the gate can pass. These measurements
+describe this API suite; product unit tests have separate coverage.
+
 `verification/proofs.py` defines 37 production mutations: 33 checked by both
 Kani and Verus, and four checked by Kani alone (70 expected-rejection runs).
 The shared-verifier set includes these 21 component mutations:

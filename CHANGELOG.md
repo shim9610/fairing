@@ -149,6 +149,11 @@ for source changes, queue/display defaults and recovery behavior.
 
 ### Fixed
 
+- Reject repeated protected payload dispatch hidden in iterator consumers or
+  nested forwarding closures. Restore the Miri protected-scope selection and fail
+  empty selections. Add public protected-rendering histories, reviewed coverage
+  floors and an aggregate `assurance-gate` for repository rulesets.
+
 - Keep pane layer slots disjoint beyond 32 stack entries and warm the next deep
   slot before drawing. Headless regressions cover two-pane input, push/pop and
   transform cleanup; mutation controls reject the former slot spacing and frozen

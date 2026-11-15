@@ -60,9 +60,13 @@ cut, and an independent traversal must agree. Loops and recursion have no path
 length enumeration bound. Solver identifiers use the smallest bit width that
 uniquely represents every compiled node; unused identifier values add no edges
 and this does not bound path length. Every monitor helper is an analysis root, including
-private helpers. Bridge closures may contain at most one protected entry and
-cannot cycle through it. A new adapter that duplicates or loops a payload call
-is rejected; composition uses separately mediated operations. Adding an operation
+private helpers. Bridge paths may contain at most one protected entry and cannot
+cycle through it. Entry summaries include nested closures and local helpers.
+External callable consumers require an explicit at-most-once contract:
+`Option::map`, `Option::and_then` and `bool::then`. Iterator consumers such as
+`for_each` and lazy `map` cannot reuse one admission for repeated payload calls.
+Compiled controls cover repeated iterator dispatch, two sequential at-most-once
+forwards and a valid single forward. Composition uses separately mediated operations. Adding an operation
 does not grant admission to its caller's later operations.
 
 ## Contract boundaries

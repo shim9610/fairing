@@ -7,6 +7,7 @@ import subprocess
 import tomllib
 
 import install
+from coverage_policy import validate
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "target/assurance/coverage"
@@ -28,17 +29,12 @@ result.check_returncode()
 export = json.loads((OUT / "raw.json").read_text())["data"][0]
 product = {str(Path(item["filename"]).resolve().relative_to(ROOT)): item["summary"] for item in export["files"]
            if str(Path(item["filename"]).resolve()).startswith(str(ROOT / "crates") + os.sep)}
-required = ["fairing/src/access/protected.rs", "fairing/src/access/protected_dispatch.rs", "fairing/src/shell/protected.rs", "fairing/src/access/session.rs", "fairing/src/access/session_rules.rs", "fairing/src/access/session_shared.rs", "fairing/src/access/auth.rs", "fairing/src/access/mod.rs", "fairing/src/access/rules.rs",
-            "fairing/src/shell/mod.rs", "fairing/src/shell/authentication.rs", "fairing/src/shell/navigation.rs",
-            "fairing/src/shell/render.rs", "fairing/src/shell/settings_dispatch.rs", "fairing/src/shell/update.rs",
-            "fairing/src/shell/input_route.rs", "fairing/src/shell/back_route.rs", "fairing/src/services/mod.rs", "fairing/src/notify/center.rs",
-            "fairing/src/time.rs", "fairing/src/inbox.rs", "fairing/src/inbox/bounded.rs",
-            "fairing-widgets/src/interaction/mod.rs", "fairing-widgets/src/interaction/rules.rs", "fairing-widgets/src/interaction/concrete.rs",
-            "fairing-widgets/src/memory.rs", "fairing-widgets/src/memory/display.rs", "fairing-widgets/src/unit.rs"]
-for path in required:
-    summary = product.get("crates/" + path)
-    if summary is None or summary["lines"]["covered"] == 0:
-        raise SystemExit(f"Contract tests did not execute the claimed production module: {path}")
+policy_path = ROOT / "verification/coverage-policy.json"
+policy = json.loads(policy_path.read_text())
+kernel_sources = [ROOT / "crates/fairing/src/access/mediation.rs",
+                  *(ROOT / "crates/fairing/src/access/mediation").rglob("*.rs")]
+required = [str(path.relative_to(ROOT)) for path in kernel_sources]
+validate(product, policy["files"], required)
 totals = {}
 for metric in ["lines", "functions", "regions"]:
     count = sum(summary[metric]["count"] for summary in product.values())
@@ -48,6 +44,7 @@ summary = {"scope": "Product code executed by public API contracts, distinct fro
            "toolchain": channel, "tool": install.PINS["cargo_llvm_cov"], "command": command,
            "product_lock_sha256": install.digest(ROOT / "Cargo.lock"),
            "verification_lock_sha256": install.digest(ROOT / "verification/Cargo.lock"),
+           "coverage_policy_sha256": install.digest(policy_path),
            "totals": totals, "files": product}
 (OUT / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
 print(json.dumps(totals, indent=2))

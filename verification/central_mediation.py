@@ -32,6 +32,61 @@ def kernel_entry(body):
     return kernel(body['canonical_id']) and not body['closure'] and not private_to_kernel
 
 
+# Standard-library consumers whose callable argument runs at most once. These
+# are contracts for forwarding semantics, not a list of protected payloads.
+ONCE_FORWARDERS = {
+    'core::option::Impl::map',
+    'core::option::Impl::and_then',
+    'core::bool::Impl::then',
+}
+
+
+def bridge_linearity(bodies, adjacency, call_targets, sinks, forwarding):
+    """Count possible payload entries along each bridge's control-flow path.
+
+    Summaries include nested closures/private helpers. Unknown external consumers
+    may invoke a supplied callable repeatedly, even without a loop in local MIR.
+    Calls through the admission cut have no unguarded payload summary.
+    """
+    reverse = defaultdict(set)
+    for source, targets in adjacency.items():
+        for target in targets:
+            reverse[target].add(source)
+    may_enter = set(sinks)
+    queue = deque(may_enter)
+    while queue:
+        for source in reverse[queue.popleft()]:
+            if source not in may_enter:
+                may_enter.add(source)
+                queue.append(source)
+    errors = []
+    for name, body in bodies.items():
+        if not kernel(body['canonical_id']) or not body['closure']:
+            continue
+        entries = set()
+        for block in body['blocks']:
+            node = (name, block['block'])
+            if node in sinks or call_targets[node] & may_enter:
+                entries.add(block['block'])
+            if node in forwarding and forwarding[node] not in ONCE_FORWARDERS:
+                errors.append({'kind': 'unknown-bridge-forwarding', 'body': name,
+                               'block': block['block'], 'target': forwarding[node]})
+        for entry in entries:
+            pending = list(body['blocks'][entry]['successors'])
+            seen = set()
+            while pending:
+                current = pending.pop()
+                if current in entries:
+                    errors.append({'kind': 'kernel-adapter-cycle' if current == entry
+                                   else 'multiple-protected-entries',
+                                   'body': name, 'blocks': [entry, current]})
+                    break
+                if current not in seen:
+                    seen.add(current)
+                    pending.extend(body['blocks'][current]['successors'])
+    return errors
+
+
 def context_contracts(bodies):
     """Check the concrete constructor/forwarding premises of the Cx proof model."""
     errors, scopes = [], []
@@ -232,6 +287,11 @@ def analyze(data):
         return values
 
     adjacency = defaultdict(set)
+    call_targets = defaultdict(set)
+    forwarding = {}
+    def call_edge(node, target):
+        adjacency[node].add(target)
+        call_targets[node].add(target)
     sinks = {}
     unsupported = []
     for name, body in bodies.items():
@@ -263,26 +323,28 @@ def analyze(data):
                     if kind == 'unknown' or protocol in PROTOCOLS:
                         sinks[node] = 'application-callable'
                     elif definition in bodies:
-                        adjacency[node].add((definition, 0))
+                        call_edge(node, (definition, 0))
                     else:
                         sinks[node] = 'unresolved-function-item'
             elif block.get('indirect_function'):
                 sinks[node] = 'unresolved-function-pointer'
             elif callee:
-                adjacency[node].add((callee, 0))
+                call_edge(node, (callee, 0))
             else:
                 # External code may call function arguments. This is conservative
                 # forwarding, not an assumption that std/UI bodies are verified.
                 for objects in block.get('argument_objects', []):
                     for kind, definition, protocol in targets(name, objects):
                         if kind == 'definition' and definition in bodies:
-                            adjacency[node].add((definition, 0))
+                            call_edge(node, (definition, 0))
+                            forwarding[node] = block.get('canonical_callee')
                         elif protocol in PROTOCOLS:
                             sinks[node] = 'externally-forwarded-protocol'
                 callable_parameters = set(block.get('callable_generic_parameters', []))
                 for argument in block.get('generic_objects', []):
                     if argument['index'] not in callable_parameters:
                         continue
+                    forwarding[node] = block.get('canonical_callee')
                     possible = targets(name, argument['objects'])
                     if not possible or any(kind == 'unknown' for kind, _, _ in possible):
                         sinks[node] = 'unresolved-external-callable-forwarding'
@@ -300,22 +362,7 @@ def analyze(data):
         while previous[path[-1]] is not None:
             path.append(previous[path[-1]])
         bypasses.append({'kind': sinks[node], 'path': list(reversed(path))})
-    # An adapter is one protected entry, not a reusable authorization for a
-    # sequence or loop of payload calls. Application bodies outside the monitor
-    # retain their stated effects boundary; monitor bridges must be linear.
-    for name,body in bodies.items():
-        if not kernel(body['canonical_id']) or not body['closure']:continue
-        entries=[block['block'] for block in body['blocks'] if block['kind']=='call' and
-                 (block.get('canonical_trait') in PROTOCOLS or block.get('callable_trait') or block.get('indirect_function'))]
-        if len(entries)>1:errors.append({'kind':'multiple-protected-entries','body':name,'blocks':entries})
-        for entry in entries:
-            pending=list(body['blocks'][entry]['successors']);seen=set()
-            while pending:
-                current=pending.pop()
-                if current==entry:
-                    errors.append({'kind':'kernel-adapter-cycle','body':name,'block':entry});break
-                if current in seen:continue
-                seen.add(current);pending.extend(body['blocks'][current]['successors'])
+    errors.extend(bridge_linearity(bodies, adjacency, call_targets, sinks, forwarding))
     # Unsupported code outside the reachable kernel graph is inventoried, not
     # silently called safe. An unsupported reachable node rejects the cut.
     unsupported_reachable = sorted(set(unsupported) & set(previous))

@@ -11,15 +11,20 @@ production path, proof/property, bounds and negative control.
 The [Ferrocene source trial](ferrocene-source-trial.md) also supplies the existing
 source-built compiler and matching LLVM coverage workflow.
 
-The required `proofs` and `miri` jobs always evaluate their input-approval result
-before checking out or building code. A failed, canceled or skipped `inputs` job
-therefore makes these checks fail rather than silently skipping them. Configure
-`inputs` itself as a required check as well when maintaining repository rules.
+Configure `assurance-gate` as a required status check in the repository's ruleset.
+It succeeds only when every job in this workflow succeeds; failed, canceled or
+skipped prerequisites fail the aggregate. The `proofs` and `miri` jobs also check
+input approval before building. Audit, MSRV and GUI/history checks remain separate
+required checks. CodeQL uses the repository's code-scanning rule.
+
+Each Miri command runs through `verification/run_tests.py`, which retains its log
+and rejects successful commands that execute no tests. Ignored and filtered-out
+tests do not count as executed tests.
 
 Native test ownership is split between jobs: UI histories run their 18 widget
-tests and one deadline test; the general assurance job runs the other 58 tests.
+tests and one deadline test; the general assurance job runs the other 61 tests.
 The UI job owns three mutation controls, and the general control job runs the
-other 40, including protected construction, callback-store isolation, nested wallpapers,
+other 46, including protected construction, callback-store isolation, nested wallpapers,
 typed callback dispatch and structured-configuration controls. Coverage,
 Miri, Loom and cross-OS runs intentionally re-execute relevant tests under their
 own verification conditions.
@@ -37,7 +42,7 @@ conditional induction and sequentially consistent (SC) trace lemmas, concrete at
 | Loom | 0.7.3 | Six scenarios: four Inbox scenarios and two actual session-publication/revocation scenarios |
 | proptest | 1.12.0 | CI: 512 cases per property, including shell ordering, transition traces and UI reachability; seed 20261101 |
 | cargo-fuzz | 0.13.2; libfuzzer-sys 0.4.13 | ASan: 20,000 ACK, 10,000 parser, 10,000 API and 2,000 shell inputs |
-| cargo-llvm-cov | 0.9.1 | Product and API-contract line/function/region coverage; latter requires execution of the declared production modules |
+| cargo-llvm-cov | 0.9.1 | Product and API-contract line/function/region coverage; the latter enforces reviewed per-module line/function floors in `verification/coverage-policy.json` |
 | cargo-cyclonedx | 0.5.9 | Library package dependency BOMs for default/all features on Linux x86_64 and aarch64 |
 
 Assurance tool archives and CycloneDX schemas have pinned SHA-256 values in
