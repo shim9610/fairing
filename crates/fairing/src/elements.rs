@@ -79,11 +79,13 @@
 //! ```
 
 mod dispatch;
+mod layout_token;
+use layout_token::LayoutToken;
 #[cfg(test)]
 mod tests;
 
 use crate::access::mediation::ElementHandle;
-use crate::access::{Permission, PermissionBinding, PermissionBound};
+use crate::access::{Permission, PermissionBound};
 use crate::screen::{Cx, Screen};
 use egui::Vec2;
 
@@ -197,7 +199,7 @@ impl<P: Permission> Screen for ElementTree<P> {
 }
 
 struct Plan<'tree, P: Permission> {
-    binding: PermissionBinding<P>,
+    layout: LayoutToken<P>,
     size: Vec2,
     node: PlanNode<'tree, P>,
 }

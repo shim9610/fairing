@@ -270,3 +270,68 @@ fn revocation_during_public_tree_measurement_blocks_sibling_and_paint() {
     assert!(!has_text(&mut h, "REVOKING_MARKER"));
     assert!(!has_text(&mut h, "SIBLING_MARKER"));
 }
+
+#[test]
+fn public_factory_is_lazy_and_rechecks_authority_before_screen_hooks() {
+    for revoke_in_factory in [false, true] {
+        let mut h = host();
+        let owner = Rc::new(RefCell::new(None::<SessionController>));
+        let constructors = Rc::new(Cell::new(0));
+        let entries = Rc::new(Cell::new(0));
+        let hooks = Rc::new(Cell::new(0));
+        h.shell.add(fairing::access::Protected::new(
+            Right::Read,
+            fairing::screen("landing", |_: &mut egui::Ui, _: &mut Cx<'_>| {}),
+        ));
+        let (issuer, built, painted, called) = (
+            Rc::clone(&owner),
+            Rc::clone(&constructors),
+            Rc::clone(&entries),
+            Rc::clone(&hooks),
+        );
+        h.shell.add(fairing::access::Protected::new(
+            Right::Read,
+            fairing::screen_with("factory", move || {
+                built.set(built.get() + 1);
+                if revoke_in_factory {
+                    issuer.borrow_mut().as_mut().unwrap().revoke();
+                }
+                DeclaredScreen {
+                    right: Rc::new(Cell::new(Right::Read)),
+                    entries: Rc::clone(&painted),
+                    hooks: Rc::clone(&called),
+                }
+            }),
+        ));
+        h.frame();
+        assert_eq!(constructors.get(), 0, "registration eagerly ran a factory");
+        *owner.borrow_mut() = Some(login(&mut h, "landing", false));
+        assert_eq!(constructors.get(), 0, "another launch ran a factory");
+        h.shell.launch(LaunchAction::open("factory"));
+        h.frames(2);
+        assert_eq!(constructors.get(), 1);
+        if revoke_in_factory {
+            assert_eq!(
+                hooks.get(),
+                0,
+                "factory revocation admitted lifecycle hooks"
+            );
+            assert_eq!(entries.get(), 0, "factory revocation admitted drawing");
+            assert!(!has_text(&mut h, "DECLARED_MARKER"));
+        } else {
+            assert_eq!(hooks.get(), 2);
+            assert!(entries.get() > 0);
+            assert!(has_text(&mut h, "DECLARED_MARKER"));
+            owner.borrow_mut().as_mut().unwrap().revoke();
+            let before = entries.get();
+            h.frames(2);
+            assert_eq!(entries.get(), before);
+            assert!(!has_text(&mut h, "DECLARED_MARKER"));
+        }
+        assert_eq!(
+            constructors.get(),
+            1,
+            "cached screen repeated its constructor"
+        );
+    }
+}

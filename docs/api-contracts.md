@@ -173,6 +173,10 @@ control's expected diagnostic marker in its log. This check does not establish
 that the marker belongs to the failing assertion; that relationship requires log
 inspection. Working sources and published dependencies remain intact.
 
+The Back default control calls the real default `Screen::on_back` implementation
+and changes its result from `Pop` to `Consumed` in the disposable source copy.
+The matching test must fail; comparing enum constants alone would miss that bug.
+
 Six additional native controls reconnect the former 32-slot pane spacing or
 freeze switch, slider, list-row, lock-badge and shade geometry inputs. Their real headless witnesses
 must fail on layer aliasing or painted geometry/text positions. The component

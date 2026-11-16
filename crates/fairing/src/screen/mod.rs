@@ -919,9 +919,23 @@ mod tests {
 
     /// The trait's default: back is `Pop`.
     #[test]
-    fn default_back_action_is_pop() {
-        assert_eq!(BackAction::Pop, BackAction::Pop);
-        assert_ne!(BackAction::Pop, BackAction::Consumed);
+    fn default_back_action_is_pop() -> crate::Result<()> {
+        struct DefaultScreen;
+        impl Screen for DefaultScreen {
+            fn ui(&mut self, _: &mut egui::Ui, _: &mut Cx<'_>) {}
+        }
+        let mut fixture = super::cx::fixture::Fixture::new()?;
+        let mut parts = fixture.parts();
+        let mut cx = parts.cx(
+            super::cx::fixture::pane(crate::workspace::InstanceId::NONE),
+            None,
+        );
+        assert_eq!(
+            DefaultScreen.on_back(&mut cx),
+            BackAction::Pop,
+            "default Screen::on_back must pop"
+        );
+        Ok(())
     }
 
     /// The `LaunchAction` constructors.

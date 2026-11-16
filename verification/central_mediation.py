@@ -288,6 +288,7 @@ def analyze(data):
 
     adjacency = defaultdict(set)
     call_targets = defaultdict(set)
+    guard_targets = defaultdict(set)
     forwarding = {}
     def call_edge(node, target):
         adjacency[node].add(target)
@@ -309,6 +310,13 @@ def analyze(data):
                 # A new adapter cannot authorize itself with invoke(true, ...).
                 if name != KERNEL + 'invoke':
                     errors.append({'kind':'unproved-admission-cut','body':name,'block':block['block']})
+                for kind, definition, _ in targets(name, block['argument_objects'][1]):
+                    if kind == 'definition' and definition in bodies:
+                        guard_targets[node].add((definition, 0))
+                    else:
+                        errors.append({'kind': 'unresolved-admission-operation', 'body': name})
+                # Keep the key for an empty/unresolved operation: it must fail.
+                guard_targets[node]
                 continue
             if block.get('canonical_trait') in PROTOCOLS:
                 sinks[node] = 'application-protocol'
@@ -363,6 +371,11 @@ def analyze(data):
             path.append(previous[path[-1]])
         bypasses.append({'kind': sinks[node], 'path': list(reversed(path))})
     errors.extend(bridge_linearity(bodies, adjacency, call_targets, sinks, forwarding))
+    from dispatch_effects import check as check_effects
+    errors.extend(check_effects(bodies, call_targets, sinks, guard_targets,
+                  {name for name, body in bodies.items() if kernel(body['canonical_id']) and body['closure']},
+                  {(name, block['block']) for name, body in bodies.items() for block in body['blocks']
+                   if block.get('canonical_trait') == 'fairing::access::AccessPolicy'}))
     # Unsupported code outside the reachable kernel graph is inventoried, not
     # silently called safe. An unsupported reachable node rejects the cut.
     unsupported_reachable = sorted(set(unsupported) & set(previous))
@@ -391,6 +404,8 @@ def analyze(data):
     errors.extend(kernel_exports(bodies,types))
     resource_errors,resource_contract=context_isolation(bodies,types);errors.extend(resource_errors)
     observer_errors,observer_contract=observer_bindings(bodies,types);errors.extend(observer_errors)
+    from layout_bindings import check as check_layout_bindings
+    layout_errors, layout_contract=check_layout_bindings(bodies);errors.extend(layout_errors)
     exports, transfers=payload_boundaries(data,{'pre_admission_blocks':sorted(previous)})
     errors.extend(exports)
     metadata={KERNEL+'protected::PermissionBinding'}
@@ -405,10 +420,16 @@ def analyze(data):
     edges={(source,target) for source,targets in adjacency.items() for target in targets}
     # Only protected protocol/callable payload entries are sinks. Ordinary
     # library closures remain graph edges, not automatically executed payloads.
-    certificate=m.solve(data[0].get('_profile','all'),'protected-contracts',sorted(roots),nodes,edges,list(sinks))
-    if certificate['solver']!='unsat':errors.append({'kind':'routing-certificate-not-unsat','solver':certificate['solver']})
+    # Definite structural/effect violations cannot be certified regardless of
+    # reachability. Preserve the rejection and avoid solving an already invalid
+    # candidate. Accepted programs still require the independent UNSAT query.
+    if errors or bypasses or unsupported_reachable:
+        certificate={'solver':'not-run','reason':'structural-or-effect-rejection'}
+    else:
+        certificate=m.solve(data[0].get('_profile','all'),'protected-contracts',sorted(roots),nodes,edges,list(sinks))
+        if certificate['solver']!='unsat':errors.append({'kind':'routing-certificate-not-unsat','solver':certificate['solver']})
     return {'status': 'registered-payload-confinement-checked' if not errors and not bypasses and not unsupported_reachable else 'rejected',
-        'resource_contract':resource_contract, 'observer_contract':observer_contract,
+        'resource_contract':resource_contract, 'observer_contract':observer_contract, 'layout_contract':layout_contract,
         'routing_certificate':certificate,
         'errors': errors, 'unguarded_payload_entries': bypasses, 'unsupported_reachable': unsupported_reachable,
         'opaque_payload_fields': stores, 'protocol_references': references, 'kernel_roots': sorted(roots),

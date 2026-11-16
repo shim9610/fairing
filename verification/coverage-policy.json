@@ -129,6 +129,14 @@
     "crates/fairing/src/access/mediation/element.rs": {
       "lines": 90,
       "functions": 100
+    },
+    "crates/fairing/src/access/mediation/execution.rs": {
+      "lines": 80,
+      "functions": 100
+    },
+    "crates/fairing/src/elements/layout_token.rs": {
+      "lines": 90,
+      "functions": 100
     }
   }
 }

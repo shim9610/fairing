@@ -130,7 +130,9 @@ between nested operations cannot reuse an earlier successful admission. Missing,
 revoked, expired, unlisted or incoherently read authority refuses entry.
 
 `ElementTree` filters denied children before measurement/layout, binds the plan
-to its authority state and rechecks live requirements before painting. This
+to its frame, observation time and authority state and rechecks live requirements
+before painting. Reusable layout tokens hold metadata only; execution tokens
+are consumed once per admitted callback. This
 prevents a previously authorized plan from authorizing a new entry after its
 binding becomes stale. Registered factories, lifecycle methods, drawing and
 actions use the same managed mediation path.
@@ -187,9 +189,9 @@ marker in the development example are reference/demo mechanisms.
 | Validated protected construction; no downgrade host API | [`shell/builder.rs`](../crates/fairing/src/shell/builder.rs), [`shell/protected.rs`](../crates/fairing/src/shell/protected.rs), [`shell/host.rs`](../crates/fairing/src/shell/host.rs); external compile-fail clients |
 | Issuer-only writer, publication, grant catalog and deadlines | [`access/session.rs`](../crates/fairing/src/access/session.rs), [`access/session_rules.rs`](../crates/fairing/src/access/session_rules.rs); source-bound Kani/Verus decision proofs and session tests |
 | Response correlation, session observation and local detach | [`shell/authentication.rs`](../crates/fairing/src/shell/authentication.rs); stale-response, revocation and lifecycle regressions |
-| Common admission and inherited authority | [`access/mediation.rs`](../crates/fairing/src/access/mediation.rs), [`access/protected_dispatch.rs`](../crates/fairing/src/access/protected_dispatch.rs); kernel/path proofs |
+| Common admission and inherited authority | [`access/mediation.rs`](../crates/fairing/src/access/mediation.rs), [`mediation/execution.rs`](../crates/fairing/src/access/mediation/execution.rs), [`access/protected_dispatch.rs`](../crates/fairing/src/access/protected_dispatch.rs); kernel/path proofs |
 | Automatic coverage of managed payload entry | [`mediation/contract.rs`](../crates/fairing/src/access/mediation/contract.rs), [`verification/protected_contracts.py`](../verification/protected_contracts.py), [`verification/contract_controls.py`](../verification/contract_controls.py); compiler-derived routing and compiled extension/bypass controls |
-| Element-plan and live paint checks | [`elements.rs`](../crates/fairing/src/elements.rs), [`mediation/element.rs`](../crates/fairing/src/access/mediation/element.rs); mediated tree regressions and common route checks |
+| Element-plan and live paint checks | [`elements.rs`](../crates/fairing/src/elements.rs), [`mediation/element.rs`](../crates/fairing/src/access/mediation/element.rs); source-bound layout lifetime proofs, compiled verdict-use checks, mediated tree regressions and common route checks |
 | User setting and account writes | [`shell/settings_dispatch.rs`](../crates/fairing/src/shell/settings_dispatch.rs), [`access/mod.rs`](../crates/fairing/src/access/mod.rs); denied-write and credential-admin regressions |
 | Runtime faults and protected recovery | [`runner.rs`](../crates/fairing/src/runner.rs), [`shell/protected.rs`](../crates/fairing/src/shell/protected.rs); protected-host/replacement regressions |
 

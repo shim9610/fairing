@@ -763,6 +763,14 @@ impl<'a> Cx<'a> {
         self.access.allows(gate)
     }
 
+    pub(crate) fn layout_frame(&self) -> u64 {
+        self.frame
+    }
+
+    pub(crate) fn layout_permissions_cacheable(&self) -> bool {
+        self.access.layout_permissions_cacheable()
+    }
+
     pub(crate) fn authority_stamp(&self) -> Option<(crate::access::SessionId, u64)> {
         self.access.authority_stamp()
     }

@@ -17,34 +17,58 @@ pub(crate) trait ContractExtension { fn execute(&mut self, cx: &mut Cx<'_>); }
 protected_contract!(operation Callback<dyn ContractExtension>, extension(), |body,cx|body.execute(cx));
 '''
 CASES=[
- ('unclassified-protocol','crates/fairing/src/access/mediation.rs',None,"\npub(crate)trait HiddenProtocol{fn execute(&mut self,cx:&mut Cx<'_>);}\npub(crate)fn bypass_unknown<T:HiddenProtocol>(body:&mut T,cx:&mut Cx<'_>){body.execute(cx)}\n",'unguarded-payload-entry'),
- ('unclassified-payload-shape','crates/fairing/src/access/mediation.rs',None,"\ntrait Opaque{type Item;}\nprotected_contract!(carrier struct Hidden<T:Opaque>:T::Item {body:T::Item});\n",'unclassified-payload-contract'),
- ('false-dynamic-payload','crates/fairing/src/access/mediation.rs',None,"\npub(crate)trait HiddenProtocol{fn execute(&mut self,cx:&mut Cx<'_>);}\nprotected_contract!(carrier struct Hidden: () {body:Box<dyn HiddenProtocol>});\nimpl Hidden{pub(crate)fn bypass(&mut self,cx:&mut Cx<'_>){self.body.execute(cx);}}\n",'carrier-payload-contract-mismatch'),
- ('false-callable-payload','crates/fairing/src/access/mediation.rs',None,"\nprotected_contract!(carrier struct Hidden: () {body:Box<dyn FnMut()>});\nimpl Hidden{pub(crate)fn bypass(&mut self){(self.body)();}}\n",'carrier-payload-contract-mismatch'),
- ('false-generic-payload','crates/fairing/src/access/mediation.rs',None,"\nprotected_contract!(carrier struct Hidden<T: ?Sized>: () {body:Box<T>});\nimpl<T:?Sized>Hidden<T>{pub(crate)fn export(self)->Box<T>{self.body}}\n",'carrier-payload-contract-mismatch'),
- ('one-line-extension','crates/fairing/src/access/mediation.rs',None,EXTENSION,None),
- ('extension-bypass','crates/fairing/src/access/mediation.rs',None,EXTENSION+'''\nimpl Callback<dyn ContractExtension> { pub(crate) fn bypass(&mut self,cx:&mut Cx<'_>) {self.body.execute(cx);} }\n''','unguarded-payload-entry'),
- ('generic-one-line-extension','crates/fairing/src/access/mediation.rs',None,EXTENSION.split('protected_contract!')[0]+"protected_contract!(operation [T: ContractExtension] Callback<T>, extension_generic(), |body,cx|body.execute(cx));\n",None),
- ('generic-extension-bypass','crates/fairing/src/access/mediation.rs',None,EXTENSION.split('protected_contract!')[0]+"protected_contract!(operation [T: ContractExtension] Callback<T>, extension_generic(), |body,cx|body.execute(cx));\nimpl<T:ContractExtension> Callback<T>{pub(crate)fn bypass_generic(&mut self,cx:&mut Cx<'_>){self.body.execute(cx);}}\n",'unguarded-payload-entry'),
- ('forged-admission-cut','crates/fairing/src/access/mediation.rs',None,EXTENSION+"impl Callback<dyn ContractExtension>{pub(crate)fn forged_cut(&mut self,cx:&mut Cx<'_>){protected_dispatch::invoke(true,||self.body.execute(cx));}}\n",'unproved-admission-cut'),
- ('duplicate-entry','crates/fairing/src/access/mediation.rs',None,EXTENSION+"protected_contract!(operation Callback<dyn ContractExtension>, double_entry(), |body,cx|{body.execute(cx);body.execute(cx)});\n",'multiple-protected-entries'),
- ('looped-entry','crates/fairing/src/access/mediation.rs',None,EXTENSION+"protected_contract!(operation Callback<dyn ContractExtension>, looped_entry(), |body,cx|{for _ in 0..2 {body.execute(cx);}});\n",'kernel-adapter-cycle'),
- ('iterator-entry','crates/fairing/src/access/mediation.rs',None,EXTENSION+"protected_contract!(operation Callback<dyn ContractExtension>, iterated_entry(), |body,cx|{(0..2).for_each(|_|body.execute(cx));});\n",'unknown-bridge-forwarding'),
- ('lazy-iterator-entry','crates/fairing/src/access/mediation.rs',None,EXTENSION+"protected_contract!(operation Callback<dyn ContractExtension>, mapped_entry(), |body,cx|{let _:Vec<_>=(0..2).map(|_|body.execute(cx)).collect();});\n",'unknown-bridge-forwarding'),
- ('nested-once-duplicate','crates/fairing/src/access/mediation.rs',None,EXTENSION+"protected_contract!(operation Callback<dyn ContractExtension>, nested_duplicate(), |body,cx|{Some(()).map(|_|body.execute(cx));Some(()).map(|_|body.execute(cx));});\n",'multiple-protected-entries'),
- ('once-forwarded-extension','crates/fairing/src/access/mediation.rs',None,EXTENSION+"protected_contract!(operation Callback<dyn ContractExtension>, once_entry(), |body,cx|{Some(()).map(|_|body.execute(cx));});\n",None),
+ ('unclassified-protocol','crates/fairing/src/access/mediation/execution.rs',None,"\npub(crate)trait HiddenProtocol{fn execute(&mut self,cx:&mut Cx<'_>);}\npub(crate)fn bypass_unknown<T:HiddenProtocol>(body:&mut T,cx:&mut Cx<'_>){body.execute(cx)}\n",'unguarded-payload-entry'),
+ ('unclassified-payload-shape','crates/fairing/src/access/mediation/execution.rs',None,"\ntrait Opaque{type Item;}\nprotected_contract!(carrier struct Hidden<T:Opaque>:T::Item {body:T::Item});\n",'unclassified-payload-contract'),
+ ('false-dynamic-payload','crates/fairing/src/access/mediation/execution.rs',None,"\npub(crate)trait HiddenProtocol{fn execute(&mut self,cx:&mut Cx<'_>);}\nprotected_contract!(carrier struct Hidden: () {body:Box<dyn HiddenProtocol>});\nimpl Hidden{pub(crate)fn bypass(&mut self,cx:&mut Cx<'_>){self.body.execute(cx);}}\n",'carrier-payload-contract-mismatch'),
+ ('false-callable-payload','crates/fairing/src/access/mediation/execution.rs',None,"\nprotected_contract!(carrier struct Hidden: () {body:Box<dyn FnMut()>});\nimpl Hidden{pub(crate)fn bypass(&mut self){(self.body)();}}\n",'carrier-payload-contract-mismatch'),
+ ('false-generic-payload','crates/fairing/src/access/mediation/execution.rs',None,"\nprotected_contract!(carrier struct Hidden<T: ?Sized>: () {body:Box<T>});\nimpl<T:?Sized>Hidden<T>{pub(crate)fn export(self)->Box<T>{self.body}}\n",'carrier-payload-contract-mismatch'),
+ ('one-line-extension','crates/fairing/src/access/mediation/execution.rs',None,EXTENSION,None),
+ ('extension-bypass','crates/fairing/src/access/mediation/execution.rs',None,EXTENSION+'''\nimpl Callback<dyn ContractExtension> { pub(crate) fn bypass(&mut self,cx:&mut Cx<'_>) {self.body.execute(cx);} }\n''','unguarded-payload-entry'),
+ ('generic-one-line-extension','crates/fairing/src/access/mediation/execution.rs',None,EXTENSION.split('protected_contract!')[0]+"protected_contract!(operation [T: ContractExtension] Callback<T>, extension_generic(), |body,cx|body.execute(cx));\n",None),
+ ('generic-extension-bypass','crates/fairing/src/access/mediation/execution.rs',None,EXTENSION.split('protected_contract!')[0]+"protected_contract!(operation [T: ContractExtension] Callback<T>, extension_generic(), |body,cx|body.execute(cx));\nimpl<T:ContractExtension> Callback<T>{pub(crate)fn bypass_generic(&mut self,cx:&mut Cx<'_>){self.body.execute(cx);}}\n",'unguarded-payload-entry'),
+ ('forged-admission-cut','crates/fairing/src/access/mediation/execution.rs',None,EXTENSION+"impl Callback<dyn ContractExtension>{pub(crate)fn forged_cut(&mut self,cx:&mut Cx<'_>){super::protected_dispatch::invoke(true,||self.body.execute(cx));}}\n",'unproved-admission-cut'),
+ ('duplicate-entry','crates/fairing/src/access/mediation/execution.rs',None,EXTENSION+"protected_contract!(operation Callback<dyn ContractExtension>, double_entry(), |body,cx|{body.execute(cx);body.execute(cx)});\n",'multiple-protected-entries'),
+ ('looped-entry','crates/fairing/src/access/mediation/execution.rs',None,EXTENSION+"protected_contract!(operation Callback<dyn ContractExtension>, looped_entry(), |body,cx|{for _ in 0..2 {body.execute(cx);}});\n",'kernel-adapter-cycle'),
+ ('iterator-entry','crates/fairing/src/access/mediation/execution.rs',None,EXTENSION+"protected_contract!(operation Callback<dyn ContractExtension>, iterated_entry(), |body,cx|{(0..2).for_each(|_|body.execute(cx));});\n",'unknown-bridge-forwarding'),
+ ('lazy-iterator-entry','crates/fairing/src/access/mediation/execution.rs',None,EXTENSION+"protected_contract!(operation Callback<dyn ContractExtension>, mapped_entry(), |body,cx|{let _:Vec<_>=(0..2).map(|_|body.execute(cx)).collect();});\n",'unknown-bridge-forwarding'),
+ ('nested-once-duplicate','crates/fairing/src/access/mediation/execution.rs',None,EXTENSION+"protected_contract!(operation Callback<dyn ContractExtension>, nested_duplicate(), |body,cx|{Some(()).map(|_|body.execute(cx));Some(()).map(|_|body.execute(cx));});\n",'multiple-protected-entries'),
+ ('once-forwarded-extension','crates/fairing/src/access/mediation/execution.rs',None,EXTENSION+"protected_contract!(operation Callback<dyn ContractExtension>, once_entry(), |body,cx|{Some(()).map(|_|body.execute(cx));});\n",None),
  ('raw-protocol-call','crates/fairing/src/screen/mod.rs',None,"\npub(crate) fn bypass(screen:&mut dyn Screen,ui:&mut egui::Ui,cx:&mut Cx<'_>){screen.ui(ui,cx);}\n",'raw-protocol-reference-outside-kernel'),
  ('raw-protocol-storage','crates/fairing/src/screen/mod.rs',None,'\nstruct Bypass { body:Box<dyn Screen> }\n','raw-protocol-storage'),
- ('raw-extraction','crates/fairing/src/access/mediation.rs',None,'\nimpl ScreenHandle {pub(crate) fn bypass(self)->Option<Box<dyn Screen>>{self.body}}\n','raw-payload-return'),
- ('generic-helper-export','crates/fairing/src/access/mediation.rs',None,'\nimpl<T:?Sized> Callback<T>{pub(crate) fn bypass(self,slot:&mut Option<Box<T>>){sink(self.body,slot);}}\nfn sink<T:?Sized>(body:Box<T>,slot:&mut Option<Box<T>>){*slot=Some(body);}\n','executable-payload-write-through-borrow'),
- ('unregistered-storage','crates/fairing/src/access/mediation.rs',None,'\nstruct Bypass<T>{payload:T}\n','unclassified-executable-storage'),
- ('forged-contract','crates/fairing/src/access/mediation.rs',None,'\nstruct Bypass;impl contract::Carrier for Bypass{type Payload=dyn Screen;}\n','contract-not-generated'),
- ('exposed-payload','crates/fairing/src/access/mediation.rs','    body: Option<Box<dyn Screen>>,','    pub(crate) body: Option<Box<dyn Screen>>,','payload-field-visibility'),
- ('macro-bypass','crates/fairing/src/access/mediation/contract.rs','self.invoke(cx, |body,cx| body.$name($($arg,)*cx));','if let Some(body)=&mut self.body {body.$name($($arg,)*cx);}','unguarded-payload-entry'),
+ ('raw-extraction','crates/fairing/src/access/mediation/execution.rs',None,'\nimpl ScreenStorage {pub(crate) fn bypass(self)->Option<Box<dyn Screen>>{self.body}}\n','raw-payload-return'),
+ ('generic-helper-export','crates/fairing/src/access/mediation/execution.rs',None,'\nimpl<T:?Sized> Callback<T>{pub(crate) fn bypass(self,slot:&mut Option<Box<T>>){sink(self.body,slot);}}\nfn sink<T:?Sized>(body:Box<T>,slot:&mut Option<Box<T>>){*slot=Some(body);}\n','executable-payload-write-through-borrow'),
+ ('unregistered-storage','crates/fairing/src/access/mediation/execution.rs',None,'\nstruct Bypass<T>{payload:T}\n','unclassified-executable-storage'),
+ ('forged-contract','crates/fairing/src/access/mediation/execution.rs',None,'\nstruct Bypass;impl super::contract::Carrier for Bypass{type Payload=dyn Screen;}\n','contract-not-generated'),
+ ('exposed-payload','crates/fairing/src/access/mediation/execution.rs','    body: Option<Box<dyn Screen>>,','    pub(crate) body: Option<Box<dyn Screen>>,','payload-field-visibility'),
+ ('macro-bypass','crates/fairing/src/access/mediation/execution.rs','self.invoke(requirement,cx,|body,cx|body.$name($($arg,)*cx));','if let Some(body)=&mut self.body {body.$name($($arg,)*cx);}','unguarded-payload-entry'),
  ('discard-ancestors','crates/fairing/src/screen/cx.rs','authority_path: Some(path),','authority_path: None,','scope-context-contract'),
  ('replace-global-icons','crates/fairing/src/screen/cx.rs','icons: &mut icons,','icons: &mut *self.icons,','scoped-resource-aliases-global'),
  ('wrong-permission','crates/fairing/src/screen/cx.rs','self.access.allows(gate)','self.access.allows(&Gate::borrowed("public"))','context-observer-binding'),
- ('external-forwarding','crates/fairing/src/access/mediation.rs',None,"\nimpl ActionCallback{pub(crate)fn bypass(&mut self,cx:&mut Cx<'_>){let _=Some(cx).map(&mut *self.body);}}\n",'unguarded-payload-entry'),
+ ('external-forwarding','crates/fairing/src/access/mediation/execution.rs',None,"\nimpl ActionCallback{pub(crate)fn bypass(&mut self,cx:&mut Cx<'_>){let _=Some(cx).map(&mut *self.body);}}\n",'unguarded-payload-entry'),
+ ('helper-repeat','crates/fairing/src/access/mediation/execution.rs',None,EXTENSION+"protected_contract!(operation Callback<dyn ContractExtension>, helper_repeat(), |body,cx|{crate::screen::review_repeat(||body.execute(cx));});\n",'callback-without-fresh-admission', [('crates/fairing/src/screen/mod.rs',None,'\npub(crate)fn review_repeat(mut f:impl FnMut()){f();f();}\n')]),
+ ('nested-return','crates/fairing/src/access/mediation/execution.rs',None,EXTENSION+"protected_contract!(operation Callback<dyn ContractExtension>, nested_return(), |body,cx|{let _=super::invoke_gate(&Gate::borrowed(\"view\"),cx,|cx|body.execute(cx));body.execute(cx);});\n",'callback-without-fresh-admission'),
+ ('private-payload-loan','crates/fairing/src/access/mediation.rs',None,"\nfn borrow_payload<T:?Sized>(callback:&mut execution::Callback<T>,cx:&mut Cx<'_>){let _=callback.invoke(cx,|_,_|());}\n",'compile:E0624'),
+ ('consumed-execution-token','crates/fairing/src/access/mediation.rs',None,"\nfn replay(token:super::protected_dispatch::ExecutionToken<impl FnOnce()>){token.execute();token.execute();}\n",'compile:E0382'),
+ ('forged-execution-token','crates/fairing/src/access/mediation.rs',None,"\nfn forge(){let _=super::protected_dispatch::ExecutionToken{callback:||()};}\n",'compile:E0451'),
+ ('borrowed-execution-token','crates/fairing/src/access/mediation.rs',None,"\nfn borrow_token(token:&super::protected_dispatch::ExecutionToken<impl FnOnce()>){token.execute();}\n",'compile:E0507'),
+ ('layout-cannot-execute','crates/fairing/src/elements.rs',None,"\nfn escalate_layout<P:Permission>(token:LayoutToken<P>){token.execute();}\n",'compile:E0599'),
+
+ ('layout-validate-bypass','crates/fairing/src/elements/dispatch.rs',
+  "pub(super) fn validate(&self, cx: &Cx<'_>, stamp: Stamp) -> bool {\n        if !self.layout.valid(cx)",
+  "pub(super) fn validate(&self, cx: &Cx<'_>, stamp: Stamp) -> bool {\n        if false && !self.layout.valid(cx)",'layout-entry-guard'),
+ ('layout-paint-bypass','crates/fairing/src/elements/dispatch.rs',
+  "if !self.layout.valid(cx) {\n            return false;\n        }\n        match &mut self.node",
+  "if false && !self.layout.valid(cx) {\n            return false;\n        }\n        match &mut self.node",'layout-entry-guard'),
+ ('layout-verdict-inverted','crates/fairing/src/elements/dispatch.rs',
+  "pub(super) fn validate(&self, cx: &Cx<'_>, stamp: Stamp) -> bool {\n        if !self.layout.valid(cx)",
+  "pub(super) fn validate(&self, cx: &Cx<'_>, stamp: Stamp) -> bool {\n        if self.layout.valid(cx)",'layout-refusal-not-closed'),
+
+ ('layout-root-bypass','crates/fairing/src/elements.rs','if !plan.validate(cx, stamp) {','if false && !plan.validate(cx, stamp) {','layout-root-guard'),
+
+ ('layout-entry-field-write','crates/fairing/src/elements/dispatch.rs',
+  "        // The complete plan was validated once before painting.",
+  "        let alias = &mut *cx;\n        alias.pane.is_focused = false;\n        // The complete plan was validated once before painting.", 'layout-entry-mutation'),
+
 ]
 
 def main():
@@ -60,12 +84,17 @@ def main():
    if path.is_file():dest=checkout/name;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(path,dest)
   m.ROOT=checkout;m.OUT=checkout/'target/mediation';m.OUT.mkdir(parents=True)
   (m.OUT/'build').symlink_to(ROOT/'target/mediation/build',target_is_directory=True)
-  for label,file,old,new,expected in cases:
-   path=checkout/file;original=path.read_text()
-   if old is not None:require(original.count(old)==1, (label,old))
-   path.write_text(original+new if old is None else original.replace(old,new,1))
+  for label,file,old,new,expected,*extra in cases:
+   edits=[(file,old,new)]+(extra[0] if extra else [])
+   originals={}
+   for edit_file,edit_old,edit_new in edits:
+    path=checkout/edit_file;original=path.read_text();originals[path]=original
+    if edit_old is not None:require(original.count(edit_old)==1, (label,edit_old))
+    path.write_text(original+edit_new if edit_old is None else original.replace(edit_old,edit_new,1))
    try:
-    m.build('all');m.graph('all');data=[json.loads((m.OUT/'all'/(n+'.json')).read_text())for n in m.CRATES]
+    m.build('all')
+    require(not (expected or '').startswith('compile:'), 'Invalid type boundary compiled: '+label)
+    m.graph('all');data=[json.loads((m.OUT/'all'/(n+'.json')).read_text())for n in m.CRATES]
     outcome=c.analyze(data);kinds={e['kind']for e in outcome['errors']}
     if outcome['unguarded_payload_entries']:kinds.add('unguarded-payload-entry')
     if expected:
@@ -77,8 +106,14 @@ def main():
     results.append({'case':label,'status':'compiled-and-rejected' if expected else 'compiled-and-automatically-covered','reason':expected})
     print(label+': '+results[-1]['status'],flush=True)
    except subprocess.CalledProcessError:
-    shutil.copy2(m.OUT/'all/compiler.log',OUT/(label+'-compiler.log'));raise
-   finally:path.write_text(original)
+    log=(m.OUT/'all/compiler.log').read_text()
+    shutil.copy2(m.OUT/'all/compiler.log',OUT/(label+'-compiler.log'))
+    if not (expected or '').startswith('compile:'):raise
+    require('error['+expected.split(':',1)[1]+']' in log,(label,log[-6000:]))
+    results.append({'case':label,'status':'type-boundary-rejected','reason':expected})
+    print(label+': type-boundary-rejected',flush=True)
+   finally:
+    for path,original in originals.items():path.write_text(original)
  m.ROOT=ROOT;m.OUT=ROOT/'target/mediation'
  require(m.source_hashes()==before, 'Source changed while checking contract controls')
  report.write_text(json.dumps({'inputs':before,'controls':results},indent=2)+'\n')

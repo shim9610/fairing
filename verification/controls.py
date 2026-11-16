@@ -12,7 +12,7 @@ import tempfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 CONTROL_NAMES = [
-    "component-shade", "component-lock", "pane-slot", "component-switch", "component-slider", "component-row",
+    "back-default", "component-shade", "component-lock", "pane-slot", "component-switch", "component-slider", "component-row",
     "permission-value", "element-measure", "element-layout", "element-revision", "element-identity", "screen-requirement", "screen-metadata-recheck", "nav-permission-layout",
     "protected-builder", "protected-resources", "protected-wallpaper", "protected-dispatch", "protected-erasure", "protected-factory",
     "session-policy-recheck", "session-revoke", "session-authority", "session-policy", "session-temporary", "session-detach", "configuration-validation", "back-handler", "back-projection", "auth-correlation", "command-budget", "expiry-order", "ui-progress", "modal-input",
@@ -83,6 +83,10 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
         print(name + (": rejected broken production code" if failure else ": passed"), flush=True)
 
     scenarios = [
+        ("back-default", "unit/screen::tests::default_back_action_is_pop",
+         "crates/fairing/src/screen/mod.rs",
+         [("fn on_back(&mut self, _cx: &mut Cx<'_>) -> BackAction {\n        BackAction::Pop", "fn on_back(&mut self, _cx: &mut Cx<'_>) -> BackAction {\n        BackAction::Consumed")],
+         False, "default Screen::on_back must pop"),
         ("component-shade", "product/component_rendering/shade_padding_moves_the_rendered_tile_row",
          "crates/fairing/src/overlay/panel.rs",
          [("pad: u * s.pad,", "pad: u * 1.34,")],
@@ -126,7 +130,7 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
          False, "publication reused geometry from an old authority revision"),
         ("element-identity", "unit/elements::tests::nested_layout_excludes_denied_sizes_and_gaps_and_reflows_after_grant_changes",
          "crates/fairing/src/access/mediation/element.rs",
-         [(".id_salt(identity.with(binding.gate().as_str()).value())", "// stable identity deliberately removed")],
+         [(".id_salt(identity.with(gate.as_str()).value())", "// stable identity deliberately removed")],
          False, "element widget identities collided"),
         ("screen-requirement", "product/permission_values/external_screens_need_no_manual_guard_and_requirement_drift_fails_closed",
          "crates/fairing/src/access/mediation/declared.rs",
@@ -159,11 +163,11 @@ with tempfile.TemporaryDirectory(prefix="fairing-contract-controls-") as tempora
          [("if allowed {", "if true || allowed {")],
          False, "left: Some(42)"),
         ("protected-erasure", "unit/access::mediation::protected::tests::erased_action_and_chrome_callbacks_keep_their_typed_binding",
-         "crates/fairing/src/access/mediation.rs",
+         "crates/fairing/src/access/mediation/execution.rs",
          [("protected_contract!(operation ActionCallback, run(), |body, cx| body(cx));", "impl ActionCallback { pub(crate) fn run(&mut self, cx: &mut Cx<'_>) { (self.body)(cx); } }")],
          False, "erased callback lost its typed guard"),
         ("protected-factory", "unit/access::mediation::protected::tests::factory_is_guarded_and_revocation_during_construction_blocks_all_hooks",
-         "crates/fairing/src/access/mediation.rs",
+         "crates/fairing/src/access/mediation/execution.rs",
          [("invoke(requirement.admission(), cx, |cx| operation(&mut **body, cx))", "Some(operation(&mut **body, cx))")],
          False, "factory revocation admitted a screen callback"),
         ("session-policy-recheck", "product/session_tokens/policy_callback_revocation_is_rechecked_before_a_protected_effect",

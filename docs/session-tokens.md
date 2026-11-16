@@ -257,6 +257,12 @@ prepared plan. Already-admitted output is not retroactively undone. Invalid size
 are omitted. Stable structural node paths and grant identifiers namespace widget
 IDs so hiding a sibling does not move another widget into its retained state.
 
+The internal layout token can be reused for data checks within the same frame,
+observation time and authority revision. It has no callback execution method.
+Measurement and paint remain executable operations, each with a fresh admission
+and a consumed execution token. A custom access policy is rechecked because its
+state has no revision contract. See the [execution and layout type boundary](protected-contracts.md#execution-and-layout-types).
+
 A registered root screen keeps its original requirement until replacement; a
 screen that reports a different identifier is not executed through that binding.
 Child requirements are read per plan and checked again before paint. Declaration

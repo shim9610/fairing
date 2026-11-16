@@ -99,6 +99,10 @@ jobs:
         run: |
           python3 verification/test_validation.py
           python3 verification/test_bridge_linearity.py
+          python3 verification/test_layout_bindings.py
+          python3 -O verification/test_layout_bindings.py
+          python3 verification/test_dispatch_effects.py
+          python3 -O verification/test_dispatch_effects.py
           python3 verification/test_run_tests.py
           python3 -O verification/test_validation.py
           python3 verification/mediation.py --require-proved
@@ -117,6 +121,7 @@ jobs:
           path: |
             target/assurance/protected-contracts/
             target/assurance/central-mediation/
+            target/assurance/layout-token/
             target/mediation/summary.json
             target/mediation/concrete-probe.log
             target/mediation/all/
@@ -253,7 +258,7 @@ jobs:
   contract-controls:
     needs: inputs
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Reject broken public API wiring and dropped Inbox messages

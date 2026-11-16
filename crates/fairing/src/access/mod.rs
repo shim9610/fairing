@@ -14,7 +14,7 @@
 mod auth;
 pub use mediation::protected;
 pub(crate) mod mediation;
-pub(crate) mod protected_dispatch;
+mod protected_dispatch;
 pub use protected::{
     Permission, PermissionBinding, PermissionBound, Protected, ProtectedDeclaration,
 };
@@ -992,6 +992,11 @@ impl Access {
             return true;
         }
         self.policy.allows(&self.session.subject, &Gate::from(name))
+    }
+
+    /// Only token publications/deadlines govern permissions when no custom policy is installed.
+    pub(crate) fn layout_permissions_cacheable(&self) -> bool {
+        self.token_sessions && !self.token_policy
     }
 
     /// The lock hint.

@@ -15,7 +15,7 @@ contract together. Operation declarations emit an adapter that invokes the share
 monitor. Permission binding methods also use one generated implementation.
 
 For example, after defining a new payload protocol, one operation declaration is
-sufficient inside the mediation module:
+sufficient inside the private `access/mediation/execution.rs` module:
 
 ```rust,ignore
 protected_contract!(operation Callback<dyn TrendView>, render(ui: &mut egui::Ui),
@@ -60,14 +60,77 @@ cut, and an independent traversal must agree. Loops and recursion have no path
 length enumeration bound. Solver identifiers use the smallest bit width that
 uniquely represents every compiled node; unused identifier values add no edges
 and this does not bound path length. Every monitor helper is an analysis root, including
-private helpers. Bridge paths may contain at most one protected entry and cannot
-cycle through it. Entry summaries include nested closures and local helpers.
+private helpers. Each admission permits at most one protected payload entry.
+`verification/dispatch_effects.py` tracks fresh/consumed admission through ordinary
+helpers, closures, call returns and recursive fixed points. A payload entry
+consumes admission. A nested mediated operation starts with fresh admission, but
+its return leaves the caller consumed; it cannot restore an earlier grant.
+Policy callbacks also invalidate a prior admission. Thus two calls hidden in an
+ordinary helper and a raw call after nested mediation are rejected.
+
 External callable consumers require an explicit at-most-once contract:
 `Option::map`, `Option::and_then` and `bool::then`. Iterator consumers such as
 `for_each` and lazy `map` cannot reuse one admission for repeated payload calls.
-Compiled controls cover repeated iterator dispatch, two sequential at-most-once
-forwards and a valid single forward. Composition uses separately mediated operations. Adding an operation
-does not grant admission to its caller's later operations.
+Compiled controls cover these cases and accept a valid single forward.
+
+## Execution and layout types
+
+The private dispatcher creates an `ExecutionToken<F>` only after admission and
+immediately consumes it with `execute(self)`. Its callback field is private;
+it has no clone, borrowing execution or public constructor. The executable action,
+UI and factory storage lives in the private `mediation::execution` module.
+Callers receive dispatch methods; they cannot borrow the raw payload through
+`Callback::invoke`. `ScreenHandle` delegates to opaque screen storage, including
+the post-factory recheck. The compiler route checks still inspect code inside
+this private execution boundary.
+
+Element geometry uses a separate `LayoutToken<P>`. It carries permission metadata,
+frame, observation time and authority identity/revision, with no executable body
+or dispatch method. Repeated data validation is allowed only while those values
+match. An unversioned custom access policy is queried again rather than cached.
+The whole plan is validated before painting; each visited node validates its own
+layout token. Measurement and paint callbacks each obtain a fresh single-use
+execution attempt, including inherited ancestor requirements. The shared
+`SessionToken` remains live across attempts; consuming an execution token does
+not log the session out.
+
+Compiled negative controls require Rust to reject a private payload loan, a
+forged execution token, repeated execution, execution through a shared borrow and
+layout-token execution. Separate semantic controls mutate code inside the
+execution module, where Rust field privacy alone cannot detect a bad adapter.
+
+`verification/layout_proofs.py` adds five Kani harnesses over the unchanged
+layout-token construction, validity and metadata bodies. The harness also uses
+the production permission-binding methods, context observers, Access authority
+and cacheability methods, and session snapshot/identity/revision methods.
+It checks minting against both authority observations, binding preservation,
+frame/time/session identity/revision matching, reusable unchanged data, custom
+policy rechecks, and rejection of revoked, expired or incoherent observations.
+Ten mutations must fail their specific security assertions, including elapsed-time
+overflow incorrectly wrapping to zero.
+
+The proof represents `Instant` with symbolic nanosecond ticks and models atomic
+read schedules through the production `session_rules::observe` decision.
+Frame/time observations, the existing permission-decision contract and immutable
+Access configuration within one layout remain premises. This extends layout
+lifetime evidence; the session concurrency proofs retain their separate scope.
+The receipt in `target/assurance/layout-token/proof.json` binds the complete input
+set and hashes. Strict mediation verification requires this receipt alongside
+the existing kernel/path receipts.
+
+`verification/layout_bindings.py` connects the verdict to compiled callers.
+`Plan::validate` and `Plan::paint` must check their own token using the calling
+context and return false without further work on refusal. Root space allocation
+and painting must use the same validated plan, context and stamp, and every path
+to those uses must cross a true validation result. A use-site cycle must cross
+fresh validation again. Unknown root calls and field writes are rejected; the
+root routine uses explicit observation, preparation, egui metadata and repaint
+interfaces. Five compiled mutations remove the node/root guards, invert the verdict or
+write context fields before checking; all must be rejected. These rules cover the shared plan
+routines, without per-widget proof declarations.
+
+The [boundary review and CPU measurements](execution-layout-review.md) record
+the two verifier regressions, type controls and baseline comparison.
 
 ## Contract boundaries
 
@@ -89,6 +152,7 @@ continues to reject untyped hooks, and admitted scopes use local extension store
 ```sh
 python3 verification/install.py proofs
 python3 verification/test_validation.py
+python3 verification/test_dispatch_effects.py
 python3 -O verification/test_validation.py
 python3 verification/mediation.py --require-proved
 python3 verification/contract_controls.py

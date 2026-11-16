@@ -23,7 +23,7 @@ def digest(path):
 
 def source_hashes():
     paths = list((ROOT / 'crates').rglob('*.rs')) + list((ROOT / 'crates').rglob('Cargo.toml'))
-    paths += [ROOT / p for p in ['Cargo.toml', 'Cargo.lock', 'verification/mediation_driver.rs', 'verification/mediation_schema.rs', 'verification/central_mediation.py', 'verification/contract_types.py', 'verification/contract_controls.py', 'verification/protected_contracts.py', 'verification/central_proofs.py', 'verification/verus/mediation_path.py', 'verification/metadata_driver.rs', 'verification/check_extension.py', 'verification/metadata_controls.py', 'verification/mediation.py', 'verification/mediation_controls.py', 'verification/fixtures/mediation.rs', 'verification/examples/mediation_probe.rs', 'verification/tools.json', 'verification/validation.py']]
+    paths += [ROOT / p for p in ['Cargo.toml', 'Cargo.lock', 'verification/mediation_driver.rs', 'verification/mediation_schema.rs', 'verification/central_mediation.py', 'verification/dispatch_effects.py', 'verification/layout_proofs.py', 'verification/layout_bindings.py', 'verification/contract_types.py', 'verification/contract_controls.py', 'verification/protected_contracts.py', 'verification/central_proofs.py', 'verification/verus/mediation_path.py', 'verification/metadata_driver.rs', 'verification/check_extension.py', 'verification/metadata_controls.py', 'verification/mediation.py', 'verification/mediation_controls.py', 'verification/fixtures/mediation.rs', 'verification/examples/mediation_probe.rs', 'verification/tools.json', 'verification/validation.py']]
     return {str(p.relative_to(ROOT)): digest(p) for p in sorted(paths)}
 
 def build(profile):

@@ -125,7 +125,7 @@ def generate(text, path):
     constructor = function(text, "fn new(gate: &'a Gate")
     source += "impl<'a> AuthorityPath<'a> {\n" + constructor + '\n}\n'
     source += text[enum_start:enum_end] + "\nimpl Admission<'_> {\n" + admission + '\n}\n' + invoke + '\n'
-    source += function(text, 'fn invoke_bound<R>(') + '\n' + function(text, 'pub(crate) fn invoke_requirement<R>(') + '\n' + CLIENT + CARRIER_CLIENT.replace('@REQUIREMENT@', 'impl Requirement { '+function(text[text.index('impl Requirement {'):], 'fn admission(')+' }').replace('@SELECTOR@',function(text[text.index('impl<T: ?Sized> Callback<T>'):], 'fn invoke<R>(')).replace('@BINDING@',function((ROOT/'crates/fairing/src/access/mediation/contract.rs').read_text(),'pub(crate) fn required<P:'))
+    source += function(text, 'fn invoke_bound<R>(') + '\n' + function(text, 'pub(crate) fn invoke_requirement<R>(') + '\n' + CLIENT + CARRIER_CLIENT.replace('@REQUIREMENT@', 'impl Requirement { '+function(text[text.index('impl Requirement {'):], 'fn admission(')+' }').replace('@SELECTOR@',function((ROOT/'crates/fairing/src/access/mediation/execution.rs').read_text().split('impl<T: ?Sized> Callback<T>')[1], 'fn invoke<R>(')).replace('@BINDING@',function((ROOT/'crates/fairing/src/access/mediation/contract.rs').read_text(),'pub(crate) fn required<P:'))
     path.write_text(source)
     return path
 

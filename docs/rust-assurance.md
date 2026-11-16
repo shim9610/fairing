@@ -17,14 +17,20 @@ skipped prerequisites fail the aggregate. The `proofs` and `miri` jobs also chec
 input approval before building. Audit, MSRV and GUI/history checks remain separate
 required checks. CodeQL uses the repository's code-scanning rule.
 
+The callback mediation job also requires source-bound layout-token proofs and
+compiled checks that plan/root callers use the verdict before layout allocation
+and painting. Missing or stale kernel, ancestor-path or layout proof receipts
+reject the strict certificate. The workflow retains layout evidence under
+`target/assurance/layout-token/`; see the [layout contract](protected-contracts.md#execution-and-layout-types).
+
 Each Miri command runs through `verification/run_tests.py`, which retains its log
 and rejects successful commands that execute no tests. Ignored and filtered-out
 tests do not count as executed tests.
 
 Native test ownership is split between jobs: UI histories run their 18 widget
-tests and one deadline test; the general assurance job runs the other 61 tests.
+tests and one deadline test; the general assurance job runs the other 62 tests.
 The UI job owns three mutation controls, and the general control job runs the
-other 46, including protected construction, callback-store isolation, nested wallpapers,
+other 47, including protected construction, callback-store isolation, nested wallpapers,
 typed callback dispatch and structured-configuration controls. Coverage,
 Miri, Loom and cross-OS runs intentionally re-execute relevant tests under their
 own verification conditions.
