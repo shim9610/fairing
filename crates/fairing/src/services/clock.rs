@@ -3,7 +3,7 @@
 //!
 //! `SystemClock` uses `SystemTime` plus a configured UTC offset. The offset does
 //! not change automatically for daylight-saving transitions. `ChronoClock` uses
-//! the system's local time-zone configuration through the optional `chrono` dependency.
+//! the system's local time-zone configuration through the optional `jiff` dependency.
 
 use super::{Backend, Capabilities, ClockSource, WallTime};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -48,8 +48,9 @@ impl SystemClock {
 
 /// A clock using the system's local time zone (feature `chrono`).
 ///
-/// Each read uses the local offset reported through chrono, including the
+/// Each read uses the local offset reported through jiff, including the
 /// daylight-saving rules available in the system configuration.
+/// The type and `chrono` feature names are retained for compatibility.
 ///
 /// ```no_run
 /// # #[cfg(feature = "chrono")] {
@@ -84,21 +85,45 @@ impl Backend for ChronoClock {}
 #[cfg(feature = "chrono")]
 impl ClockSource for ChronoClock {
     fn now(&self) -> WallTime {
-        use chrono::{Local, Offset, Utc};
-        let utc = Utc::now().timestamp();
-        // `local_minus_utc` is in seconds. `WallTime::offset_min` is in minutes, so it is divided by 60 —
-        // there are 30- and 45-minute time zones (India +5:30, Nepal +5:45), so it cannot be written in hours.
-        let offset_sec = Local::now().offset().fix().local_minus_utc();
-        WallTime {
-            utc_secs: u64::try_from(utc).unwrap_or(0),
-            offset_min: offset_sec / 60,
-        }
+        local_wall_time(&jiff::Zoned::now())
+    }
+}
+
+#[cfg(feature = "chrono")]
+fn local_wall_time(local: &jiff::Zoned) -> WallTime {
+    WallTime {
+        utc_secs: u64::try_from(local.timestamp().as_second()).unwrap_or(0),
+        // Preserve fractional-hour zones in the public minute-based representation.
+        offset_min: local.offset().seconds() / 60,
     }
 }
 
 #[cfg(all(test, feature = "chrono"))]
 mod chrono_tests {
-    use super::{ChronoClock, ClockSource};
+    use super::{local_wall_time, ChronoClock, ClockSource};
+
+    #[test]
+    fn local_wall_time_preserves_dst_and_fractional_hour_offsets(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for (text, expected) in [
+            ("2026-01-15T12:00:00-05:00[America/New_York]", -300),
+            ("2026-07-15T12:00:00-04:00[America/New_York]", -240),
+            ("2026-01-15T12:00:00+05:45[Asia/Kathmandu]", 345),
+        ] {
+            let local: jiff::Zoned = text.parse()?;
+            let wall = local_wall_time(&local);
+            assert_eq!(wall.utc_secs, u64::try_from(local.timestamp().as_second())?);
+            assert_eq!(wall.offset_min, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn local_wall_time_clamps_pre_epoch_time_to_zero() -> Result<(), jiff::Error> {
+        let local: jiff::Zoned = "1969-12-31T23:59:59+00:00[UTC]".parse()?;
+        assert_eq!(local_wall_time(&local).utc_secs, 0);
+        Ok(())
+    }
 
     /// Check that the system-provided local offset is within the supported range.
     #[test]

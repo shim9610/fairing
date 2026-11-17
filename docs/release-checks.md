@@ -26,8 +26,12 @@ building. A changed tag blocks publication. Existing tags are not moved.
 The existing `v0.1.0-beta.1` tag points to
 `d22d28c823f4570014349a5733a5afdfa41aac4b`. Merging publication setup or later
 documentation changes does not add them to that tag's archives. To include later
-crate changes, prepare a new version and tag after its CI passes. Repository-only
-publication tooling runs from `main` and can publish the existing reviewed tag.
+crate changes, prepare a new version and tag after its CI passes. Publication
+tooling runs from `main`; the crates are built from the selected release commit.
+
+That existing tag still uses `chrono`, now marked unmaintained by
+`RUSTSEC-2026-0543`. The replacement with `jiff` is recorded under Unreleased;
+create a new beta version and tag containing that replacement before publishing.
 
 Cargo publishes only `fairing-widgets` and `fairing`, in dependency order, with
 the lockfile and all features. `xtask`, `fairing-fixed-heap` and `verification`

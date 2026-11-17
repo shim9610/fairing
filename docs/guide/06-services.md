@@ -730,7 +730,7 @@ There are two clock backends.
 | Backend | Feature | Behaviour |
 |---|---|---|
 | `clock::SystemClock` | always | `SystemTime` plus a **fixed offset you supply**. No additional clock dependency and no automatic daylight-saving adjustment; the host must update the offset when the applicable civil-time offset changes |
-| `clock::ChronoClock` | `chrono` | Asks the OS timezone database for the offset **at that moment**, so changes follow the installed time-zone data. Adds the optional `chrono` dependency tree |
+| `clock::ChronoClock` | `chrono` | Reads the system time zone through optional `jiff`, using installed zoneinfo or a bundled database on supported platforms without zoneinfo. The feature and type names are retained for compatibility |
 
 ```rust
 use fairing::services::clock::SystemClock;

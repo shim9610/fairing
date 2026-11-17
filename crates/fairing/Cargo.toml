@@ -24,7 +24,7 @@ serde = { workspace = true }
 toml = { workspace = true }
 log = { workspace = true }
 eframe = { workspace = true, optional = true }
-chrono = { workspace = true, optional = true }
+jiff = { workspace = true, optional = true }
 
 # The library does not decode images (guide 09 §1). `image` is used only by **the demos and tests** to
 # show a decoder wired into `ShellBuilder::image_loader` — being a dev-dependency, it does not enter an
@@ -49,8 +49,8 @@ settings = []
 runner = ["dep:eframe"]
 runner-x11 = ["runner", "eframe/x11"]
 # `chrono` = a `ChronoClock` that follows the system time zone and DST. The default `SystemClock`
-# uses a configured fixed offset. Enabling chrono adds its optional timezone dependency tree.
-chrono = ["dep:chrono"]
+# uses a configured fixed offset. This compatibility feature now uses jiff internally.
+chrono = ["dep:jiff"]
 
 # Protected host and GUI smoke tour on Null backends, with typed settings registration.
 [[example]]

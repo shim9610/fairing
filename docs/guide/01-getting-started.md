@@ -105,7 +105,7 @@ Straight from `crates/fairing/Cargo.toml`.
 | `settings` | ✓ | The eleven built-in settings screens and `settings::add_all` ([§4.1](#41-the-built-in-settings-screens)). The setting keys and values screens use are there either way |
 | `runner` | | `fairing::runner` — an eframe-based fullscreen bootstrap (Wayland + glow) |
 | `runner-x11` | | `runner` plus `eframe/x11` |
-| `chrono` | | `fairing::services::clock::ChronoClock` — a clock that uses the offset from installed timezone data when queried, including applicable daylight-saving rules. Adds the optional chrono dependency tree; the default `SystemClock` is a fixed offset and does not know about DST |
+| `chrono` | | `fairing::services::clock::ChronoClock` — a clock that uses the system time zone, including daylight-saving rules, through optional `jiff`. The feature and type names are retained for compatibility; the default `SystemClock` uses a fixed offset |
 
 The default set is `["mock", "overlay", "osk", "brand", "settings"]`. A device with a hardware
 keyboard and no need for a shade can drop them all:

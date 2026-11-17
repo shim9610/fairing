@@ -12,6 +12,12 @@ Notable changes to the fairing crates are recorded here. The format follows
   release-tag and CI checks, first-publication token authentication and optional
   trusted publishing. See the [release procedure](docs/release-checks.md).
 
+### Changed
+
+- Replace the unmaintained `chrono` dependency with optional `jiff` for the local
+  clock. The `chrono` feature and `ChronoClock` API remain available. UTC time and
+  its local offset now come from the same instant.
+
 ## 0.1.0-beta.1 — unpublished prerelease
 
 For applications using an earlier checkout, see the [migration guide](docs/guide/10-migration.md)

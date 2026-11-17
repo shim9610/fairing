@@ -28,7 +28,7 @@ toml = { version = "1" }
 log = { version = "0.4" }
 # Optional (turned on only through fairing's features)
 eframe = { version = "0.37", default-features = false, features = ["glow", "wayland", "default_fonts", "clipboard"] }
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+jiff = "0.2.46"
 # **dev only** (approved 2026-09-08). The library does not decode images —
 # it is used only by the demos and tests to show a decoder wired into the `ShellBuilder::image_loader`
 # hook. Being a dev-dependency, it does not enter an integrator's tree.
