@@ -6,6 +6,12 @@ Notable changes to the fairing crates are recorded here. The format follows
 
 ## Unreleased
 
+### Added
+
+- Manual crates.io publication workflow with a verification-only default,
+  release-tag and CI checks, first-publication token authentication and optional
+  trusted publishing. See the [release procedure](docs/release-checks.md).
+
 ## 0.1.0-beta.1 — unpublished prerelease
 
 For applications using an earlier checkout, see the [migration guide](docs/guide/10-migration.md)

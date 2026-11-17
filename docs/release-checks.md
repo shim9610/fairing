@@ -19,8 +19,15 @@ dispatched from `main`. Enter the release tag and choose a mode:
 The tag must match the workspace version and point to a commit already merged
 into `main`. Audit, MSRV, GUI tours, UI histories, proofs, Miri, assurance-gate
 and the three CodeQL analyses must have succeeded on that exact commit. A pending
-or failed rerun blocks publication. The workflow resolves the tag once and uses
-that commit for verification and publication. Existing tags are not moved.
+or failed rerun blocks publication. Verification resolves the tag to a commit;
+the publication job rechecks the tag and CI and requires that same commit before
+building. A changed tag blocks publication. Existing tags are not moved.
+
+The existing `v0.1.0-beta.1` tag points to
+`d22d28c823f4570014349a5733a5afdfa41aac4b`. Merging publication setup or later
+documentation changes does not add them to that tag's archives. To include later
+crate changes, prepare a new version and tag after its CI passes. Repository-only
+publication tooling runs from `main` and can publish the existing reviewed tag.
 
 Cargo publishes only `fairing-widgets` and `fairing`, in dependency order, with
 the lockfile and all features. `xtask`, `fairing-fixed-heap` and `verification`
@@ -153,8 +160,9 @@ Logs, archive SHA-256 hashes, toolchain identity and command exit codes are reta
 under `target/package-check/`, including a `summary.json`. The CI job uploads this
 directory as the `package-check` artifact even on failure.
 
-CI artifacts are temporary (14 days for package/assurance results and 7 days for
-tours). For a release or customer verification delivery, export the selected run's
+CI artifacts are temporary: 90 days for `release-preflight`, 14 days for
+package/assurance results and 7 days for tours. For a release or customer
+verification delivery, export the selected run's
 logs and artifacts to the project's retained evidence storage before they expire.
 Include the source commit, lockfile and toolchain identities, feature/platform
 configuration, test results, and applicable proof receipts and unresolved anomalies.
