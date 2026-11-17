@@ -34,7 +34,7 @@ identifier. `Protected::new(permission, body)` declares an explicit value. Typed
 issuer grant/snapshot helpers take a value as well. Existing split controller/token
 ownership, revocation and publication semantics remain in force.
 
-Permission values must be cheap to copy. Declaration/mapping methods are metadata
+Permission values implement `Copy`. Declaration/mapping methods are metadata
 contracts: they do not receive UI, app/backend access or mutable session authority,
 and must be side-effect-free. Arbitrary user implementations of those metadata
 methods are not automatically proved pure by Rust trait conformance. Extension

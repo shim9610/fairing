@@ -24,7 +24,8 @@ panel metadata and host scale, and needs checking on the target display.
 
 ## Using a widget
 
-The first crates.io release has not been published. Depend on this repository:
+This checkout is `0.1.0-beta.1`. APIs may change between beta releases.
+The crates have not been published yet; pin a reviewed Git revision:
 
 ```toml
 [dependencies]

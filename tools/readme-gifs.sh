@@ -5,8 +5,7 @@
 #
 # Each tour runs with `--record` and a fixed 60 Hz input clock (guide 01 §5).
 # tools/make_gif.py stitches the recorded stretch. The tours run
-# under xvfb-run with Mesa's software rasteriser. The virtual display accommodates
-# the kiosk's 1080 x 2560 portrait window independently of the attached desktop.
+# under xvfb-run with Mesa's software rasteriser.
 #
 # The tours check named targets, explicit assertions and capture/write results.
 # A non-zero example exit stops this script. Settle warnings and unasserted visual
@@ -22,7 +21,7 @@ command -v xvfb-run >/dev/null || { echo "readme-gifs.sh needs xvfb-run (the xvf
 . tools/devices.sh
 
 out=target/readme-gifs
-cargo build -p fairing --features runner-x11 --example demo --example console --example kiosk
+cargo build -p fairing --features runner-x11 --example demo --example console
 
 # tour <name> — the device tools/devices.sh lists under that name, recorded.
 tour() {
@@ -38,14 +37,11 @@ tour() {
 
 tour demo
 tour console
-tour kiosk
 
 python3 tools/make_gif.py "$out/demo/demo-desktop" docs/images/demo.gif 640
 python3 tools/make_gif.py "$out/console/console-shade" docs/images/console-shade.gif 640
-python3 tools/make_gif.py "$out/kiosk/kiosk-language" docs/images/kiosk-language.gif 360
 
-# The stills: the demo's and the console's in a 256-colour palette, the kiosk's photos in full colour
-# at 480 wide. social-preview.png is tools/social_preview.py's.
+# The stills use a 256-colour palette. social-preview.png is tools/social_preview.py's.
 python3 - "$out" <<'PY'
 import sys
 from PIL import Image
@@ -63,9 +59,5 @@ def still(shot, name, width=None, palette=True):
 still("demo/10-shade-open.png", "shade-curtain.png")
 still("demo/16-settings-wifi.png", "settings.png")
 still("demo/11a-osk-keyboard.png", "hangul-keyboard.png")
-still("demo/32-unlock-prompt.png", "unlock-pin.png")
-still("demo/32e-pattern-drawn.png", "unlock-pattern.png")
 still("console/01-overview.png", "console.png")
-still("kiosk/04-menu-filled.png", "kiosk-menu.png", width=480, palette=False)
-still("kiosk/05-cart.png", "kiosk-cart.png", width=480, palette=False)
 PY

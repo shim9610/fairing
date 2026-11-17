@@ -28,7 +28,6 @@ each be changed, from a role colour to a custom painter; see
 | `abyss-square.webp` | 1440×1440 | 1.00 | Square operator panels |
 | `abyss-4x3.webp` | 1600×1200 | 1.33 | Older industrial panels |
 | `abyss-splash-1920x1080.webp` | 1920×1080 | 1.78 | Splash / boot (one hero manta, the middle left empty) |
-| `abyss-splash-1080x1920.webp` | 1080×1920 | 0.56 | Splash / boot (portrait, a canyon) |
 
 `abyss-light-landscape.webp` is the same scene in a pale key, for the palette's light form. A
 texture wallpaper follows nothing on its own, so a shell that switches at dusk would otherwise keep
@@ -36,7 +35,7 @@ the dark painting under a pale UI — `Wallpaper::themed(dark, light)` is what c
 encoded as quality-92 WebP. When re-encoding, inspect pale gradients for banding
 and compare the result against the source artwork.
 
-The last five are lossless WebP. Lossy re-encoding can reduce file size; inspect
+The last four are lossless WebP. Lossy re-encoding can reduce file size; inspect
 the resulting gradients and edges at the intended display size before replacing them.
 
 ## None of this is compiled into the crate

@@ -6,8 +6,8 @@ described in the [integrator guide](guide/README.md); how they fit together is i
 
 ## 1. Where it stands
 
-Nothing has been published yet. Milestones M0 to M5 are done, and M6 is down to the 0.1.0
-release.
+The checkout is `0.1.0-beta.1`; nothing has been published yet. Milestones M0 to M5
+are done. Beta integration checks precede the stable 0.1.0 release.
 
 | M | Name | State | Where the guide covers it |
 |---|---|---|---|
@@ -30,7 +30,9 @@ see the [migration guide](guide/10-migration.md) for their API and host boundari
 
 ## 2. 0.1.0
 
-The first release publishes `fairing` and `fairing-widgets` to crates.io. From 0.1.0 on, changes
+The current prerelease is `0.1.0-beta.1`; APIs may change between beta revisions.
+Publish `fairing-widgets` before `fairing` when distributing a beta on crates.io.
+The stable 0.1.0 release follows beta integration checks. From 0.1.0 on, changes
 follow semantic versioning: before 1.0, a release that breaks the API raises the minor version
 (0.1 to 0.2), and a patch release never does. The [CHANGELOG](../CHANGELOG.md) records each one.
 

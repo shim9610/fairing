@@ -67,11 +67,12 @@ two-set layout) is a separate switch: `[osk] layout = "hangul"`.
 
 ## 2. Adding it to Cargo.toml
 
-`fairing` is not published on crates.io, so depend on it by path or git.
+This checkout is `0.1.0-beta.1`; APIs may change between betas. It is not published
+on crates.io, so depend on a reviewed Git revision or a local checkout.
 
 ```toml
 [dependencies]
-# not on crates.io until 0.1.0 is published, so from git for now
+# 0.1.0-beta.1 is not published on crates.io; use a reviewed Git revision
 fairing = { git = "https://github.com/shim9610/fairing", features = ["runner"] }
 # or the repository checked out next door
 # fairing = { path = "../fairing/crates/fairing", features = ["runner"] }
@@ -142,6 +143,10 @@ opt-level = 3      # optimize for execution speed; measure speed/size on the tar
 
 Use `panic = "unwind"` for runtime callback containment. `panic = "abort"` bypasses
 recovery and terminates the process on a panic; allocator aborts are not unwinds.
+
+Use the platform system allocator on Linux, Windows and macOS. If the device
+binary installs a custom global allocator, follow the
+[host allocator alignment requirements](../memory-limits.md#host-allocator-alignment).
 
 
 ## 4. A minimal app
@@ -535,9 +540,9 @@ Real uses live in `crates/fairing/tests/m1_*.rs`, `m2_*.rs` and `m7_tap_by_label
 
 ## 7. Measuring your device
 
-`examples/bench` runs scenarios through the harness with no window and prints
-frame-time p50, p95 and max to stdout. Run it on the device itself: the shell assumes no
-hardware of its own, so how fast it draws on yours is yours to measure.
+`examples/bench` runs scenarios through the headless harness and prints
+CPU frame-time p50, p95 and max to stdout. Run it on the target device;
+measure GPU work and presentation separately in the application's host.
 
 ```sh
 cargo run -p fairing --release --example bench
@@ -550,9 +555,8 @@ and OSK reveal (A5).
 
 Keep each run with your device's notes: the hardware, the commit hash, the command, the
 conditions (resolution, icon count, `motion.reduce`) and the table of numbers `bench` prints. Compare
-runs on the same device. Investigate a p50 increase of 30 % or more as a comparison
-heuristic, then repeat under comparable conditions before attributing it to the
-change. Shared-machine load can also affect p95.
+runs on the same device under matching conditions. Retain repeated runs to
+observe variation in p50, p95 and max.
 
 The bench table does not count per-frame allocations. The separate diagnostic
 allocator example measures process-wide counters and injects actual failures;

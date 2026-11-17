@@ -63,20 +63,19 @@ contained seven samples: 20,000 action invocations per sample, or 80 egui frames
 per sample after 12 warmup frames. The table reports the median of the five round
 medians; raw round medians and sample ranges are in the linked record.
 
-| Workload | Before | After | Change in elapsed time |
-| --- | ---: | ---: | ---: |
-| Protected action dispatch | 218.40 ns | 212.57 ns | -2.67% |
-| 64 leaves, depth 1 | 134.56 µs | 112.27 µs | -16.57% |
-| 256 leaves, depth 1 | 492.11 µs | 410.20 µs | -16.64% |
-| 64 leaves, depth 8 | 268.00 µs | 178.37 µs | -33.44% |
-| 64 leaves, depth 32 | 828.85 µs | 436.00 µs | -47.40% |
-| 256 leaves, depth 8, half denied | 521.02 µs | 337.75 µs | -35.18% |
+| Workload | Before | After |
+| --- | ---: | ---: |
+| Protected action dispatch | 218.40 ns | 212.57 ns |
+| 64 leaves, depth 1 | 134.56 µs | 112.27 µs |
+| 256 leaves, depth 1 | 492.11 µs | 410.20 µs |
+| 64 leaves, depth 8 | 268.00 µs | 178.37 µs |
+| 64 leaves, depth 32 | 828.85 µs | 436.00 µs |
+| 256 leaves, depth 8, half denied | 521.02 µs | 337.75 µs |
 
-Action dispatch stayed close to its baseline. The layout reduction includes an
-algorithm change: validate the complete plan once, then validate each visited
-node's layout token, rather than recursively revalidate each subtree again at
+The layout implementation validates the complete plan once, then each visited
+node's layout token, rather than recursively revalidating each subtree at
 every paint node. Executable callbacks still recheck live authority, including
-ancestor requirements. Deeper trees benefit more from removing repeated traversal.
+ancestor requirements.
 The execution wrapper adds no heap allocation; each layout plan stores additional
 frame/time/revision metadata. This benchmark measures CPU dispatch and headless
 egui layout/shape generation, with the default access policy.

@@ -25,7 +25,8 @@ and shared theme and motion tokens. egui supplies the underlying
 runner uses [eframe](https://docs.rs/eframe/0.37.0/eframe/). See the
 [responsibility map](docs/architecture.md#egui-and-eframe-responsibilities) for the boundary.
 
-**Development toward 0.1.0; the crates are not published yet.** Start with the
+**0.1.0-beta.1 — prerelease toward 0.1.0.** APIs may change between beta releases.
+The crates are not published yet; pin a reviewed Git revision. Start with the
 [integrator guide](docs/guide/README.md),
 or read the [migration guide](docs/guide/10-migration.md) when updating an existing app.
 

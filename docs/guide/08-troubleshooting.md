@@ -253,8 +253,7 @@ cargo run -p fairing --release --example bench
 push/pop (A3), a 200-widget screen (idle and drag-scrolling), home, shade drag
 (A1), page swipe (A4) and OSK reveal (A5, feature `osk`). Run it on your device and keep the
 table it prints with the hardware, the commit and the conditions; compare runs on the same
-device. Treat a p50 increase of 30 % or more as a comparison heuristic to
-investigate and repeat under comparable conditions.
+device under matching conditions. Retain repeated runs to observe timing variation.
 
 ### 8.3 When it is slow
 

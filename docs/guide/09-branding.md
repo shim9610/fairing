@@ -31,7 +31,7 @@ Choose the hook that matches the part of the product you want to change.
 | "Use the Abyss preset" | `.preset(Preset::Abyss)` — palette + background (§8.1) | none |
 | "Settings menus in our colours and layout" | `settings::add_all` + `SettingsConfig` (§8.3) | none |
 | "Our whole colour system" | The `[theme.palette]` roles, or `ShellBuilder::palettes(dark, light)` | none |
-| "Our typeface" | `ShellBuilder::fonts` (§3) — the crate carries no fonts | none |
+| "Our typeface" | `ShellBuilder::fonts` (§3) — supply your product faces alongside egui's fallback fonts | none |
 | "Change the feel of the layout" | `set_dock_placement` — a vertical dock or a floating band across the desktop (§6.3) | none |
 | "Our own status bar and nav bar" | `ShellBuilder::status_bar_painter` / `nav_bar_painter` (§6.2) | none |
 | "Our photo or artwork as the background" | The `image_loader` hook + `[desktop] wallpaper = "file:…"` (§1) | yes (§2) |
@@ -43,10 +43,10 @@ Choose the hook that matches the part of the product you want to change.
 Colour, typography and layout changes use configuration and code. Prepare image
 assets or reference art for the routes identified in the last column.
 
-> **Why the last row is "do nothing".** The default config has no brand in it. `[theme] preset`
-> is `"base"` (neutral) and `[desktop] wallpaper` is `"background"` (a flat colour). The manta
-> and the abyss are both **opt-in**, so writing nothing installs nothing. To drop them from the
-> build as well, set `default-features = false` on the consuming `fairing` dependency and
+> **Default appearance.** `[theme] preset` is `"base"` (neutral) and
+> `[desktop] wallpaper` is `"background"` (a flat colour). The manta and Abyss artwork
+> appear only when selected. To omit their drawing code from the build,
+> set `default-features = false` on the consuming `fairing` dependency and
 > explicitly enable the remaining features you need (§8.4). A consuming package's
 > `--no-default-features` does not itself disable dependency defaults.
 
@@ -69,7 +69,7 @@ config file takes it from there.
 ```rust,ignore
 // Your Cargo.toml. image, zune-image, stb — your choice.
 //   image = { version = "0.25", features = ["png", "jpeg", "webp"] }
-// (Only this block is `ignore` — `image` is not a fairing dependency, so it cannot compile here.)
+// Add the chosen decoder to your application's dependencies.
 
 let shell = fairing::Shell::builder(config)
     .image_loader(|ctx: &egui::Context, path: &std::path::Path| {
@@ -87,9 +87,9 @@ let shell = fairing::Shell::builder(config)
     .build(&ctx)?;
 ```
 
-This is a dependency of **your binary**, not of `fairing` — it does not go through the crate's
-audit gate. The demo carries the same function (`image_loader` in `examples/common/mod.rs`), so
-use it as a starting point and apply the loader limits described in §1.5.
+Declare the decoder directly in your application; do not rely on transitive
+dependencies from an optional runner. The demo carries the same function
+(`image_loader` in `examples/common/mod.rs`); apply the loader limits in §1.5.
 
 ### 1.2 After that, one config line
 
@@ -388,7 +388,8 @@ the graphics host determines the resulting GPU draw calls.
 
 ## 3. Type — font installation
 
-**There are no fonts in the crate.** egui's `default_fonts` has no CJK glyphs, so Korean, Chinese
+Fairing enables egui's fallback fonts but bundles no additional product faces.
+egui's `default_fonts` has no CJK glyphs, so Korean, Chinese
 and Japanese come out as **□**. If you use those locales, injecting a typeface is not optional.
 
 ```rust
@@ -710,7 +711,7 @@ motion; configuration overrides follow the precedence described in [04](04-custo
 | 1 | The palette (its roles) | `[theme.palette]`, or `.palettes(dark, light)` | §0 |
 | 2 | Metrics | `.metrics_spec(..)` · `.scale_policy(..)` | §0 |
 | 3 | Motion tokens | `[motion]`, or `Shell::set_motion` | 04 §8 |
-| 4 | Type | `.fonts(FontSet)` — **the crate carries no fonts** | §3 |
+| 4 | Type | `.fonts(FontSet)` — supply product faces beyond egui's fallback fonts | §3 |
 | 5 | The background | `.wallpaper(..)` · `[desktop] wallpaper` · `image_loader` + `file:` | §1 · §2 |
 | 6 | 80 vector icons | `register_icon_painter` (recommended), or replacing the SVGs | §4 |
 | 7 | 4 parametric icons (wifi/battery/bluetooth/signal) | **An `IconRef` cannot point at them** — replace the item with a same-id `status_item`, or the whole bar with `status_bar_painter` | §6.2 |

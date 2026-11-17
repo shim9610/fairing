@@ -64,7 +64,7 @@ devices for development ([guide 06](guide/06-services.md)).
 | `fairing-fixed-heap` | Unpublished diagnostic | Isolated allocation-failure diagnostic; no product dependency; one scoped unsafe arena claim |
 | `xtask` | Unpublished tool | The audit gate, the icon compiler, the license report and the other maintenance commands |
 
-The first crates.io release has not been published yet. `verification/` is a
+The current version is the unpublished `0.1.0-beta.1` prerelease. `verification/` is a
 separate unpublished Cargo workspace for assurance and is not a product dependency.
 
 `fairing` depends on `fairing-widgets`, `egui`, `serde`, `toml` and `log`, plus `eframe` behind `runner` and `chrono`

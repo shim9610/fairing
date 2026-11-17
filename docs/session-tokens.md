@@ -308,7 +308,6 @@ library-managed protected payload entry against that boundary.
 
 Raw egui/app/backend effects inside an admitted callback, trusted authentication,
 backends and destructors remain documented boundaries. The library cannot infer
-arbitrary data sensitivity or cancel work already admitted. Permission lookup is
-live, not a zero-cost authority check. Bindings normalize identifiers at creation;
-tree plans allocate ordinary vectors and revalidate metadata/authority. No new lock,
-dependency or universal latency guarantee is introduced.
+arbitrary data sensitivity or cancel work already admitted. Bindings normalize
+identifiers at creation; dispatch checks live authority. Tree plans allocate
+vectors and revalidate metadata and authority before use.

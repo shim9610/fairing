@@ -2,7 +2,7 @@
 
 The reference checkout for this change is `217373f`. This policy covers both
 product crates and all supported public feature combinations. The first release
-is still unpublished; intentional source changes are listed in the migration
+is the unpublished `0.1.0-beta.1` prerelease; intentional source changes are listed in the migration
 guide rather than attributed to a published upgrade.
 
 ## Inventory and comparison

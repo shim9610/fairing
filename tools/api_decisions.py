@@ -146,6 +146,13 @@ def replacement(key):
 def change_details(key, decision):
     """Concrete decisions for every intentional removal/signature change."""
     path, kind = key.rsplit('#', 1)
+    if decision == 'change' and path == 'fairing::VERSION' and kind == 'constant':
+        return {
+            'current_usage': 'Read fairing::VERSION for the compiled package version.',
+            'reason': 'The package version changes for the beta candidate; VERSION follows Cargo package metadata.',
+            'replacement': 'fairing::VERSION',
+            'compatibility': 'The string value changes to the beta version; the constant retains its &str type and public path.',
+        }
     if decision == 'remove' and component_replacement(path) is not None:
         return {
             'current_usage': 'Unused component value removed; configure the canonical input consumed by the built-in widget.',

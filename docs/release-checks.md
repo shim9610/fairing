@@ -1,5 +1,10 @@
 # Release archive checks
 
+The current candidate is `0.1.0-beta.1`, an unpublished prerelease. Merging the
+candidate does not publish it to crates.io. When publishing a beta, publish
+`fairing-widgets` first, then `fairing` at the same version; record the release
+commit and retain its verification artifacts. Stable 0.1.0 remains a separate release.
+
 Run from the repository root with Python 3.12+, rustup and the normal all-feature
 Rust/system build inputs:
 

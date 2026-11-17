@@ -73,7 +73,9 @@ GitHub manages these jobs; there is no CodeQL workflow file in this checkout.
 See [GitHub's default-setup guide](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/configure-code-scanning/configure-code-scanning).
 
 The `main` ruleset requires these GitHub Actions status checks: `audit`, `msrv`,
-`tours`, `histories`, `proofs` and `miri`, with the branch up to date. Its separate
+`tours`, `histories`, `proofs`, `miri` and `assurance-gate`, with the branch up to date.
+`assurance-gate` requires all Rust assurance jobs to succeed, including callback
+mediation, permission metadata, coverage and fuzzing. The ruleset's separate
 **Require code scanning results** rule requires CodeQL results and blocks security
 alerts rated High or higher and other alerts rated Error. Do not manually add a
 status named `CodeQL`: the analysis jobs are named `Analyze (rust)`,
@@ -153,7 +155,7 @@ reported geometry when layout changes.
 
 ## Rebuilding the README's animations
 
-The GIFs and screenshots in `docs/images/` come from the `demo`, `console` and `kiosk` tours. If a change
+The tour GIFs and screenshots in `docs/images/` come from the `demo` and `console` tours. If a change
 alters what one of them shows, rebuild them and commit the result:
 
 ```sh

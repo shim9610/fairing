@@ -116,7 +116,8 @@ at a time as you need it.
 
 ## Examples and compatibility
 
-The first release is unpublished. For changes since the `f4ca28c` checkout, see
+This checkout is the unpublished `0.1.0-beta.1` prerelease. APIs may change between
+betas. For changes since the `f4ca28c` checkout, see
 [migration](10-migration.md); for planned work, see the [roadmap](../roadmap.md).
 
 Rust blocks are compiled by the repository's guide doctest gate unless marked

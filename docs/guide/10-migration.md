@@ -1,6 +1,6 @@
 # 10. Migration from an earlier checkout
 
-The first crates.io release is unpublished. The migration baseline is `main` at
+This checkout is `0.1.0-beta.1`, an unpublished prerelease. The migration baseline is `main` at
 `f4ca28ce21a3227d35805a3d9e325ec64f42b25f`, before the authentication, recovery and
 resource-boundary changes in PR #8.
 

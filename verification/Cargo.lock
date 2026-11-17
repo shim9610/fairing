@@ -217,7 +217,7 @@ dependencies = [
 
 [[package]]
 name = "fairing"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 dependencies = [
  "egui",
  "fairing-widgets",
@@ -228,7 +228,7 @@ dependencies = [
 
 [[package]]
 name = "fairing-assurance"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 dependencies = [
  "fairing",
  "libfuzzer-sys",
@@ -238,7 +238,7 @@ dependencies = [
 
 [[package]]
 name = "fairing-widgets"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 dependencies = [
  "egui",
  "log",

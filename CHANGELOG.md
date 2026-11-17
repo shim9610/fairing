@@ -2,9 +2,11 @@
 
 Notable changes to the fairing crates are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). From 0.1.0 the crates follow
-[Semantic Versioning](https://semver.org/); until then, any release may break the API.
+[Semantic Versioning](https://semver.org/). APIs may change between beta releases.
 
 ## Unreleased
+
+## 0.1.0-beta.1 — unpublished prerelease
 
 For applications using an earlier checkout, see the [migration guide](docs/guide/10-migration.md)
 for source changes, queue/display defaults and recovery behavior.
@@ -192,7 +194,8 @@ for source changes, queue/display defaults and recovery behavior.
 - Avoid heads-up deadline overflow for `Duration::MAX`; unrepresentable deadlines
   retain the banner until dismissal.
 
-Nothing has been published to crates.io yet. This will be the first release, 0.1.0.
+Nothing has been published to crates.io yet. This checkout prepares 0.1.0-beta.1;
+the stable 0.1.0 release remains planned.
 
 Project-authored code is licensed under MIT. Imported Lucide/Feather icon geometry
 retains its ISC/MIT notices; the `fairing-widgets` package includes `LICENSE-lucide`

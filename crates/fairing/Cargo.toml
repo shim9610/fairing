@@ -18,7 +18,7 @@ categories = ["gui", "embedded"]
 exclude = ["examples/*.rs", "examples/common/", "examples/protected/", "examples/kiosk.toml", "src/guide_probe.rs", "tests/tour_timing.rs"]
 
 [dependencies]
-fairing-widgets = { path = "../fairing-widgets", version = "0.1.0" }
+fairing-widgets = { path = "../fairing-widgets", version = "0.1.0-beta.1" }
 egui = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }

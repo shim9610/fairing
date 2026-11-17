@@ -107,8 +107,9 @@ persisted under target/assurance/ui-histories and uploaded with CI logs.
 Shrinking stops at the configured budget. Add fixed regressions to source so they
 survive artifact expiry.
 
-The dedicated UI interaction histories workflow runs the native suite. Existing
-Rust assurance also runs these tests through its integration test workspace.
+The dedicated UI interaction histories workflow runs the widget-lifecycle suite
+and the deadline-reply regression. Rust assurance excludes these tests from its
+general native run; coverage runs them again under instrumentation.
 Three native semantic controls mutate production code in disposable checkouts:
 focus-isolation clears the currently focused field instead of only the retiring
 owner; popup-retirement leaves the retired area interactable; deadline-reply skips
@@ -117,8 +118,6 @@ unsuccessfully and its log must contain both `test result: FAILED` and the
 control's expected diagnostic marker. The checker does not tie that marker to
 the failing assertion; the log must be inspected to establish that relationship.
 A compilation failure alone does not count as detection.
-
-No additional product dependency or public API is introduced.
 
 ## Scope
 

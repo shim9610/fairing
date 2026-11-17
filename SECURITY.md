@@ -4,9 +4,10 @@
 
 | Version | Security fixes |
 |---|---|
-| Development toward 0.1.0 (unreleased) | Fixes land on the current development branch |
+| 0.1.0-beta.1 (unpublished prerelease) | Fixes land on the current development branch |
 
-Before 1.0, fixes land on the latest minor release only.
+During beta development, fixes target the latest beta revision. For stable
+releases before 1.0, fixes target the latest minor release only.
 The first crates.io release has not been published yet.
 
 ## Reporting a vulnerability

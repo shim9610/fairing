@@ -62,6 +62,15 @@ class DecisionControls(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'no reviewed migration'):
             build(data, report({}))
 
+    def test_version_value_change_requires_an_updated_decision(self):
+        before = report({'fairing::VERSION#constant': {'kind': 'constant', 'value': '0.1.0'}})
+        after = report({'fairing::VERSION#constant': {'kind': 'constant', 'value': '0.1.0-beta.1'}})
+        with self.assertRaisesRegex(ValueError, 'lack a current decision'):
+            check(build(before, before), after)
+        ledger = build(before, after)
+        self.assertEqual(ledger['decisions']['fairing::VERSION#constant']['decision'], 'change')
+        self.assertEqual(check(compact(ledger), after)['status'], 'matched')
+
 
 if __name__ == '__main__':
     unittest.main()

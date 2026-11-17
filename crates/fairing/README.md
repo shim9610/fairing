@@ -9,8 +9,8 @@ access gates run in the host process. Your application owns business state,
 credential verification and device backends. Register screens as egui closures or custom `Screen` implementations;
 Fairing coordinates their layout, lifecycle and dispatch in its runner or your host.
 
-Development toward 0.1.0; the crates have not been published yet. Use a reviewed
-repository revision until the first release:
+This checkout is `0.1.0-beta.1`, a prerelease toward 0.1.0. APIs may change between
+beta releases. The crates have not been published yet; use a reviewed Git revision:
 
 ```toml
 [dependencies]

@@ -943,7 +943,7 @@ subject to its command budget. It receives app state when that host update uses
 `logic_with` / `frame_with`. `LaunchAction::Open` schedules a screen whose UI
 callback receives the state of the later drawing pass.
 
-`Rc<T>` can share immutable data cheaply, such as a loaded image set. Use the
+`Rc<T>` can share immutable data, such as a loaded image set, without cloning the data. Use the
 state-lending APIs above when screens need mutable access to application state.
 
 ### 9.2 Getting results back from background work
