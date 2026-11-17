@@ -60,13 +60,19 @@ def resolve(tag):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("tag")
+    parser.add_argument("--expected-commit", help="Reject a changed tag after preflight")
+    parser.add_argument("--checkout", action="store_true", help="Detach HEAD only after all release checks pass")
     args = parser.parse_args()
     commit = resolve(args.tag)
+    if args.expected_commit and args.expected_commit != commit:
+        raise ValueError("Release tag changed after preflight")
     rows = subprocess.check_output([
         "gh", "api", "--paginate", "--jq", ".check_runs[] | @json",
         f"repos/shim9610/fairing/commits/{commit}/check-runs?per_page=100",
     ], text=True)
     validate_checks([json.loads(row) for row in rows.splitlines() if row.strip()])
+    if args.checkout:
+        subprocess.run(["git", "checkout", "--detach", commit], check=True)
     report = {"tag": args.tag, "commit": commit, "required_checks": sorted(REQUIRED)}
     Path("release-source.json").write_text(json.dumps(report, indent=2) + "\n")
     if output := os.environ.get("GITHUB_OUTPUT"):

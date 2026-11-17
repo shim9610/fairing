@@ -6,8 +6,10 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import json
+from unittest.mock import patch
 
-from release_check import REQUIRED, resolve, validate_checks
+from release_check import REQUIRED, main, resolve, validate_checks
 
 
 def checks():
@@ -52,6 +54,36 @@ class ReleaseChecks(unittest.TestCase):
         for tag in ("main", "--help", "v1.0.0; echo bad", "v1.0.0/other", "v01.0.0", "v1.0.0-beta.0"):
             with self.subTest(tag=tag), self.assertRaises(ValueError):
                 resolve(tag)
+
+    def test_failed_ci_prevents_checkout(self):
+        with patch("sys.argv", ["release_check", "v0.1.0-beta.1", "--checkout"]), \
+                patch("release_check.resolve", return_value="a" * 40), \
+                patch("release_check.subprocess.check_output", return_value=""), \
+                patch("release_check.subprocess.run") as checkout:
+            with self.assertRaises(ValueError):
+                main()
+            checkout.assert_not_called()
+
+    def test_changed_tag_prevents_checkout_and_ci_request(self):
+        with patch("sys.argv", ["release_check", "v0.1.0-beta.1", "--checkout",
+                                "--expected-commit", "b" * 40]), \
+                patch("release_check.resolve", return_value="a" * 40), \
+                patch("release_check.subprocess.check_output") as request, \
+                patch("release_check.subprocess.run") as checkout:
+            with self.assertRaises(ValueError):
+                main()
+            request.assert_not_called()
+            checkout.assert_not_called()
+
+    def test_successful_ci_selects_exact_commit(self):
+        with patch("sys.argv", ["release_check", "v0.1.0-beta.1", "--checkout"]), \
+                patch("release_check.resolve", return_value="a" * 40), \
+                patch("release_check.subprocess.check_output", return_value="\n".join(map(json.dumps, checks()))), \
+                patch("release_check.subprocess.run") as checkout, \
+                patch("release_check.Path.write_text"), \
+                patch("release_check.os.environ", {}), patch("builtins.print"):
+            main()
+            checkout.assert_called_once_with(["git", "checkout", "--detach", "a" * 40], check=True)
 
     def test_tag_source_contract(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -50,12 +50,8 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           python3 tools/test_release_check.py
-          python3 tools/release_check.py "$RELEASE_TAG"
+          python3 tools/release_check.py "$RELEASE_TAG" --checkout
           mv release-source.json "$RUNNER_TEMP/release-source.json"
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ steps.source.outputs.commit }}
-          persist-credentials: false
       - name: Verify publication without uploading
         run: |
           set -euo pipefail
@@ -84,12 +80,21 @@ jobs:
     environment: crates-io
     permissions:
       contents: read
+      checks: read
       id-token: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ needs.verify.outputs.commit }}
+          fetch-depth: 0
           persist-credentials: false
+      - name: Revalidate and select the preflight source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_COMMIT: ${{ needs.verify.outputs.commit }}
+        run: |
+          python3 tools/release_check.py "$RELEASE_TAG" --expected-commit "$RELEASE_COMMIT" --checkout
+          mv release-source.json "$RUNNER_TEMP/release-source.json"
       - name: Authenticate with the configured trusted publisher
         if: inputs.mode == 'trusted'
         id: auth
