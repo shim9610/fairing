@@ -29,7 +29,7 @@ The crates have not been published yet; pin a reviewed Git revision:
 
 ```toml
 [dependencies]
-fairing-widgets = { git = "https://github.com/shim9610/fairing" }
+fairing-widgets = { git = "https://github.com/shim9610/fairing", rev = "d22d28c823f4570014349a5733a5afdfa41aac4b" }
 egui = "0.37"
 ```
 

@@ -73,7 +73,7 @@ on crates.io, so depend on a reviewed Git revision or a local checkout.
 ```toml
 [dependencies]
 # 0.1.0-beta.1 is not published on crates.io; use a reviewed Git revision
-fairing = { git = "https://github.com/shim9610/fairing", features = ["runner"] }
+fairing = { git = "https://github.com/shim9610/fairing", rev = "d22d28c823f4570014349a5733a5afdfa41aac4b", features = ["runner"] }
 # or the repository checked out next door
 # fairing = { path = "../fairing/crates/fairing", features = ["runner"] }
 

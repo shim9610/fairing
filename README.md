@@ -81,7 +81,7 @@ Pin a reviewed Git revision when integrating a device build.
 
 ```toml
 [dependencies]
-fairing = { git = "https://github.com/shim9610/fairing", features = ["runner-x11"] }
+fairing = { git = "https://github.com/shim9610/fairing", rev = "d22d28c823f4570014349a5733a5afdfa41aac4b", features = ["runner-x11"] }
 ```
 
 This minimal app uses the ordinary `Shell` API. Its default configuration does

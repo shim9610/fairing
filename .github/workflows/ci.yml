@@ -114,6 +114,7 @@ jobs:
         run: |
           python3 tools/test_api_surface.py
           python3 tools/test_api_decisions.py
+          python3 tools/test_release_check.py
           python3 tools/api_surface.py
           python3 tools/api_decisions.py
 

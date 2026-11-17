@@ -14,7 +14,7 @@ beta releases. The crates have not been published yet; use a reviewed Git revisi
 
 ```toml
 [dependencies]
-fairing = { git = "https://github.com/shim9610/fairing", features = ["runner-x11"] }
+fairing = { git = "https://github.com/shim9610/fairing", rev = "d22d28c823f4570014349a5733a5afdfa41aac4b", features = ["runner-x11"] }
 ```
 
 The following app uses the ordinary `Shell` API with no login required by its

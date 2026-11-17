@@ -1,0 +1,104 @@
+name: Publish crates
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Reviewed release tag (for example v0.1.0-beta.1)
+        required: true
+        type: string
+      mode:
+        description: Verify only, first publication, or configured trusted publisher
+        required: true
+        default: verify
+        type: choice
+        options: [verify, bootstrap, trusted]
+
+permissions:
+  contents: read
+  checks: read
+
+concurrency:
+  group: crates-io-publication
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_BUILD_JOBS: "2"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  verify:
+    if: github.repository == 'shim9610/fairing' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require a merged tag with successful CI
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          python3 tools/test_release_check.py
+          python3 tools/release_check.py "$RELEASE_TAG"
+          mv release-source.json "$RUNNER_TEMP/release-source.json"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ steps.source.outputs.commit }}
+          persist-credentials: false
+      - name: Verify publication without uploading
+        run: |
+          set -euo pipefail
+          cargo publish --locked --registry crates-io --dry-run --all-features \
+            -p fairing-widgets -p fairing 2>&1 | tee "$RUNNER_TEMP/publish-dry-run.log"
+          sha256sum target/package/fairing{,-widgets}-*.crate > "$RUNNER_TEMP/archive-sha256.txt"
+          rustc -vV > "$RUNNER_TEMP/release-toolchain.txt"
+          cargo --version >> "$RUNNER_TEMP/release-toolchain.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: release-preflight
+          retention-days: 90
+          path: |
+            ${{ runner.temp }}/release-source.json
+            ${{ runner.temp }}/publish-dry-run.log
+            ${{ runner.temp }}/archive-sha256.txt
+            ${{ runner.temp }}/release-toolchain.txt
+            target/package/*.crate
+
+  publish:
+    needs: verify
+    if: inputs.mode == 'bootstrap' || inputs.mode == 'trusted'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: crates-io
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.verify.outputs.commit }}
+          persist-credentials: false
+      - name: Authenticate with the configured trusted publisher
+        if: inputs.mode == 'trusted'
+        id: auth
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
+      - name: Publish widgets followed by shell
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ inputs.mode == 'bootstrap' && secrets.CARGO_REGISTRY_TOKEN || steps.auth.outputs.token }}
+        run: |
+          set -euo pipefail
+          test -n "$CARGO_REGISTRY_TOKEN" || { echo 'Configure the crates-io environment credential first'; exit 1; }
+          cargo publish --locked --registry crates-io --all-features \
+            -p fairing-widgets -p fairing

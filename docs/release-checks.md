@@ -5,6 +5,75 @@ candidate does not publish it to crates.io. When publishing a beta, publish
 `fairing-widgets` first, then `fairing` at the same version; record the release
 commit and retain its verification artifacts. Stable 0.1.0 remains a separate release.
 
+## Publish a reviewed beta
+
+The [Publish crates workflow](../.github/workflows/publish.yml) is manually
+dispatched from `main`. Enter the release tag and choose a mode:
+
+| Mode | Action |
+| --- | --- |
+| `verify` (default) | Check the tag and CI, build both archives with `cargo publish --dry-run`, retain the preflight artifacts. No registry credential is used. |
+| `bootstrap` | Run verification, then publish with the `crates-io` environment's token. Use for the first release. |
+| `trusted` | Run verification, then publish with a short-lived OIDC token. Configure both crates as trusted publishers first. |
+
+The tag must match the workspace version and point to a commit already merged
+into `main`. Audit, MSRV, GUI tours, UI histories, proofs, Miri, assurance-gate
+and the three CodeQL analyses must have succeeded on that exact commit. A pending
+or failed rerun blocks publication. The workflow resolves the tag once and uses
+that commit for verification and publication. Existing tags are not moved.
+
+Cargo publishes only `fairing-widgets` and `fairing`, in dependency order, with
+the lockfile and all features. `xtask`, `fairing-fixed-heap` and `verification`
+remain unpublished. The workflow serializes publication runs and does not publish
+on pushes or tag creation.
+
+### First publication: account and environment
+
+1. Sign into [crates.io](https://crates.io/) with `shim9610` and verify the account's
+   email. Check that both crate names are available or owned by this account.
+2. In [repository environments](https://github.com/shim9610/fairing/settings/environments),
+   configure `crates-io` to permit deployment from `main` only.
+3. Create a short-lived token in [crates.io token settings](https://crates.io/settings/tokens)
+   with publication rights for the two crate names. New names need permission
+   to create those crates. Store it as the environment secret
+   `CARGO_REGISTRY_TOKEN`; do not put it in a workflow input, Git or a chat message.
+4. Run `Publish crates` from `main` with mode `verify`. Inspect the
+   `release-preflight` artifact, including the source commit, archive hashes,
+   toolchain and dry-run log. Then run the same tag with mode `bootstrap` to publish.
+5. Confirm both versions on crates.io and check their docs.rs builds. Update the
+   README and getting-started installation sections from Git dependencies to
+   registry dependencies after publication. For this beta, the exact requirements
+   are `fairing = "=0.1.0-beta.1"` and `fairing-widgets = "=0.1.0-beta.1"`.
+
+Publication cannot overwrite an existing version. If only widgets was published
+before an interruption, do not rerun the two-package upload blindly. Confirm its
+version and archive checksum against the retained preflight archive, then publish
+only `fairing` from the same clean release commit with
+`cargo publish --locked --registry crates-io --all-features -p fairing`.
+
+### Later releases: trusted publishing
+
+After both crates exist, add a GitHub trusted publisher in each crate's settings:
+
+| Field | Value |
+| --- | --- |
+| Repository owner | `shim9610` |
+| Repository | `fairing` |
+| Workflow filename | `publish.yml` |
+| Environment | `crates-io` |
+
+Use mode `trusted` for subsequent releases. Only the publication job has
+`id-token: write`; the pinned authentication action obtains and revokes the
+temporary registry token. Revoke the bootstrap token and remove its environment
+secret after switching. A failed OIDC login does not fall back to that secret.
+
+See the [crates.io trusted publishing documentation](https://crates.io/docs/trusted-publishing)
+and [Cargo publication reference](https://doc.rust-lang.org/cargo/commands/cargo-publish.html).
+The initial publication requires an API token because trusted publisher
+configuration requires an existing crate.
+
+## Local archive checks
+
 Run from the repository root with Python 3.12+, rustup and the normal all-feature
 Rust/system build inputs:
 
