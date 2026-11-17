@@ -4,7 +4,7 @@
 //!
 //! | Depth | How | What changes |
 //! |---|---|---|
-//! | Shallow | `[theme.palette]` · [`ShellBuilder::palettes`](crate::shell::ShellBuilder::palettes) | **The colours of all of them.** There is no colour literal in this file |
+//! | Shallow | `[theme.palette]` · [`ShellBuilder::palettes`](crate::shell::ShellBuilder::palettes) | Theme colour roles used by built-in screens |
 //! | Middle | Individual exclusions via [`SettingsConfig`](super::SettingsConfig) | Which screens exist |
 //! | Deep | `shell.add(screen("settings.wifi", ..))` under the same id | That screen **whole** |
 //!
@@ -12,15 +12,16 @@
 //! column draws whatever the registry has under the selected id, so a replaced built-in
 //! and a screen of the integrator's own reach it by the same road.
 //!
-//! The dimensions are all `theme.metrics` tokens too, so they grow with a change of glove policy.
+//! Built-in geometry uses theme metrics. Metrics expressed in finger units change
+//! with the finger-size policy; text and fixed-size content have separate inputs.
 //!
 //! # Without the backend, it is not registered
 //!
-//! They are filtered on [`Capabilities`] — the worst outcome is a Wi-Fi entry showing
-//! on a device with no Wi-Fi and saying "not supported" once it is pressed.
+//! Registration filters screens using [`Capabilities`] unless that filter is
+//! explicitly disabled in `SettingsConfig`.
 //!
-//! The list follows: a row is drawn only where the screen behind it **is really registered**
-//! ([`Cx::has_screen`]). `settings.network` is registered where the network backend reports
+//! The list follows: a row is drawn only where the screen behind it **is registered and its
+//! gate passes** ([`Cx::screen_allowed`]). `settings.network` is registered where the network backend reports
 //! `ETHERNET`, and `settings.credentials` where the authenticator manages its own entries.
 mod device;
 pub use device::{
@@ -105,8 +106,8 @@ pub const ALL: &[&str] = &[
 /// # }
 /// ```
 ///
-/// A row is drawn only where a screen really is registered under its `id`
-/// ([`Cx::has_screen`]), so adding one means registering that screen too — `shell.add(screen(
+/// A row is drawn only where a screen is registered under its `id` and its gate passes
+/// ([`Cx::screen_allowed`]), so adding one means registering that screen too — `shell.add(screen(
 /// "app.heater", ..))`. Registered with `screen`, it also goes up in the right column on a wide
 /// screen; registered with `screen_with`, it is pushed instead.
 #[derive(Debug, Clone, PartialEq)]
@@ -230,7 +231,7 @@ pub fn datetime() -> ScreenDecl {
 ///
 /// A tap on a network is reported as
 /// [`ShellEvent::WifiNetworkTapped`](crate::ShellEvent::WifiNetworkTapped) and connecting is the
-/// integrator's — asking for a password included, so the crate never holds one.
+/// application's, including credential prompting and profile handling.
 #[must_use]
 pub fn wifi() -> ScreenDecl {
     ui::page_screen("settings.wifi", wifi_body)
@@ -267,9 +268,8 @@ pub fn power() -> ScreenDecl {
 
 /// Device information · the crate version · **the open-source notices**.
 ///
-/// The notices are `include_str!`d straight from `THIRD_PARTY.md` — this is where the MIT /
-/// Apache / OFL notice obligations are met inside the device's own UI. Audit stage 10
-/// catches the file going stale.
+/// The notices table is included from `THIRD_PARTY.md`. Audit stage 10 checks
+/// that file against the repository's dependency inventory.
 #[must_use]
 pub fn about() -> ScreenDecl {
     ui::page_screen("settings.about", about_body)
@@ -295,8 +295,7 @@ fn format_clock(now: crate::time::WallTime, hour12: bool, strings: &Strings) -> 
     )
 }
 
-/// Offset minutes → `+09:00`.
-/// `3 d 4 h`, `4 h 12 min`, `12 min` — the two largest units, which is all an uptime needs.
+/// Format uptime as days/hours, hours/minutes, or minutes: `3 d 4 h`, `4 h 12 min`, `12 min`.
 fn format_uptime(secs: u64, strings: &Strings) -> String {
     let (days, hours, minutes) = (secs / 86_400, secs / 3_600 % 24, secs / 60 % 60);
     let fill = |template: &str| {
@@ -314,6 +313,7 @@ fn format_uptime(secs: u64, strings: &Strings) -> String {
     }
 }
 
+/// Offset minutes → `+09:00`.
 fn format_offset(offset_min: i32) -> String {
     let sign = if offset_min < 0 { '-' } else { '+' };
     let abs = offset_min.unsigned_abs();
@@ -331,9 +331,9 @@ fn format_offset(offset_min: i32) -> String {
 /// The selection is an **id**, so two rows pointing at one screen both light up when either is
 /// pressed and the right column takes its heading from whichever comes first — the second row's
 /// label never appears. It is an easy list to build by mistake, since [`entries`] already carries
-/// every built-in id and pushing "our Wi-Fi screen" onto it is the obvious move. This is the same
-/// policy as [`Registry::add`](crate::screen::Registry::add): one id, one entry, and a warning
-/// rather than a silent oddity.
+/// every built-in id and pushing "our Wi-Fi screen" onto it is the obvious move. Here the first
+/// row is kept and later duplicates warn and are dropped. Registry registration instead replaces
+/// an existing declaration with the same ID.
 fn dedup_ids(entries: Vec<SettingsEntry>) -> Vec<SettingsEntry> {
     let mut seen = std::collections::BTreeSet::new();
     let mut out = Vec::with_capacity(entries.len());
@@ -437,7 +437,7 @@ fn two_pane(ui: &mut Ui, cx: &mut Cx<'_>, list_width: f32, entries: &[SettingsEn
         // built-in bodies, so nothing an integrator registered could ever appear there.
         //
         // `selected` was filtered on `can_draw_screen`, so this normally draws. It can still come
-        // back `false` — the declaration was removed by a screen drawn earlier in this same frame —
+        // back `false` — for example, the session changed after selection —
         // and an empty column with a heading over it says nothing to the person looking at it.
         if !cx.draw_screen(&mut right, id) {
             ui::note(&mut right, cx, tr!(s, "This screen is not available."));
@@ -455,14 +455,8 @@ fn two_pane(ui: &mut Ui, cx: &mut Cx<'_>, list_width: f32, entries: &[SettingsEn
 /// Whether a list row is drawn at all: **the screen is registered and its own gate passes**
 /// ([`Cx::screen_allowed`]).
 ///
-/// Both halves were wrong before. The entry table is a fixed list of every built-in settings id, but
-/// `add_all` registers fewer than that — `settings.credentials` has no screen yet, and Wi-Fi,
-/// Network, Bluetooth and Power drop out on a device whose backend does not support them — so rows
-/// were drawn that a press could not open. And the gate was checked as
-/// `cx.allows(id)`, the **entry id** taken as a gate name; a declaration's gate defaults to its id
-/// but `.gate("service")` names another, so a screen locked to a higher level was listed to
-/// everyone. Combined with the right column, which draws the selected row with no further asking,
-/// that listed screen's contents were painted for a session that could not open it.
+/// The lookup uses the registered declaration's gate, including an explicit
+/// `.gate(...)` override, rather than treating the entry ID as the grant ID.
 fn shows(cx: &Cx<'_>, id: &str) -> bool {
     cx.screen_allowed(id)
 }
@@ -491,10 +485,9 @@ struct Held<T> {
     subject: crate::access::Subject,
 }
 
-/// Run `body` with a value kept in egui's memory for the drawing screen instance, and dropped the
-/// first frame the body is not drawn (closed, covered, another entry on the settings home's
-/// right) or is drawn for another subject. A plain-`fn` body uses this for what a screen struct
-/// would keep in a field, so nothing carries over to the next person or the next visit.
+/// Run `body` with a value kept in egui's memory for the drawing screen instance.
+/// Discard the saved value on the next body call after a gap in drawing or a changed subject. A plain-`fn` body
+/// uses this retained value for form state between consecutive eligible calls.
 fn held<T: Clone + Send + Sync + 'static>(
     ui: &mut Ui,
     cx: &mut Cx<'_>,

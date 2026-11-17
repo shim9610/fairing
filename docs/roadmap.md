@@ -6,15 +6,15 @@ described in the [integrator guide](guide/README.md); how they fit together is i
 
 ## 1. Where it stands
 
-Nothing has been published yet. Milestones M0 to M5 are done, and M6 is down to the 0.1.0
-release.
+The checkout is `0.1.0-beta.1`; nothing has been published yet. Milestones M0 to M5
+are done. Beta integration checks precede the stable 0.1.0 release.
 
 | M | Name | State | Where the guide covers it |
 |---|---|---|---|
 | M0 | Scaffold and the audit gate | Done | [08 §9 Audit](guide/08-troubleshooting.md#9-passing-the-audit) |
 | M1 | The shell skeleton | Done | 01 · 02 · [03 §1](guide/03-chrome.md#1-the-status-bar)–[§3](guide/03-chrome.md#3-the-desktop) · 06 |
 | M2a | Compile-time customization hooks | Done | [04](guide/04-customization.md) |
-| M2 | Chrome complete | Done | [03 §4](guide/03-chrome.md#4-the-shade)–[§8](guide/03-chrome.md#8-icons) · [04 §8](guide/04-customization.md#8-tuning-motion) |
+| M2 | Shade, keyboard, icons and motion | Done | [03 §4](guide/03-chrome.md#4-the-shade)–[§8](guide/03-chrome.md#8-icons) · [04 §8](guide/04-customization.md#8-tuning-motion) |
 | M2b | Physical units · the dock on any edge and the icon rail · brand | Done, with part of the plan moved after 0.1 (§3) | [01 §4](guide/01-getting-started.md#4-a-minimal-app) · [03 §3](guide/03-chrome.md#3-the-desktop) · [09](guide/09-branding.md) |
 | M3 | Access control: the unlock prompt and lock screen, `Authenticator` and `PinTable`, the `PinPad` and `PatternPad` widgets, temporary unlocks, the session timeout and the idle lock, `settings.credentials` | Done | [05 §5](guide/05-access-control.md#5-the-shells-prompt-and-the-authenticator) · [05 §7](guide/05-access-control.md#7-the-session--temporary-unlocks-the-timeout-the-idle-lock) |
 | M4 | Settings screens and backend traits: the `settings.*` screens, the audio, network and device-information traits with their `Null` and `Mock`, backends of your own | Done. The backends and the saving of settings are yours | [06](guide/06-services.md) · [06 §7.1](guide/06-services.md#71-keeping-settings-across-a-restart) |
@@ -30,7 +30,9 @@ see the [migration guide](guide/10-migration.md) for their API and host boundari
 
 ## 2. 0.1.0
 
-The first release publishes `fairing` and `fairing-widgets` to crates.io. From 0.1.0 on, changes
+The current prerelease is `0.1.0-beta.1`; APIs may change between beta revisions.
+Publish `fairing-widgets` before `fairing` when distributing a beta on crates.io.
+The stable 0.1.0 release follows beta integration checks. From 0.1.0 on, changes
 follow semantic versioning: before 1.0, a release that breaks the API raises the minor version
 (0.1 to 0.2), and a patch release never does. The [CHANGELOG](../CHANGELOG.md) records each one.
 
@@ -46,9 +48,9 @@ These are candidates, not promises. Each one waits for a real need.
 | A diagnostics overlay with scale reports | The log says which density the shell assumed and why |
 | Chinese and Japanese input on the keyboard | Numeric, QWERTY and two-set Hangul |
 | More than two panes, and thumbnails in the recent screens | Two panes; the recent screens show cards |
-| A software rasterizer for devices with no GPU | A GL driver is needed |
+| A software renderer for the complete interactive shell | The bundled runner uses glow/GL. Existing CPU preview/warning helpers render selected display surfaces, not the complete shell |
 | Snapshot tests of what is drawn | Tests assert positions and state through `testing::Harness` |
-| An accessibility tree, and right-to-left layout | Nothing is reported to a screen reader, and layouts run left to right |
+| An accessibility tree, and right-to-left layout | No Fairing-specific screen-reader integration or right-to-left layout path is implemented |
 
 ## 4. Known limits
 
@@ -68,7 +70,8 @@ These are the current implementation and verification boundaries.
   frame. `runner::run` supplies only a UI closure. Hosts needing background shell work
   must use a shell/state runner or implement `App::logic` and call `Shell::logic*` there.
   Backends must still use `Waker` or `next_wake`.
-- **One finger.** The gesture engine follows a single touch. A second finger is not a gesture.
+- **Single-pointer shell gestures.** The shell gesture engine follows one primary
+  pointer; it does not recognize multi-touch shell gestures.
 - **Widget hits use the previous egui pass.** Fairing's regions use current shell/pane/keyboard
   geometry and seed current guard area rectangles before user drawing. A showing keyboard
   reserves its target band immediately. However, egui has already computed widget hits before

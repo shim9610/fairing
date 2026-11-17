@@ -30,7 +30,7 @@ impl<'a> ShellView<'a> {
     pub fn has_screen(&self, id: &str) -> bool {
         self.shell.registry.has_screen(id)
     }
-    /// Whether the registered screen retains its instance.
+    /// Whether the declaration retains a resident screen body across opens.
     #[must_use]
     pub fn screen_is_resident(&self, id: &str) -> Option<bool> {
         self.shell

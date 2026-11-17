@@ -46,7 +46,7 @@ class EvidenceValidation(unittest.TestCase):
         # Rust assertions inside source strings are proof obligations, not Python AST assertions.
         for name in ('mediation.py', 'central_mediation.py', 'central_proofs.py',
                      'protected_contracts.py', 'mediation_controls.py',
-                     'contract_controls.py', 'metadata_controls.py', 'verus/mediation_path.py'):
+                     'contract_controls.py', 'layout_proofs.py', 'layout_bindings.py', 'dispatch_effects.py', 'metadata_controls.py', 'verus/mediation_path.py'):
             with self.subTest(module=name):
                 tree = ast.parse((Path(__file__).parent / name).read_text())
                 self.assertFalse(any(isinstance(node, ast.Assert) for node in ast.walk(tree)))

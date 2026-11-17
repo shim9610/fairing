@@ -1,17 +1,9 @@
-//! The manta mark. Not an icon but a **ribbon mesh**.
+//! Two-tone manta mark drawn as an authored ribbon mesh.
 //!
-//! The original mark is **two-tone** — a navy back over a white belly — and its silhouette is
-//! concave. The icon pipeline cannot do it: `IconDef::fill` is one `bool` for the whole icon, the
-//! painter fills every sub-path in the same colour, and filling adjacent convex pieces in the same
-//! colour has epaint anti-alias each piece separately, leaving a hairline along the seam.
-//!
-//! **A strip goes round the concavity**. Sampling the upper and lower boundaries N times at
-//! the same `t` and making a quad out of each neighbouring pair keeps the triangles right however
-//! concave the outline gets. The deep notches of the cephalic fins are inside the boundary curves
-//! too, so they need no drawing of their own.
-//!
-//! The icon set carries a separate **stroked** manta (`assets/icons/manta.svg`) — the two outputs
-//! are each right in their own place.
+//! Paired boundary samples form triangle strips for the back, belly and tail.
+//! This mesh is separate from the stroked manta in `assets/icons/manta.svg`.
+//! The authored boundaries determine the supported silhouette; this is not a
+//! general-purpose concave-polygon triangulator.
 
 // This is procedural geometry. The names in this file use the formula notation as it stands —
 // `s` (the object unit) · `w`/`h` (the screen) · `t` (a curve parameter) · `u`/`v` (screen fractions) ·
@@ -33,8 +25,8 @@ use std::sync::Arc;
 // **These coordinates were not placed by hand but drawn from the original art.**
 // `assets/brand/manta-mark-black.png` (a 1600×1000 flat silhouette) was traced sub-pixel and fitted by
 // least squares with a cubic Bézier chain, and the back/belly boundary was drawn the same way from the
-// two-colour boundary in `manta-mark-two-tone.png`. The fit error is **at most 0.36** grid units (1.1 px
-// on a 96 px mark), and the IoU between the result rasterised at 32 samples and the original is **0.976**.
+// two-colour boundary in `manta-mark-two-tone.png`. The mesh approximates the reference;
+// changes should be compared against the reference art at intended display sizes.
 //
 // Normalisation: the bbox of the **whole** mark (the wings plus the tail) is scaled uniformly into 32×20
 // and centred, with a 2 % margin. So even the tail's tip comes inside the target Rect.
@@ -196,13 +188,13 @@ pub(super) const GRID_H: f32 = 20.0;
 /// different `pixels_per_point` gives a different LOD.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MantaLod {
-    /// `< 16 px` — a size at which any silhouette is a smudge. Only the outline is stroked.
+    /// Below 16 device pixels: stroke the outline.
     Glyph,
-    /// `16..24 px` — a flat mass. No eyes, no tail, no fins.
+    /// `16..24 px` — the filled body silhouette without belly lobes or tail.
     Silhouette,
-    /// `24..48 px` — flat plus the fins, one eye and the tail.
+    /// `24..48 px` — filled body, near belly lobe and tail.
     Solid,
-    /// `>= 48 px` — two-tone plus the far wing, both eyes, the tail and the feather.
+    /// `>= 48 px` — both belly lobes, tail and edge feathering over the body.
     Full,
 }
 
@@ -222,9 +214,9 @@ impl MantaLod {
     }
 }
 
-/// The **two** colours actually drawn. Always derived from one base colour — the mark keeps no
-/// colour system of its own, so the icon tint, the theme cross-fade and the disabled alpha all
-/// follow it unchanged.
+/// Body and belly colours used by the mark. [`MantaStyle::tones`] derives defaults
+/// from a base colour and applies the optional belly override. A caller can also
+/// supply these colours directly.
 ///
 /// There are no eyes. The mark in the original art
 /// (`assets/brand/manta-mark-black.png` · `-two-tone.png`) is an eyeless two-tone silhouette, and

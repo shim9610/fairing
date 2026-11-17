@@ -180,7 +180,7 @@ fn an_integrator_subject_replacement_cancels_the_previous_users_check() -> fairi
                 ..Subject::default()
             };
             if direct {
-                rig.h.shell.access_mut().set_subject(subject);
+                rig.h.shell.set_subject(subject);
             } else {
                 rig.h.shell.handle().set_subject(subject);
             }
@@ -251,7 +251,7 @@ fn relocking_cancels_pending_answers_and_drops_deferred_actions() -> fairing::Re
 #[test]
 fn direct_subject_changes_are_observed_before_starting_a_new_check() -> fairing::Result<()> {
     let mut rig = rig()?;
-    rig.h.shell.access_mut().set_subject(Subject {
+    rig.h.shell.set_subject(Subject {
         id: Some("replacement".into()),
         level: Level(0),
         ..Subject::default()

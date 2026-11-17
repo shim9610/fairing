@@ -174,7 +174,7 @@ mod without_overlay {
     use egui::Rect;
     use std::time::{Duration, Instant};
 
-    /// No overlay (feature `overlay` off). A top pull and `OpenOverlay` do nothing.
+    /// Disabled overlay slot: drawing and state-transition methods are inert.
     #[derive(Debug, Default)]
     pub(crate) struct OverlaySlot;
 
@@ -325,7 +325,7 @@ mod without_osk {
     use egui::Rect;
     use std::time::Instant;
 
-    /// No OSK (feature `osk` off) — there is a hardware keyboard.
+    /// Disabled OSK slot; keyboard input remains the host's responsibility.
     #[derive(Debug, Default)]
     pub(crate) struct OskSlot;
 

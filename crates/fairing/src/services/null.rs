@@ -1,4 +1,6 @@
-//! The `Null*` backends — everything is `Unsupported`. The default for a backend you did not specify.
+//! Fallback backends with empty snapshots or unsupported commands.
+//! `NullClock` provides epoch time when selected explicitly; ordinary `Services`
+//! construction defaults to `SystemClock`.
 
 use super::{
     AudioBackend, AudioSnapshot, Backend, BatterySnapshot, BluetoothBackend, BtSnapshot,

@@ -79,19 +79,23 @@
 //! ```
 
 mod dispatch;
+mod layout_token;
+use layout_token::LayoutToken;
 #[cfg(test)]
 mod tests;
 
 use crate::access::mediation::ElementHandle;
-use crate::access::{Permission, PermissionBinding, PermissionBound};
+use crate::access::{Permission, PermissionBound};
 use crate::screen::{Cx, Screen};
 use egui::Vec2;
 
 /// A custom widget/painter with a mandatory application-owned requirement.
 ///
-/// Requirement metadata must be deterministic and side-effect-free. Measurement
-/// and painting run only after live authorization. Paint may handle input using
-/// ordinary egui widgets and retains the original app/backend context.
+/// Requirement metadata must be deterministic and side-effect-free. When invoked
+/// through a registered [`ElementTree`], Fairing checks admission before calling
+/// measurement or paint. Applications can also call these trait methods directly;
+/// those calls are controlled by the application. Paint may use ordinary egui
+/// widgets and retains the original app/backend context.
 pub trait Element: PermissionBound {
     /// Measure admitted content. Non-finite or non-positive results omit the leaf.
     fn measure(&mut self, available: Vec2, cx: &mut Cx<'_>) -> Vec2;
@@ -195,7 +199,7 @@ impl<P: Permission> Screen for ElementTree<P> {
 }
 
 struct Plan<'tree, P: Permission> {
-    binding: PermissionBinding<P>,
+    layout: LayoutToken<P>,
     size: Vec2,
     node: PlanNode<'tree, P>,
 }

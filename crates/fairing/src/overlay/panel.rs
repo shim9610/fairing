@@ -2,7 +2,7 @@
 //! Slider expansion row), the notification list below (a `ScrollArea`), and the user / lock /
 //! settings footer at the bottom. Plus the panel's bottom handle.
 //!
-//! Zero heap allocation per frame: text is drawn from the galley cache
+//! Cached rendering inputs: text is drawn from the galley cache
 //! ([`PanelText`]) that [`Overlay`](super::Overlay) fills at the front of the frame, and names and
 //! labels are borrowed as `&str`. A `LaunchAction` or an id is cloned only on the frame a tap
 //! happens.
@@ -100,8 +100,8 @@ pub struct PanelOutput {
 }
 
 /// One panel string's galley cache. [`super::Overlay`] refreshes it at the front of the
-/// frame and the panel draws it borrowed through [`TileRow::texts`]. Only entries whose content
-/// changed are laid out again.
+/// frame and the panel draws it borrowed through [`TileRow::texts`]. Text buffers
+/// are retained, but current text is submitted to egui layout on every refresh.
 #[derive(Debug, Clone)]
 pub struct PanelText {
     key: u64,
@@ -421,7 +421,7 @@ pub(super) fn show(
         list_offset = out.state.clamped_offset().y;
         // Where the list overflows, its top and bottom ends fade into the panel's colour. A card simply
         // cut at a scroll boundary reads as "broken", and a fade reads as "there is more" — iOS and One
-        // UI use the same device. Two triangles, so it costs nothing.
+        // UI use the same device. The fade adds two triangles.
         let overflow = out.content_size.y > list.height() + 0.5;
         if overflow {
             let fade = style.gap * 1.6;
@@ -503,9 +503,9 @@ impl PanelStyle {
     /// no bare number in this function. The two axes (visual = `corner_radius`, finger =
     /// `touch_target`) are unchanged.
     ///
-    /// **Not all four on the finger axis are "the size drawn".** Only the tile puck (`puck`) has a
-    /// hit area of the whole cell and so is bigger than its drawing; the close button and the footer
-    /// buttons **hit exactly as they draw** — which comes to only 0.72 and 0.82 of `touch_target`.
+    /// These values describe visual dimensions. Tile cells, notification-close hits
+    /// and footer slots separately reserve touch-target geometry in their renderers;
+    /// the close/footer drawing can be smaller than its hit area.
     fn new(m: &crate::theme::Metrics, s: crate::theme::ShadeMetrics) -> Self {
         let u = m.corner_radius;
         let t = m.touch_target;

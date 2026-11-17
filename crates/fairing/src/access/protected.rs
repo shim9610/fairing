@@ -68,7 +68,8 @@ pub trait Permission: Copy + 'static {
 /// The method is mandatory and has no default allow. It must be a side-effect-free
 /// metadata lookup. Registered screens keep a fixed requirement until replacement;
 /// element trees additionally detect a changed value between prepare and paint.
-/// Authorization is always evaluated by Fairing against the current token.
+/// For registered payloads, Fairing evaluates admission against the token state
+/// observed during dispatch.
 pub trait PermissionBound {
     /// The application's enum or value struct, not a Fairing role vocabulary.
     type Required: Permission;

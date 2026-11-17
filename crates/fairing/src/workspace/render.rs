@@ -10,8 +10,8 @@ use super::{
 };
 
 impl Workspace {
-    /// Frame stage 9: draw the desktop or the Pane. Zero heap allocation per frame — it only works
-    /// out values and registers `Area`s (cloning a `Context` bumps an `Arc` refcount).
+    /// Frame stage 9: coordinate desktop or pane rendering through egui Areas.
+    /// egui rendering and application callbacks can allocate during this call.
     pub(crate) fn ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -224,7 +224,7 @@ impl Workspace {
             let base = Self::slot_base(pane);
             if let Some(task) = self.task_of_pane_mut(pane) {
                 for (depth, instance) in task.iter_mut().enumerate() {
-                    let slot = base.saturating_add(u32::try_from(depth).unwrap_or(u32::MAX));
+                    let slot = base.saturating_add(u64::try_from(depth).unwrap_or(u64::MAX));
                     instance.set_layer_slot(slot);
                     ctx.set_transform_layer(instance.layer_id(), TSTransform::IDENTITY);
                 }
@@ -235,13 +235,12 @@ impl Workspace {
     /// sizing pass (`ui_builder.invisible()`) and throws that frame's output away whole — which is
     /// what leaves an incoming screen blank on the frame a transition starts. `Areas::set_state` is
     /// `pub(crate)`, so the state cannot be planted; instead **an empty `Area` is drawn once
-    /// beforehand** to consume that pass first. Exactly once per slot, and nothing is drawn on that
-    /// frame.
+    /// beforehand** to consume that pass first. Each warmed slot gets one empty pass;
+    /// the empty warm-up Area itself draws no content.
     ///
     /// [`WARM_SLOTS`] of them are run through on the first frame, and as the stack deepens the
-    /// **next slot to be used** (`depth + 1`) is run through in advance — a launch or back request is
-    /// handled at frame stage 14 and that instance is first drawn on the following frame, so this
-    /// frame's warm-up is always a step ahead.
+    /// next slot (`depth + 1`) is warmed. This includes deep stacks beyond the
+    /// initial warm-up count.
     pub(super) fn warm_layer_slots(&mut self, ctx: &egui::Context, content: Rect) {
         let depth_of = |ws: &Self, pane: usize| ws.task_of_pane(pane).map_or(0, Task::len);
         let split = self.split.is_some();
@@ -249,9 +248,9 @@ impl Workspace {
         let first = depth_of(self, 0)
             .max(self.closing_task.as_ref().map_or(0, Task::len))
             .max(if split { depth_of(self, 1) } else { 0 });
-        let need = |depth: usize, least: u32| {
-            u32::try_from(depth)
-                .unwrap_or(u32::MAX)
+        let need = |depth: usize, least: u64| {
+            u64::try_from(depth)
+                .unwrap_or(u64::MAX)
                 .saturating_add(1)
                 .max(least)
                 .min(PANE_SLOTS)
@@ -377,7 +376,8 @@ impl Workspace {
         (self.inset_bottom - (content.max.y - visible.max.y)).max(0.0)
     }
     /// The Pane (stack) render: mid-transition it draws two instances on offset layers
-    /// (A3). The layer slots are lent out here by stack depth (a finite set), from each pane's base.
+    /// (A3). Layer slots are lent out by stack depth from each pane's base. See `PANE_SLOTS`
+    /// for the depth boundary at which pane ranges overlap.
     /// During an A2, the placeholder card is drawn first inside the top instance's `Area` (the
     /// card's colour is the declaration's `background` or surface, and the icon the task root's),
     /// and the real screen is drawn over it from `screen_opacity > 0` (an open's `t ≥ 0.5`) on.
@@ -473,7 +473,7 @@ impl Workspace {
                 let base = pane_of(bases, other);
                 for (depth, instance) in task.iter_mut().enumerate() {
                     instance.set_layer_slot(
-                        base.saturating_add(u32::try_from(depth).unwrap_or(u32::MAX)),
+                        base.saturating_add(u64::try_from(depth).unwrap_or(u64::MAX)),
                     );
                 }
                 if let Some(top) = task.top_mut() {
@@ -506,7 +506,7 @@ impl Workspace {
 
         if let Some((key, x_in)) = switch_in {
             if let Some(task) = tasks.iter_mut().find(|t| root_key(t) == Some(key)) {
-                let depth = u32::try_from(task.len().saturating_sub(1)).unwrap_or(u32::MAX);
+                let depth = u64::try_from(task.len().saturating_sub(1)).unwrap_or(u64::MAX);
                 if let Some(top) = task.top_mut() {
                     top.set_layer_slot(pane_of(bases, 1).saturating_add(depth));
                     let params = DrawParams {
@@ -542,7 +542,7 @@ impl Workspace {
         let len = task.len();
         let base = pane_of(bases, focus);
         for (depth, instance) in task.iter_mut().enumerate() {
-            instance.set_layer_slot(base.saturating_add(u32::try_from(depth).unwrap_or(u32::MAX)));
+            instance.set_layer_slot(base.saturating_add(u64::try_from(depth).unwrap_or(u64::MAX)));
         }
         if (pushing || back_top_moves) && len >= 2 {
             if let Some(below) = task.iter_mut().nth(len - 2) {
@@ -611,7 +611,7 @@ impl Workspace {
     ///
     /// Two `Area`s: what is drawn is in one that is click-through, so that it can cover the
     /// content without taking a press from the panes, and the handle is a second, no bigger than
-    /// the handle — an interactable `Area` takes every press inside its own rect.
+    /// the handle — its interactable `Area` participates in egui hit testing within that rect.
     pub(super) fn divider_ui(
         &mut self,
         ctx: &egui::Context,

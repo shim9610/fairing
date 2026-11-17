@@ -34,7 +34,7 @@ identifier. `Protected::new(permission, body)` declares an explicit value. Typed
 issuer grant/snapshot helpers take a value as well. Existing split controller/token
 ownership, revocation and publication semantics remain in force.
 
-Permission values must be cheap to copy. Declaration/mapping methods are metadata
+Permission values implement `Copy`. Declaration/mapping methods are metadata
 contracts: they do not receive UI, app/backend access or mutable session authority,
 and must be side-effect-free. Arbitrary user implementations of those metadata
 methods are not automatically proved pure by Rust trait conformance. Extension
@@ -108,8 +108,7 @@ Legacy `Shell` remains an explicit compatibility API. Protected construction kee
 rejecting untyped global builder hooks; they must not be silently treated as public.
 The new element tree provides a typed path for custom layout and paint. Raw egui
 calls inside an admitted user callback, trusted host/authentication/backend work
-and destructors retain their documented ownership boundary. This specification
-covers Fairing-owned protected element entry, not all arbitrary Rust execution.
+and destructors retain their documented ownership boundary.
 
 ## Verification and acceptance
 

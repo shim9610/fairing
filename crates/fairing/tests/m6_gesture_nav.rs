@@ -276,8 +276,8 @@ fn up_and_a_pause_brings_the_recent_screens() -> fairing::Result<()> {
     Ok(())
 }
 
-/// A finger standing still mid-swipe sends nothing, so on a panel that only draws when asked the
-/// pause would never be seen: while a swipe is under way the shell keeps frames coming.
+/// While a swipe is active, the shell requests repaint opportunities to evaluate
+/// the pause gesture even when the pointer remains still.
 #[test]
 fn a_swipe_held_still_keeps_the_frames_coming() -> fairing::Result<()> {
     let (mut h, ..) = shell(gestures())?;

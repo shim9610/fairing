@@ -121,8 +121,8 @@ impl PolicyDriver {
     ///
     /// The emergency gesture is alive even with `[gesture] enabled = false` — the
     /// engine keeps emitting [`hold`](crate::gesture::GestureEngine::hold) alone. The decision is
-    /// independent of `edge_guard`: on an unlocked screen, 2 s in a corner takes the same path
-    /// (the emergency gesture is a safety device against a wedged screen).
+    /// independent of `edge_guard`: on an unlocked screen, 2 s in a corner takes the same path.
+    /// This provides a shell shortcut while the host continues processing input.
     pub(crate) fn update(
         &mut self,
         policy: &ChromePolicy,

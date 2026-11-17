@@ -1,8 +1,8 @@
-//! The integrity check — it runs **before compiling**.
+//! Build-input integrity checks run before the audit compiles product targets.
 //!
-//! The approval gates (`deps.allow`, `cargo-deny`) look at the tree `Cargo.toml` / `Cargo.lock`
-//! speaks for. There are a few channels that can part that tree from **the code actually compiled**,
-//! and neither gate can see them:
+//! Name/version/license approval is not sufficient to validate build configuration. The
+//! integrity gate separately rejects configured source substitutions, compiler wrappers,
+//! lint opt-outs and unaudited target dependency declarations, including these forms:
 //!
 //! - `.cargo/config.toml`'s `[source]` replacement plus `vendor/` — Cargo.toml and Cargo.lock do not
 //!   change by a byte while the source compiled does.
@@ -17,7 +17,7 @@
 //! crates and CI read `rust-version`; the README, the contributing guide and the getting-started
 //! table quote it, and this checks they quote the same number.
 //!
-//! All of it is fail-closed: anything it does not know is not passed.
+//! Unsupported forms encountered in the checked configuration inputs are rejected.
 
 use crate::tomlish;
 use crate::util::{self, Error, Result};
@@ -45,7 +45,7 @@ pub(crate) fn check(root: &Path) -> Result<bool> {
         members.len()
     );
     if problems.is_empty() {
-        println!("The build inputs are exactly what Cargo.toml and Cargo.lock speak for.");
+        println!("Configured build-input integrity checks passed.");
         return Ok(true);
     }
     for problem in &problems {
@@ -54,7 +54,7 @@ pub(crate) fn check(root: &Path) -> Result<bool> {
     Ok(false)
 }
 
-/// It looks at every `.cargo/config[.toml]` in the repository.
+/// Inspect `.cargo/config[.toml]` at the workspace root and each listed member root.
 fn cargo_config(root: &Path, members: &[PathBuf], problems: &mut Vec<String>) -> Result<()> {
     let mut dirs = vec![root.to_path_buf()];
     dirs.extend(members.iter().cloned());
@@ -70,7 +70,7 @@ fn cargo_config(root: &Path, members: &[PathBuf], problems: &mut Vec<String>) ->
                 if section != ALLOWED_CONFIG_SECTION {
                     problems.push(format!(
                         "`[{section}]` in {shown} — only `[alias]` goes here. \
-A source replacement, a rustc-wrapper, env or a runner bypasses the audit gates whole"
+These settings can change compiled sources or invoked tools independently of Cargo.toml and Cargo.lock."
                     ));
                 }
             }
@@ -129,7 +129,7 @@ fn msrv_in_prose(root: &Path, problems: &mut Vec<String>) -> Result<()> {
 fn vendor_dir(root: &Path, problems: &mut Vec<String>) {
     if root.join("vendor").exists() {
         problems.push(
-            "there is a vendor/. Vendoring changes only the source compiled while leaving Cargo.lock as it is"
+            "there is a vendor/. Vendored sources can change compiled code without changing package identities in Cargo.lock."
                 .to_owned(),
         );
     }

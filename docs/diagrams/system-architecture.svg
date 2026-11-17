@@ -1,0 +1,178 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1223pt" height="955pt" viewBox="0.00 0.00 1223.20 955.20" role="img" aria-labelledby="diagram-title diagram-description">
+<title id="diagram-title">Fairing system architecture</title><desc id="diagram-description">Application-supplied host, UI and adapters connect to library-owned shell state, widgets and rendering. Device I/O and persistence remain application integrations.</desc><g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(21.6 933.6)">
+<title>system_architecture</title>
+<polygon fill="white" stroke="transparent" points="-21.6,21.6 -21.6,-933.6 1201.6,-933.6 1201.6,21.6 -21.6,21.6" />
+<text text-anchor="middle" x="590" y="-888.8" font-family="DejaVu Sans, Arial, sans-serif" font-size="24.00">Fairing: components and ownership</text>
+<g id="clust1" class="cluster">
+<title>cluster_app</title>
+<path fill="#fff9ed" stroke="#bfa16b" d="M20,-772C20,-772 1160,-772 1160,-772 1166,-772 1172,-778 1172,-784 1172,-784 1172,-858 1172,-858 1172,-864 1166,-870 1160,-870 1160,-870 20,-870 20,-870 14,-870 8,-864 8,-858 8,-858 8,-784 8,-784 8,-778 14,-772 20,-772" />
+<text text-anchor="middle" x="590" y="-851.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="18.00">Application supplies and owns integration policy</text>
+</g>
+<g id="clust3" class="cluster">
+<title>cluster_fairing</title>
+<path fill="#f0f6ff" stroke="#87a9ce" d="M196,-466C196,-466 1093,-466 1093,-466 1099,-466 1105,-472 1105,-478 1105,-478 1105,-722 1105,-722 1105,-728 1099,-734 1093,-734 1093,-734 196,-734 196,-734 190,-734 184,-728 184,-722 184,-722 184,-478 184,-478 184,-472 190,-466 196,-466" />
+<text text-anchor="middle" x="644.5" y="-715.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="18.00">fairing: library-owned runtime state</text>
+</g>
+
+<g id="node1" class="node">
+<title>host</title>
+<path fill="#ffffff" stroke="#64748b" d="M375.5,-834C375.5,-834 28.5,-834 28.5,-834 22.5,-834 16.5,-828 16.5,-822 16.5,-822 16.5,-792 16.5,-792 16.5,-786 22.5,-780 28.5,-780 28.5,-780 375.5,-780 375.5,-780 381.5,-780 387.5,-786 387.5,-792 387.5,-792 387.5,-822 387.5,-822 387.5,-828 381.5,-834 375.5,-834" />
+<text text-anchor="middle" x="202" y="-812.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Device binary / host</text>
+<text text-anchor="middle" x="202" y="-794.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">App state, event handling, recovery policy</text>
+</g>
+
+<g id="node4" class="node">
+<title>entry</title>
+<path fill="#daeaff" stroke="#64748b" d="M544.5,-698C544.5,-698 203.5,-698 203.5,-698 197.5,-698 191.5,-692 191.5,-686 191.5,-686 191.5,-620 191.5,-620 191.5,-614 197.5,-608 203.5,-608 203.5,-608 544.5,-608 544.5,-608 550.5,-608 556.5,-614 556.5,-620 556.5,-620 556.5,-686 556.5,-686 556.5,-692 550.5,-698 544.5,-698" />
+<text text-anchor="middle" x="374" y="-676.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Construction and host interface</text>
+<text text-anchor="middle" x="374" y="-658.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">build → Shell</text>
+<text text-anchor="middle" x="374" y="-640.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">build_protected → ProtectedShell</text>
+<text text-anchor="middle" x="374" y="-622.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Sealed HostedShell: logic / frame / events</text>
+</g>
+
+<g id="edge1" class="edge">
+<title>host-&gt;entry</title>
+<path fill="none" stroke="#315e9b" d="M231.57,-779.87C255.24,-758.95 289.13,-729 317.91,-703.57" />
+<polygon fill="#315e9b" stroke="#315e9b" points="319.83,-705.61 323.97,-698.21 316.12,-701.41 319.83,-705.61" />
+<text text-anchor="middle" x="357" y="-745.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">construct; lend app state</text>
+</g>
+
+<g id="node2" class="node">
+<title>ui</title>
+<path fill="#ffffff" stroke="#64748b" d="M799,-834C799,-834 429,-834 429,-834 423,-834 417,-828 417,-822 417,-822 417,-792 417,-792 417,-786 423,-780 429,-780 429,-780 799,-780 799,-780 805,-780 811,-786 811,-792 811,-792 811,-822 811,-822 811,-828 805,-834 799,-834" />
+<text text-anchor="middle" x="614" y="-812.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Application UI</text>
+<text text-anchor="middle" x="614" y="-794.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Screens, actions, permission-bound elements</text>
+</g>
+
+<g id="node5" class="node">
+<title>core</title>
+<path fill="#daeaff" stroke="#64748b" d="M552,-546C552,-546 204,-546 204,-546 198,-546 192,-540 192,-534 192,-534 192,-486 192,-486 192,-480 198,-474 204,-474 204,-474 552,-474 552,-474 558,-474 564,-480 564,-486 564,-486 564,-534 564,-534 564,-540 558,-546 552,-546" />
+<text text-anchor="middle" x="378" y="-524.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Shell coordinator</text>
+<text text-anchor="middle" x="378" y="-506.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Registry + workspace + access + Services</text>
+<text text-anchor="middle" x="378" y="-488.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Settings, commands, lifecycle, recovery</text>
+</g>
+
+<g id="edge2" class="edge">
+<title>ui-&gt;core</title>
+<path fill="none" stroke="#315e9b" d="M615.12,-779.96C615.52,-739.06 610.66,-659.15 571,-608 551.62,-583 524.06,-563.94 495.81,-549.63" />
+<polygon fill="#315e9b" stroke="#315e9b" points="497.03,-547.11 488.62,-546.09 494.56,-552.13 497.03,-547.11" />
+<text text-anchor="middle" x="720.5" y="-649.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">register executable declarations</text>
+</g>
+
+<g id="node3" class="node">
+<title>adapters</title>
+<path fill="#ffffff" stroke="#64748b" d="M1152,-834C1152,-834 852,-834 852,-834 846,-834 840,-828 840,-822 840,-822 840,-792 840,-792 840,-786 846,-780 852,-780 852,-780 1152,-780 1152,-780 1158,-780 1164,-786 1164,-792 1164,-792 1164,-822 1164,-822 1164,-828 1158,-834 1152,-834" />
+<text text-anchor="middle" x="1002" y="-812.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Application implementations</text>
+<text text-anchor="middle" x="1002" y="-794.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Authenticator and backend adapters</text>
+</g>
+
+<g id="edge3" class="edge">
+<title>adapters-&gt;core</title>
+<path fill="none" stroke="#315e9b" d="M987.67,-779.67C962.7,-736.48 906.95,-651.09 835,-608 756.14,-560.77 657.53,-536.34 572.12,-523.79" />
+<polygon fill="#315e9b" stroke="#315e9b" points="572.48,-521.01 564.16,-522.65 571.68,-526.56 572.48,-521.01" />
+<text text-anchor="middle" x="1019.5" y="-649.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">install trait objects</text>
+</g>
+
+<g id="edge4" class="edge">
+<title>entry-&gt;core</title>
+<path fill="none" stroke="#315e9b" d="M375.25,-607.77C375.74,-590.7 376.29,-571.23 376.77,-554.25" />
+<polygon fill="#315e9b" stroke="#315e9b" points="379.58,-554.21 377,-546.13 373.98,-554.05 379.58,-554.21" />
+<text text-anchor="middle" x="420.5" y="-573.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">host updates</text>
+</g>
+
+<g id="node6" class="node">
+<title>surfaces</title>
+<path fill="#ffffff" stroke="#64748b" d="M1085.5,-546C1085.5,-546 766.5,-546 766.5,-546 760.5,-546 754.5,-540 754.5,-534 754.5,-534 754.5,-486 754.5,-486 754.5,-480 760.5,-474 766.5,-474 766.5,-474 1085.5,-474 1085.5,-474 1091.5,-474 1097.5,-480 1097.5,-486 1097.5,-486 1097.5,-534 1097.5,-534 1097.5,-540 1091.5,-546 1085.5,-546" />
+<text text-anchor="middle" x="926" y="-524.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">UI surfaces</text>
+<text text-anchor="middle" x="926" y="-506.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Desktop, chrome, notifications</text>
+<text text-anchor="middle" x="926" y="-488.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Optional overlay / OSK / settings pages</text>
+</g>
+
+<g id="edge5" class="edge">
+<title>core-&gt;surfaces</title>
+<path fill="none" stroke="#315e9b" d="M564.29,-510C622.97,-510 687.64,-510 745.88,-510" />
+<polygon fill="#315e9b" stroke="#315e9b" points="746.06,-512.8 754.06,-510 746.06,-507.2 746.06,-512.8" />
+<text text-anchor="middle" x="659.25" y="-516.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">coordinate and dispatch</text>
+</g>
+
+<g id="node7" class="node">
+<title>workers</title>
+<path fill="#fff9ed" stroke="#64748b" d="M474,-412C474,-412 82,-412 82,-412 76,-412 70,-406 70,-400 70,-400 70,-352 70,-352 70,-346 76,-340 82,-340 82,-340 474,-340 474,-340 480,-340 486,-346 486,-352 486,-352 486,-400 486,-400 486,-406 480,-412 474,-412" />
+<text text-anchor="middle" x="278" y="-390.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Application workers / storage / device I/O</text>
+<text text-anchor="middle" x="278" y="-372.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">SDK, sysfs, D-Bus, network or IPC</text>
+<text text-anchor="middle" x="278" y="-354.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">No concrete hardware driver supplied by Fairing</text>
+</g>
+
+<g id="edge6" class="edge">
+<title>core-&gt;workers</title>
+<path fill="none" stroke="#315e9b" d="M318.18,-473.88C309.78,-466.85 301.99,-458.86 296,-450 290,-441.12 286,-430.44 283.33,-420.01" />
+<polygon fill="#315e9b" stroke="#315e9b" points="286.04,-419.3 281.53,-412.12 280.58,-420.54 286.04,-419.3" />
+<text text-anchor="middle" x="409" y="-439.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">backend trait calls / app transport</text>
+</g>
+
+<g id="node9" class="node">
+<title>egui</title>
+<path fill="#f2f0fb" stroke="#64748b" d="M684,-291C684,-291 404,-291 404,-291 398,-291 392,-285 392,-279 392,-279 392,-249 392,-249 392,-243 398,-237 404,-237 404,-237 684,-237 684,-237 690,-237 696,-243 696,-249 696,-249 696,-279 696,-279 696,-285 690,-291 684,-291" />
+<text text-anchor="middle" x="544" y="-269.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">egui / epaint</text>
+<text text-anchor="middle" x="544" y="-251.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Input, layout, shapes and textures</text>
+</g>
+
+<g id="edge10" class="edge">
+<title>core-&gt;egui</title>
+<path fill="none" stroke="#315e9b" d="M499.52,-473.82C509.22,-467.2 517.97,-459.33 525,-450 557.9,-406.33 555.59,-339.49 550.25,-299.24" />
+<polygon fill="#315e9b" stroke="#315e9b" points="553.02,-298.84 549.12,-291.31 547.48,-299.63 553.02,-298.84" />
+<text text-anchor="middle" x="635.5" y="-372.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">host context and UI pass</text>
+</g>
+
+<g id="node8" class="node">
+<title>widgets</title>
+<path fill="#eef8f1" stroke="#64748b" d="M1101.5,-403C1101.5,-403 750.5,-403 750.5,-403 744.5,-403 738.5,-397 738.5,-391 738.5,-391 738.5,-361 738.5,-361 738.5,-355 744.5,-349 750.5,-349 750.5,-349 1101.5,-349 1101.5,-349 1107.5,-349 1113.5,-355 1113.5,-361 1113.5,-361 1113.5,-391 1113.5,-391 1113.5,-397 1107.5,-403 1101.5,-403" />
+<text text-anchor="middle" x="926" y="-381.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">fairing-widgets</text>
+<text text-anchor="middle" x="926" y="-363.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Units, theme, motion, fonts, icons, controls</text>
+</g>
+
+<g id="edge8" class="edge">
+<title>surfaces-&gt;widgets</title>
+<path fill="none" stroke="#315e9b" d="M926,-473.97C926,-454.68 926,-430.82 926,-411.59" />
+<polygon fill="#315e9b" stroke="#315e9b" points="928.8,-411.39 926,-403.39 923.2,-411.39 928.8,-411.39" />
+<text text-anchor="middle" x="997" y="-439.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">rendering vocabulary</text>
+</g>
+
+<g id="edge7" class="edge">
+<title>workers:w-&gt;core:w</title>
+<path fill="none" stroke="#357a69" stroke-dasharray="5,2" d="M69,-376C52.99,-376 58.66,-400.7 70,-412 109.33,-451.18 1030.22,-396.28 1069,-436 1073.35,-440.45 1073.34,-445.54 1069,-450 1035.01,-484.93 226.47,-439.54 192,-474 183.16,-482.84 177.75,-499.84 183.44,-506.85" />
+<polygon fill="#357a69" stroke="#357a69" points="182.54,-509.51 191,-510 184.69,-504.34 182.54,-509.51" />
+</g>
+
+<g id="node10" class="node">
+<title>presentation</title>
+<path fill="#f2f0fb" stroke="#64748b" d="M532,-175C532,-175 142,-175 142,-175 136,-175 130,-169 130,-163 130,-163 130,-97 130,-97 130,-91 136,-85 142,-85 142,-85 532,-85 532,-85 538,-85 544,-91 544,-97 544,-97 544,-163 544,-163 544,-169 538,-175 532,-175" />
+<text text-anchor="middle" x="337" y="-153.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Presentation host</text>
+<text text-anchor="middle" x="337" y="-135.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Optional Fairing runner → eframe / glow</text>
+<text text-anchor="middle" x="337" y="-117.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">OR application-owned egui host</text>
+<text text-anchor="middle" x="337" y="-99.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Compositor / graphics driver / operating system</text>
+</g>
+
+
+<g id="edge9" class="edge">
+<title>widgets-&gt;egui</title>
+<path fill="none" stroke="#315e9b" d="M835.47,-348.93C777.41,-332.21 702.02,-310.5 642.46,-293.35" />
+<polygon fill="#315e9b" stroke="#315e9b" points="643,-290.59 634.54,-291.07 641.45,-295.98 643,-290.59" />
+</g>
+
+<g id="edge11" class="edge">
+<title>egui-&gt;presentation</title>
+<path fill="none" stroke="#315e9b" d="M503.1,-236.92C477.47,-220.58 443.63,-199 413.19,-179.59" />
+<polygon fill="#315e9b" stroke="#315e9b" points="414.6,-177.16 406.35,-175.22 411.59,-181.88 414.6,-177.16" />
+<text text-anchor="middle" x="547.5" y="-202.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">shapes / platform output</text>
+</g>
+
+<g id="node11" class="node">
+<title>legend</title>
+<path fill="white" stroke="transparent" d="M659.5,-36C659.5,-36 14.5,-36 14.5,-36 8.5,-36 2.5,-30 2.5,-24 2.5,-24 2.5,-12 2.5,-12 2.5,-6 8.5,0 14.5,0 14.5,0 659.5,0 659.5,0 665.5,0 671.5,-6 671.5,-12 671.5,-12 671.5,-24 671.5,-24 671.5,-30 665.5,-36 659.5,-36" />
+<text text-anchor="middle" x="337" y="-14.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#17253b">Solid: calls / construction / rendering     Dashed: ShellHandle commands and Waker notifications</text>
+</g>
+
+</g>
+</svg>

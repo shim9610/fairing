@@ -1,14 +1,10 @@
-//! A file wallpaper (guide 09 §1) — **the crate does not decode images.**
+//! File-wallpaper integration through an application-supplied loader.
 //!
-//! What it checks: whether `[desktop] wallpaper = "file:…"` really does come alive through a loader the integrator
-//! wired in, whether **the device still starts** when there is no loader or the loader fails, and whether the
-//! wallpaper holds on to the texture.
+//! Tests check configuration, loader invocation, fallback after a reported loader
+//! error or absent loader, and retained texture ownership. A fake loader supplies
+//! most fixtures; the final test exercises the guide's decoder example with `image`.
 //!
-//! Most of the tests run on a fake loader (it makes pixels up without a decoder) — the crate not leaning on a
-//! decoder is itself what is being checked. Only the last one uses the dev-dependency `image` to see whether **the
-//! code written down in the docs really runs**.
-//!
-//! The rules are the other integration tests': written as `fairing::Result<()>` with no `panic!` and no `unwrap`.
+//! The tests use `fairing::Result<()>` without `panic!` or `unwrap`.
 
 use fairing::desktop::{Fit, Wallpaper};
 use fairing::testing::{single_level_access, Harness};
@@ -114,7 +110,7 @@ fn without_a_loader_it_falls_back_to_background() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **One wallpaper must not stop a device from starting.** The shell comes up even where the loader fails.
+/// A reported loader error falls back to the background colour and allows this shell to build.
 #[test]
 fn a_failing_loader_still_lets_the_shell_start() -> fairing::Result<()> {
     let mut h = shell_with("file:/nonexistent/fairing/nope.png", "cover", true)?;

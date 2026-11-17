@@ -11,15 +11,26 @@ production path, proof/property, bounds and negative control.
 The [Ferrocene source trial](ferrocene-source-trial.md) also supplies the existing
 source-built compiler and matching LLVM coverage workflow.
 
-The required `proofs` and `miri` jobs always evaluate their input-approval result
-before checking out or building code. A failed, canceled or skipped `inputs` job
-therefore makes these checks fail rather than silently skipping them. Configure
-`inputs` itself as a required check as well when maintaining repository rules.
+Configure `assurance-gate` as a required status check in the repository's ruleset.
+It succeeds only when every job in this workflow succeeds; failed, canceled or
+skipped prerequisites fail the aggregate. The `proofs` and `miri` jobs also check
+input approval before building. Audit, MSRV and GUI/history checks remain separate
+required checks. CodeQL uses the repository's code-scanning rule.
 
-Native test ownership is split between jobs: UI histories run their 17 widget
-tests and one deadline test; the general assurance job runs the other 58 tests.
+The callback mediation job also requires source-bound layout-token proofs and
+compiled checks that plan/root callers use the verdict before layout allocation
+and painting. Missing or stale kernel, ancestor-path or layout proof receipts
+reject the strict certificate. The workflow retains layout evidence under
+`target/assurance/layout-token/`; see the [layout contract](protected-contracts.md#execution-and-layout-types).
+
+Each Miri command runs through `verification/run_tests.py`, which retains its log
+and rejects successful commands that execute no tests. Ignored and filtered-out
+tests do not count as executed tests.
+
+Native test ownership is split between jobs: UI histories run their 18 widget
+tests and one deadline test; the general assurance job runs the other 62 tests.
 The UI job owns three mutation controls, and the general control job runs the
-other 40, including protected construction, callback-store isolation, nested wallpapers,
+other 47, including protected construction, callback-store isolation, nested wallpapers,
 typed callback dispatch and structured-configuration controls. Coverage,
 Miri, Loom and cross-OS runs intentionally re-execute relevant tests under their
 own verification conditions.
@@ -34,10 +45,10 @@ conditional induction and sequentially consistent (SC) trace lemmas, concrete at
 | Kani | 0.68.0; nightly 2026-08-21 | Forty-three harnesses: ACK/access and response correlation, pool/display, production input admission, Back dispatch, session authority, typed callback entry and retained-owner partition/operation/lifetime contracts |
 | Verus | 0.2026.10.26.d17fbd0; Rust 1.99.1 | Contracts on thirty-six production functions plus quiet-pass progress, four concrete-carrier obligations and two session-history/SC-trace lemmas |
 | Miri | nightly 2026-10-30 | Twenty-nine assurance tests, six production interaction-adapter tests, four issuer-admin tests, one typed-scope test and the production payload-cleanup test; rendering witnesses run natively |
-| Loom | 0.7.2 | Six scenarios: four Inbox scenarios and two actual session-publication/revocation scenarios |
+| Loom | 0.7.3 | Six scenarios: four Inbox scenarios and two actual session-publication/revocation scenarios |
 | proptest | 1.12.0 | CI: 512 cases per property, including shell ordering, transition traces and UI reachability; seed 20261101 |
 | cargo-fuzz | 0.13.2; libfuzzer-sys 0.4.13 | ASan: 20,000 ACK, 10,000 parser, 10,000 API and 2,000 shell inputs |
-| cargo-llvm-cov | 0.9.1 | Product and API-contract line/function/region coverage; latter requires execution of the declared production modules |
+| cargo-llvm-cov | 0.9.1 | Product and API-contract line/function/region coverage; the latter enforces reviewed per-module line/function floors in `verification/coverage-policy.json` |
 | cargo-cyclonedx | 0.5.9 | Library package dependency BOMs for default/all features on Linux x86_64 and aarch64 |
 
 Assurance tool archives and CycloneDX schemas have pinned SHA-256 values in
@@ -48,7 +59,7 @@ verifiers. Python schema-validator dependencies are pinned in
 [`requirements.txt`](../verification/requirements.txt).
 
 The unpublished `verification` workspace has its own lockfile. It reuses the
-primary lockfile's existing package versions and adds 23 tool-only packages.
+primary lockfile's existing package versions and adds 29 tool-only packages.
 The dated entries in `deps.allow`, `verification/check-inputs.py`, cargo-audit
 and the scoped `verification/deny.toml` guard those inputs. NCSA is permitted
 there for libFuzzer; the product workspace's licence policy is unchanged.
@@ -94,7 +105,7 @@ the model treats a new failure notification as terminal for the pending command.
 The Inbox harness includes the production source. Normal tests and Miri use
 `std::sync::mpsc`; `--cfg fairing_loom` selects Loom's channel implementation for
 the model tests. All four Inbox scenarios are explored without a permutation
-or preemption cap. A branch-limit violation fails the test. Loom 0.7.2 does not
+or preemption cap. A branch-limit violation fails the test. Loom 0.7.3 does not
 model the exact disconnected-channel `try_recv` result, so its result is limited
 to delivery, per-sender order and nonblocking drains in these scenarios.
 
@@ -140,10 +151,10 @@ The memory-pressure correction adds hard persistent-notification retention,
 bounded pending toasts and fallible factories/display admission. The production
 global allocator feature is withdrawn; the unpublished lab demonstrates actual
 fallible recovery and the remaining unsupported infallible abort separately.
-Local correction validation passes all 14 strict audit stages (1,835 tests passed,
+Local correction validation passed all 14 strict audit stages (1,835 tests passed,
 16 ignored), 36 native API tests, nineteen Miri tests, four Loom scenarios and
-all four mutation controls. Normal/16 MiB/64 MiB trials pass real exhausted-arena
-refusal, preallocated work and deferred display recovery. Sixteen BOMs pass
+all four mutation controls. Normal/16 MiB/64 MiB trials passed real exhausted-arena
+refusal, preallocated work and deferred display recovery. Sixteen BOMs passed
 schema/graph validation; neither product graph includes the diagnostic allocator.
 Fresh hosted artifacts provide per-commit fuzz/coverage totals rather than
 reusing the earlier allocator-prototype coverage figures.
@@ -201,7 +212,7 @@ a generated wrapping-add defect. proptest/Miri/libFuzzer compare the public
 pool and bounded queue with independent live-key and FIFO models.
 
 The Loom bounded-channel case uses the real admission atomics with a model
-channel because Loom 0.7.2 lacks sync_channel. Its channel stub miscounts failed
+channel because Loom 0.7.3 lacks sync_channel. Its channel stub miscounts failed
 sends racing receiver destruction; that race runs with real channels natively
 and under Miri. The close-after-drain Loom case checks closed admission. See
 [the contract map](api-contracts.md) for sequence limits and assumptions.
@@ -218,8 +229,9 @@ The trials exhaust the arena until a one-byte reserve fails. Inline newest-sampl
 retention, bounded borrowed-image preview, warning rasterization and 10,000
 preallocated work commands must continue with zero allocations in their measured
 interval. Other checks require actual old-text reclamation before replacement
-and omitted text/real product frost work after fallible failure. These are
-same-process CPU/storage guarantees, not an egui frame or GPU-presentation proof.
+and omitted text/real product frost work after fallible failure. The measured
+scope is same-process CPU operations and storage; egui frame allocation and GPU
+presentation are outside that scope.
 
 Kani checks both individual and bulk insertion of four arbitrary samples into a
 two-slot window, its chronological newest suffix and zero capacity. Verus checks

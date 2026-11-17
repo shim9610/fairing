@@ -2,7 +2,7 @@
 //!
 //! The cases: the `LaunchAction::OpenOverlay` gate, a status bar tap → the shade toggling plus
 //! `nav_item("osk")`, a `tile()` declaration added and removed → `overlay().tile_rect` plus `DeclRemoved`,
-//! idling at 0 fps (3 frames after a toast and a peek expire), `reduce` settling at once plus the drag
+//! no idle repaint request (3 frames after a toast and a peek expire), `reduce` settling at once plus the drag
 //! following, the back priority (the overlay → the OSK → `on_back` → pop),
 //! `Command::{Notify, Toast, ToggleOverlay, SetMotion}`, the emergency progress ring, the gesture back's
 //! progress when it is grabbed again and the release spring's settle scaling, `Toggle(wifi.enabled)` judging
@@ -89,8 +89,9 @@ fn open_shade(h: &mut Harness) -> fairing::Result<()> {
 
 // ------------------------------------------------------- the overlay gate
 
-/// `OpenOverlay` goes through the `overlay.open` gate. At level 2 with top it does not open and gives
-/// `UnlockRequested`; at level 1 it opens. `back()` closes the shade first.
+/// `OpenOverlay` is denied to the initial viewer in a two-level legacy table with
+/// `default_gate = "top"`, emitting `UnlockRequested`. A single-level legacy table
+/// allows it, and `back()` closes the shade first.
 #[test]
 fn open_overlay_respects_the_overlay_open_gate() -> fairing::Result<()> {
     let mut h = test_shell(access_config(&["viewer", "admin"], Some("top")), |_| {})?;
@@ -185,13 +186,13 @@ fn custom_osk_nav_item_toggles_the_osk() -> fairing::Result<()> {
             }),
         );
     })?;
-    h.shell.nav_bar_mut().style = NavStyle::Buttons {
+    h.shell.set_nav_style(NavStyle::Buttons {
         items: vec![
             NavItem::Back,
             NavItem::Home,
             NavItem::Custom("osk".to_owned()),
         ],
-    };
+    });
     h.shell.launch(LaunchAction::open("manual"));
     h.frames(3);
     let item = need(
@@ -270,9 +271,9 @@ fn tile_decl_add_remove_and_events() -> fairing::Result<()> {
     Ok(())
 }
 
-// ---------------------------------------------------------- idle at 0 fps
+// ---------------------------------------------------------- idle repaint requests
 
-/// Idle at 0 fps: 3 frames after a toast expires, and after a hidden screen's peek expires,
+/// Three frames after a toast expires, and after a hidden screen's peek expires,
 /// `repaint_requested == false` (the two-frame delay rule from the harness's comment).
 #[test]
 fn idle_after_toast_and_peek() -> fairing::Result<()> {
@@ -807,9 +808,11 @@ fn gesture_back_regrab_confirms_with_the_combined_progress() -> fairing::Result<
 /// memory view — it does not turn an already-on Mock Wi-Fi on again on a fresh shell. An integrator's key goes by
 /// the memory view (`None → true`).
 #[test]
+#[cfg(feature = "mock")]
 fn toggle_uses_the_backend_state_for_builtin_keys() -> fairing::Result<()> {
     let mut h = test_shell(single_level_access(), |_| {})?;
-    h.shell.services_mut().wifi = Box::new(fairing::services::mock::MockWifi::new());
+    h.shell
+        .set_wifi_backend(fairing::services::mock::MockWifi::new());
     h.frames(2);
     assert!(h.shell.services().wifi.enabled(), "the Mock starts on");
     let _ = h.shell.poll_events();
@@ -845,6 +848,7 @@ fn toggle_uses_the_backend_state_for_builtin_keys() -> fairing::Result<()> {
 /// The head of the default `[status_bar] right` is `status.notifications` — the badge is drawn without the demos
 /// and the tests putting it in by hand. The order on the right is guide 03's example as it is.
 #[test]
+#[cfg(feature = "mock")]
 fn status_notifications_is_in_the_default_right_slot() -> fairing::Result<()> {
     // The Null backends hide the Wi-Fi, BT and battery items (they report no capability), so it is built with Mocks.
     let mut cfg = single_level_access();

@@ -11,11 +11,11 @@ const TREE_FORMAT: &str = "{p}|{l}";
 const HEADER: &str = "\
 # deps.allow — the approved dependency allowlist
 #
-# Every crate appearing in the tree (transitive dependencies included) has to be here. Without it the audit gate fails.
+# Every crate in the selected normal-dependency graph must be approved here, including transitive dependencies.
 # Additions go only through the approval procedure in CONTRIBUTING.md (a PR review).
 #
 #   Check:   cargo xtask deps-check
-#   Refresh: cargo xtask deps-check --write   (dumps the current tree; the existing lines' reasons are kept)
+#   Refresh: cargo xtask deps-check --write   (rewrites the selected graph; matching rows keep reasons)
 #
 # Lines starting with '#' and blank lines are ignored. The column separator is two or more spaces, and
 # only the last column (the reason) may contain two spaces within it.
@@ -24,9 +24,12 @@ const HEADER: &str = "\
 #
 # version-req: =X.Y.Z (exact) · ^X.Y[.Z] (caret; 0.x pins the minor) · ~X.Y[.Z] (pins the minor) · * (any)
 #              With no prefix it is read as a caret. Even for the same crate, a different major (a
-#              different minor for 0.x) is a separate line. `--write` pins only egui and eframe at
-#              =X.Y.Z and writes the rest as carets — so that a transitive dependency's
-#              patch update does not break the gate.
+#              different minor for 0.x) is a separate line. For new entries, `--write` exact-pins
+#              egui, eframe, 0.0.z versions and prereleases; other new entries use carets.
+#              Matching existing approvals retain their reviewed requirement and reason.
+#              The dump selects normal edges in the main workspace; build/dev edges and the
+#              separate verification workspace are outside this selection. Preserve their needed
+#              approval rows separately when refreshing: --write does not emit unselected rows.
 # license:     it has to match cargo tree's {l} value exactly as a string, after whitespace normalisation.
 # reason:      leave the approver and the date with the reason, as `(approver, YYYY-MM-DD)`.
 #              A line with no date, or with a `TODO` left in, counts as unapproved and the gate fails.
@@ -84,8 +87,8 @@ pub(crate) fn parse(text: &str) -> Result<Vec<Entry>> {
     Ok(entries)
 }
 
-/// Only these two direct dependencies are pinned exactly at `=X.Y.Z` (to control the MSRV
-/// and API drift). Every other direct dependency and every transitive one is written as a caret.
+/// These dependencies are always pinned at `=X.Y.Z` to control MSRV and API drift.
+/// Other names use `VersionReq::caret`, which also pins `0.0.z` and prereleases exactly.
 const EXACT_PIN: [&str; 2] = ["egui", "eframe"];
 
 /// The version-req `--write` puts on a new line.
@@ -211,7 +214,8 @@ fn report(packages: &[Pkg], entries: &[Entry], used: &[bool], violations: &[Stri
     );
 }
 
-/// `--write`: build or refresh `deps.allow` from the current tree. The existing lines' reasons are kept.
+/// `--write`: replace the file with the selected normal-dependency graph. Matching rows keep
+/// their reviewed requirement and reason; approvals outside that graph are not emitted.
 pub(crate) fn write(root: &Path) -> Result<()> {
     let packages = tree::collect_union(root, TREE_FORMAT)?;
     let file = path(root);
@@ -384,7 +388,7 @@ winnow                 ^1            MIT OR Apache-2.0
 
     #[test]
     fn new_lines_use_the_design_version_rule() -> Result<()> {
-        // Only egui and eframe are pinned exactly.
+        // In this fixture, egui and eframe are exact pins; the other versions use caret ranges.
         assert_eq!(
             default_req("egui", &Version::parse("0.36.1")?).to_string(),
             "=0.36.1"

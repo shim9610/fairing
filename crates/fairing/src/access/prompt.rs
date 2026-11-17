@@ -7,7 +7,8 @@
 //! ([`Authenticator::methods`](super::Authenticator::methods)): the [`PinPad`] for a PIN, the
 //! [`PatternPad`] for a pattern, a user and a secret field for a password — the on-screen
 //! keyboard rises **above** the prompt for them — and a waiting card for an external method. A
-//! refusal is shown in the authenticator's own words; the shell never words one.
+//! response of [`AuthOutcome::Denied`](super::AuthOutcome::Denied) shows the authenticator's
+//! supplied message.
 //!
 //! # One column, no stray parts
 //!
@@ -30,9 +31,8 @@
 //! flag, and the title says "Checking…" while it is up. The keys are not held for it: the shell
 //! sets no time limit of its own, and a keypad held over an answer that never comes would be a
 //! lock screen nobody gets past. A new attempt takes the flag down with
-//! [`Authenticator::cancel`](super::Authenticator::cancel) and goes in fresh. The flag only goes
-//! down with an answer or with `cancel` — everything here runs on the UI thread, so there is
-//! nothing to race and nothing to time out.
+//! [`Authenticator::cancel`](super::Authenticator::cancel) and goes in fresh. The flag is cleared by a matching answer or by `cancel`; asynchronous outcomes
+//! remain subject to the shell's request-correlation checks.
 //!
 //! # Drawn your way
 //!
@@ -346,7 +346,7 @@ impl Prompt {
         self.painters.unlock = Some(painter);
     }
 
-    /// Whether it is up (and taking every input).
+    /// Whether the prompt is open.
     pub(crate) fn is_open(&self) -> bool {
         self.open.is_some()
     }
@@ -733,8 +733,8 @@ fn draw(
         .fade_in(false)
         .show(ctx, |ui| {
             ui.set_clip_rect(screen);
-            // Everything below is behind glass: the backdrop takes every press that misses the
-            // panel, and does nothing with it — a PIN is deliberate, and so is leaving.
+            // While live, the backdrop registers a click target across the screen beneath the
+            // panel. Clicking that target does not dismiss the prompt.
             let sense = if look.live {
                 Sense::click()
             } else {

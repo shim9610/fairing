@@ -78,8 +78,8 @@ fn a_card_on_a_screen_is_surface_variant() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **On a rail's page the same card is `Surface`.** The page panel is `SurfaceVariant`, and a
-/// card of the panel's own colour has no edge at all — the console's groups had none.
+/// On a rail's `SurfaceVariant` page, a Filled card uses Surface so its fill differs
+/// from the surrounding panel. The test inspects the fill role.
 #[test]
 fn a_card_on_a_rail_page_is_surface() -> fairing::Result<()> {
     let mut h = drawing((), |ui, cx| {

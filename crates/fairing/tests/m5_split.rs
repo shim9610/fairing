@@ -649,7 +649,7 @@ fn a_result_goes_to_the_parent_in_its_own_pane() -> fairing::Result<()> {
     Ok(())
 }
 
-/// A screen on show that keeps the display awake keeps it awake whichever pane has the focus.
+/// A `keep_awake` screen in either visible pane requests idle inhibition, independent of focus.
 #[test]
 fn keep_awake_holds_from_either_pane() -> fairing::Result<()> {
     let seen: Seen = Rc::default();
@@ -794,7 +794,7 @@ fn the_panes_take_a_press_while_the_divider_settles() -> fairing::Result<()> {
     Ok(())
 }
 
-/// A8's timings are `[motion.panes]` and A10's `[motion.overview]`, like every other motion.
+/// A8 uses [motion.panes] timings and A10 uses [motion.overview] timings.
 #[test]
 fn the_split_and_overview_timings_are_motion_tokens() -> fairing::Result<()> {
     let config = ShellConfig::from_toml(

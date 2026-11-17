@@ -14,6 +14,7 @@ kiosk    kiosk          1280x2700  --size=1080x2560 --panel-mm=380x900
 counter  kiosk          1400x1000  --size=1280x800 --panel-mm=217x136
 compact  kiosk          1400x1000  --size=480x800 --panel-mm=56x94
 chrome   custom_chrome  1280x800   --size=1024x600
+protected protected     1280x800   --size=1024x600
 palette  palette_sheet  1500x5900  --panel-mm=305x381
 "
 

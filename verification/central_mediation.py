@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Discover protected contracts from rustc and certify the common admission cut.
+"""Check compiler-discovered protected payload forwarding through the common admission cut.
 
 The single runtime declaration macro emits carrier/declaration markers. No
 per-element type/protocol lists are maintained by this checker.
@@ -30,6 +30,61 @@ def kernel_entry(body):
     visibility = body['visibility']
     private_to_kernel = visibility == KERNEL.removesuffix('::') or visibility.startswith(KERNEL)
     return kernel(body['canonical_id']) and not body['closure'] and not private_to_kernel
+
+
+# Standard-library consumers whose callable argument runs at most once. These
+# are contracts for forwarding semantics, not a list of protected payloads.
+ONCE_FORWARDERS = {
+    'core::option::Impl::map',
+    'core::option::Impl::and_then',
+    'core::bool::Impl::then',
+}
+
+
+def bridge_linearity(bodies, adjacency, call_targets, sinks, forwarding):
+    """Count possible payload entries along each bridge's control-flow path.
+
+    Summaries include nested closures/private helpers. Unknown external consumers
+    may invoke a supplied callable repeatedly, even without a loop in local MIR.
+    Calls through the admission cut have no unguarded payload summary.
+    """
+    reverse = defaultdict(set)
+    for source, targets in adjacency.items():
+        for target in targets:
+            reverse[target].add(source)
+    may_enter = set(sinks)
+    queue = deque(may_enter)
+    while queue:
+        for source in reverse[queue.popleft()]:
+            if source not in may_enter:
+                may_enter.add(source)
+                queue.append(source)
+    errors = []
+    for name, body in bodies.items():
+        if not kernel(body['canonical_id']) or not body['closure']:
+            continue
+        entries = set()
+        for block in body['blocks']:
+            node = (name, block['block'])
+            if node in sinks or call_targets[node] & may_enter:
+                entries.add(block['block'])
+            if node in forwarding and forwarding[node] not in ONCE_FORWARDERS:
+                errors.append({'kind': 'unknown-bridge-forwarding', 'body': name,
+                               'block': block['block'], 'target': forwarding[node]})
+        for entry in entries:
+            pending = list(body['blocks'][entry]['successors'])
+            seen = set()
+            while pending:
+                current = pending.pop()
+                if current in entries:
+                    errors.append({'kind': 'kernel-adapter-cycle' if current == entry
+                                   else 'multiple-protected-entries',
+                                   'body': name, 'blocks': [entry, current]})
+                    break
+                if current not in seen:
+                    seen.add(current)
+                    pending.extend(body['blocks'][current]['successors'])
+    return errors
 
 
 def context_contracts(bodies):
@@ -232,6 +287,12 @@ def analyze(data):
         return values
 
     adjacency = defaultdict(set)
+    call_targets = defaultdict(set)
+    guard_targets = defaultdict(set)
+    forwarding = {}
+    def call_edge(node, target):
+        adjacency[node].add(target)
+        call_targets[node].add(target)
     sinks = {}
     unsupported = []
     for name, body in bodies.items():
@@ -249,6 +310,13 @@ def analyze(data):
                 # A new adapter cannot authorize itself with invoke(true, ...).
                 if name != KERNEL + 'invoke':
                     errors.append({'kind':'unproved-admission-cut','body':name,'block':block['block']})
+                for kind, definition, _ in targets(name, block['argument_objects'][1]):
+                    if kind == 'definition' and definition in bodies:
+                        guard_targets[node].add((definition, 0))
+                    else:
+                        errors.append({'kind': 'unresolved-admission-operation', 'body': name})
+                # Keep the key for an empty/unresolved operation: it must fail.
+                guard_targets[node]
                 continue
             if block.get('canonical_trait') in PROTOCOLS:
                 sinks[node] = 'application-protocol'
@@ -263,26 +331,28 @@ def analyze(data):
                     if kind == 'unknown' or protocol in PROTOCOLS:
                         sinks[node] = 'application-callable'
                     elif definition in bodies:
-                        adjacency[node].add((definition, 0))
+                        call_edge(node, (definition, 0))
                     else:
                         sinks[node] = 'unresolved-function-item'
             elif block.get('indirect_function'):
                 sinks[node] = 'unresolved-function-pointer'
             elif callee:
-                adjacency[node].add((callee, 0))
+                call_edge(node, (callee, 0))
             else:
                 # External code may call function arguments. This is conservative
                 # forwarding, not an assumption that std/UI bodies are verified.
                 for objects in block.get('argument_objects', []):
                     for kind, definition, protocol in targets(name, objects):
                         if kind == 'definition' and definition in bodies:
-                            adjacency[node].add((definition, 0))
+                            call_edge(node, (definition, 0))
+                            forwarding[node] = block.get('canonical_callee')
                         elif protocol in PROTOCOLS:
                             sinks[node] = 'externally-forwarded-protocol'
                 callable_parameters = set(block.get('callable_generic_parameters', []))
                 for argument in block.get('generic_objects', []):
                     if argument['index'] not in callable_parameters:
                         continue
+                    forwarding[node] = block.get('canonical_callee')
                     possible = targets(name, argument['objects'])
                     if not possible or any(kind == 'unknown' for kind, _, _ in possible):
                         sinks[node] = 'unresolved-external-callable-forwarding'
@@ -300,22 +370,12 @@ def analyze(data):
         while previous[path[-1]] is not None:
             path.append(previous[path[-1]])
         bypasses.append({'kind': sinks[node], 'path': list(reversed(path))})
-    # An adapter is one protected entry, not a reusable authorization for a
-    # sequence or loop of payload calls. Application bodies outside the monitor
-    # retain their stated effects boundary; monitor bridges must be linear.
-    for name,body in bodies.items():
-        if not kernel(body['canonical_id']) or not body['closure']:continue
-        entries=[block['block'] for block in body['blocks'] if block['kind']=='call' and
-                 (block.get('canonical_trait') in PROTOCOLS or block.get('callable_trait') or block.get('indirect_function'))]
-        if len(entries)>1:errors.append({'kind':'multiple-protected-entries','body':name,'blocks':entries})
-        for entry in entries:
-            pending=list(body['blocks'][entry]['successors']);seen=set()
-            while pending:
-                current=pending.pop()
-                if current==entry:
-                    errors.append({'kind':'kernel-adapter-cycle','body':name,'block':entry});break
-                if current in seen:continue
-                seen.add(current);pending.extend(body['blocks'][current]['successors'])
+    errors.extend(bridge_linearity(bodies, adjacency, call_targets, sinks, forwarding))
+    from dispatch_effects import check as check_effects
+    errors.extend(check_effects(bodies, call_targets, sinks, guard_targets,
+                  {name for name, body in bodies.items() if kernel(body['canonical_id']) and body['closure']},
+                  {(name, block['block']) for name, body in bodies.items() for block in body['blocks']
+                   if block.get('canonical_trait') == 'fairing::access::AccessPolicy'}))
     # Unsupported code outside the reachable kernel graph is inventoried, not
     # silently called safe. An unsupported reachable node rejects the cut.
     unsupported_reachable = sorted(set(unsupported) & set(previous))
@@ -344,6 +404,8 @@ def analyze(data):
     errors.extend(kernel_exports(bodies,types))
     resource_errors,resource_contract=context_isolation(bodies,types);errors.extend(resource_errors)
     observer_errors,observer_contract=observer_bindings(bodies,types);errors.extend(observer_errors)
+    from layout_bindings import check as check_layout_bindings
+    layout_errors, layout_contract=check_layout_bindings(bodies);errors.extend(layout_errors)
     exports, transfers=payload_boundaries(data,{'pre_admission_blocks':sorted(previous)})
     errors.extend(exports)
     metadata={KERNEL+'protected::PermissionBinding'}
@@ -358,10 +420,16 @@ def analyze(data):
     edges={(source,target) for source,targets in adjacency.items() for target in targets}
     # Only protected protocol/callable payload entries are sinks. Ordinary
     # library closures remain graph edges, not automatically executed payloads.
-    certificate=m.solve(data[0].get('_profile','all'),'protected-contracts',sorted(roots),nodes,edges,list(sinks))
-    if certificate['solver']!='unsat':errors.append({'kind':'routing-certificate-not-unsat','solver':certificate['solver']})
+    # Definite structural/effect violations cannot be certified regardless of
+    # reachability. Preserve the rejection and avoid solving an already invalid
+    # candidate. Accepted programs still require the independent UNSAT query.
+    if errors or bypasses or unsupported_reachable:
+        certificate={'solver':'not-run','reason':'structural-or-effect-rejection'}
+    else:
+        certificate=m.solve(data[0].get('_profile','all'),'protected-contracts',sorted(roots),nodes,edges,list(sinks))
+        if certificate['solver']!='unsat':errors.append({'kind':'routing-certificate-not-unsat','solver':certificate['solver']})
     return {'status': 'registered-payload-confinement-checked' if not errors and not bypasses and not unsupported_reachable else 'rejected',
-        'resource_contract':resource_contract, 'observer_contract':observer_contract,
+        'resource_contract':resource_contract, 'observer_contract':observer_contract, 'layout_contract':layout_contract,
         'routing_certificate':certificate,
         'errors': errors, 'unguarded_payload_entries': bypasses, 'unsupported_reachable': unsupported_reachable,
         'opaque_payload_fields': stores, 'protocol_references': references, 'kernel_roots': sorted(roots),

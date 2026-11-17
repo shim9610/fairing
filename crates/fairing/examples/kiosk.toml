@@ -14,7 +14,7 @@ enabled = true
 items = ["back"]
 
 [desktop]
-# It uses neither a rail nor a grid. It boots straight into the idle screen and the customer never sees a desktop.
+# Start at the idle screen with screen-owned navigation and no desktop rail.
 rail = "none"
 
 [access]
@@ -25,9 +25,8 @@ default_gate = "guest"
 
 # ── The brand palette ────────────────────────────────────────────────────────
 #
-# The crate's default accent is a cool blue (#4C8DFF), and with the shop's photography a warm amber, leaving it
-# as it is has the buttons alone lift off the screen. The brand goes on **by overriding the role colours alone** —
-# not one line of the layout or the widgets changes (guide 04 §2).
+# Example palette overrides coordinate the control colours with the shop artwork
+# (guide 04 §2). Application layout and asset choices are defined in kiosk.rs.
 [theme.palette]
 background      = "#120E0A"   # a deep brown-black, close to roasting beans
 surface         = "#1C1611"
@@ -44,5 +43,6 @@ danger          = "#D9634E"
 pressed         = "#FFFFFF14"
 
 [motion]
-# The mid-transition frames have to show the tweens, so it is not reduced. Turn it on if a real device makes anyone queasy.
+# Mid-transition screenshots need tweens enabled. Evaluate the reduced-motion
+# setting for the integrating product and its users.
 reduce = false

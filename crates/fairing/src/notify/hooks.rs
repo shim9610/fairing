@@ -228,7 +228,8 @@ pub type HeadsUpPainter = Box<dyn FnMut(&mut egui::Ui, &mut HeadsUpCx<'_>)>;
 
 /// What a heads-up layout places the banner with (rung 4).
 ///
-/// The rect comes placed the built-in way — centred at the top of `screen`, at most 560 wide —
+/// The rect comes placed the built-in way — centred at the top of `screen`, with
+/// width bounded by the available area and four thirds of `metrics.toast_width` —
 /// at rest. The layout moves it and may change its width; its **height stays the banner's own**
 /// (its content, never below the token), and it still comes down from above its rect and leaves
 /// upwards. A rect the layout leaves no width (`Rect::NOTHING`) keeps the banner off the screen,

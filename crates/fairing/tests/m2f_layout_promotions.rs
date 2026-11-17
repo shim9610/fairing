@@ -1,19 +1,10 @@
-//! The three that **came up** into the crate from the kiosk harness (harness findings 2 · 4 · 6).
+//! Layout-helper regressions from the kiosk example.
 //!
-//! What this file holds to is not the values but **why they came up**. All three were places that had an integrator
-//! writing the same thing again, so a regression has the examples quietly reviving the old code.
+//! Tests check Grid column caps and vertical filling, shared label fitting,
+//! Normal-button boundary strokes, and vertical reach-band layout. Measurements
+//! come from the drawn geometry rather than a duplicate of its layout formula.
 //!
-//! - [`Grid::max_columns`](fairing::layout::Grid::max_columns) — without it, the five lines that work the minimum
-//!   cell back out of the width were copied into six places.
-//! - [`fit_size`](fairing::layout::fit_size) — shrinking per cell gives sibling tiles text at different sizes from
-//!   each other. It did not show in Korean and did show once switched to English.
-//! - The `ButtonKind::Normal` border — a button disappeared on a card of the same colour, and **two examples,
-//!   knowing nothing of each other**, each wrote their own way round it.
-//! - [`Grid::fill_height`](fairing::layout::Grid::fill_height) — the grid did not use the vertical space left, so
-//!   the bottom half of a panel stood on end was empty outright. Four places measured
-//!   `height left / row count / row_height` themselves and sat it once more with `add_space`.
-//!
-//! The rules are the other integration tests': written as `fairing::Result<()>` with no `panic!` and no `unwrap`.
+//! The tests use `fairing::Result<()>` without panic! or unwrap.
 
 #![cfg(feature = "mock")]
 
@@ -184,19 +175,9 @@ fn fit_size_picks_one_size_for_every_sibling() -> fairing::Result<()> {
     Ok(())
 }
 
-/// Harness finding 6: **a `Normal` button shows even on a card of the same colour.**
-///
-/// The background used to be `SurfaceVariant` while a [`layout::group`] card was `SurfaceVariant` too, so the button
-/// disappeared outright. It carries an edge — looked at through whether the shapes drawn hold **a stroke where the
-/// button is**. `Primary` has a strong enough ground not to carry one.
-///
-/// **The edge is `Muted`, not `Outline`.** It was `Outline` until the control vocabulary, and this
-/// assertion passed the whole time while the border it asserted was not visible: measured against
-/// the `SurfaceVariant` card it sits on, `Outline` is 1.18 / 1.50 / 1.15 / 1.31 across the four
-/// shipped palettes — under the 1.5 where an edge starts to exist at all. `Muted` is 5.08 / 5.95 /
-/// 4.93 / 4.03. A test that checks a stroke is *drawn* and not that it can be *seen* is exactly how
-/// a fix stays broken, so the role is named here rather than left to whatever the button happens
-/// to use.
+/// A Normal button draws a `ControlEdge` stroke when its face matches the card.
+/// A Primary button has no corresponding border. The test inspects the painted
+/// stroke role; palette contrast is checked separately.
 #[test]
 fn a_normal_button_draws_an_outline_but_a_primary_one_does_not() -> fairing::Result<()> {
     fn stroked(kind: ButtonKind) -> fairing::Result<bool> {
@@ -316,9 +297,8 @@ fn fill_height_grows_the_cell_but_stops_at_the_aspect_cap() -> fairing::Result<(
 /// Four things — does it split only on a panel stood on end, does it back off at a height that cannot give two
 /// bands, does it clamp the ratio, and does it measure the height it gives back from **the space left**.
 ///
-/// The rule that the judgement goes by the Pane (the same as `split_width`) is not measured here — inside a screen
-/// the Pane and the space left differ only by the inset, and a situation where the two give different answers
-/// cannot be made headless. That rule is the function's docs' to carry.
+/// This fixture does not distinguish a decision based on Pane size from one based on
+/// remaining Ui space. It does not test that part of `split_height`'s contract.
 #[test]
 fn split_height_bands_a_standing_panel_but_not_a_lying_one() -> fairing::Result<()> {
     /// `(the judgement, the height left at that moment)`.

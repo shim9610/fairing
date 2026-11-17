@@ -1,7 +1,9 @@
 # 05. Access control
 
 For issuer-owned, continuously checked sessions with independent operation permissions,
-see [session tokens](../session-tokens.md). Enable `access.session_tokens` explicitly;
+see [session tokens](../session-tokens.md) and the
+[security architecture](../security-architecture.md) for ownership, admission and
+session-lifecycle diagrams. Enable `access.session_tokens` explicitly;
 the level/PIN behavior below describes the default legacy mode.
 
 For mandatory typed application declarations, use `build_protected` and
@@ -13,14 +15,13 @@ proof and automatic protected-route check. The
 [application metadata checker](../permission-metadata-check.md) checks supported
 permission getters/mappers in an integrator's workspace.
 
-## 0. The principle, and what exists today
+## 0. Responsibilities
 
-fairing keeps no role names like "guest" and "admin", and no hash function, inside
-the crate. How many levels there are, what they are called, which feature sits at
-which level, and how credentials are stored and checked — all of that is yours.
-What the crate does is **enforce** the gate decision, and — if you let it — draw
-the prompt that asks for a credential. This page is about what the crate does for
-you.
+Applications define level names, feature-to-level assignments and credential
+verification/storage. Fairing supplies level/gate coordination and the reference
+clear-text PIN/pattern table; production credential handling can be supplied through
+an application `Authenticator`.
+Fairing enforces gate decisions and can draw the credential prompt.
 
 | The crate does | You decide |
 |---|---|
@@ -35,7 +36,7 @@ Three modes decide how much of that the shell does:
 |---|---|---|
 | `prompt` (the default) | `AccessEvent::UnlockRequested`, **and the shell's prompt opens** | Your `Authenticator` — or `PinTable`, built from `[access.pin_table]` |
 | `routing` | `AccessEvent::UnlockRequested`, and nothing is ever drawn | You, entirely (§6) |
-| `off` | Nothing fails — every gate passes | Nobody |
+| `off` | Legacy gate checks pass while the shell is operational; invalid with token mode | Nobody |
 
 `prompt` needs something to ask. With no `[access.pin_table]` PINs and no
 `ShellBuilder::authenticator`, there is nothing to draw and it behaves as
@@ -60,12 +61,11 @@ caught at start-up.
 | Error | When |
 |---|---|
 | `levels` is empty | `[access] levels = []` |
-| Two or more levels with no `default_gate` | `levels.len() >= 2` and `default_gate` omitted. With a single level everything passes anyway, so the check is skipped |
+| Two or more levels with no `default_gate` | `levels.len() >= 2` and `default_gate` omitted. An operational legacy single-level shell bypasses level checks, so this configuration check is skipped |
 | `default_gate`, `initial` or an `[access.gates]` value is not in `levels` | Typo protection. `"top"` and `"bottom"` are reserved inside `default_gate`. Gate assignments resolve an actual level name first; without one, those two names are aliases for the highest/lowest level |
 
 All three make `Shell::new` / `Shell::builder(..).build(ctx)` return
-`Err(Error::Config(..))`. The device refuses to start rather than come up with the
-wrong level table.
+`Err(Error::Config(..))`, so shell construction stops with a configuration error.
 
 ```rust
 use fairing::ShellConfig;
@@ -84,9 +84,9 @@ levels = ["viewer", "maintainer"]
 }
 ```
 
-In an operational shell with one level, `Access::allows` returns early and every
-gate passes, regardless of `mode`. Fault quarantine denies gates even in this
-configuration. A device that needs no authentication says so in one line:
+In an operational legacy shell with one level, `Access::allows` returns early and
+every gate passes, regardless of `mode`. Token mode requires explicit grants.
+Fault quarantine denies gates even in this configuration. A device that needs no authentication says so in one line:
 
 ```toml
 [access]
@@ -101,11 +101,11 @@ levels = ["default"]   # no authentication; mode is irrelevant
 - Every screen, action, status item, nav item and tile you declare **uses its own
   id as its gate name** by default. `.gate("shared-name")` lets several items
   share one gate. The declaration APIs themselves are in
-  [02 Screens](02-screens.md) and [03 Chrome](03-chrome.md); this page is only
-  about the gate side.
+  [02 Screens](02-screens.md) and [03 Chrome](03-chrome.md).
 - No gate (`gate = None`) does not mean "always allowed" — it means **"use the id
-  as the gate"**. For genuinely always-allowed, assign it to the lowest level in
-  `[access.gates]`, or arrange for `default_gate = "bottom"` to catch it.
+  as the gate"**. For a legacy gate reachable at the lowest level under the default `LevelPolicy`,
+  assign that level in `[access.gates]` or set `default_gate = "bottom"`. A custom policy
+  or fault quarantine can still deny it.
 
 ### 2.1 Built-in gates
 
@@ -116,13 +116,13 @@ matching screen or feature exists at all.
 | Gate | Enforced | Warned | Notes |
 |---|:---:|:---:|---|
 | `overlay.open` | ✔ | ✔ | Opening the shade. `LaunchAction::OpenOverlay`, the edge swipe and the status-bar tap all pass through this one gate |
-| `chrome.emergency` | ✔ | ✔ | The two-second top-corner long press that survives an edge guard |
+| `chrome.emergency` | ✔ | ✔ | The top-corner hold (`emergency_ms`, two seconds by default) that remains recognized with an edge guard |
 | `status.clock`, `status.wifi`, `status.bluetooth`, `status.battery`, `status.notifications`, `status.user`, `status.lock`, … | ✔ (render filter) | ✔ | Built-in status-bar item ids. Under `default_gate = "top"`, forgetting to assign these empties the whole bar — which is why they usually go to `bottom`. `status.ethernet`, `status.volume` and `status.brightness` also need a backend that reports the capability (see §2.2) |
 | `tile.wifi`, `tile.bluetooth`, `tile.brightness`, `tile.lock`, … (all of `overlay::BUILTIN_IDS`) | ✔ (render filter) | ✘ | Quick-settings tile ids. **Unlike status items these are not in the warning list** — assign one wrong and it just disappears |
-| `settings.wifi`, `settings.bluetooth`, `settings.display`, `settings.sound`, `settings.locale`, `settings.power`, `settings.network`, `settings.network.edit`, `settings.datetime`, `settings.datetime.set`, `settings.credentials` | ✔ | ✔ | These screens **do exist** — they ship with the crate behind the `settings` feature (`settings.credentials` only where the authenticator manages its entries, §5.4), but you **opt in** by calling `fairing::settings::add_all(&mut shell, &SettingsConfig::default())`. Narrow the set with `SettingsConfig::only([..])` or `.without(id)`, or replace one wholesale by declaring your own screen with the same id. A screen whose backend reports no capability is skipped |
+| `settings.wifi`, `settings.bluetooth`, `settings.display`, `settings.sound`, `settings.locale`, `settings.power`, `settings.network`, `settings.network.edit`, `settings.datetime`, `settings.datetime.set`, `settings.credentials` | ✔ | ✔ | These ids include built-in screens and the `settings.network.edit` / `settings.datetime.set` operation gates. The screens ship behind the `settings` feature (`settings.credentials` only where the authenticator manages its entries, §5.4), but you **opt in** by calling `fairing::settings::add_all(&mut shell, &SettingsConfig::default())`. Narrow the set with `SettingsConfig::only([..])` or `.without(id)`, or replace one wholesale by declaring your own screen with the same id. Wi-Fi, Bluetooth, network and power eligibility depends on the relevant capability. Display, Sound and other candidates without capability requirements remain eligible; `ignoring_capabilities()` bypasses capability filtering |
 | `nav.recents`, `workspace.split` | ✔ | ✔ | The recent screens, and **entering** a split ([03 §2.3](03-chrome.md#23-recent-screens-and-the-split)). Short of one, a press asks for an unlock; short of `workspace.split`, the cards carry no split buttons and `cx.open_in_other_pane` opens in the same pane. Going back from the cards, or to one pane, is never gated |
-| `desktop.edit` | ✘ (the feature is M6) | ✔ | Desktop editing. Reserved — there is nothing to tap yet |
-| `session.lock`, `session.logout` | ✘ | ✔ | Reserved names. Locking and logging out are always allowed; the controls that do them carry gates of their own (`tile.lock`, `status.lock`). An unlock from the lock screen reports `session.lock` (§8) |
+| `desktop.edit` | ✘ | ✔ | Desktop editing is unimplemented; the name is reserved |
+| `session.lock`, `session.logout` | ✘ | ✔ | Reserved names. These operations do not require an additional gate named `session.lock` or `session.logout`; the controls that do them carry gates of their own (`tile.lock`, `status.lock`). An unlock from the lock screen reports `session.lock` (§8) |
 
 `settings.home` and `settings.about` use their screen ids as gates. Assign them
 to the lowest level in legacy mode if they should be generally reachable; token
@@ -215,7 +215,7 @@ fn custom_policy() -> BusinessHoursPolicy {
 }
 ```
 
-Install it with `access_mut()`:
+Install it with `set_policy(..)`:
 
 ```rust
 # use fairing::access::{AccessPolicy, Subject};
@@ -225,35 +225,37 @@ Install it with `access_mut()`:
 # }
 # fn custom_policy() -> BusinessHoursPolicy { BusinessHoursPolicy }
 # fn install(shell: &mut fairing::Shell) {
-shell.access_mut().set_policy(Box::new(custom_policy()));
+shell.set_policy(Box::new(custom_policy()));
 # }
 ```
 
 To use a level table other than the one `fairing.toml` built, just hold your own
-inside the policy — the shell delegates the whole decision, so whether
-`[access.gates]` matters at all is up to you.
+inside the policy. When legacy level checks are active, the shell delegates the
+decision, so the policy decides whether `[access.gates]` matters. Legacy `off` mode
+and a single-level table bypass the policy. In token mode, an installed policy
+can narrow issuer grants but cannot add authority.
 
-Open screen gates are revalidated every frame, before commands and again after backend
+Open screen gates are revalidated during operational state updates, before commands and again after backend
 polling. Replacing a policy or changing a dynamic policy can close a screen without
 re-announcing the subject or restarting its session timers. The shade and overview obey
-their opening gates too and disappear immediately on revocation, including during a
-closing animation. A policy that changes while the app is asleep still needs the
+their opening gates too and are removed at that revalidation when authority is
+revoked, including during a closing animation. A policy that changes while the app is asleep still needs the
 integrator to wake the UI when the change takes effect.
 
 ## 5. The shell's prompt and the `Authenticator`
 
-In `mode = "prompt"` a failed gate opens a modal over the screen. It draws only
+In `mode = "prompt"`, when an authenticator offers a prompt method, a failed gate opens a modal over the screen. It draws only
 what the authenticator offers, hands what was entered to it, and acts on the
 answer. It follows the palette and the tokens, and two painters redraw what the way in stands
 on — the lock screen's ground and clock, the prompt's backdrop and card
-([04 §10.6](04-customization.md#106-the-lock-screen-and-the-unlock-prompt)). The way in is still
-the shell's, drawn over them, and so is everything this section describes. For a flow of your
-own, use `routing` (§6) and build the screen from `PinPad` and `PatternPad`.
+([04 §10.6](04-customization.md#106-the-lock-screen-and-the-unlock-prompt)).
+The shell owns the prompt controls. For an application-owned flow, use `routing`
+(§6) and build the screen from `PinPad` and `PatternPad`.
 
 ```text
 tap a locked item
    └─▶ policy.allows() = false
-   └─▶ AccessEvent::UnlockRequested { gate, then }      (always — for the audit log)
+   └─▶ AccessEvent::UnlockRequested { gate, then }      (failed-gate request event)
    └─▶ the prompt: Authenticator::methods() → a keypad, a pattern, a password card, a badge wait
            Authenticator::submit(credential, now)
              Granted(subject) → the session takes it (§7) → `then` runs through Shell::launch again
@@ -263,18 +265,20 @@ tap a locked item
                        and a new attempt calls Authenticator::cancel on it first
 ```
 
-What was typed goes to `submit` **by value** and the shell keeps no copy — not in
-a log, an event or its own state. `Credential`'s `Debug` prints the shape and never
-the contents. A refusal is shown in the authenticator's own words: whether to say
-that a user does not exist is your call, so the shell never words one.
+`submit` receives an owned `Credential`. The shell does not include credential
+contents in its authentication events, and `Credential`'s `Debug` redacts them.
+The pattern prompt retains its points while awaiting an answer, and egui/input
+buffers may hold text copies.
+A refusal displays the authenticator's message, so the authenticator determines
+whether that message reveals the existence of a user.
 
-The prompt sits above the shade and the bars, takes every press that misses it,
-and pauses the focused screen (`Lifecycle::Paused`, then `Resumed`). Back cancels
-it. Behind it, no new edge swipe starts.
+The prompt sits above the shade and bars. Its guard intercepts ordinary pointer
+interaction outside the card and pauses the focused screen (`Lifecycle::Paused`,
+then `Resumed`). Back cancels it. While it is open, new edge swipes are disabled.
 
-A few rules hold whatever the authenticator does:
+With authenticator callbacks that return promptly, the prompt applies these rules:
 
-- **A grant has to be worth something.** A `Granted` level the table does not
+- **Granted levels are validated.** A `Granted` level the table does not
   have, one no higher than the session already holds on the unlock prompt, or
   one below the session's start on the lock screen (which takes the start
   itself), is answered as a refusal ("That is not enough for this"). A valid but
@@ -288,8 +292,8 @@ A few rules hold whatever the authenticator does:
 - **A wait is one flag.** `Pending` puts it up and the title says "Checking…"; it
   comes down with the answer, or with `Authenticator::cancel` — when the prompt
   goes without an answer, when the lock screen comes up over it, or when a new
-  attempt goes in. The keys are never held for it, so an answer that never comes
-  holds nothing: the next attempt is the way past it, on the lock screen too.
+  attempt goes in. While a check returns `Pending`, the keys remain usable: a new attempt cancels the
+  pending request, on the lock screen too.
   The shell sets no time limit of its own (see §5.2). `poll` responses must carry
   the original request token; canceled, superseded and already-consumed responses
   are rejected. The authenticator should also stop canceled work where possible.
@@ -309,8 +313,8 @@ A few rules hold whatever the authenticator does:
   also discards them and restarts the challenge, preserving the lockout.
   A timeout or integrator subject replacement invalidates pending authentication
   even when the old and new subjects have the same numeric level. Direct
-  `access_mut().set_subject` changes are observed before the next frame or launch;
-  use `ShellHandle::set_subject` for the shell's monotonic clock.
+  `Shell::set_subject` changes are observed before the next frame or launch;
+  both it and queued `ShellHandle::set_subject` use the shell's monotonic clock.
 - **An authenticator that offers nothing** (`methods()` empty) behaves as
   `routing` (§6): no prompt and no lock screen, and the lock and logout controls
   are only reported.
@@ -433,7 +437,7 @@ let shell = fairing::Shell::builder(fairing::ShellConfig::default())
 ```
 
 `submit` runs on the UI thread inside a frame, so it must return at once. A check
-that takes time answers `Pending`, and the shell calls `poll(now)` every frame
+that takes time answers `Pending`, and the shell calls `poll(now)` during operational state updates
 while the prompt is up. It sets no limit on how long that takes: a server that
 ought to answer within ten seconds is yours to time, by answering `Denied` from
 `poll` when the time runs out. The authenticator methods run on the UI thread,
@@ -451,8 +455,8 @@ old one is told to `cancel` first.
 |---|---|
 | `Pin { len, max_len, shuffle }` | The [`PinPad`](#55-a-keypad-or-a-pattern-in-a-login-screen-of-your-own) with its dot row; the bottom row is ⌫ · 0 · ✓, and ⌫ and ✓ dim while there is nothing to take off or submit. `len > 0` submits on the last digit (✓ submits early); with `0` the dots count what went in, ✓ submits, and the pad takes at most `max_len` digits (`0` is 16). A hardware keypad's digits, Backspace and Enter work too |
 | `Pattern { grid, min_points, show_path }` | The [`PatternPad`](#55-a-keypad-or-a-pattern-in-a-login-screen-of-your-own): `grid` × `grid` dots. A path under `min_points` is answered on the spot ("Connect at least 4 dots") and never reaches `submit`; a refused one stays on the dots in red until the next stroke. `show_path: false` keeps the path off the glass. It arrives as `Credential::Pattern(dots)`, the dots counted row by row **from 0** |
-| `Password { needs_user, keys }` | A user field (where asked for), a secret field and Unlock; Enter in the secret submits. The on-screen keyboard comes up **above** the prompt, on `keys` (`Keys::Latin` for a password, `Keys::Digits` for a numeric one) whatever the device's layout is, and `settings.credentials` sets the secret on the same keys. A refusal gives the secret field the focus back with the keyboard up, so the next try is typed straight in. The secret field has the eye that shows what was typed, as every `TextField::password` does |
-| `External { label }` | `label` and a ring going round (redrawn four times a second, not every frame), until `poll` answers. A reader that types like a keyboard — most badge readers do — needs nothing more: what it types is submitted on Enter or Tab as `Credential::External(bytes)`, and a pause of more than 0.8 s between characters starts a new read, so half a swipe does not spoil the next one |
+| `Password { needs_user, keys }` | A user field (where asked for), a secret field and Unlock; Enter in the secret submits. The on-screen keyboard comes up **above** the prompt, on `keys` (`Keys::Latin` for a password, `Keys::Digits` for a numeric one) whatever the device's layout is, and `settings.credentials` sets the secret on the same keys. A refusal gives the secret field the focus back with the keyboard up, so the next try is typed straight in. The secret field has the eye that shows what was typed, as `TextField::password` does by default (it can be disabled with `.reveal(false)`) |
+| `External { label }` | `label` and a ring going round (requests a repaint after 250 ms while waiting; other UI activity can repaint it sooner), until `poll` answers. A keyboard-emulating reader submits its input on Enter or Tab as `Credential::External(bytes)`, and a pause of more than 0.8 s between characters starts a new read, so half a swipe does not spoil the next one |
 
 Several methods show as tabs, labelled `PIN`, `Pattern`, `Password` and the
 external method's `label`; the card keeps one size whichever tab is on show. The
@@ -533,7 +537,7 @@ pub trait CredentialAdmin {
 }
 ```
 
-**Nobody changes more than they have.** The level picker offers the levels up to
+**The credentials UI applies level checks.** The level picker offers the levels up to
 the session's own; an entry above it is listed but cannot be opened; and the shell
 refuses, before your code sees it, a change that gives a higher level or touches a
 higher entry — so a maintainer cannot add an administrator, or set the
@@ -563,8 +567,8 @@ not appear for it.
 ### 5.5 A keypad or a pattern in a login screen of your own
 
 In `routing` mode the login screen is yours, and the keypad does not have to be.
-`fairing::widgets::PinPad` is the one the prompt uses. It types into your buffer
-and nowhere else:
+`fairing::widgets::PinPad` is the one the prompt uses. It edits the `String` you
+supply; your code decides when to submit that value:
 
 ```rust
 use fairing::widgets::PinPad;
@@ -601,16 +605,18 @@ if pad.submitted {
 # }
 ```
 
-A stroke across a dot takes it on the way, and the stroke is followed through every
-pointer position a frame carried, so a quick one on a slow frame takes what it
-crossed. `PatternPad::as_drawn(dots, grid)` gives the path a finger drawing through
+The pad checks recorded pointer positions and the segments between them for
+crossed dots. `PatternPad::as_drawn(dots, grid)` gives the path a finger drawing through
 `dots` would record — what a stored pattern can be checked against — and
 `.mark(Some(ColorRole::Danger))` draws a refused path in red.
 
 ## 6. Doing authentication yourself with `routing`
 
-In `mode = "routing"` the crate does gate decisions and session storage, nothing
-else. A blocked launch arrives as one event instead of a prompt.
+In legacy `mode = "routing"`, the crate handles gate decisions and session
+storage while the host supplies the login UI. The `set_subject` examples below
+apply to legacy sessions. Token-mode routing instead supplies an
+`AccessEvent::SessionRequested` and installs a request-bound
+`AuthOutcome::Session`; see [session tokens](../session-tokens.md).
 
 ```text
 tap a locked item
@@ -660,9 +666,11 @@ fn my_own_login_ui(_gate: &fairing::Gate) -> Option<(String, Level)> {
 close every open screen the new subject cannot reach, and notify the rest with
 `Lifecycle::AccessChanged` — what a screen should do about that is in
 [02 Screens](02-screens.md). `AccessPolicy`, `LevelTable` and `Visibility` all
-work the same under `routing`. The only difference is who holds the credentials.
+still govern admission under `routing`; the host also supplies the authentication presentation
+and response flow.
 
-`off` skips the flow entirely: like a single-level table, every gate passes.
+In legacy mode, `off` skips the authentication flow and operational gate checks pass.
+Fault quarantine still denies access; token mode rejects `off`.
 
 ## 7. The session — temporary unlocks, the timeout, the idle lock
 
@@ -688,14 +696,13 @@ On every way down — a temporary unlock running out, the timeout, a lock, a log
 `set_subject` to a lower level — screens that no longer pass their gate close,
 the rest get `Lifecycle::AccessChanged`, and the shade and an unlock prompt close
 too, and so do the recent screens where the session no longer passes the gate
-they came up behind. The timers wake the shell on time on a panel nobody touches;
-nothing has to repaint to notice them.
+they came up behind. Timers request a host update for their deadlines; enforcement
+occurs when the host supplies a logic or UI update.
 
-**The timers run on the wall clock.** A reactive panel draws nothing while
-nothing moves, and the time it sleeps counts: a five-minute temporary unlock ends
-five minutes after the unlock however few frames were drawn in between, and so
-do the timeout, the idle lock and a lockout's countdown. A timer longer than a
-year is a config error at start.
+Shell/state runners use monotonic elapsed time through `Shell::logic*`, so
+deadlines advance between UI passes. Frame-only custom hosts use the egui input
+timeline. Expiry is checked at the next supplied update; presentation timing is
+host-controlled. A timer longer than a year is a config error.
 
 Overdue timers are enforced before the command queue and before input renews activity.
 The first touch after a delayed frame cannot preserve an expired session, and queued
@@ -713,7 +720,7 @@ idle is not timed out or idle-locked in the same frame. An integrator's
 `LockScreenToggled(false)` — it vouched for someone, so the lock has done its
 work.
 
-**An answer that never comes does not hold the prompt.** The keys work while
+**A pending result does not hold the prompt, provided authenticator callbacks return promptly.** The keys work while
 "Checking…" is up, so the next attempt calls the stalled check off and goes in —
 on the lock screen too, which has no Cancel (§5, "A wait is one flag").
 
@@ -777,10 +784,9 @@ once it runs out — `Unlocked` and `SessionChanged { reason: Unlock }`.
 
 ## Hidden entry points — the service menu
 
-Some screens cannot have a desktop icon: the service menu, factory mode,
-diagnostics. Android's "tap the build number seven times" is the conventional
-answer; industrial HMIs more often use corners in sequence; devices with physical
-keys use a key combination.
+For screens omitted from the desktop, such as a service menu or diagnostics,
+register an entry trigger. Examples include repeated taps, corner sequences or
+a key combination. The trigger is separate from authorization.
 
 > **A knock is concealment; the gate is what blocks.** It makes the door hard to
 > find, not hard to open. **Always put a gate on anything irreversible.**
@@ -812,8 +818,8 @@ shell.add_hidden_entry(
 # }
 ```
 
-**You decide where to knock.** The shell does not know what was tapped — that is
-the point: every device puts it somewhere else, and that is the concealment.
+**You decide where to knock.** The screen calls `cx.knock` from its chosen UI
+location. The trigger controls discovery of the entry point; its gate controls access.
 
 ```rust
 # use fairing::{screen, Cx};
@@ -936,18 +942,19 @@ Three rules:
 3. If `remaining()` is `None`, so is `cx.knock_remaining` — a trigger that cannot
    be counted gets no hint.
 
-### It always leaves a record
+### Handling the entry event
 
 When a knock completes, `ShellEvent::HiddenEntry { id }` fires **whether or not**
 the gate passes. If the gate blocked it, `AccessEvent::UnlockRequested` follows.
-Entering a service menu is auditable, so it never happens quietly.
+This is an in-memory event, not a persistent audit log. The application must
+drain the events and record them through its logging or audit backend if needed.
 
 ```rust
 # use fairing::ShellEvent;
 # fn on_events(shell: &mut fairing::Shell) {
 for event in shell.poll_events() {
     if let ShellEvent::HiddenEntry { id } = event {
-        log::warn!("hidden entry {id} was opened");   // into the device log
+        log::warn!("hidden entry {id} trigger completed"); // admission may still be denied
     }
 }
 # }
@@ -955,8 +962,9 @@ for event in shell.poll_events() {
 
 ### One entry point already exists
 
-`chrome.emergency` — **a two-second long press in a top corner**. It survives on a
-screen where `edge_guard` has blocked every gesture, and it opens the shade. To
+`chrome.emergency` — **a top-corner hold for `[gesture] emergency_ms` (two seconds by default)**. Recognition remains
+when `edge_guard` suppresses built-in edge gestures. Opening the shade requires its feature and
+the emergency gate to pass. To
 keep one input from meaning two things, a corner **long press** is the emergency
 gesture and a corner **tap** is left for hidden entries. If you really want a
 long-press entry point, implement `KnockTrigger` yourself.

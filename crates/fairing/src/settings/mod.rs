@@ -12,7 +12,7 @@
 //! **The built-in screens** (`add_all`) are behind feature `settings`. Turn it off and they
 //! leave the build, and the integrator registers their own screens under the same ids.
 //!
-//! # All of it can be overridden
+//! # Replacing built-in screens
 //!
 //! [`Shell::add`](crate::Shell::add) **replaces the same id**, so swapping a
 //! built-in screen out needs no special API:
@@ -41,7 +41,7 @@
 //! `screens::entries` gives the built-in one, and `add_all_with` takes whatever you make of
 //! it — rows out, rows of your own in, in whatever order.
 //!
-//! # A built-in is a template, not a wall
+//! # Reusing declarations and bodies
 //!
 //! Replacing one is the case above. Keeping one **and** having a variant of it beside the original
 //! takes two more routes, and both are open:
@@ -147,7 +147,7 @@ pub mod keys {
     /// Silent: a new notification asks the audio backend for no cue (`Cue::Notify`). The banner
     /// still shows.
     pub const UI_SILENT: &str = "ui.silent";
-    /// Airplane mode = every radio off (`tile.airplane`).
+    /// Airplane mode requests Wi-Fi and Bluetooth off (`tile.airplane`).
     pub const RADIO_AIRPLANE: &str = "radio.airplane";
     /// Rotation lock (`tile.rotation_lock`, where the backend supports it).
     pub const DISPLAY_ROTATION_LOCK: &str = "display.rotation_lock";
@@ -191,8 +191,8 @@ pub struct SettingsConfig {
     pub home_icon: bool,
     /// Whether to register screens whose backend is missing. `false` by default.
     ///
-    /// Turned on, a Wi-Fi entry appears with no Wi-Fi backend and there is nothing behind it.
-    /// There is no reason to turn it on except to look at the screens during development.
+    /// Turned on, screens are registered even when their device capabilities are
+    /// unavailable. This can be useful when inspecting screens during development.
     pub ignore_capabilities: bool,
 }
 
@@ -261,12 +261,12 @@ impl SettingsConfig {
 ///
 /// # No backend, no registration
 ///
-/// The worst outcome is a Wi-Fi entry on a machine with no Wi-Fi backend that says "not
-/// supported" once you press it. This checks
-/// [`Capabilities`](crate::services::Capabilities) and filters in advance — turn that off with
+/// Registration checks [`Capabilities`](crate::services::Capabilities) and
+/// filters screens whose required device capabilities are unavailable. Disable
+/// that filtering with
 /// [`SettingsConfig::ignoring_capabilities`].
 ///
-/// # All of it can be overridden
+/// # Replacing individual screens
 ///
 /// Call `shell.add(..)` with the same id **after** this function and that one screen is replaced
 /// entirely ([`Shell::add`](crate::Shell::add) replaces the same id).
@@ -348,7 +348,7 @@ pub(crate) fn declarations(
     // The capabilities are asked of **each backend** — only the Wi-Fi backend knows whether there is Wi-Fi.
     let force = config.ignore_capabilities;
     // Likewise only the authenticator knows whether it manages its entries here.
-    let has_admin = force || shell.access_mut().has_admin();
+    let has_admin = force || shell.has_credential_admin();
     let services = shell.services();
     let has_wifi = force || services.wifi.capabilities().contains(Capabilities::WIFI);
     let has_bt = force

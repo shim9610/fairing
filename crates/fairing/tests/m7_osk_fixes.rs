@@ -131,7 +131,7 @@ fn the_composer_hands_back_a_jamo_that_cannot_start_a_syllable() {
 #[test]
 fn hardware_text_typed_mid_composition_is_kept() -> fairing::Result<()> {
     let (mut h, field) = one_field("", None)?;
-    h.shell.osk_mut().set_layout(OskLayout::Hangul);
+    h.shell.set_osk_layout(OskLayout::Hangul);
     focus(&mut h, &field)?;
     tap_key(&mut h, "ㄱ")?;
     tap_key(&mut h, "ㅏ")?;
@@ -156,7 +156,7 @@ fn hardware_text_typed_mid_composition_is_kept() -> fairing::Result<()> {
 #[test]
 fn a_full_field_keeps_its_text_under_composition() -> fairing::Result<()> {
     let (mut h, field) = one_field("abc", Some(3))?;
-    h.shell.osk_mut().set_layout(OskLayout::Hangul);
+    h.shell.set_osk_layout(OskLayout::Hangul);
     focus(&mut h, &field)?;
     tap_key(&mut h, "ㄱ")?;
     assert_eq!(field.borrow().text, "abc", "the jamo does not fit");
@@ -172,7 +172,7 @@ fn a_full_field_keeps_its_text_under_composition() -> fairing::Result<()> {
 #[test]
 fn composition_with_room_still_stacks_syllables() -> fairing::Result<()> {
     let (mut h, field) = one_field("", Some(10))?;
-    h.shell.osk_mut().set_layout(OskLayout::Hangul);
+    h.shell.set_osk_layout(OskLayout::Hangul);
     focus(&mut h, &field)?;
     for jamo in ["ㅎ", "ㅏ", "ㄴ", "ㄱ", "ㅡ", "ㄹ"] {
         tap_key(&mut h, jamo)?;
@@ -193,16 +193,16 @@ fn the_lang_key_survives_a_numpad_detour() -> fairing::Result<()> {
     config.osk.layout = "hangul".into();
     let mut h = Harness::new(config, Services::null())?;
     h.frames(2);
-    h.shell.osk_mut().toggle_lang();
+    h.shell.toggle_osk_language();
     assert_eq!(h.shell.osk().layout(), &OskLayout::Qwerty);
     assert!(h.shell.osk().has_lang_key());
     let found = h.shell.osk().layout().clone();
-    h.shell.osk_mut().set_layout(OskLayout::NumPad {
+    h.shell.set_osk_layout(OskLayout::NumPad {
         decimal: true,
         sign: false,
     });
     assert!(!h.shell.osk().has_lang_key(), "the numpad has no 한/영 key");
-    h.shell.osk_mut().set_layout(found);
+    h.shell.set_osk_layout(found);
     assert!(
         h.shell.osk().has_lang_key(),
         "after a numpad detour the qwerty has no 한/영 key"
@@ -215,11 +215,11 @@ fn the_lang_key_survives_a_numpad_detour() -> fairing::Result<()> {
 fn a_qwerty_keyboard_stays_single_language() -> fairing::Result<()> {
     let mut h = Harness::new(single_level_access(), Services::null())?;
     h.frames(2);
-    h.shell.osk_mut().set_layout(OskLayout::NumPad {
+    h.shell.set_osk_layout(OskLayout::NumPad {
         decimal: true,
         sign: false,
     });
-    h.shell.osk_mut().set_layout(OskLayout::Qwerty);
+    h.shell.set_osk_layout(OskLayout::Qwerty);
     assert!(!h.shell.osk().has_lang_key());
     Ok(())
 }

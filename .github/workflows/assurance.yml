@@ -24,6 +24,25 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
+  assurance-gate:
+    if: ${{ always() && github.repository == 'shim9610/fairing' }}
+    needs: [inputs, callback-mediation, permission-metadata, state-schema, proofs, properties-and-loom, miri, contract-controls, contract-coverage, fuzz, memory-modes, fixed-display, sbom]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every assurance job to succeed
+        env:
+          JOB_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          results = json.loads(os.environ['JOB_RESULTS'])
+          failed = {name: job['result'] for name, job in results.items() if job['result'] != 'success'}
+          if not results or failed:
+              sys.exit(f'Assurance jobs did not all succeed: {failed}')
+          print(f'All {len(results)} assurance jobs succeeded')
+          PY
+
   inputs:
     if: github.repository == 'shim9610/fairing'
     runs-on: ubuntu-24.04
@@ -76,9 +95,15 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install pinned compiler development components and solver
         run: python3 verification/install.py proofs
-      - name: Prove the common kernel and cover every protected contract
+      - name: Check kernel proofs and compiled protected routing
         run: |
           python3 verification/test_validation.py
+          python3 verification/test_bridge_linearity.py
+          python3 verification/test_layout_bindings.py
+          python3 -O verification/test_layout_bindings.py
+          python3 verification/test_dispatch_effects.py
+          python3 -O verification/test_dispatch_effects.py
+          python3 verification/test_run_tests.py
           python3 -O verification/test_validation.py
           python3 verification/mediation.py --require-proved
       - name: Require SAT and UNSAT compiler-fixture controls
@@ -96,6 +121,7 @@ jobs:
           path: |
             target/assurance/protected-contracts/
             target/assurance/central-mediation/
+            target/assurance/layout-token/
             target/mediation/summary.json
             target/mediation/concrete-probe.log
             target/mediation/all/
@@ -113,7 +139,7 @@ jobs:
         run: python3 verification/install.py proofs
       - name: Check production permission metadata contracts
         run: python3 verification/check_extension.py --manifest-path Cargo.toml --all-features
-      - name: Reject effectful and incomplete downstream implementations
+      - name: Check downstream metadata acceptance and rejection fixtures
         run: python3 verification/metadata_controls.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
@@ -217,11 +243,11 @@ jobs:
         run: |
           mkdir -p target/assurance/logs
           nightly="$(python3 -c 'import json; print(json.load(open("verification/tools.json"))["nightly"])')"
-          cargo "+$nightly" miri test --locked --manifest-path verification/Cargo.toml --lib 2>&1 | tee target/assurance/logs/miri.log
-          cargo "+$nightly" miri test --locked -p fairing-widgets --no-default-features --lib interaction::tests 2>&1 | tee target/assurance/logs/miri-interaction.log
-          cargo "+$nightly" miri test --locked -p fairing --lib runtime::tests::supported_payloads_are_released_and_numeric_codes_are_observable -- --exact 2>&1 | tee target/assurance/logs/miri-payloads.log
-          cargo "+$nightly" miri test --locked -p fairing --lib access::session::tests 2>&1 | tee target/assurance/logs/miri-session-admin.log
-          cargo "+$nightly" miri test --locked -p fairing --lib access::protected::tests::protected_scope_uses_current_context_and_never_caches_admission -- --exact 2>&1 | tee target/assurance/logs/miri-protected-scope.log
+          python3 verification/run_tests.py --log target/assurance/logs/miri.log -- cargo "+$nightly" miri test --locked --manifest-path verification/Cargo.toml --lib
+          python3 verification/run_tests.py --log target/assurance/logs/miri-interaction.log -- cargo "+$nightly" miri test --locked -p fairing-widgets --no-default-features --lib interaction::tests
+          python3 verification/run_tests.py --log target/assurance/logs/miri-payloads.log -- cargo "+$nightly" miri test --locked -p fairing --lib runtime::tests::supported_payloads_are_released_and_numeric_codes_are_observable -- --exact
+          python3 verification/run_tests.py --log target/assurance/logs/miri-session-admin.log -- cargo "+$nightly" miri test --locked -p fairing --lib access::session::tests
+          python3 verification/run_tests.py --log target/assurance/logs/miri-protected-scope.log -- cargo "+$nightly" miri test --locked -p fairing --lib access::mediation::protected::tests::protected_scope_uses_current_context_and_never_caches_admission -- --exact
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -232,7 +258,7 @@ jobs:
   contract-controls:
     needs: inputs
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Reject broken public API wiring and dropped Inbox messages
@@ -253,7 +279,9 @@ jobs:
       - name: Install pinned coverage tool and matching LLVM tools
         run: python3 verification/install.py coverage
       - name: Measure production code exercised by the API contracts
-        run: python3 verification/coverage.py
+        run: |
+          python3 verification/test_coverage_policy.py
+          python3 verification/coverage.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

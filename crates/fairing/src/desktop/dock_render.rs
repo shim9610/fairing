@@ -24,8 +24,8 @@ pub(super) fn draw_dock(
     #[expect(clippy::cast_precision_loss, reason = "the cell count is small")]
     let n = count as f32;
     let vertical = dock.is_vertical();
-    // The cells are divided along the axis only. They shrink once they would fall below the physical
-    // minimum touch size — the geometry settles it rather than a cap on the count.
+    // Divide available dock length between entries, capped by the preferred cell
+    // size. Crowded docks can make the assigned slots smaller than touch_target.
     let span = if vertical {
         dock_rect.height()
     } else {

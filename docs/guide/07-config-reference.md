@@ -1,8 +1,7 @@
 # 07. Config reference
 
-Every section and key of `fairing.toml`, read off the source
-(`crates/fairing/src/config.rs`). This page does not argue for the shape — follow
-the links beside each table for that.
+`fairing.toml` keys, defaults and validation rules are defined in
+`crates/fairing/src/config.rs`. The links beside each table lead to usage examples.
 
 ## 0. Load rules
 
@@ -12,9 +11,10 @@ the links beside each table for that.
 | No file | Not an error: `ShellConfig::default()` |
 | A file that cannot be read, or a path with a non-directory ancestor | `Error::Io`; does not select defaults |
 | Bad syntax or a wrong type | `Error::Config` (`ShellConfig::from_toml` → `toml::from_str` fails) |
-| A value out of range | `Error::Config` from `ShellConfig::validate` — the "Validation" column below |
+| Checked numeric ranges | `Error::Config` from `ShellConfig::validate`, called by `from_toml` / `load` |
+| Access names/secrets and palette names/colours | Additional checks run through `Access::from_config` and `build_theme` during shell construction; parsing alone does not complete them |
 | Non-finite floating-point input | `nan` and `inf` are valid TOML floats. Active bar sizes and the motion/desktop/overlay/keyboard/gesture values checked by `validate_finite` are rejected; a disabled bar's unused `height` is not checked |
-| An unknown section or key | Silently ignored (`#[serde(default)]` plus serde's default behaviour). A typo still boots; only range and cross-reference errors stop start-up |
+| An unknown section or key | Silently ignored (`#[serde(default)]` plus serde's default behaviour). Unknown fields do not cause a deserialization error; range and cross-reference validation still applies |
 | A section behind a feature you turned off (`overlay`, `osk`) | **Still parsed.** A config file with `[overlay]` reads fine with the feature off, so two builds with different feature sets can share one file |
 
 Whether an id in a `Vec<String>` that was never declared warns or silently becomes
@@ -54,7 +54,7 @@ Every section is `#[serde(default)]`, so an empty `fairing.toml` is valid.
 | `locale` | `String` | `"en"` | The language to start in: a tag such as `"en"`, `"ko"` or `"ko-KR"` (a region finds its language's table) | None (any string). One with no table **warns at start-up** and the text stays English — not an error | `crate::i18n::Strings::new`. English and Korean are built in; add a language, or change a built-in entry, with `ShellBuilder::translations` ([04 §9](04-customization.md#9-text-and-translations)). The `ui.locale` setting (the `settings.locale` screen) switches it while the shell runs, from the next frame |
 | `theme` | `String` | `"dark"` | `"dark"` or `"light"` | Anything else **warns and falls back to dark** — not an error | `ShellConfig::build_theme` |
 | `idle_lock_secs` | `u64` | `0` | **Deprecated** — the key is `[access] idle_lock_secs` (§12) | None | Read in its place, with a warning at start-up, where `[access] idle_lock_secs` is 0. Where both are set, `[access]` wins and this one is warned about |
-| `repaint` | `RepaintMode` | `"reactive"` | `"reactive"` or `"continuous"` (debug: redraw every frame) | A **string enum**, so anything else is `Error::Config` — a parse failure, not a fallback | `schedule_repaint` inside `Shell::frame` — [08 §3](08-troubleshooting.md#3-confirming-0-fps-when-idle) |
+| `repaint` | `RepaintMode` | `"reactive"` | `"reactive"` or `"continuous"` (debug: request continuous updates; the host determines cadence) | A **string enum**, so anything else is `Error::Config` — a parse failure, not a fallback | `schedule_repaint` inside `Shell::frame` — [08 §3](08-troubleshooting.md#3-checking-idle-repaint-behavior) |
 | `cursor` | `CursorPolicy` | `"auto"` | `"auto"`, `"hidden"` or `"visible"`. Auto hides it on touch and shows it for a mouse | String enum; anything else is `Error::Config` | |
 
 Injecting `.theme(Theme)` in code makes `theme` irrelevant
@@ -88,7 +88,7 @@ Built-in slot ids and your own declarations are in [03 Chrome](03-chrome.md).
 | `style` | `String` | `"buttons"` | `"buttons"` or `"gesture"` — the home indicator, and the bottom edge's swipes in place of the buttons ([03 §2.6](03-chrome.md#26-the-gesture-style)). `items` means nothing with gestures | Anything else **warns and falls back to buttons** | `NavStyle` |
 | `items` | `Vec<String>` | `["back", "home", "recents"]` | `"back"`, `"home"`, `"recents"`, `"split"`, or the id of a `nav_item` you declared | An undeclared id is neither an error nor a warning ([08 §2](08-troubleshooting.md#2-referring-to-an-id-that-was-never-declared)) | `NavItem::parse` |
 | `height` | `Option<f32>` | unset | The bar height in du, pinned. Unset, it is one finger plus 8 du, at least 56 du | Error when `enabled` and `height <= 0.0`, `nan` or `inf`. The same precedence as `[status_bar] height` | `metrics.nav_bar_height` (08 D245) |
-| `back_edges` | `Vec<String>` | `["left"]` | Which edges accept the back swipe | Each entry must be `"left"` or `"right"`, or it is an **error** with no fallback. An empty array means no gesture back — but combined with `style = "gesture"` that is also an error, since it leaves no way back | `gesture::Edge::parse` plus `EdgeMask` |
+| `back_edges` | `Vec<String>` | `["left"]` | Which edges accept the back swipe | Each entry must be `"left"` or `"right"`, or it is an **error** with no fallback. An empty array means no gesture back — but combined with `style = "gesture"` that is also an error, since it removes both built-in back mechanisms in gesture style | `gesture::Edge::parse` plus `EdgeMask` |
 
 ---
 
@@ -99,22 +99,21 @@ Built-in slot ids and your own declarations are in [03 Chrome](03-chrome.md).
 | `columns` | `u8` | `4` | Column count; `0` means auto, from `icon_cell` | Error above `MAX_COLUMNS` (12) unless it is `0` | `DesktopView::from_config` |
 | `rows` | `u8` | `3` | Row count; `0` means auto | Error above `MAX_ROWS` (8) unless it is `0` | Same |
 | `dock` | `Vec<String>` | `[]` | Dock order | **No count limit.** An undeclared id **warns and is skipped** — unlike the bar slot lists, this one does warn | `apply_dock_order` |
-| `dock_edge` | `String` | `"bottom"` | Which edge the dock clings to: `"bottom"`, `"top"`, `"left"`, `"right"` | Anything else warns and uses `bottom` | A bottom band is the phone convention; a portrait panel often wants a side rail and a wide instrument screen a top row |
+| `dock_edge` | `String` | `"bottom"` | Which edge the dock clings to: `"bottom"`, `"top"`, `"left"`, `"right"` | Anything else warns and uses `bottom` | Choose the dock edge for the product's layout and reachable area |
 | `dock_band` | `Option<f32>` | `None` | Set it and the dock stops clinging to an edge and becomes **a row across the desktop**, at this fraction (0..=1) of the content. The band paints no background, so only the icons sit over the wallpaper | None | |
 | `pages` | `Vec<PageConfig>` | `[]` | The `[[desktop.pages]]` list | §5.1 | |
 | `label_lines` | `u8` | `2` | Icon label lines | None (`0` becomes 1 internally) | |
 | `wallpaper` | `String` | `"background"` | A palette role, `"#RRGGBB"`, `"abyss"` (the procedural deep-sea background) or `"file:<path>"` | **None** — a bad value warns and falls back to the `background` role. Note this is the opposite of `[theme.palette]`, which errors | `Wallpaper::Solid` / `Fixed` |
 | `wallpaper_fit` | `String` | `"cover"` | For `file:` only: `"cover"`, `"contain"` or `"stretch"` | Anything else warns and uses `cover` | Same image on a different aspect ratio: `cover` crops, `contain` letterboxes, `stretch` distorts |
-| `rail` | `String` | `"none"` | **Icon rail** — pin the icons down one side and open screens beside them: `"none"`, `"left"`, `"right"` | Anything else warns and uses `none` | In the default layout the icon grid owns the middle and an opening screen **covers** it. A shop kiosk wants the opposite: the menu always visible, only the content changing |
+| `rail` | `String` | `"none"` | **Icon rail** — pin the icons down one side and open screens beside them: `"none"`, `"left"`, `"right"` | Anything else warns and uses `none` | In the default layout the icon grid owns the middle and an opening screen **covers** it. An icon rail keeps the menu beside the changing content |
 | `rail_width` | `f32` | `0.0` | Rail width as a fraction of the content width; `0` means the default 0.26 | None | A fraction on purpose — an absolute width means different things on a 480 px and a 1920 px panel. It never goes narrower than one icon cell |
 | `label_legibility` | `String` | `"none"` | Label legibility over a busy wallpaper: `"none"`, `"shadow"`, `"veil"` | Anything else warns and uses `none` | See below |
 | `abyss` | `AbyssConfig` | defaults | `[desktop.abyss]`, only read when `wallpaper = "abyss"` | §5.2 | |
 | `long_press` | `String` | `"info"` | What holding an icon does: `"info"` brings up its info popover — the title, the level it needs, the description ([03 §3.8](03-chrome.md#38-holding-an-icon-the-info-popover)); `"none"` only reports `ShellEvent::IconLongPressed` | Anything else warns and uses `info` | `"none"` is for a device with a menu of its own on the event, so the two do not come up together |
 
-**`label_legibility` defaults to `none` on purpose.** The shell does not lay a veil
-over your background; **the picture itself is responsible for legibility.** Author
-a dark background and no correction is needed, and turning correction on by
-default would fog a good one.
+`label_legibility` defaults to `none`, without a shadow or full-content veil.
+Choose the background and label colours together, then assess their composited
+contrast in each supported theme.
 
 | Value | What it does | Cost |
 |---|---|---|
@@ -122,7 +121,8 @@ default would fog a good one.
 | `"shadow"` | A dark shadow behind the label glyphs | Text draw calls ×2 |
 | `"veil"` | A translucent `scrim` panel over the whole content area | One rectangle |
 
-`shadow` is usually the answer — it keeps the picture and saves the label.
+`shadow` adds a local dark outline. Its effect depends on the label and background
+colours; `veil` changes the full-content background instead.
 
 ### 5.1 `IconOverride` in `[[desktop.pages]]`
 
@@ -158,11 +158,11 @@ treatment in [09 Branding](09-branding.md).
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `tier` | `AbyssTier` | `"lite"` | Quality tier: `"flat"`, `"lite"`, `"full"`. Higher tiers cost vertices; the shell drops a tier itself if the bake blows the budget |
-| `seed` | `u32` | fixed | Seeds the procedural layout, so a given seed always draws the same scene |
+| `seed` | `u32` | fixed | Seeds the procedural layout, so the same seed and other rendering inputs reproduce the procedural layout |
 | `rays` · `bubbles` · `fish` · `mantas` | `u8` | per tier | How many of each element |
 | `light_x` | `f32` | — | Where the light comes from, across the width |
 | `veil_top` · `veil_field` · `veil_bottom` | `f32` | — | Depth-veil density at the top, in the field, and at the bottom |
-| `animate` | `bool` | `false` | Move the manta every frame. **This breaks idle 0 fps** and the shell warns when you set it |
+| `animate` | `bool` | `false` | Animate the manta and request updates; the shell warns when enabled |
 | `bake_budget_ms` | `f32` | — | Time budget for baking the mesh. Overrunning drops a tier |
 | `colors` | `String` | `"palette"` | `"palette"` (follow the theme) or `"art"` (the original artwork's colours) |
 
@@ -179,15 +179,15 @@ treatment in [09 Branding](09-branding.md).
 | `tiles` | `Vec<String>` | `["tile.wifi", "tile.bluetooth", "tile.brightness", "tile.volume", "tile.lock", "tile.theme"]` | Tile order. Mix built-in ids and your own declarations | Neither built-in nor declared **warns and is skipped**. A declared tile missing from the list is appended at the end |
 | `tile_columns` | `u8` | `6` | Tiles per row | `0` is an error |
 | `footer` | `Vec<String>` | `["clear_all", "lock", "settings"]` | The footer buttons, left to right. `[]` draws none — the subject's name and the level dot stay, being state rather than controls | An unknown name **warns and is skipped** |
-| `max_height_ratio` | `f32` | `0.85` | Maximum shade height as a fraction of the screen | Outside `(0.0, 1.0]` is an error |
+| `max_height_ratio` | `f32` | `0.85` | Unified shade height limit as a fraction of the screen. Split panels use the available content height instead | Outside `(0.0, 1.0]` is an error |
 | `peek_ms` | `u64` | `2000` | How long a peeked status bar stays | None |
 | `two_step` | `bool` | `false` | Open in two steps: the first pull stops at the tiles, a second carries on to the notifications. Resting at the stop, the shade lies over the live page and a press outside closes it | Ignored, with a warning, under `layout = "split"` |
 | `reveal` | `String` | `"curtain"` | How the shade comes into view. `"curtain"` draws the panel down from the top edge. `"card"` is a floating card already at its final size and place, which the pull fades and slides in; the page behind is not dimmed | An unknown name **warns and draws the curtain** |
-| `card_width_ratio` | `f32` | `0.46` | A card's width as a share of the screen's. Never narrower than the tile row needs; where it would cover more than three quarters of the screen, it takes the full width less its insets | Outside `(0.0, 1.0]` is an error |
+| `card_width_ratio` | `f32` | `0.46` | A card's width as a share of the screen's. Sized using the tile row requirements and available screen width; where it would cover more than three quarters of the screen, it takes the full width less its insets | Outside `(0.0, 1.0]` is an error |
 | `card_anchor` | `String` | `"press"` | Which side of a wide screen a card rests on: `"press"` (the side the pull started from, the middle when opened without a finger), `"left"`, `"right"` or `"center"` | An unknown name **warns and behaves as `"press"`** |
 | `split_ratio` | `f32` | `0.5` | Where a split shade's two panels divide the top edge, as a share of the width from the left. One UI's phone layout is `0.7` | Outside `(0.0, 1.0)` is an error |
 | `card_glass` | `f32` | `0.7` | How opaque a card is over its frosted backdrop: `0` is clear glass, `1` turns the glass off. Where the runner sends no screenshot back, the card stays solid. With a `shade_panel_painter` there is no frost: the painter draws the ground ([04 §10.4](04-customization.md#104-the-shades-tiles-and-panel)) | Outside `0.0..=1.0` is an error |
-| `card_relief` | `f32` | `1.0` | How raised a card looks: `0` flat, `1` as designed, `2` twice it. An e-ink or 16-level panel wants `0` here and `card_glass = 1` | Outside `0.0..=2.0` is an error |
+| `card_relief` | `f32` | `1.0` | How raised a card looks: `0` flat, `1` as designed, `2` twice it. For a flat, opaque card use `0` here and `card_glass = 1` | Outside `0.0..=2.0` is an error |
 
 A built-in tile left out of `tiles` simply does not appear — that is how you
 remove one. See [03 §4.4a](03-chrome.md#44a-removing-reordering-adding).
@@ -202,7 +202,7 @@ remove one. See [03 §4.4a](03-chrome.md#44a-removing-reordering-adding).
 | `max_visible` | `u8` | `2` | Toasts on screen at once | `0` is an error |
 | `max_items` | `u16` | `100` | Hard retention cap including persistent entries; dismissible items may be replaced, otherwise new overflow is refused; zero selects 100 | None |
 | `toast_ms` | `u64` | `3000` | Default toast duration | None |
-| `dismiss_button` | `bool` | `true` | Draw the `×` on a shade notification row. Turn it off and the only ways to clear are **a left swipe and "Clear all"** | None |
+| `dismiss_button` | `bool` | `true` | Draw the `×` on a shade notification row. Turn it off to leave **left swipe and "Clear all"** as the built-in dismissal controls; programmatic dismissal remains available | None |
 
 Always parsed regardless of features. There is no key that disables notifications
 — you simply do not post any ([04 §6.1](04-customization.md#61-what-can-be-turned-off-and-how)).
@@ -231,8 +231,8 @@ outside the keyboard** all end the composition.
 
 > `ImeEvent::Preedit` is deliberately not used. It only reaches the widget that
 > holds focus that frame, and one stray empty `Preedit("")` from the integration
-> layer wipes the composing string — which is why composing text was invisible on
-> real hardware. The cost is that there is no composition underline.
+> layer can clear that string. The keyboard instead sends committed text; it does not
+> provide a composition underline.
 
 > Load a font with Hangul glyphs or the key labels render as tofu —
 > [08 §6](08-troubleshooting.md#6-korean-renders-as-tofu). The font and the input
@@ -262,13 +262,12 @@ while it stays within half of `[motion] slop_px`. Gesture regions
 
 ## 10. `[motion]`
 
-The tuning workflow (`motion_lab`) is in
-[04 §8](04-customization.md#8-tuning-motion). This section is keys, defaults and
-validation only.
+For motion tuning with `motion_lab`, see
+[04 §8](04-customization.md#8-tuning-motion).
 
 | Key | Type | Default | Meaning | Validation |
 |---|---|---|---|---|
-| `reduce` | `bool` | `false` | `true` makes every tween 0 ms and every spring settle instantly | None |
+| `reduce` | `bool` | `false` | `true` zeroes config-derived tween durations and settles built-in springs without intermediate motion | None |
 | `spring` | `SpringConfig` (§10.1) | `{k=400, c=40}` | The base spring | §10.1 |
 | `snap_ratio` | `f32` | `0.33` | Release distance threshold, as a fraction | Outside `[0.0, 1.0]` is an error |
 | `fling_px_s` | `f32` | `800.0` | Release velocity threshold | Negative is an error |
@@ -401,7 +400,7 @@ after `slop_px`.
 
 | Key | Type | Default | Meaning | Validation |
 |---|---|---|---|---|
-| `preset` | `String` | `"base"` | Palette preset: `"base"` (neutral), `"abyss"` (pulled from the manta artwork) or `"linen"` (warm neutrals and a sage accent, built light-first for an appliance in a room). **Orthogonal** to `[shell] theme` — the preset picks the colours, `theme` picks which side | An unknown name is an **error**. Swallowing a typo would leave you hunting for why the brand never turned on |
+| `preset` | `String` | `"base"` | Palette preset: `"base"` (neutral), `"abyss"` (pulled from the manta artwork) or `"linen"` (warm neutrals and a sage accent, built light-first for an appliance in a room). **Orthogonal** to `[shell] theme` — the preset picks the colours, `theme` picks which side | An unknown name is an **error** |
 | `palette` | `BTreeMap<String, String>` | `{}` | Role name → `"#RRGGBB"` or `"#RRGGBBAA"`. Overrides land on **both** the dark and light palettes the preset built | A name that is not a role ([04 §1.1](04-customization.md#11-the-palette-roles)) is an **error**. A value that is not `"#RRGGBB"` or `"#RRGGBBAA"` is an **error** — no short form, no colour names |
 
 Injecting `.theme(Theme)` in code makes this whole section irrelevant, with a
@@ -411,14 +410,10 @@ warning ([04 §2](04-customization.md#2-changing-only-the-colours-with-themepale
 `[theme.palette] primary = "#ff7a00"` makes primary orange in dark *and* light, so
 the theme tile no longer wipes it out.
 
-**`Palette::dark().on_primary` is white again.** It was `#0C1626` while the dark
-accent was a light `#57A9FF` — a light fill needs dark text, and a light fill with
-dark text on it is a pastel, which is exactly how the dark buttons came to look like
-toy plastic. The accent moved instead: `#2878A9` carries white at 4.83:1, clearing the
-4.5 text floor outright. The consequence is worth knowing — `Primary` measures 3.81
-against `surface`, which clears the 3.0 a drawn shape needs and not the 4.5 text needs,
-so **the accent is never a text colour**. An accent tick, fill or icon is fine; accent
-words are not.
+The Base dark palette uses white `on_primary` on its blue `primary` fill.
+Its `primary` colour has lower contrast against the page than against white text,
+so choosing it for body text requires a separate contrast check. Palette-role
+overrides can change these relationships; review the colour pairs actually used.
 
 ---
 
@@ -426,18 +421,27 @@ words are not.
 
 | Key | Type | Default | Meaning | Validation | Code |
 |---|---|---|---|---|---|
-| `mode` | `String` | `"prompt"` | `"prompt"`, `"routing"` or `"off"` | Anything else is an **error** | `AccessMode`. `prompt` draws the shell's prompt and lock screen through an authenticator; with none (no `[access.pin_table]` PINs or `[access.pattern_table]` patterns, no `ShellBuilder::authenticator`) it behaves as `routing` — the event only ([05 §0](05-access-control.md#0-the-principle-and-what-exists-today)) |
-| `levels` | `Vec<String>` | `["default"]` | Level names, low to high | **Empty is an error.** One level means no authentication at all — every gate passes | `LevelTable::from_names` |
+| `mode` | `String` | `"prompt"` | `"prompt"`, `"routing"` or `"off"` | Unknown values are an **error**; `"off"` is also rejected when `session_tokens = true` | `AccessMode`. `prompt` draws the shell's prompt and lock screen through an authenticator; with none (no `[access.pin_table]` PINs or `[access.pattern_table]` patterns, no `ShellBuilder::authenticator`) it behaves as `routing` — the event only ([05 §0](05-access-control.md#0-responsibilities)) |
+| `session_tokens` | `bool` | `false` | Require a live issuer-controlled session and explicit gate grants | Required by `build_protected`; cannot combine with `mode = "off"` | `SessionController` / `SessionToken`; [security architecture](../security-architecture.md) |
+| `levels` | `Vec<String>` | `["default"]` | Legacy level names, low to high; token-mode identity metadata does not imply grants | **Empty is an error.** Only legacy mode bypasses authentication with one level | `LevelTable::from_names` |
 | `initial` | `Option<String>` | `None` | Starting level | Error when not in `levels`. Omitted means the lowest | |
-| `default_gate` | `Option<String>` | `None` | Unassigned gates: `"top"`, `"bottom"` or a level name | **Error when `levels` has two or more entries and this is missing.** A level name not in `levels` is an error | `DefaultGate` |
+| `default_gate` | `Option<String>` | `None` | Unassigned gates: `"top"`, `"bottom"` or a level name | **Legacy mode:** missing with two or more levels is an error. Token mode does not require it. An explicitly named unknown level is an error | `DefaultGate` |
 | `gates` | `BTreeMap<String, String>` | `{}` | `[access.gates]` — §12.1 | | |
-| `unlock_mode` | `String` | `"temporary"` | What a granted unlock does: `"switch"` makes it the session; `"temporary"` holds it for `temporary_secs`, then puts the previous subject back | Anything else is an **error** | `UnlockMode` — [05 §7](05-access-control.md#7-the-session--temporary-unlocks-the-timeout-the-idle-lock) |
-| `temporary_secs` | `u64` | `300` | How long a temporary unlock lasts, counted **from the unlock** | **0 with `unlock_mode = "temporary"` is an error**; over a year is an error | |
-| `session_timeout_secs` | `u64` | `0` | No input this long → back to the starting subject; `0` is off | Over a year is an error | `ChangeReason::Timeout` |
+| `unlock_mode` | `String` | `"temporary"` | Legacy subject switching/restoration: `"switch"` keeps the subject; `"temporary"` restores it after `temporary_secs`. Token mode uses issuer deadlines instead | Unknown values are an error in legacy mode; ignored in token mode | `UnlockMode` — [05 §7](05-access-control.md#7-the-session--temporary-unlocks-the-timeout-the-idle-lock) |
+| `temporary_secs` | `u64` | `300` | Legacy temporary-unlock duration, counted **from the unlock** | Legacy `temporary` mode rejects 0; over a year is always an error | |
+| `session_timeout_secs` | `u64` | `0` | No input this long → local timeout (legacy subject restoration; token detachment in token mode); `0` is off | Over a year is an error | `ChangeReason::Timeout` |
 | `idle_lock_secs` | `u64` | `0` | No input this long → the panel locks (the lock screen, in `prompt` mode); `0` is off | Over a year is an error | `ShellEvent::LockRequested`, `ChangeReason::Lock` |
 | `lock_screen` | `LockScreenConfig` | below | `[access.lock_screen]` — §12.4 | | |
 | `pin_table` | `PinTableConfig` | below | `[access.pin_table]` — §12.2 | | |
 | `pattern_table` | `PatternTableConfig` | below | `[access.pattern_table]` — §12.3 | | |
+
+Token mode still validates the level-name metadata, but it does not use a numeric
+level or `[access.gates]` assignment to manufacture issuer grants. A single level
+never bypasses token admission. Typed `Protected` bindings determine their own
+operation identifiers; an installed local policy can only narrow issuer authority.
+Token mode needs `AuthOutcome::Session(token)` from the application authenticator;
+the legacy PIN/pattern tables do not issue such sessions. See
+[session ownership and deadlines](../session-tokens.md).
 
 ### 12.1 `[access.gates]`
 
@@ -518,7 +522,7 @@ allow_continue = true
 
 ## 13. A complete example
 
-Every section in one `fairing.toml`. Save it as-is and `ShellConfig::load` parses
+A self-contained `fairing.toml` with example section values. Save it as-is and `ShellConfig::load` parses
 and validates it.
 
 ```toml
@@ -709,13 +713,13 @@ attempt_limit = 5
 lock_secs = 60
 ```
 
-To check a file of your own:
+To check a file's TOML types and the ranges handled by `ShellConfig::validate`:
 
 ```rust,no_run
 fn main() {
     let text = std::fs::read_to_string("fairing.toml").expect("read");
     match fairing::ShellConfig::from_toml(&text) {
-        Ok(cfg) => println!("OK: levels = {:?}", cfg.access.levels),
+        Ok(cfg) => println!("Parsed and range-checked: levels = {:?}", cfg.access.levels),
         Err(e) => eprintln!("config error: {e}"),
     }
 }
@@ -786,7 +790,7 @@ The shell's two panes and its recent screens
 | `split_axis` | `String` | `"auto"` | How two panes divide the content: `"auto"` (side by side on content at least as wide as it is tall, one above the other otherwise), `"side_by_side"` or `"stacked"` | Anything else is an **error** | `WorkspaceConfig::axis` |
 | `overview` | `bool` | `true` | The shell's recent screens, behind the nav bar's `"recents"` and `LaunchAction::OpenOverview`. `false` leaves them reported only (`ShellEvent::OverviewRequested`) — for a device with an overview of its own — and the split control then takes the task used last instead of offering the cards | None | `WorkspaceConfig::overview` |
 
-Who may use them is a matter of gates, not of this section: `nav.recents` and `workspace.split`
+The `nav.recents` and `workspace.split` gates control access
 ([05 §2.1](05-access-control.md#21-built-in-gates)).
 
 ---

@@ -8,6 +8,29 @@ feature was removed: egui/epaint and remaining infallible Rust allocations can
 abort, so that feature could not provide continued operation under exhaustion.
 The diagnostic allocator is isolated from the product dependency graph below.
 
+## Host allocator alignment
+
+For the current egui 0.37.0 / vello_cpu 0.2.0 dependency set, use the platform
+system allocator on Linux, Windows and macOS. A custom global allocator must
+return pointers aligned to at least four bytes for every successful nonzero
+allocation, including byte buffers and allocations returned by `alloc_zeroed`
+or `realloc`. Honor any stronger alignment requested by the original `Layout`.
+
+egui's glyph renderer allocates its own byte scratch buffers internally. Aligning
+application input or output buffers does not control those allocations. This
+host requirement covers the renderer's internal word accesses until the
+dependency adopts an alignment-independent implementation.
+
+When selecting a custom allocator, verify this minimum in its implementation or
+documented guarantees for each shipped target, including reallocation paths.
+A few successful test allocations do not establish the guarantee. Fairing does
+not install or inspect the host's global allocator.
+
+The diagnostic `fairing-fixed-heap` allocator uses Talc 5.1.1, whose minimum chunk
+alignment is `4 * size_of::<usize>()`: 32 bytes on 64-bit targets and 16 bytes on
+32-bit targets. It satisfies this alignment requirement; its diagnostic-only
+status and exhaustion behavior are described below.
+
 ## Allocation-free display copies and raster fallback
 
 `memory::DisplayWindow<T, N>` retains only N inline Copy samples. New samples
@@ -285,7 +308,7 @@ Isolated infallible-allocation and stock-egui-frame children still abort. Those
 negative diagnostics record why the global production option was withdrawn; an abort is not an
 acceptable production recovery result. Native tests, Miri, Loom, generated
 inputs and the API fuzzer cover the bounded contracts with their documented
-limits. No whole-application or medical-device certification follows from them.
+limits.
 
 ## Runtime panics and sensitive UI state
 
@@ -310,8 +333,8 @@ cannot continue after a nested backend failure.
 This is not transaction rollback. Callback mutations, backend writes or event-handler
 side effects performed before a panic may already have happened. Reconcile the
 business system and authorization in the application's recovery path. Closing the
-queue prevents new factories from starting; an already running producer factory may
-finish, but the faulted shell will not execute its command. Hosts with other UI in the
+queue refuses later admission; a producer with a pre-existing reservation may
+still run or finish its factory, but the faulted shell will not execute its command. Hosts with other UI in the
 same viewport must account for whole-viewport output being discarded on failure.
 
 The supported panic payload types are exactly `String`, `&'static str` and

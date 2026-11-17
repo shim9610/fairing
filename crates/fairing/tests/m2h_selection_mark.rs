@@ -1,13 +1,8 @@
-//! **The rail's selection mark survives a size change** — `layout::list_item`.
+//! Selection-mark geometry across row-size changes.
 //!
-//! The mark is two shapes: a translucent pill behind the row, and an accent bar down its leading
-//! edge. The bar used to be inset from the pill's top and bottom by the *whole* corner radius, on
-//! the reasoning that a full-height bar's square ends stick out past the corners. That reasoning is
-//! right and the arithmetic was wrong: `control_radius` is anchored to the text and the row height
-//! to the finger, so the two are free to move apart, and as the radius approaches half the row the
-//! bar's height goes to zero. It does not fail — it fades out, which is the kind of thing that
-//! ships. These tests hold the bar to a visible share of the pill at row heights from a dense
-//! desktop list to a gloved panel's.
+//! The fixture combines a du-pinned row height with text-relative control radius.
+//! Tests inspect the leading bar and pill at several row heights to check that the
+//! bar remains beside the pill and does not exceed its height.
 
 use fairing::testing::{single_level_access, Harness};
 use fairing::theme::MetricsSpec;

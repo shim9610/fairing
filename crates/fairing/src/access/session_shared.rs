@@ -1,4 +1,4 @@
-//! Atomic publication. All fields participate in one sequentially consistent order.
+//! Atomic publication. Mutable session fields use sequentially consistent atomic accesses.
 
 use super::session_rules::{self, Observation};
 #[cfg(fairing_loom)]

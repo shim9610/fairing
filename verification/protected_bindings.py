@@ -17,6 +17,7 @@ def inputs():
         'crates/fairing/src/overlay/tiles.rs',
         'crates/fairing/src/elements.rs', 'crates/fairing/src/elements/dispatch.rs',
         'crates/fairing/src/elements/tests.rs', 'crates/fairing/src/access/mediation.rs', 'crates/fairing/src/access/mediation/contract.rs',
+        'crates/fairing/src/access/mediation/execution.rs', 'crates/fairing/src/elements/layout_token.rs',
         'crates/fairing/src/access/mediation/declared.rs', 'crates/fairing/src/access/mediation/element.rs',
         'crates/fairing/tests/permission_values.rs',
         'verification/kani_protected.rs', 'verification/verus/protected.py',
@@ -28,6 +29,7 @@ def inputs():
 def audit():
     p = (ROOT / 'crates/fairing/src/access/protected.rs').read_text()
     mediation = (ROOT / 'crates/fairing/src/access/mediation.rs').read_text()
+    execution = (ROOT / 'crates/fairing/src/access/mediation/execution.rs').read_text()
     shell = (ROOT / 'crates/fairing/src/shell/protected.rs').read_text()
     builder = (ROOT / 'crates/fairing/src/shell/builder.rs').read_text()
     cx = (ROOT / 'crates/fairing/src/screen/cx.rs').read_text()
@@ -36,7 +38,7 @@ def audit():
         'fresh-calling-context': 'cx.token_mode() && cx.allows_gate(&self.gate)' in p,
         'actual-dispatch': 'protected_dispatch::admitted(cx.token_mode(), permission)' in mediation and 'let allowed = admission.allows(cx);' in mediation and 'protected_dispatch::invoke(allowed, || {' in mediation,
         'no-stored-admission': 'required: P,' in p and 'gate: Gate,' in p and 'allowed: bool,' not in p,
-        'factory-recheck': 'body.as_mut()' in ''.join(mediation.split()) and mediation[mediation.index('impl ScreenHandle {'):].count('invoke(requirement.admission(), cx, |cx|') == 2,
+        'factory-recheck': 'body.as_mut()' in ''.join(execution.split()) and execution[execution.index('impl ScreenStorage {'):].count('invoke(requirement.admission(), cx, |cx|') == 2,
         'application-owned-value': 'fn gate(self) -> Gate;' in p and 'fn required_permission(&self) -> Self::Required;' in p and 'const GATE:' not in p,
         'automatic-element-registration': 'pub fn add_elements<P: Permission>' in shell and 'self.add_screen(id, tree);' in shell,
         'mandatory-registration': 'element: Protected<P, D>' in shell and 'self.inner.add(element.into_decl());' in shell,

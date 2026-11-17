@@ -1,4 +1,5 @@
-//! The scrim (A1): covers the content at alpha `0.5 × y/H` (linear). It absorbs input
+//! The scrim (A1): mixes the configured scrim colour by the clamped pull progress.
+//! Its final opacity follows that role's alpha. It absorbs input
 //! with `Sense::click`, and a tap closes. A card shade draws no scrim and uses
 //! [`catch`] — the same layer, taking the tap and painting nothing.
 //!

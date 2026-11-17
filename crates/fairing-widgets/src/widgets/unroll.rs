@@ -1,30 +1,9 @@
-//! `unroll` — a body that opens under a row and closes back, over `motion.switch`.
+//! `unroll` animates an expandable body over `motion.switch`.
 //!
-//! # What it is for
-//!
-//! An expandable row is a header row and, under it, a body that is there when the row
-//! is open and not when it is closed. The body is content — rows, a slider, a note — laid out by
-//! the caller, so this does not know how tall it is until it has been laid out. What it does is
-//! the two things every such body needs and no caller should write twice: it **eases the height**
-//! between nothing and the body's natural height, and it **measures** the body as it goes.
-//!
-//! # How the height is known
-//!
-//! The body is laid out whole every frame it exists, in a child `Ui` clipped to the band that is
-//! shown this frame; what it took last frame is remembered under the id and is the height the
-//! band eases towards. So on the first frame of an opening the band is still nothing and the body
-//! is laid out to be measured; from the next frame it unrolls to what was measured; and a body
-//! that changes height while open follows one frame behind, with a repaint asked for so the
-//! frame comes. Widgets under the clip are not reachable: egui cuts a widget's interact rect to
-//! its clip, so a closed body takes no taps — the contract a closed row keeps.
-//!
-//! # Why the band pushes and does not float
-//!
-//! A `Dropdown` floats: its list lies over the content, is transient, and a tap outside closes it.
-//! A body under a row is the opposite — it is content, it stays open until the row is tapped
-//! again, and everything under it moves down to make room (Windows' expander: "it pushes other UI
-//! elements out of the way; it does not overlay"). So the band is allocated in the caller's own
-//! `Ui`, not in an `Area`.
+//! The body is laid out in a child `Ui` and clipped to the currently exposed band.
+//! Its measured height drives the expansion, and following content is placed below
+//! that band. The caller supplies the body and expanded state. Layout and clipping
+//! use egui's `Ui` mechanisms.
 
 use crate::cx::WidgetCx as Cx;
 use egui::{Pos2, Rect, Sense, Vec2};

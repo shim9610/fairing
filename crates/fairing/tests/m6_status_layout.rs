@@ -75,8 +75,9 @@ fn a_status_layout_moves_an_item_and_its_tap() -> fairing::Result<()> {
         plain.shell.status_bar().item_rect("status.battery"),
         "the battery stays where the bar put it"
     );
-    if let Some(spec) = h.shell.status_bar_mut().spec_mut("status.clock") {
+    if let Some(mut spec) = h.shell.status_item_spec("status.clock") {
         spec.tap_action = Some(LaunchAction::open("pumps"));
+        assert!(h.shell.set_status_item_spec("status.clock", spec));
     }
     assert!(h.shell.workspace().is_home());
     h.tap(clock.center());
@@ -150,8 +151,9 @@ fn an_emptied_status_rect_leaves_its_item_out() -> fairing::Result<()> {
         })
     })?;
     assert_eq!(h.shell.status_bar().item_rect("status.clock"), None);
-    if let Some(spec) = h.shell.status_bar_mut().spec_mut("status.clock") {
+    if let Some(mut spec) = h.shell.status_item_spec("status.clock") {
         spec.tap_action = Some(LaunchAction::open("pumps"));
+        assert!(h.shell.set_status_item_spec("status.clock", spec));
     }
     h.tap(clock.center());
     h.frames(2);

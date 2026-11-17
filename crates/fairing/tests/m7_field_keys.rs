@@ -1,9 +1,8 @@
-//! **A field asks for the keys it is typed on** — `widgets::Keys`.
+//! Field-specific keyboard-layout requests through `widgets::Keys`.
 //!
-//! The keyboard has one layout per device (`[osk] layout`), and whichever it is, it is wrong for
-//! some field: a PIN on a qwerty, a password on a number pad. A field now says what it takes, and
-//! the keyboard shows those keys while the field has the focus and goes back to the device's
-//! layout when a field that asks for nothing takes it.
+//! A field can request a layout while focused. A field with no request restores the
+//! device default. Tests cover PIN, decimal, Latin and plain fields on different
+//! device layouts.
 
 #![cfg(feature = "osk")]
 

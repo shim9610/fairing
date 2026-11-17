@@ -158,7 +158,7 @@ fn manual_osk_at_rest_idles() -> fairing::Result<()> {
     })?;
     h.shell.launch(LaunchAction::open("manual"));
     h.frames(3);
-    h.shell.osk_mut().toggle();
+    h.shell.toggle_osk();
     h.frames(120);
     assert!(
         h.shell.osk().is_shown(),
@@ -323,7 +323,7 @@ fn waiting_toast_does_not_render_every_frame() -> fairing::Result<()> {
     Ok(())
 }
 
-/// A stopped screen's `evict_after` arms a wake, so it is evicted on a panel nobody touches.
+/// A stopped screen's `evict_after` arms a wake; the next supplied update enforces eviction without input.
 #[test]
 fn evict_after_fires_on_an_idle_panel() -> fairing::Result<()> {
     struct Big;

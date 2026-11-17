@@ -1,5 +1,4 @@
-//! **A shop payment kiosk** — both a harness for measuring how far a commercial screen stands on the
-//! crate alone, and a showcase.
+//! A café-ordering and simulated-payment example using public Fairing APIs.
 //!
 //! ```text
 //! cargo run -p fairing --features runner-x11,mock --example kiosk -- --size=1080x2560 --panel-mm=380x900
@@ -8,188 +7,29 @@
 //! cargo run -p fairing --features runner-x11,mock --example kiosk -- --size=1080x2560 --panel-mm=380x900 --lang=ko
 //! ```
 //!
-//! **`--panel-mm` is not decoration.** Without it the shell reckons the density unknown and falls
-//! back to its assumption (1 du = 1/160 in), so a 38-inch panel and a 7-inch panel use the same du —
-//! and this demo's whole point, that the column count comes from **the physical size** rather than
-//! the resolution, dies with it.
+//! Three layouts share the same [`Order`]. Panel size and orientation select the
+//! layout; `--layout=portrait|counter|compact` overrides that selection.
 //!
-//! # What this example measures
-//!
-//! It is outside the library. But there is no other way to check that **things work as declared** —
-//! the crate's tests check what the crate believes to be right, and this example checks what an
-//! integrator actually runs into. So there is one rule:
-//!
-//! > **It never goes outside the public API.** No `pub(crate)`, no internal modules. Everywhere
-//! > something is patched by hand is written down [below](#what-the-crate-still-does-not-have--the-places-patched-by-hand).
-//!
-//! # One app, three devices
-//!
-//! A portrait kiosk, a counter POS and a customer-facing display stand in one shop, and there is no
-//! reason for the three to be different apps. **Three layouts share the same [`Order`], and the
-//! screen's aspect ratio settles which layout it is** — `--layout=portrait|counter|compact` forces
-//! one, for diagnosis.
-//!
-//! | Layout | Device | Flow |
+//! | Layout | Example panel metadata | Flow |
 //! |---|---|---|
-//! | `portrait` | A portrait 38" kiosk (380 × 900 mm) | attract → eat in/take away → menu → confirm → method → approval → receipt |
-//! | `counter` | A counter 10.1" POS (217 × 136 mm) | the menu and the cart on one screen, with only the payment pushed |
-//! | `compact` | A customer-facing 4.3" display (56 × 94 mm) | it only shows the same order |
+//! | `portrait` | 380 × 900 mm | attract → eat in/take away → menu → confirm → method → approval → receipt |
+//! | `counter` | 217 × 136 mm | menu beside cart, followed by payment |
+//! | `compact` | 56 × 94 mm | customer-facing order display |
 //!
-//! ## Why portrait divides top and bottom — the reach bands
+//! `--panel-mm` supplies physical panel dimensions for size conversion. Without it,
+//! the shell uses its configured density fallback. Mounting assumptions and display
+//! and control bands are defined by [`HERO_FRAC`] and [`FLOOR_FRAC`]; these example
+//! values do not establish accessibility conformance for an installed kiosk.
 //!
-//! Stand a 900 mm portrait panel on an 800 mm base and the screen spans 800–1700 mm from the floor.
-//! The top 300 mm is around an adult's eye level, where the hand does not readily go — so **the top
-//! displays and the bottom operates** ([`HERO_FRAC`]). The 0.8–1.2 m control range of the
-//! accessibility regulations applies to essential controls, and in this layout that is the pinned
-//! bottom bar. The bar sits at the very bottom of the screen = just above the base, so it is within
-//! the regulation. A payment button buried in a scroll and a control 1.2 m up are the same kind of
-//! accident. A floor-side trim ([`FLOOR_FRAC`]) is left open too, for a lower installation.
+//! The example uses layout containers, grids, text fitting, themed widgets and
+//! application-specific painters. Domain state, asset decoding, currency formatting,
+//! localization strings and the payment simulation remain in the example.
+//! `ui.locale` changes the displayed language; `--lang=ko|en` selects the initial one.
 //!
-//! ## Read standing, at 70 cm — the two axes of size
-//!
-//! **The touch target and the visual size are different axes.** `touch_target` is the *floor* the
-//! finger sets (a gloved 13 mm here), and `row_height` is taken from the text, a reading size; both
-//! stay around a physical 13–15 mm even on a large panel — which is right. But on a 380 × 900 mm panel 13 mm is 1.4 % of the screen, so laying out by multiples
-//! alone looks like a phone screen shrunk and pasted on. So this example **derives the visible size
-//! from the screen and props it up on the finger** — [`vrow`] · [`pad`] · [`bar_rows`] ·
-//! [`band_text`] are all the same rule.
-//!
-//! Text alone is the exception and is raised through **tokens** ([`standing_metrics`]). It is the
-//! viewing distance that went from the crate's hand-held 360 mm to 700 mm, not the screen that
-//! grew, so writing it in physical size (`mm`) rather than a screen fraction is right. The counter
-//! POS is tapped from about 45 cm away, so it keeps the defaults.
-//!
-//! ## The language is a setting — and switching it is the harness
-//!
-//! The kiosk draws in whatever the shell's `ui.locale` setting says, the key the crate's own
-//! Language screen writes. The switch in the top corner of the attract screen writes it, and every
-//! screen follows it on the next frame ([`follow_locale`]), so the whole flow turns over at once;
-//! `--lang=ko|en` only says where it starts.
-//!
-//! Two sets of wording ([`t`]) are in there for more than showing the showcase abroad. **English is
-//! 1.5 – 2 times longer than Korean for the same meaning** — `Pay now` (7 characters) against
-//! `결제하기` (4), `Cash · Call Staff` (17) against `현금 · 직원 호출` (9). Fitting to the Korean
-//! lengths alone and then saying "the width fitting works" is a guess, not a check. Switching the
-//! language and running it **broke two places straight away.**
-//!
-//! - **The bottom bar's hint was cut to `Pick somet…`.** `Label::truncate()` truncates where there
-//!   is no room, and a truncated hint reads as a fault rather than as guidance. The rule was changed
-//!   to shrink it in, and drop it where even that will not do ([`menu_bar`]).
-//! - **The three payment-method tiles ended up at different text sizes.** [`centered_fit`] shrinks
-//!   each cell separately, and in Korean all three fitted so it never showed. A control that reads
-//!   as one set has its size unified against the longest ([`fit_all`]). **Fixing it improved the
-//!   Korean screen too** — `간편결제` had been the only large one.
-//!
-//! The currency format differs as well — Korean puts the unit after (`13,800원`) and English the
-//! symbol before (`₩13,800`) ([`won`]).
-//!
-//! # What this example had fixed in the crate
-//!
-//! Actually writing it turned up **four defects on the crate's side**, and all four were fixed. That
-//! is the harness's value.
-//!
-//! - **[`layout::Grid`] overflowed the width.** The tile-width formula sets aside only `gap ×
-//!   (columns + 1)`, but `ui.horizontal` inserted egui's default `item_spacing.x` (10 du) between the
-//!   items as well. At 2 columns that adds 40 du and **the right-hand column was cut off the screen.**
-//!   The settings screens are 1 column, so it never showed.
-//! - **The text sizes were not tokens.** 13/16/17/22 were written inside `Theme::egui_style()`, so
-//!   **not one rung of the override ladder reached the text size.** Now
-//!   [`TypeScale`](fairing::theme::TypeScale) is on `Metrics` and can be written in `mm` through
-//!   `MetricsSpec` — a necessary axis for a screen read standing in front of 21.5 inches.
-//! - **Growing a [`BigButton`] left its label at 17 du.** Small text sat in the middle of a 200 du
-//!   hero button. `BigButton::text_size` was added.
-//! - **`[theme.palette]` could not take an alpha.** It read only the six digits of `#RRGGBB`, so
-//!   there was no way at all to change [`ColorRole::Scrim`](fairing::ColorRole) or `Pressed` from the
-//!   config — and being translucent is those two roles' reason to exist. It was caught while putting
-//!   the brand palette onto this file, and `#RRGGBBAA` is now read too.
-//!
-//! # The brand goes on by overriding role colours alone
-//!
-//! `kiosk.toml`'s `[theme.palette]` is all of it — not one line of the layout or the widgets changes.
-//! The crate's default accent is a steel blue (`#2878A9` dark, `#106AA2` light) — the arc iOS,
-//! One UI and Windows 11 all land in, pulled off its pure end, because a default has to sit under
-//! anyone's product without looking like a stock panel. Over this shop's warm photography it still read as *the shell's* colour rather than the
-//! room's; overridden with amber (`#A4E`) it became the same colour as the photograph's key
-//! light. **This is one of the things
-//! the example means to show about the crate** — a product-grade look comes out of twenty lines of
-//! config, with no fork.
-//!
-//! # What the crate still does not have — the places patched by hand
-//!
-//! The rest the example carries. **Five went up into the crate because of this harness** (1 · 2 · 3 ·
-//! 4 · 6), and 5 sent only its aspect-ratio arithmetic up. The remaining three stand as they are. How
-//! many lines each one repeats is written down too.
-//!
-//! 1. ~~**There is no layout for dividing the portrait reach bands.**~~ → **The decision went up into
-//!    the crate** ([`layout::split_height`]). [`action_bar`](layout::action_bar) only pins a bar to
-//!    the bottom and cannot move the body's **starting point** down, so [`bands`] was measuring "is
-//!    it upright, and tall enough for two bands" itself. What is left in that function is **this
-//!    device's share** alone — the top band's fraction ([`HERO_FRAC`]) and the floor trim
-//!    ([`FLOOR_FRAC`]). Both are values the mounting height settles (an 800 mm base, a 900 mm panel)
-//!    and the crate cannot know them, which is why `split_height` **takes the fraction as an
-//!    argument** — unlike the four before it, this is a place where the crate does not settle the
-//!    value. [`band_ui`], which produces a child `Ui`, stays: `new_child(max_rect)` is an egui idiom
-//!    (written out plainly in eighteen places inside the crate too) and not a hole worth wrapping.
-//! 2. ~~**[`layout::Grid`] has no column cap.**~~ → **It went up into the crate**
-//!    ([`Grid::max_columns`](layout::Grid::max_columns)). "As many as the width allows" is the right
-//!    principle, but a strip with a fixed count — five category chips, two of eat-in/take-away —
-//!    needed an exception. Written as a fixed multiple it **folded to 1 column** in the counter POS's
-//!    narrow left column, and the five lines that worked the minimum cell back from the width to
-//!    avoid that (`cell_rows_for`) were **duplicated in six places.** Now all six are one line of
-//!    `.max_columns(n)` and the back-calculation function is gone.
-//! 3. ~~**A grid does not fill the height left over.**~~ → **It went up into the crate**
-//!    ([`Grid::fill_height`](layout::Grid::fill_height)). Filling from the top left the bottom of a
-//!    tall band entirely empty, and `fill_rows`, measuring `remaining_height / rows / row_height`,
-//!    plus a line of `add_space` turned up in **four places**. Taking the cap as **a ratio against the
-//!    width** rather than a row multiple (`6.4`) was settled then — what an integrator really wants to
-//!    stop is "the tile getting taller than it is wide", not a particular row count. Now the four are
-//!    one line of `.fill_height(ratio)` with neither `fill_rows` nor `add_space`.
-//! 4. ~~**There is no width fitting where the drawing is done with a painter.**~~ → **It went up into
-//!    the crate** ([`layout::fit_text`] · [`layout::fit_size`]). `egui::Label::truncate` requires a
-//!    `Ui` and all there is inside a grid cell is a `Painter`, so the measure-and-shrink formula
-//!    turned up in **sixteen places**. `fit_size`, which matches the size across sibling cells, is
-//!    what `--lang=en` caught — shrinking each cell separately gives the three payment methods
-//!    different text sizes. [`centered_fit`] is now a six-line shell that only bundles the centring.
-//! 5. **The aspect-ratio arithmetic went up** ([`layout::contain`] · [`layout::cover_uv`]).
-//!    `IconRef::Texture` holds only a `TextureId` and so **does not know the original size**, and
-//!    therefore fills the Rect it is given as it stands — it is not the kind of thing the crate can
-//!    fix from inside (only whoever uploaded the texture knows its size), so sending up the fitting
-//!    arithmetic alone was the right line. **The drawing side stays in the example**: [`photo`] and
-//!    [`backdrop`] are now four lines each, and the gradient scrim that puts text over a background
-//!    photo ([`scrim`]) is built directly with an `egui::Mesh`. How strong the scrim is and which way
-//!    it runs is chosen per photograph, so the crate cannot settle it.
-//! 6. ~~**A [`BigButton`] is invisible on a card.**~~ → **Fixed in the crate.** `ButtonKind::Normal`
-//!    is `SurfaceVariant` and vanished when laid on a card of the same colour, and this example and
-//!    `demo` each wrote a different workaround **without knowing of each other** (here a dark pill
-//!    beneath it, there the button moved outside the card). Two workarounds mean an API hole — now
-//!    `Normal` carries an `Outline` border. [`cart_line`]'s pill was kept: a stepper's three buttons
-//!    have to read as one lump, and one plate suits that better than three borders.
-//! 7. **There is no quantity stepper** (deliberately). [`cart_line`] builds one out of three
-//!    `BigButton`s, including the branch that stacks them over two lines in a narrow column. A
-//!    hundred lines. It is right that it is not the crate's, but on a payment terminal it comes up
-//!    every time.
-//! 8. **There is no modal or confirmation sheet.** With no overlay to put `Please insert your card`
-//!    on, a fullscreen screen ([`Progress`]) is pushed, and then it stacks on the back stack and going
-//!    back has to be blocked separately with `nav_bar: Hide` plus `edge_guard`.
-//! 9. **The padding tokens are not on the ladder.** `MetricsSpec` has no `screen_inset` or card gap,
-//!    so `Metrics::default()`'s 12 du comes down as it is. The crate's judgement that padding is
-//!    "about the field of view" and stays in `du` is right in itself — but on a 380 mm panel 12 du
-//!    (≈ 4 mm) makes a card look stuck to the bezel, and **there is no knob at rung 2 to fix it.**
-//!    Text can be raised through [`TypeScale`](fairing::theme::TypeScale) while the padding around
-//!    that text cannot, an asymmetry, so [`pad`] derives it from the screen width on the example's
-//!    side.
-//!
-//! Installing the Hangul font was moved down into `examples/common` (`common::korean_fonts`) — it is
-//! right that the crate goes only as far as finding the path, and the ten lines of loading it into a
-//! `FontSet` after that were the same in every example. This file's version swallowed the failure
-//! whole, so an unreadable font left nothing but □ for no stated reason; merging them, it followed
-//! `demo.rs`'s warning. The currency format ([`won`]) stays here — it differs by country, so being
-//! outside the crate is right, and two examples using different currencies would not suit a shared
-//! module either.
-//!
-//! Conversely there is **not one line of layout or styling code**. The column arithmetic, the pinned
-//! bottom bar, the card backgrounds, the left/right split decision, the touch targets and the density
-//! handling are all the crate's.
+//! The approval delay and failure path are simulated. There is no payment-terminal
+//! integration here. A full-screen progress page hides navigation and guards edge
+//! input while the simulated approval runs. `--staff` preopens the example staff
+//! gate for development; otherwise it uses the example's configured access path.
 
 // UI geometry: small integer counts and pixel values crossing to f32. The loss is meaningless in this
 // range, so the cast lints are lifted for the whole file (the same treatment as the crate's render modules).
@@ -219,34 +59,17 @@ use std::time::{Duration, Instant};
 
 const CONFIG: &str = include_str!("kiosk.toml");
 
-/// The share of the height the **display band** takes in the portrait layout.
+/// Portrait display-band fraction.
 ///
-/// # The mounting height settles this number
-///
-/// The installation this demo assumes: **a 900 mm panel stood on an 800 mm base.** The screen spans
-/// 800 mm to 1700 mm from the floor — the common shape of a shop kiosk.
-///
-/// | Where on the screen | From the floor | What goes there |
-/// |---|---|---|
-/// | The top 34 % | 1394 – 1700 mm | Around eye level. It **only shows** |
-/// | The bottom 66 % | 800 – 1394 mm | It is pressed. The pinned bottom bar sits at 800 – 950 mm |
-///
-/// The 0.8 – 1.2 m control range of the accessibility regulations applies to **essential controls**,
-/// and in this layout that is the bottom bar — pay, start. The bar sits at the very bottom of the
-/// screen = just above the base = 800 mm, so it is within the regulation. The menu grid goes above
-/// that, but it is a secondary control with scrolling and filters.
-///
-/// **A different mounting height means recalculating this value.** The crate does not know where the
-/// device stands, so this is the integrator's arithmetic.
+/// The example assumes a 900 mm panel above an 800 mm base. The upper band displays
+/// content; controls are placed below it. Recalculate this split for the product
+/// installation and assess reachability of all required controls.
 const HERO_FRAC: f32 = 0.34;
 
-/// The share of the height the **out-of-reach strip along the floor** takes in the portrait layout.
+/// Portrait floor-trim fraction.
 ///
-/// With an 800 mm base the very bottom of the screen is the control range's floor, so it is **0** —
-/// there is nothing to trim. It was first set to 0.14 for an assumed 600 mm base, and that left 14 %
-/// of the screen empty below the bottom bar, which looked like a half-drawn screen. **Where the
-/// installation is low enough to want a strip** (a counter-top form with no base, hung low on a
-/// wall), raise this — with a 600 mm base, the bottom 200 mm of the screen is below 0.8 m, so 0.22.
+/// The default is zero for the example's assumed mounting. Adjust this fraction
+/// when the intended installation needs an unused lower strip.
 const FLOOR_FRAC: f32 = 0.0;
 
 /// How long a mock card approval takes. Changed with `--dwell-ms=N`.
@@ -254,13 +77,10 @@ const DWELL_MS_DEFAULT: u64 = 2500;
 
 // ── Language (the `ui.locale` setting; `--lang=ko|en` to start in) ───────────
 
-/// The language of the on-screen wording.
+/// The language used by the example wording.
 ///
-/// **A showcase and a harness at once.** The English wording is 1.5 – 2 times longer than the Korean
-/// for the same meaning — "Pay now" (7 characters) against "결제하기" (4), "Cash · call staff" (17)
-/// against "현금 · 직원 호출" (9). Fitting to the Korean lengths alone and then saying "the width
-/// fitting works" is a guess, not a check. Switching the language and running it shows whether
-/// [`centered_fit`], `Label::truncate` and [`layout::fit_text`] **really** hold up.
+/// English and Korean labels have different lengths; inspect both layouts when
+/// changing text or fitting rules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Lang {
     Ko,
@@ -282,27 +102,21 @@ impl Lang {
     }
 }
 
-/// The language every screen is drawing in this frame.
-///
-/// **It is not dragged through thirty screens as an argument.** It changes when the `ui.locale`
-/// setting does, which is rarely, and passing it down would give a function like [`cart_line`]
-/// seven arguments. [`follow_locale`] brings it up to the setting at the top of every screen. Yes,
-/// the example is single-threaded — it is still an atomic, being a `static`.
+/// The example's current language, synchronized from `ui.locale` by `follow_locale`.
+/// This static atomic lets screen helpers read it without an additional argument.
 static LANG: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
 /// The setting the language follows: the key the crate's own Language screen writes.
 const LOCALE_KEY: &str = "ui.locale";
 
-/// The languages on offer, as `(ui.locale tag, name)`. Each name is written in its own language,
-/// as a language list always is: someone looking for theirs cannot read the others.
+/// The offered languages, as `(ui.locale tag, name)`. Names use their own language.
 const LANGUAGES: [(&str, &str); 2] = [("en", "English"), ("ko", "한국어")];
 
 /// **Bring [`LANG`] up to the `ui.locale` setting**, once something has written it.
 ///
-/// Called at the top of every screen ([`with_order`]), so a write from anywhere — the switch on
-/// the attract screen, the crate's Language settings screen, a `ShellHandle` on another thread —
-/// redraws every screen in that language on the next frame. Until something writes it, the
-/// language stays where `--lang` started it.
+/// Called when a screen body enters [`with_order`]. A write from the attract-screen switch,
+/// Language settings or a `ShellHandle` is read when that body next runs. Until something
+/// writes the setting, the language stays where `--lang` started it.
 fn follow_locale(cx: &Cx<'_>) {
     if let Some(SettingValue::Text(tag)) = cx.settings.get(&LOCALE_KEY.into()) {
         set_lang(if tag == "ko" { Lang::Ko } else { Lang::En });
@@ -331,10 +145,7 @@ fn lang() -> Lang {
     }
 }
 
-/// **Both sets are written side by side.** Pulling them out into a key table (`t("cart.pay")`) moves
-/// the wording away from the code and hides what is used where — in a twenty-screen example, keeping
-/// the two together where they are used reads better, and **a missed translation shows up at compile
-/// time.** Once there are hundreds of strings, that is the moment to move to something like `fluent`.
+/// Choose between the English and Korean strings supplied at each call site.
 fn t(ko: &'static str, en: &'static str) -> &'static str {
     match lang() {
         Lang::Ko => ko,
@@ -367,8 +178,7 @@ impl Item {
 /// A category. The chips at the top of the menu screen filter by it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Cat {
-    /// Everything. On a large portrait panel this is the default — showing a customer standing in
-    /// front of 32 inches only six plates and hiding the rest behind a tab is not using the screen.
+    /// All product categories. This is the large portrait layout's default filter.
     All,
     Coffee,
     Tea,
@@ -660,7 +470,7 @@ fn won(amount: u32) -> String {
 
 // ── The payment domain's icons (not in the crate — harness result 2) ──────────
 
-/// The 33 **real assets** the example carries (`assets/kiosk/`; the specification is in `SPEC.md`).
+/// Embedded example artwork from `assets/kiosk/`; authoring notes are in `SPEC.md`.
 ///
 /// All of them are baked into the executable with `include_bytes!` — no assets need loading onto the
 /// device, and the pictures appear whichever directory the example is run from. The decoding is done
@@ -683,8 +493,7 @@ struct Art {
     pay: BTreeMap<&'static str, egui::TextureHandle>,
 }
 
-/// One `(name, bytes)` pair as a texture. The shell comes up even where the decode fails — a device
-/// must not fail to start over one picture.
+/// Decode one embedded asset as a texture. Decode errors propagate to startup.
 macro_rules! tex {
     ($ctx:expr, $name:literal) => {
         common::decode_texture(
@@ -847,8 +656,8 @@ fn backdrop(ui: &egui::Ui, tex: &egui::TextureHandle, into: egui::Rect) {
     );
 }
 
-/// A scrim deepening towards the bottom. It has to be there to put text over a background photograph —
-/// without it the text disappears in the bright parts.
+/// Paint a gradient scrim that darkens the lower part of a background photograph.
+/// Check label contrast against the composited image.
 fn scrim(ui: &egui::Ui, rect: egui::Rect, base: egui::Color32, top_a: u8, bottom_a: u8) {
     let mut mesh = egui::Mesh::default();
     let top = egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), top_a);
@@ -870,8 +679,9 @@ fn scrim(ui: &egui::Ui, rect: egui::Rect, base: egui::Color32, top_a: u8, bottom
 
 /// The device's form. Three layouts share the same order state.
 ///
-/// It can be forced with `--layout=`, and without it **the screen's aspect ratio settles it** — which
-/// is what this example means to show.
+/// `--layout=` overrides the choice. Otherwise panel dimensions select the compact
+/// customer display or the orientation-based layout; without panel metadata, pixel
+/// dimensions provide the fallback.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Shape {
     /// A portrait 21.5" kiosk — a customer uses it standing. Divided into display and control bands.
@@ -947,8 +757,7 @@ fn bands(ui: &egui::Ui, cx: &Cx<'_>) -> Option<(egui::Rect, egui::Rect)> {
     let hero_h = layout::split_height(ui, cx, HERO_FRAC)?;
     let full = ui.available_rect_before_wrap();
     let top = full.top() + hero_h;
-    // The floor trim is **settled by the mounting height** — see [`FLOOR_FRAC`]. With this demo's
-    // 800 mm base the very bottom of the screen is the control range's floor, so it is 0.
+    // Apply the example's configured floor-trim fraction.
     let bottom = full.bottom() - full.height() * FLOOR_FRAC;
     Some((
         egui::Rect::from_min_max(full.min, egui::pos2(full.right(), top)),
@@ -966,11 +775,7 @@ fn band_ui(ui: &mut egui::Ui, rect: egui::Rect) -> egui::Ui {
     child
 }
 
-/// A text size derived from the band's height.
-///
-/// Written as `row_height × a bare number` it would break the ban on multiplying a token by a bare
-/// number, and above all a `Heading` of 22 pt = 5.5 mm on a 21.5" portrait panel cannot be read
-/// standing 70 cm away. Derived from the band, the text grows as the screen does.
+/// Derive a text size from the display-band height.
 fn band_text(band: egui::Rect, frac: f32) -> egui::FontId {
     egui::FontId::proportional((band.height() * frac).max(11.0))
 }
@@ -1006,15 +811,8 @@ fn centered_fit(
 
 // ── The screens ───────────────────────────────────────────────────────────────
 
-/// The pinned bottom bar's height (as a multiple of the row height).
-///
-/// **The touch target and the visual size are different axes.** `row_height` is a reading size of
-/// about 13 mm, and on a 32-inch panel 13 mm is 2 % of the screen — written as a multiple alone the bar
-/// goes thread-thin and the CTA is invisible. What can be pressed and what catches the eye are
-/// different problems, so on a large panel the screen fraction is let win. The floor is still the
-/// finger's.
-///
-/// The crate cannot settle this value for you — "what is the hero of this screen" is what the app knows.
+/// Bottom-bar height in row-height units, with a floor derived from panel height.
+/// The layout also retains the configured touch-target minimum.
 fn bar_rows(cx: &Cx<'_>) -> f32 {
     let row = cx.theme.metrics.row_height;
     (cx.pane.rect.height() * 0.082 / row).clamp(2.0, 5.0)
@@ -1025,29 +823,17 @@ fn bar_text(cx: &Cx<'_>) -> f32 {
     bar_rows(cx) * cx.theme.metrics.row_height * 0.20
 }
 
-/// **The visual row height** — the vertical unit the lists and cards use.
-///
-/// The same point [`bar_rows`] makes, made about the body. `row_height` is **the floor the finger
-/// and the eye set**, not a large panel's layout unit. Stacking a cart in 13 mm rows on a 900 mm
-/// portrait panel makes the lines look like threads — they can be pressed, but they do not look
-/// like goods. It is derived from the screen and propped up on `row_height`.
+/// Visual row height derived from the panel, with `row_height` as a floor.
 fn vrow(cx: &Cx<'_>) -> f32 {
     (cx.pane.rect.height() * 0.034).max(cx.theme.metrics.row_height)
 }
 
-/// **The outer padding** — how far a card is held off the glass (harness result 9).
-///
-/// `screen_inset` is **not** in [`MetricsSpec`]. The crate's judgement of grouping padding as "about
-/// the field of view" and leaving it in `du` is right, but it means it cannot be grown at rung 2 of
-/// the token ladder — on a 380 mm panel 12 du (≈ 4 mm) makes a card look stuck to the bezel and
-/// there is no knob to fix it. The example derives it from the screen and props it up on the
-/// crate's value.
+/// Outer padding derived from panel width, with the resolved `screen_inset` as a floor.
 fn pad(cx: &Cx<'_>) -> f32 {
     (cx.pane.rect.width() * 0.030).max(cx.theme.metrics.screen_inset)
 }
 
-/// The **back** button on the left of the bottom bar. The nav bar being off, the screen provides the
-/// way back itself — an Android-style system bar on a customer screen makes a kiosk look like a phone.
+/// Back button inside the screen's bottom bar; the example hides the shell nav bar.
 fn back_button(ui: &mut egui::Ui, cx: &mut Cx<'_>) -> bool {
     let ts = bar_text(cx);
     BigButton::new(t("뒤로", "Back"))
@@ -1126,9 +912,7 @@ fn attract(ui: &mut egui::Ui, cx: &mut Cx<'_>, order: &mut Order, art: &Art) {
         egui::Sense::click(),
     );
 
-    // **The background comes first.** Whichever of the portrait and landscape plates suits the screen
-    // is drawn over it, and a scrim deepening towards the bottom laid on top — without it the text
-    // disappears in the bright parts.
+    // Draw the selected background, then its lower gradient scrim.
     let bg = if full.width() < full.height() {
         &art.bg_portrait
     } else {
@@ -1178,9 +962,8 @@ fn attract(ui: &mut egui::Ui, cx: &mut Cx<'_>, order: &mut Order, art: &Art) {
     }
 
     // **The language switch**, in the top corner where a kiosk keeps it. It writes the
-    // `ui.locale` setting rather than the language itself: every screen follows the setting
-    // ([`follow_locale`]), so the whole kiosk turns over on the next frame, and anything else
-    // that writes the setting turns it over the same way.
+    // `ui.locale` setting rather than the language itself. Screen bodies read the setting
+    // through `follow_locale` when they next run, regardless of which writer changed it.
     let inset = pad(cx);
     let switch_w = (hero.width() * 0.46).min(m.row_height * 7.0);
     let mut corner = band_ui(
@@ -1341,22 +1124,8 @@ fn menu(ui: &mut egui::Ui, cx: &mut Cx<'_>, order: &mut Order, art: &Art, with_b
         // 3 columns where wide, 2 where narrow. The column count is settled first and the cell worked back from it.
         let avail = ui.available_width();
         let want = if avail > row * 12.0 { 3.0 } else { 2.0 };
-        // **The tile height is set to fill the height left.** A product tile is a photograph plus a
-        // name plus a price, so a little taller than square is as good as it gets, and stopping there
-        // is what lets two rows fit on a landscape POS — the same code stands differently on two devices.
-        // **No `fill_with`.** The cell used to be flooded with `Primary` when its item was picked,
-        // and that one line is what made this read as a vending machine: an accent over a
-        // photograph destroys the photograph, which was the reason to have a card. The card is now
-        // `MediaCard`'s, and being picked is a ring.
-        // **The cell's height is asked of the card, not guessed at.** It was `cell_rows = 2.1`,
-        // and a square picture plus its text needs 4.6 rows at this panel — so the tile was handed
-        // 282.7 du where it wanted 636.4 and the shortfall came out of the photograph, drawn at a
-        // 3.435:1 crop by a caller three lines above asking for 1:1. `cell_rows` cannot express
-        // this: it is a multiple of the row height and the shortfall depends on the *width* the
-        // columns came out at, which is decided inside the grid.
-        //
-        // Every tile's text block is the same two lines, so it is measured once here rather than
-        // per cell — `height_for` at zero width is the text block alone.
+        // Fit product tiles to the available height and preserve their image aspect.
+        // Measure the shared text block once; height_for at zero width returns that block.
         let text_h = MediaCard::new(" ")
             .value(" ")
             .aspect(ASPECT_SQUARE)
@@ -1417,14 +1186,7 @@ fn menu_bar(ui: &mut egui::Ui, cx: &mut Cx<'_>, count: u32, total: u32) -> (bool
                 .enabled(count > 0)
                 .show(ui, &mut cx.widgets())
                 .clicked();
-            // **Shrink it in, and drop it where it will not shrink** — the place `--lang=en` caught.
-            //
-            // It was `Label::truncate()` at first. The Korean "메뉴를 골라 주세요" fitted and looked
-            // fine, and switching to English cut it to `Pick somet…`. **A truncated hint reads as a
-            // fault rather than as guidance.** In a bar the CTA is the one that should not give up its
-            // place, so the hint shrinks to what is left and drops out where even that will not do. On
-            // a panel with width to spare it comes out in full — a rule is needed quite apart from
-            // rewriting the wording shorter.
+            // Fit the hint into the space left beside the CTA; omit it below the minimum size.
             let hint = if count == 0 {
                 t("메뉴를 골라 주세요", "Pick an item").to_owned()
             } else {
@@ -1447,7 +1209,7 @@ fn menu_bar(ui: &mut egui::Ui, cx: &mut Cx<'_>, count: u32, total: u32) -> (bool
             } else {
                 1.0
             };
-            // Smaller than this it cannot be read in the bar — better absent then.
+            // Omit hints that would be below this example's minimum text size.
             if scale >= 0.72 {
                 ui.add_space(gap);
                 ui.label(
@@ -1466,20 +1228,8 @@ fn menu_bar(ui: &mut egui::Ui, cx: &mut Cx<'_>, count: u32, total: u32) -> (bool
     (back, go)
 }
 
-/// One product tile.
-///
-/// **This was 89 lines and is now the card it was always drawing.** What it used to do by hand,
-/// and what now does it:
-///
-/// * a photograph in a band computed as `0.04..0.62` of the cell → the card's own fixed-aspect,
-///   full-bleed image box, whose outer corners are the card's and whose inner ones are square;
-/// * a name and a price centred at `0.24` and `0.09` up from the bottom → the card's left-aligned
-///   text block, on the type scale;
-/// * a `Danger` disc with `OnPrimary` digits for the quantity → [`CountBadge`], which carries its
-///   ink **per tone** because that pair measures 2.79 in base dark and a count is meant to be read;
-/// * the cell flooded with `Primary` when picked → a ring, which is what every reference does;
-/// * a sold-out item drawn by dropping the photo's alpha and stamping a glyph over it → the card's
-///   own veil, a scrim and a word.
+/// Product tile using `MediaCard`, an image, text and a quantity badge.
+/// Selected products use an outline; sold-out products use the card's veil and label.
 fn menu_tile(
     ui: &mut egui::Ui,
     cx: &mut Cx<'_>,
@@ -1576,10 +1326,8 @@ fn cart(ui: &mut egui::Ui, cx: &mut Cx<'_>, order: &mut Order, art: &Art) {
         |ui, cx| {
             let m = cx.theme.metrics;
             let ts = bar_text(cx);
-            // In a narrow bar such as the counter's right column the clear button is dropped — forcing
-            // three in has them overlap. The amount is already shouted large by the display band in the
-            // portrait layout, so it is not repeated in the bar — only a narrow landscape layout puts it
-            // inside the pay button.
+            // Hide Clear in the narrow counter bar. Portrait shows the amount in its
+            // display band; the narrow landscape layout includes it in the Pay button.
             let narrow = ui.available_width() < m.row_height * 9.0;
             let back = !narrow && back_button(ui, cx);
             let (pay, wipe) = ui
@@ -1595,9 +1343,8 @@ fn cart(ui: &mut egui::Ui, cx: &mut Cx<'_>, order: &mut Order, art: &Art) {
                     .enabled(total > 0)
                     .show(ui, &mut cx.widgets())
                     .clicked();
-                    // **Clear all is a long press.** One mistaken tap must not blow the cart away — let
-                    // go while the ring fills and it is cancelled. It is kept smaller than pay: the
-                    // destructive one must not be what catches the eye first.
+                    // Clear uses a long press; releasing before completion cancels it.
+                    // It is drawn smaller than the Pay action in this example.
                     ui.add_space(pad(cx));
                     let wipe = !narrow
                         && BigButton::new(t("전체 취소", "Clear all"))
@@ -1646,9 +1393,8 @@ fn cart_body(ui: &mut egui::Ui, cx: &mut Cx<'_>, order: &mut Order, art: &Art) {
         return;
     }
     layout::section(ui, cx, t("담긴 메뉴", "In your cart"));
-    // **Share the height left out among the lines** (harness result 3). A two-line order clinging
-    // thinly to the top of an upright panel reads as a receipt preview rather than a cart. A cap keeps
-    // one line from swallowing the screen, and the floor is the touch target's.
+    // Distribute available height across cart lines, capped per line and floored
+    // by the touch-target metric.
     let n = lines.len() as f32;
     let line_h = ((ui.available_height() - vrow(cx) * 2.2) / n.max(1.0))
         .clamp(cx.theme.metrics.touch_target * 1.3, vrow(cx) * 2.4);
@@ -1675,25 +1421,16 @@ fn cart_body(ui: &mut egui::Ui, cx: &mut Cx<'_>, order: &mut Order, art: &Art) {
     });
 }
 
-/// One cart line — **the example builds the quantity stepper** (harness result 3).
-///
-/// [`ListRow`](fairing::widgets::ListRow) has no trailing **widget** slot. The crate deliberately
-/// does not open that, since what goes in a row is the integrator's, and the judgement is right,
-/// but on a payment terminal these forty lines come up every time.
+/// One cart line, including the item image, text and a quantity `Stepper`.
+/// Narrow columns place the text and stepper on separate lines.
 fn cart_line(ui: &mut egui::Ui, cx: &mut Cx<'_>, line: Line, order: &mut Order, art: &Art, h: f32) {
     let m = cx.theme.metrics;
     let inset = pad(cx);
-    // **The stepper's own size, asked of the crate rather than guessed at.** This used to compute
-    // `(h * 0.42).min(vrow(cx) * 0.72).max(touch_target)` = 115 px and say in a comment that the
-    // stepper grew with the row — and then place the stepper at `touch_target` = 56 px, half of
-    // it, because `Stepper` had no size to be told and read the finger itself. The number and the
-    // claim are one thing now.
+    // Use the Stepper's reported size when placing it in the cart line.
     let step = fairing::theme::control_height(&m, &cx.theme.control);
     let gap = inset * 0.5;
     let pill_w = step * 2.0 + step * 0.9 + gap * 2.0;
-    // **Stacked over two lines where narrow.** In the counter POS's right column (360 du) the name and
-    // the stepper did not fit on one line and overlapped. Shrinking the touch target to make it fit is
-    // not the answer.
+    // Stack text and the stepper when they do not fit beside each other.
     let stacked = ui.available_width() < pill_w + step * 3.6;
     let h = if stacked { h * 1.5 } else { h };
     let (rect, _) =
@@ -1705,8 +1442,7 @@ fn cart_line(ui: &mut egui::Ui, cx: &mut Cx<'_>, line: Line, order: &mut Order, 
         (rect.center().y, rect.center().y)
     };
 
-    // **The product photograph.** A list of nothing but stacked text reads as a statement rather than a
-    // cart — the same photograph chosen from the menu has to follow through for "it went in" to be seen.
+    // Repeat the item photograph from the menu in the cart line.
     let thumb = (h * 0.74).min(rect.width() * 0.24);
     let mut left = rect.left() + inset;
     if !stacked {
@@ -1724,10 +1460,7 @@ fn cart_line(ui: &mut egui::Ui, cx: &mut Cx<'_>, line: Line, order: &mut Order, 
         left += thumb + inset;
     }
 
-    // **The widget, not 55 lines of pill.** What this replaces drew `"+"` and `"-"` as *text*,
-    // which the checkbox's own doc forbids - a typeface an integrator supplies may not carry the
-    // glyph - and set its radius, its digit size and its value cell from eyeballed multiples of a
-    // local variable, so a panel that retuned its metrics retuned nothing here.
+    // Use the shared Stepper widget for quantity editing.
     let pill = {
         let mut qty = i32::try_from(line.qty).unwrap_or(i32::MAX);
         let side = step;
@@ -1752,10 +1485,7 @@ fn cart_line(ui: &mut egui::Ui, cx: &mut Cx<'_>, line: Line, order: &mut Order, 
     } else {
         (pill.left() - left - inset).max(step)
     };
-    // **The type scale, not a fraction of the row.** This was `(h * 0.26).min(vrow(cx) * 0.52)`,
-    // which resolved to 83.2 px on the portrait panel — 1.13x the theme's own `heading` and 1.93x
-    // its `body`, i.e. a fifth type step nobody declared, sized off the row instead of off the
-    // scale. Measured, that is the 60 px capital the 56 px stepper was standing next to.
+    // Use the theme type scale for the item name and price.
     let name_size = cx.theme.metrics.type_scale.heading;
     let name = egui::FontId::proportional(name_size);
     let painter = ui.painter();
@@ -1785,8 +1515,7 @@ fn cart_line(ui: &mut egui::Ui, cx: &mut Cx<'_>, line: Line, order: &mut Order, 
     );
 }
 
-/// **The payment method.** Three icon tiles. Cash only calls an assistant — in a Korean shop, cash is
-/// usually a person's job.
+/// Payment-method selection. The cash option opens the simulated staff-assistance path.
 fn method(ui: &mut egui::Ui, cx: &mut Cx<'_>, order: &mut Order, art: &Art) {
     let total = order.total();
     let full = ui.available_rect_before_wrap();
@@ -1809,9 +1538,7 @@ fn method(ui: &mut egui::Ui, cx: &mut Cx<'_>, order: &mut Order, art: &Art) {
             cx.theme.color(ColorRole::Primary),
         );
     }
-    // **The three methods are stacked in one column and fill the band.** In 2 columns the last one is
-    // left alone and the right goes empty, and on an upright panel that gap is an eighth of the screen.
-    // Three stacked vertically also scan better — the hand moves up and down anyway.
+    // Stack the three payment methods vertically and fill the available band.
     let back_h = bar_text(cx) * 4.2;
     let band = egui::Rect::from_min_max(
         reach.min,
@@ -1925,12 +1652,8 @@ fn method_tile(ui: &mut egui::Ui, cx: &mut Cx<'_>, v: egui::Rect, m: Method, art
     );
 }
 
-/// **Payment in progress.** A screen with state, so it is built with [`screen_with`].
-///
-/// With no modal in the crate (harness result 4) a fullscreen screen is pushed. That stacks it on the
-/// back stack, so going back has to be blocked separately with `nav_bar: Hide` plus `edge_guard` —
-/// what one modal would do becomes three things: a screen declaration, a chrome policy and stack
-/// management.
+/// Stateful full-screen payment-progress page.
+/// The declaration hides navigation and guards edge input while simulated approval runs.
 struct Progress {
     art: Rc<Art>,
     dwell: Duration,
@@ -1949,7 +1672,7 @@ impl Screen for Progress {
 
         let full = ui.available_rect_before_wrap();
         let (hero, reach) = bands(ui, cx).unwrap_or((full, full));
-        // The display band is filled by the card terminal's photograph — "what am I meant to do" reads faster than text.
+        // Use the terminal photograph in the display band during simulated approval.
         photo(
             ui,
             &self.art.insert_card,
@@ -1999,8 +1722,7 @@ impl Screen for Progress {
             }
             return;
         }
-        // **This is the only screen that breaks idling at 0 fps**. It schedules only the next
-        // frame and stops by itself when it finishes.
+        // Request the next update while simulated approval is in progress.
         if !self.settled {
             cx.shell.waker().wake_after(Duration::from_millis(33));
         }
@@ -2070,7 +1792,7 @@ fn receipt_options(
         });
 }
 
-/// **The receipt and the order number.** The whole display band is the number — it has to be visible from a distance when called at the counter.
+/// Receipt view with the issued order number in the display band.
 fn receipt(ui: &mut egui::Ui, cx: &mut Cx<'_>, order: &mut Order, art: &Art) {
     let (ticket, total, dine_in) = {
         let o = &*order;
@@ -2518,7 +2240,7 @@ fn main() -> fairing::Result<()> {
 /// The example's switches. Parsed by this example, not by the crate.
 #[derive(Debug, Clone, Copy)]
 struct Opts {
-    /// Make the card approval fail. **A payment demo with only the success path is not a payment demo.**
+    /// Make the simulated card approval fail.
     fail: bool,
     /// The mock approval time (ms).
     dwell_ms: u64,
@@ -2540,30 +2262,15 @@ impl Opts {
     }
 }
 
-/// **Text sized for 1.15 m, on a machine used from about 70 cm** — the portrait kiosk's one knob.
+/// Example size policy.
 ///
-/// This used to be a `MetricsSpec` that restated the whole type scale in millimetres, because
-/// `ScalePolicy` had no knob for the eye and the only physical term going was the finger. It was a
-/// working answer to the right question and it cost the screen its coherence: the text moved 2.30x,
-/// the rows moved 2.49x, and **every control stayed at exactly one finger**, because a control's
-/// size came from `metrics.touch_target`. A stepper measured 56 px beside a 60 px capital.
-///
-/// One line now says what the override was trying to say. A 10.1" counter POS is tapped by an
-/// assistant 45 cm away, so it keeps the default and is right to — the distance is per-shape, which
-/// is exactly what a policy knob is for.
-///
-/// **Why 1150 and not 700.** The old override drew a 10 mm body, and 10 mm is what 1.15 m asks for;
-/// the 70 cm in its own title was never the number it was using. Stating 700 here would shrink the
-/// text 1.64x, so the figure is kept and the reason is written down instead: the crate's scale puts
-/// a capital at 20.9 arcmin, ISO 9241-303's floor for *comfortable* reading by someone who chose to
-/// sit down and read. A café kiosk is read in passing, over a shoulder, by people who did not
-/// choose their eyesight, and the way to buy that headroom is to size for further away than the
-/// customer stands. It reproduces the shipped render to 0.1 %.
+/// Uses a 13 mm finger-size parameter unless `--finger-mm` overrides it. The text
+/// viewing-distance parameter is 1150 mm for the portrait layout and 500 mm for
+/// the other layouts. These are example sizing inputs; assess readability with
+/// the actual panel, fonts, mounting and intended users.
 fn standing_policy(shape: Shape, finger_mm: Option<f32>) -> fairing::unit::ScalePolicy {
-    // **Gloved, 13 mm**, not the crate's bare-finger default: on a shared screen where winter
-    // gloves and elderly hands both turn up, the larger target is right. `--finger-mm=9` tries the
-    // bare-finger policy. And a customer stands, so the text is sized for further away than the
-    // hand-held default - 500 mm on the counter unit, more on the tall one.
+    // Use the larger target-size policy by default; --finger-mm overrides it.
+    // The viewing-distance parameter is selected by the layout below.
     let mut policy = fairing::unit::ScalePolicy::gloved().with_viewing_distance_mm(500.0);
     if let Some(mm) = finger_mm {
         policy = policy.with_finger_mm(mm);
@@ -2590,19 +2297,13 @@ fn build(
     let mut builder = fairing::Shell::builder(config)
         .services(fairing::services::mock::services())
         .fonts(common::korean_fonts());
-    // **Pin the physical size** (`--panel-mm=380x900`). Without it the density is reckoned unknown and
-    // it falls back to the assumption (1 du = 1/160 in), so a 32-inch panel and a 7-inch panel use the
-    // same du — and this demo's whole point, that the column count comes from the physical size rather
-    // than the resolution, dies with it. Not given, a warning is logged at startup.
+    // Supply panel dimensions so physical-size conversion uses the example
+    // panel metadata rather than the density fallback.
     if let Some((w, h)) = panel_mm {
         builder = builder.physical_mm(w, h);
     }
     builder = builder.scale_policy(standing_policy(shape, finger_mm));
-    // **Rows sized for reading, not for the hand.** The crate's row is one touch target, which is
-    // right for a panel held at hand-held distance. A customer stands in front of this one and the
-    // screens are laid out in multiples of the row, so it takes the row from the text instead:
-    // three body ems and a hair, which follows `viewing_distance_mm`. The finger still floors
-    // every control through `touch_target`.
+    // Set row height from the body text scale, retaining the touch-target floor.
     builder = builder.metrics_spec({
         use fairing::unit::{Dim, Span};
         let read = Span::fixed(Dim::text(3.0) + Dim::du(8.0))
@@ -2615,12 +2316,9 @@ fn build(
         }
     });
     let mut shell = builder.build(ctx)?;
-    shell
-        .desktop_mut()
-        .set_wallpaper(Wallpaper::Solid(ColorRole::Background));
-    // The 33 real assets are decoded here, once — outside the frame loop, so it finishes before the
-    // first screen appears. On a failure the shell is not stood up: the photographs are the screens, so
-    // a fallback would be meaningless.
+    shell.set_wallpaper(Wallpaper::Solid(ColorRole::Background));
+    // Decode the embedded assets before creating the shell. A decode error
+    // propagates from startup.
     let art = Rc::new(Art::load(ctx)?);
     add_screens(&mut shell, shape, &art, opts);
     // **The app owns the order** and lends it to the screens each frame.
@@ -2628,12 +2326,8 @@ fn build(
 }
 
 fn add_screens(shell: &mut fairing::Shell, shape: Shape, art: &Rc<Art>, opts: Opts) {
-    // **A customer screen has no chrome.** The clock, the Wi-Fi and the battery on a status bar are
-    // none of a customer's business, and an Android-style back bar makes a kiosk look like a phone. The
-    // flow is driven by the screens, and the way back is a large button on each screen's bottom bar.
-    //
-    // The edge gestures are blocked too — a customer must not swipe the shade down. Only the emergency
-    // gesture is left.
+    // Hide chrome and block ordinary edge gestures for the customer flow.
+    // Each screen supplies its own Back button; the emergency gesture remains enabled.
     let guarded = ChromePolicy {
         status_bar: BarMode::Hide,
         nav_bar: BarMode::Hide,

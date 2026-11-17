@@ -35,7 +35,7 @@ indexing_slicing = "warn"
 [dev-dependencies]
 log = { workspace = true }
 egui = { workspace = true }
-fairing = { path = "../fairing", version = "0.1.0", default-features = false }
+fairing = { path = "../fairing", version = "0.1.0-beta.1", default-features = false }
 
 [[example]]
 name = "allocation_pressure"

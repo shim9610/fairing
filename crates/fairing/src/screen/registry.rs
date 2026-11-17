@@ -1,8 +1,8 @@
 //! The declaration registry — the store behind `shell.add(decl)` and `shell.remove(id)`.
 //!
 //! Adding the same id again replaces it. Removing takes the related icons and items with it and
-//! closes open screens (ending an instance is done by `Shell` on the next frame, when it sees
-//! the registry changed).
+//! closes open screens (ending an instance is done by `Shell` on its next state update, when it
+//! sees the registry changed).
 
 use super::{ActionDecl, DesktopPlacement, ScreenDecl, ScreenSource};
 use crate::chrome::NavItemDecl;
@@ -159,9 +159,8 @@ impl Registry {
     /// Add. If the id exists (whatever its kind) it is taken out and replaced. Returns the
     /// declaration that was replaced.
     ///
-    /// This is **the one place declarations are validated**. The builder does not
-    /// force an order (`.icon()` may follow `.desktop()`), so only `add`, which sees the finished
-    /// declaration, can judge:
+    /// This validates the completed declaration after builder calls have finished
+    /// (`.icon()` may follow `.desktop()`). Checks include:
     /// - `.desktop()` or `.dock()` with no icon → a warning (it registers, but no icon appears).
     /// - The same id replaced with a different kind (`Screen` → `Action`, say) → a warning (the
     ///   sign of an unintended id collision).
@@ -255,10 +254,8 @@ impl Registry {
     /// **Lend out** the screen a resident declaration owns, for exactly one call.
     ///
     /// The screen leaves the declaration and comes back through [`Registry::put_resident`]. Taking
-    /// it rather than handing out a `&mut` is what makes **nesting** safe: while a screen is being
-    /// drawn its slot is empty, so a screen that reaches for itself — directly or round a cycle —
-    /// gets `None` and draws nothing, where a shared cell would have panicked and a plain `&mut`
-    /// would not have compiled at all.
+    /// it leaves an empty slot during the call, so a nested lookup of the same
+    /// resident screen returns `None` instead of borrowing it again.
     ///
     /// `None` where the id is gone, the declaration is a factory one, or the screen is already out.
     pub(crate) fn take_resident(&mut self, id: &str) -> Option<super::ScreenHandle> {
@@ -280,8 +277,8 @@ impl Registry {
         }
     }
 
-    /// Whether a screen is declared under this id. The list a screen draws is filtered on it, so an
-    /// entry never points at something that is not there.
+    /// Whether a screen is declared under this id. Callers can use this to filter
+    /// menu entries; it does not check the screen's permission gate.
     #[must_use]
     pub(crate) fn has_screen(&self, id: &str) -> bool {
         self.screens.iter().any(|d| d.id() == id)

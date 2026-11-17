@@ -1,6 +1,6 @@
 [package]
 name = "fairing-assurance"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 edition = "2021"
 rust-version = "1.95"
 publish = false
@@ -16,8 +16,8 @@ loom = ["dep:loom"]
 fuzz = ["dep:libfuzzer-sys"]
 
 [dependencies]
-fairing = { path = "../crates/fairing", version = "0.1.0", default-features = false, features = ["mock", "overlay", "settings", "osk"], optional = true }
-loom = { version = "=0.7.2", optional = true }
+fairing = { path = "../crates/fairing", version = "0.1.0-beta.1", default-features = false, features = ["mock", "overlay", "settings", "osk"], optional = true }
+loom = { version = "=0.7.3", optional = true }
 libfuzzer-sys = { version = "=0.4.13", optional = true }
 
 [dev-dependencies]

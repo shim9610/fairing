@@ -1,0 +1,111 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="863pt" height="657pt" viewBox="0.00 0.00 862.70 657.20" role="img" aria-labelledby="diagram-title diagram-description">
+<title id="diagram-title">Fairing authentication request and response flow</title><desc id="diagram-description">The library creates a request identity. Built-in prompts and host-owned login UIs return session results bound to that request; installation rejects stale or canceled responses.</desc><g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(21.6 635.6)">
+<title>authentication_flow</title>
+<polygon fill="white" stroke="transparent" points="-21.6,21.6 -21.6,-635.6 841.1,-635.6 841.1,21.6 -21.6,21.6" />
+<text text-anchor="middle" x="409.75" y="-590.8" font-family="DejaVu Sans, Arial, sans-serif" font-size="24.00">Authentication: request ownership and response correlation</text>
+
+<g id="node1" class="node">
+<title>request</title>
+<path fill="#f0f6ff" stroke="#6986a8" d="M475,-580C475,-580 262,-580 262,-580 256,-580 250,-574 250,-568 250,-568 250,-536 250,-536 250,-530 256,-524 262,-524 262,-524 475,-524 475,-524 481,-524 487,-530 487,-536 487,-536 487,-568 487,-568 487,-574 481,-580 475,-580" />
+<text text-anchor="middle" x="368.5" y="-557.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Fairing unlock flow</text>
+<text text-anchor="middle" x="368.5" y="-539.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Create live AuthRequestId</text>
+</g>
+
+<g id="node2" class="node">
+<title>prompt</title>
+<path fill="#f0f6ff" stroke="#6986a8" d="M343,-466C343,-466 12,-466 12,-466 6,-466 0,-460 0,-454 0,-454 0,-422 0,-422 0,-416 6,-410 12,-410 12,-410 343,-410 343,-410 349,-410 355,-416 355,-422 355,-422 355,-454 355,-454 355,-460 349,-466 343,-466" />
+<text text-anchor="middle" x="177.5" y="-443.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Built-in credential prompt</text>
+<text text-anchor="middle" x="177.5" y="-425.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Authenticator::begin(request, gate, now)</text>
+</g>
+
+<g id="edge1" class="edge">
+<title>request-&gt;prompt</title>
+<path fill="none" stroke="#315e9b" d="M322.26,-523.89C295.15,-507.99 260.74,-487.81 232.27,-471.12" />
+<polygon fill="#315e9b" stroke="#315e9b" points="234.04,-468.1 223.64,-466.06 230.5,-474.13 234.04,-468.1" />
+<text text-anchor="middle" x="366" y="-491.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">built-in prompt available</text>
+</g>
+
+<g id="node4" class="node">
+<title>event</title>
+<path fill="#f0f6ff" stroke="#6986a8" d="M708.5,-466C708.5,-466 414.5,-466 414.5,-466 408.5,-466 402.5,-460 402.5,-454 402.5,-454 402.5,-422 402.5,-422 402.5,-416 408.5,-410 414.5,-410 414.5,-410 708.5,-410 708.5,-410 714.5,-410 720.5,-416 720.5,-422 720.5,-422 720.5,-454 720.5,-454 720.5,-460 714.5,-466 708.5,-466" />
+<text text-anchor="middle" x="561.5" y="-443.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Host-owned login request</text>
+<text text-anchor="middle" x="561.5" y="-425.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">SessionRequested { request, gate }</text>
+</g>
+
+<g id="edge4" class="edge">
+<title>request-&gt;event</title>
+<path fill="none" stroke="#315e9b" d="M419.21,-523.97C432.09,-516.95 445.87,-509.3 458.5,-502 475.27,-492.31 493.35,-481.41 509.61,-471.44" />
+<polygon fill="#315e9b" stroke="#315e9b" points="511.76,-474.23 518.44,-466 508.09,-468.27 511.76,-474.23" />
+<text text-anchor="middle" x="574.5" y="-491.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">routing / no prompt method</text>
+</g>
+
+<g id="node3" class="node">
+<title>auth</title>
+<path fill="#fff9ed" stroke="#6986a8" d="M331.5,-352C331.5,-352 61.5,-352 61.5,-352 55.5,-352 49.5,-346 49.5,-340 49.5,-340 49.5,-272 49.5,-272 49.5,-266 55.5,-260 61.5,-260 61.5,-260 331.5,-260 331.5,-260 337.5,-260 343.5,-266 343.5,-272 343.5,-272 343.5,-340 343.5,-340 343.5,-346 337.5,-352 331.5,-352" />
+<text text-anchor="middle" x="196.5" y="-329.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Application Authenticator</text>
+<text text-anchor="middle" x="196.5" y="-311.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">submit verifies credentials</text>
+<text text-anchor="middle" x="196.5" y="-293.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">poll completes pending attempts</text>
+<text text-anchor="middle" x="196.5" y="-275.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Issue token; retain controller</text>
+</g>
+
+<g id="edge2" class="edge">
+<title>prompt-&gt;auth</title>
+<path fill="none" stroke="#315e9b" d="M181.48,-409.75C183.5,-395.94 186.03,-378.65 188.43,-362.21" />
+<polygon fill="#315e9b" stroke="#315e9b" points="191.92,-362.53 189.9,-352.13 185,-361.51 191.92,-362.53" />
+<text text-anchor="middle" x="254" y="-377.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">credentials by value</text>
+</g>
+
+<g id="node6" class="node">
+<title>install</title>
+<path fill="#f0f6ff" stroke="#6986a8" d="M548.5,-188C548.5,-188 202.5,-188 202.5,-188 196.5,-188 190.5,-182 190.5,-176 190.5,-176 190.5,-126 190.5,-126 190.5,-120 196.5,-114 202.5,-114 202.5,-114 548.5,-114 548.5,-114 554.5,-114 560.5,-120 560.5,-126 560.5,-126 560.5,-176 560.5,-176 560.5,-182 554.5,-188 548.5,-188" />
+<text text-anchor="middle" x="375.5" y="-165.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Fairing response installation</text>
+<text text-anchor="middle" x="375.5" y="-147.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Accept only current, unconsumed request</text>
+<text text-anchor="middle" x="375.5" y="-129.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Reject stale / canceled / unsolicited results</text>
+</g>
+
+<g id="edge3" class="edge">
+<title>auth-&gt;install</title>
+<path fill="none" stroke="#315e9b" d="M241.68,-259.76C258.47,-243.58 277.95,-225.52 296.5,-210 302.65,-204.86 309.21,-199.64 315.82,-194.56" />
+<polygon fill="#315e9b" stroke="#315e9b" points="318.35,-197.03 324.2,-188.2 314.12,-191.46 318.35,-197.03" />
+<text text-anchor="middle" x="379.5" y="-220.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">request-correlated result</text>
+</g>
+
+<g id="node5" class="node">
+<title>host</title>
+<path fill="#fff9ed" stroke="#6986a8" d="M709.5,-343C709.5,-343 405.5,-343 405.5,-343 399.5,-343 393.5,-337 393.5,-331 393.5,-331 393.5,-281 393.5,-281 393.5,-275 399.5,-269 405.5,-269 405.5,-269 709.5,-269 709.5,-269 715.5,-269 721.5,-275 721.5,-281 721.5,-281 721.5,-331 721.5,-331 721.5,-337 715.5,-343 709.5,-343" />
+<text text-anchor="middle" x="557.5" y="-320.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Application login UI / issuer</text>
+<text text-anchor="middle" x="557.5" y="-302.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Verify credentials; issue token</text>
+<text text-anchor="middle" x="557.5" y="-284.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Retain controller and request identity</text>
+</g>
+
+<g id="edge5" class="edge">
+<title>event-&gt;host</title>
+<path fill="none" stroke="#315e9b" d="M560.66,-409.75C560.16,-393.41 559.51,-372.21 558.93,-353.32" />
+<polygon fill="#315e9b" stroke="#315e9b" points="562.42,-352.99 558.61,-343.1 555.42,-353.2 562.42,-352.99" />
+<text text-anchor="middle" x="638.5" y="-377.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">host drains shell events</text>
+</g>
+
+<g id="edge6" class="edge">
+<title>host-&gt;install</title>
+<path fill="none" stroke="#315e9b" d="M528.22,-268.94C512.01,-250.18 490.86,-227.56 469.5,-210 462.79,-204.48 455.52,-199.11 448.09,-193.99" />
+<polygon fill="#315e9b" stroke="#315e9b" points="449.57,-190.77 439.31,-188.11 445.67,-196.58 449.57,-190.77" />
+<text text-anchor="middle" x="658.5" y="-227.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">accept_auth_response(</text>
+<text text-anchor="middle" x="658.5" y="-213.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">request.respond(AuthOutcome::Session(token)))</text>
+</g>
+
+<g id="node7" class="node">
+<title>token</title>
+<path fill="#f0f6ff" stroke="#6986a8" d="M556,-56C556,-56 195,-56 195,-56 189,-56 183,-50 183,-44 183,-44 183,-12 183,-12 183,-6 189,0 195,0 195,0 556,0 556,0 562,0 568,-6 568,-12 568,-12 568,-44 568,-44 568,-50 562,-56 556,-56" />
+<text text-anchor="middle" x="375.5" y="-33.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Accepted SessionToken</text>
+<text text-anchor="middle" x="375.5" y="-15.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Protected entry checks may now admit work</text>
+</g>
+
+<g id="edge7" class="edge">
+<title>install-&gt;token</title>
+<path fill="none" stroke="#315e9b" d="M375.5,-113.7C375.5,-98.65 375.5,-81.22 375.5,-66.09" />
+<polygon fill="#315e9b" stroke="#315e9b" points="379,-66.04 375.5,-56.04 372,-66.04 379,-66.04" />
+<text text-anchor="middle" x="439" y="-81.6" font-family="DejaVu Sans, Arial, sans-serif" font-size="13.00" fill="#294666">valid session result</text>
+</g>
+</g>
+</svg>

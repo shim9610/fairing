@@ -72,16 +72,14 @@ impl AccessPolicy for SwitchPolicy {
     }
 }
 
-/// Every direct/queued action and setting is checked at execution, including policy changes.
+/// Check execution-time gates in direct and queued launch/setting paths, including policy changes.
 pub fn shell_contract(bytes: &[u8]) {
     let ctx = fairing::egui::Context::default();
     let mut cfg = configured();
     cfg.access.mode = "routing".into();
     let mut shell = Shell::builder(cfg).build(&ctx).unwrap();
     let allowed = Rc::new(Cell::new(true));
-    shell
-        .access_mut()
-        .set_policy(Box::new(SwitchPolicy(Rc::clone(&allowed))));
+    shell.set_policy(Box::new(SwitchPolicy(Rc::clone(&allowed))));
     let runs = Rc::new(Cell::new(0usize));
     let count = Rc::clone(&runs);
     shell.add(action("guarded", move |_| count.set(count.get() + 1)));
@@ -94,7 +92,7 @@ pub fn shell_contract(bytes: &[u8]) {
         let passes = held >= 1 && allowed.get();
         match byte % 10 {
             0 => {
-                shell.access_mut().set_subject(subject(next));
+                shell.set_subject(subject(next));
                 held = next;
             }
             1 => {
@@ -421,7 +419,7 @@ pub fn time_contract(utc_secs: u64, offset_min: i32) {
     }
 }
 
-/// Services forwards one timestamp exactly once to every backend, then takes the earliest deadline.
+/// Check completed service-poll forwarding of the supplied timestamp and earliest reported deadline.
 pub fn services_contract(delays: [Option<u16>; 2]) {
     use fairing::services::{Backend, Services};
     struct Timer<const ID: u8> {
@@ -521,7 +519,7 @@ pub fn configuration_contract(bits: u32, columns: u8) {
     }
 }
 
-/// Actual shell-to-backend writes follow accepted intent, never a second unacknowledged write.
+/// Check serialization of setting-command intent while a prior backend acknowledgment is pending.
 pub fn backend_contract(bytes: &[u8]) {
     use fairing::services::{Backend, ServiceResult, Services, WifiBackend, WifiSnapshot};
     struct Wifi {
@@ -684,9 +682,7 @@ pub fn grant_contract(held: u16, candidate: u16, lock: bool, policy_passes: bool
         .build(&ctx)
         .unwrap();
     let allowed = Rc::new(Cell::new(false));
-    shell
-        .access_mut()
-        .set_policy(Box::new(SwitchPolicy(Rc::clone(&allowed))));
+    shell.set_policy(Box::new(SwitchPolicy(Rc::clone(&allowed))));
     let runs = Rc::new(Cell::new(0));
     let count = Rc::clone(&runs);
     shell.add(action("guarded", move |_| count.set(count.get() + 1)));

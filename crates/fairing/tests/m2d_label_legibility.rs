@@ -28,7 +28,7 @@ fn desktop_shell(legibility: &str) -> fairing::Result<Harness> {
     Ok(h)
 }
 
-/// **It is off by default.** There is no reason to fog up a well-authored wallpaper.
+/// Label-legibility treatment defaults to `none`.
 #[test]
 fn the_default_is_off() -> fairing::Result<()> {
     let h = desktop_shell("none")?;
@@ -50,7 +50,7 @@ fn it_is_read_from_config() -> fairing::Result<()> {
     Ok(())
 }
 
-/// An unknown value warns and gives `none` — a typo does not stop the shell (the same fail-open as the wallpaper side).
+/// An unknown value warns and gives `none` — a typo does not stop the shell (the same configuration fallback policy as the wallpaper side).
 #[test]
 fn an_unknown_value_falls_back_to_none() -> fairing::Result<()> {
     let h = desktop_shell("glow")?;
@@ -70,7 +70,7 @@ fn shadow_draws_more_than_none() -> fairing::Result<()> {
     Ok(())
 }
 
-/// `veil` adds **one** rectangle — cheap however many icons there are.
+/// `veil` adds one rectangle in this fixture, independently of its icon count.
 #[test]
 fn veil_adds_a_single_rect() -> fairing::Result<()> {
     let plain = desktop_shell("none")?.frame_shapes().len();
@@ -83,9 +83,7 @@ fn veil_adds_a_single_rect() -> fairing::Result<()> {
 #[test]
 fn it_can_be_changed_at_runtime() -> fairing::Result<()> {
     let mut h = desktop_shell("none")?;
-    h.shell
-        .desktop_mut()
-        .set_legibility(LabelLegibility::Shadow);
+    h.shell.set_desktop_legibility(LabelLegibility::Shadow);
     h.frames(2);
     assert_eq!(h.shell.desktop().legibility(), LabelLegibility::Shadow);
     Ok(())

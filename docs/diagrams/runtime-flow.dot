@@ -1,0 +1,23 @@
+digraph runtime_flow {
+  graph [rankdir=TB, bgcolor="white", pad=0.3, nodesep=0.5, ranksep=0.55,
+    fontname="DejaVu Sans", fontsize=24, label="Host updates: logic and rendering", labelloc=t];
+  node [shape=box, style="rounded,filled", fillcolor="#f0f6ff", color="#6986a8", fontcolor="#17253b", fontname="DejaVu Sans", fontsize=16, margin="0.2,0.14"];
+  edge [color="#315e9b", fontcolor="#294666", fontname="DejaVu Sans", fontsize=13];
+  host [label="Event-loop host\nInput, Waker notifications and scheduled deadlines", fillcolor="#fff9ed"];
+  logic [label="logic_with(ctx, app_state)\nMonotonic wall-time update; no input consumption"];
+  state [label="Shared state update\n1. Rebuild declarations; observe / expire authority\n2. Drain commands within update budget\n3. Poll backends and reconcile replies\n4. Recheck access and poll authentication"];
+  settle [label="Logic-only completion\nEvict expired screens; settle lifecycle / requests\nSchedule command, service and access wakes"];
+  ui [label="frame_with(ui, same app_state)\nReuse matching prepared state OR run state update\nRecheck authority; record fresh input"];
+  draw [label="UI pass\nGestures / animation → layout → chrome / screens\nKeyboard, overlay, prompts, notices\nProtected entries use live admission checks"];
+  finish [label="Finish UI pass\nSettle Cx requests and lifecycle\nApply late actions; schedule repaint"];
+  events [label="Host drains poll_events()\nAfter either update; persist / process externally", fillcolor="#fff9ed"];
+  host -> logic [label="logic callback"];
+  host -> ui [label="UI callback", minlen=3];
+  logic -> state -> settle;
+  settle -> ui [style=dashed, color="#357a69", label="prepared state, if a matching UI pass follows"];
+  ui -> draw -> finish;
+  settle -> events [label="UI pass is optional"];
+  finish -> events;
+  note [shape=note, fillcolor="#fff9ed", label="Frame-only custom hosts remain supported.\nThey use egui input time and run state work\ninside frame*. Calling logic* opts into wall time.\nAnimation dt is distinct from deadline time."];
+  events -> note [style=invis];
+}

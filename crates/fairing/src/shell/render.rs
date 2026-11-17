@@ -40,13 +40,10 @@ impl Shell {
         // 0. The scale. Density → `pixels_per_point` → `Metrics`. Fixed for the whole of this frame.
         self.resolve_scale(&ctx, ui.max_rect());
         self.check_added_nav_items();
-        // 1. Two clocks. Animations step by `stable_dt`, capped at 50 ms
-        // so a stall never jumps one. The shell's monotonic time — every deadline: a temporary
-        // unlock, the session timeout, the idle lock, a lockout, a toast's hold — runs on the
-        // **real** time between frames. On an idle panel egui reports `stable_dt` as its 1/60 s
-        // prediction however long it slept, so deadlines counted in it ran many times slower than
-        // the wall clock: a five-minute unlock outlived the operator by hours. Headless,
-        // `RawInput::time` is the harness's virtual time, so tests stay deterministic.
+        // Animations use stable_dt capped at 50 ms. Deadlines use shell monotonic time:
+        // egui input intervals for frame-only hosts, wall time after opting into logic*.
+        // stable_dt predicts a rendering interval and must not measure long idle gaps.
+        // Frame-only harnesses can supply deterministic RawInput::time.
         self.frame_no += 1;
         self.check_script(&ctx);
         let dt = ui.input(|i| i.stable_dt).clamp(0.0, MAX_DT);
@@ -196,10 +193,8 @@ impl Shell {
             }
         }
     }
-    /// Stage 5: gestures → the policy guard → the overlay → the back gesture → the OSK → advancing the
-    /// animations → evict · rebuild → the overlay's boundary lifecycle.
-    /// The things that run every frame (animations, transitions, the notification queue). Split out
-    /// from [`Self::update_chrome`] — inlined there, one function would go over the length cap.
+    /// Advance the stage-5 animation, workspace, desktop, toast and heads-up clocks.
+    /// Gesture, keyboard and policy updates are coordinated separately by [`Self::update_chrome`].
     pub(super) fn tick_animations(
         &mut self,
         dt: f32,
@@ -1120,9 +1115,8 @@ impl Shell {
         match nav_action {
             Some(NavAction::Back) => self.back_in(app),
             Some(NavAction::Home) => self.home(),
-            // The nav bar's own two unbuilt items are **reported** rather than greyed out — the
-            // crate has no overview and no split pane yet, but the device may well have somewhere to
-            // go, and a control the shell refuses to pass on is the shell deciding.
+            // Overview and split controls emit host events even when the corresponding
+            // built-in workspace option is disabled.
             Some(NavAction::Recents) => self.open_overview(),
             Some(NavAction::Split) => self.toggle_split(),
             Some(NavAction::Custom(id)) if id == "osk" => self.osk.toggle(),
@@ -1195,11 +1189,9 @@ impl Shell {
     }
     /// Stage 15: the repaint policy.
     pub(super) fn schedule_repaint(&mut self, ctx: &egui::Context, wake: FrameWake) {
-        // An immediate repaint only while an animation is running. Idle, it goes to the next
-        //     scheduled moment: the earliest of a clock boundary (only where a clock was **actually
-        //     drawn** this frame) · a backend's `next_wake` · a toast or heads-up expiring · a peek ·
-        //     the OSK debounce · something being held (the long-press timer). With none of them, nothing
-        //     is scheduled at all — idle at 0 fps.
+        // Request an immediate update for active animation, pending commands/requests
+        // or continuous mode. Otherwise choose the next clock, backend or UI deadline.
+        // The host may also schedule updates independently of this shell decision.
         let animating = self.is_animating()
             || wake.commands_pending
             || !self.requests.is_empty()
@@ -1211,9 +1203,8 @@ impl Shell {
         }
         let mut after = self.clock_wake();
         if let Some(at) = wake.next_wake {
-            // Handing a `next_wake` already past over as `Duration::ZERO` has egui read it as an
-            // immediate repaint and it quietly becomes 60 fps — a floor is put on it, and where it keeps
-            // pointing into the past, which backend it is gets announced.
+            // An overdue zero-delay wake would request another immediate update.
+            // Apply a delay floor and diagnose repeated overdue backend deadlines.
             let stale = at <= wake.now;
             self.note_stale_wake(stale, wake.now);
             let wake_in = at.saturating_duration_since(wake.now).max(MIN_WAKE);
@@ -1296,9 +1287,9 @@ impl Shell {
         // `shows_seconds`, not `== Hms`: the 12-hour spelling of the same shape needs waking just as
         // often. The `ui.clock_12h` setting never changes which of the two it is.
         if self.status_bar.drawn_clock()?.shows_seconds() {
-            // `WallTime` has no fractional seconds, so the phase cannot be matched to the second
-            // boundary (M4). Scheduling at 500 ms guarantees each second is drawn at least once — fixed
-            // at 1 s, frame delays accumulate and the seconds digit skips.
+            // WallTime has no fractional-second phase. Request a 500 ms wake to
+            // reduce skipped seconds when updates are delayed; host scheduling can
+            // still postpone a UI pass.
             return Some(Duration::from_millis(500));
         }
         Some(Duration::from_secs(

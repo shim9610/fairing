@@ -2,16 +2,8 @@
 
 use super::{Cx, FIT_MIN_SIZE};
 
-/// **Text shrunk to fit a width** — for places with only a `Painter` to hand, such as inside a grid
-/// cell.
-///
-/// `egui::Label::truncate` requires a `Ui`. But when a [`Grid`](crate::layout::Grid) callback draws inside a cell itself,
-/// all it has is a `Painter`, and long text there simply intrudes on the neighbouring cell. The
-/// reason it **shrinks** rather than truncating (`…`) is that labels on a device screen are usually
-/// short and have to be seen whole at a glance — `Cash · Call…` reads as a fault, not as guidance.
-///
-/// **The measuring side is [`fit_size`].** This one only draws — to match the size across sibling
-/// cells, settle one size with `fit_size` first and hand that font here.
+/// Draw text at a size reduced to fit the available width using a `Painter`.
+/// Use [`fit_size`] first when sibling cells should share a fitted text size.
 ///
 /// ```no_run
 /// # fn draw(ui: &egui::Ui, cx: &fairing::Cx<'_>, cell_rect: egui::Rect) {
@@ -39,15 +31,10 @@ pub fn fit_text(
     let font = fit_size(painter, std::slice::from_ref(&text), max_width, font);
     painter.text(at, align, text, font, color);
 }
-/// Settle one size against the longest, **so that sibling cells use the same text size**.
-///
-/// [`fit_text`] shrinks each cell separately. Used as it stands on a control that reads as one set
-/// (category chips, payment methods, a receipt choice), that gives **a different text size on every
-/// tile** — in Korean all three fitted and it never showed, and it surfaced the moment the language
-/// was switched to English (measured on the kiosk example).
-///
-/// A **product grid, conversely, is right to shrink per cell** — one tile is one product, and having
-/// all sixteen shrink because one product has a long name is worse. Which it is, the app knows.
+/// Compute a shared text size against the longest supplied label.
+/// This can keep sibling cells at one size; [`fit_text`] can instead fit each
+/// individual label. The caller supplies the group, maximum width and base font.
+/// The result has an eight-point floor, so sufficiently narrow space can still overflow.
 ///
 /// ```no_run
 /// # fn draw(ui: &egui::Ui, base: egui::FontId, w: f32) {

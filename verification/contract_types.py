@@ -56,7 +56,7 @@ class Types:
 
 
 class Values:
-    """Unique-definition MIR value provenance; ambiguity is never accepted."""
+    """Track unique-definition MIR value provenance; reject ambiguous definitions."""
     def __init__(self, body):
         self.body = body
         self.definitions = defaultdict(list)
@@ -152,7 +152,7 @@ def kernel_exports(bodies,types):
 
 def operand_shape(body,operand,types):
     # The compiler resolves tuple projections, closure captures, autodereferences
-    # and associated types. Missing evidence rejects; Python never guesses a type.
+    # and associated types. Reject missing evidence instead of inferring an unsupported type.
     return operand['shape']
 
 

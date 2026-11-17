@@ -1,6 +1,6 @@
 //! The theme crossfade (A7, "the theme switch"): interpolate the palette with
 //! [`Palette::lerp`] over 200 ms and apply it to egui's `Visuals` every frame. Dark and light
-//! swap with no flicker.
+//! use the interpolated role colours during the transition.
 //!
 //! The shell calls [`ThemeFade::start`] when the `theme.dark` setting changes (the `tile.theme`
 //! tile), and in frame stage 5 applies the palette [`ThemeFade::tick`] returned via

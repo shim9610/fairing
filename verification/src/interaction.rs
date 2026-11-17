@@ -1,4 +1,4 @@
-//! Exhaustive native and generated-history checks of the production lifecycle kernel.
+//! Native finite-state checks and generated histories for the production lifecycle kernel.
 #[path = "../../crates/fairing-widgets/src/interaction/concrete.rs"]
 mod concrete;
 #[path = "../../crates/fairing-widgets/src/interaction/rules.rs"]

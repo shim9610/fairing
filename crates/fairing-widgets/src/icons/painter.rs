@@ -1,16 +1,17 @@
-//! The icon painter: 24-grid → pixel conversion, curve flattening, and a per-size polyline cache
-//! (rendering).
+//! Icon painting: design-grid conversion, curve flattening and a per-size polyline cache.
+//! Despite legacy `*_px` names, sizes and output coordinates used by [`paint`] are
+//! egui points (du); the host applies physical pixel scaling later.
 //!
 //! # The per-frame cost
 //!
-//! The expensive part (flattening the curves) is done once by [`IconCache`], keyed on
-//! the icon's path and its rounded pixel size. The drawing path only translates the cached polylines into the
-//! target `Rect`. A two-point subpath goes out as an [`egui::Shape::LineSegment`] with **no heap
-//! allocation** (about 47 % of the subpaths across the 51 built-ins). With three or more points,
+//! [`IconCache`] stores flattened curves by path and rounded point size; a cache
+//! miss builds the path again. Drawing translates cached points into the target
+//! `Rect`. A two-point subpath uses [`egui::Shape::LineSegment`] without creating
+//! a point vector. With three or more points,
 //! `epaint` wants an owned `Vec<Pos2>` (`PathShape`), so one `Vec` appears per subpath — that is
 //! the representation the icon design specifies, and it handles round joins and feathering in a
 //! single stroke so seams do not overlap and darken. Drawing it as separate pieces would remove
-//! the allocation but show double compositing at every joint on a disabled (alpha 0.6) icon.
+//! the point-vector allocation but may overlap translucent pieces at their joints.
 
 // UI geometry: small integer counts and pixel values crossing to f32. The loss is meaningless in this
 // range, so the cast lints are lifted for the whole file (the rest of the pedantic set stays).
@@ -26,7 +27,8 @@ use egui::epaint::{PathShape, PathStroke};
 use egui::{Color32, Painter, Pos2, Rect, Shape, Stroke, Vec2};
 use std::collections::TryReserveError;
 
-/// One flattened subpath. The coordinates are pixels with **the icon's top-left as the origin**.
+/// One flattened subpath, with the icon's top-left as the origin.
+/// Coordinates follow the supplied size; [`paint`] uses egui points (du).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Polyline {
     /// The points.
@@ -35,7 +37,7 @@ pub struct Polyline {
     pub closed: bool,
 }
 
-/// One icon flattened at a particular pixel size.
+/// One icon flattened at a particular supplied size; [`paint`] uses egui points.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Flattened {
     /// The subpaths.
@@ -46,9 +48,9 @@ pub struct Flattened {
 
 /// Choose the curve subdivision count from the size (4–16).
 ///
-/// Splitting a 24 px icon's quarter circle (radius 12 px) into 4 gives a maximum chord error
-/// (sagitta) of `12·(1 − cos 11.25°) ≈ 0.23 px`. At 96 px it is 12 pieces, so
-/// `48·(1 − cos 3.75°) ≈ 0.10 px` — under half a pixel at any size.
+/// For a quarter-circle example, four segments at radius 12 px give approximately
+/// 0.23 px chord error; twelve segments at radius 48 px give approximately 0.10 px.
+/// These examples are not an error bound for arbitrary paths or sizes.
 fn subdivisions(size_px: f32) -> usize {
     ((size_px / 8.0).round() as usize).clamp(4, 16)
 }
@@ -135,12 +137,10 @@ impl Builder {
     }
 }
 
-/// Flatten 24-grid segments into polylines for a `size_px` square.
-///
-/// The coordinate system is pixels with the icon's top-left as the origin. Curves are subdivided
-/// evenly into 4–16 pieces by size, and the same `(def, size_px)` always gives
-/// the same result (it is deterministic). If allocation fails, returns an empty path;
-/// use [`try_flatten`] to distinguish that omission from an empty definition.
+/// Flatten 24-grid segments into local pixel coordinates using size-based curve
+/// subdivision. Successful subdivision is deterministic for the supplied definition
+/// and size. Allocation failure returns an empty path; use [`try_flatten`] to
+/// distinguish that omission from an empty definition.
 #[must_use]
 pub fn flatten(def: &IconDef, size_px: f32) -> Flattened {
     try_flatten(def, size_px).unwrap_or_else(|_| Flattened {
@@ -554,7 +554,7 @@ mod tests {
         assert_eq!(points.len(), 2);
     }
 
-    /// Draw all 51 through the real `paint` path and check they stay within `rect` plus half a stroke.
+    /// Draw the built-in set through `paint` and check bounds plus half a stroke.
     #[test]
     fn every_builtin_icon_keeps_the_optical_size_band() {
         use crate::icons::{Seg, ICONS};

@@ -5,19 +5,16 @@ verification entrypoint. It proves the common monitor and automatically checks
 all contract-owned protected entry paths. Run
 `python3 verification/mediation.py --require-proved`.
 
-The sections below describe the broad legacy reachability diagnostic and the
-original status-painter repair. That diagnostic includes explicit standalone
-legacy APIs and is not the protected routing certificate.
-
+The broad legacy diagnostic also covers standalone legacy APIs and the original
+status-painter repair.
 
 The target is that every application callback entry passes a current check for
 its required permission. The local `invoke(false, callback)` proof does not show
 that every caller uses `invoke`. The compiler-derived detector found a real
 unauthenticated custom status-painter route in `ProtectedShell`.
 
-That route is now blocked at construction. This repair does **not** establish the
-absence of other paths: the repair alone does not prove coverage. The strict protected-contract
-checker separately requires the common kernel proof and automatic coverage.
+Protected construction rejects that route. The strict protected-contract checker
+requires both the common kernel proof and automatic entry-path coverage.
 
 ## Repairs and supported API
 
@@ -48,7 +45,7 @@ branches, legacy customization, and persistent painter injection after normal re
 and panic. Three baseline production mutation controls remove builder validation, resource
 isolation or the inactive wallpaper branch. Eight additional controls cover value
 identity, child measurement admission, compact layout, authority revisions, widget
-identity, screen metadata and nav placement. Each must fail its real regression test. These are repair evidence, not a global absence proof.
+identity, screen metadata and nav placement. Each must fail its real regression test.
 
 ## Value-based dispatch architecture
 

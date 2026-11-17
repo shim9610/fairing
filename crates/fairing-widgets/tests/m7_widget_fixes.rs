@@ -6,7 +6,9 @@ use egui::{Event, Modifiers, PointerButton, Pos2, RawInput, Rect, Response, Vec2
 use fairing_widgets::icons::IconSet;
 use fairing_widgets::motion::{AnimationStore, Tween};
 use fairing_widgets::theme::Theme;
-use fairing_widgets::widgets::{NumberField, TextField, TouchSlider, WheelPicker, WidgetPainters};
+use fairing_widgets::widgets::{
+    NumberField, ProgressRing, TextField, TouchSlider, WheelPicker, WidgetPainters,
+};
 use fairing_widgets::WidgetCx;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -15,6 +17,34 @@ use std::time::{Duration, Instant};
 const DT: f32 = 1.0 / 60.0;
 
 type TestResult<T = ()> = Result<T, String>;
+
+#[test]
+fn small_progress_rings_render_finite_geometry() -> TestResult {
+    for diameter in [-1.0, 0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 48.0] {
+        for thickness in [None, Some(0.0), Some(0.25), Some(8.0)] {
+            let mut rig = Rig::new();
+            let (response, shapes) = rig.run_full(|ui, cx| {
+                let mut widget = ProgressRing::determinate(0.5).diameter(diameter);
+                if let Some(thickness) = thickness {
+                    widget = widget.thickness(thickness);
+                }
+                widget.show(ui, cx)
+            })?;
+            assert!(response.rect.is_finite());
+            let primitives = rig.ctx.tessellate(shapes, rig.ctx.pixels_per_point());
+            assert!(
+                !primitives.is_empty(),
+                "diameter={diameter}, thickness={thickness:?}"
+            );
+            for primitive in primitives {
+                if let egui::epaint::Primitive::Mesh(mesh) = primitive.primitive {
+                    assert!(mesh.vertices.iter().all(|vertex| vertex.pos.is_finite()));
+                }
+            }
+        }
+    }
+    Ok(())
+}
 
 /// A headless egui context plus everything a `WidgetCx` borrows.
 struct Rig {

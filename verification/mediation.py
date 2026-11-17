@@ -23,7 +23,7 @@ def digest(path):
 
 def source_hashes():
     paths = list((ROOT / 'crates').rglob('*.rs')) + list((ROOT / 'crates').rglob('Cargo.toml'))
-    paths += [ROOT / p for p in ['Cargo.toml', 'Cargo.lock', 'verification/mediation_driver.rs', 'verification/mediation_schema.rs', 'verification/central_mediation.py', 'verification/contract_types.py', 'verification/contract_controls.py', 'verification/protected_contracts.py', 'verification/central_proofs.py', 'verification/verus/mediation_path.py', 'verification/metadata_driver.rs', 'verification/check_extension.py', 'verification/metadata_controls.py', 'verification/mediation.py', 'verification/mediation_controls.py', 'verification/fixtures/mediation.rs', 'verification/examples/mediation_probe.rs', 'verification/tools.json', 'verification/validation.py']]
+    paths += [ROOT / p for p in ['Cargo.toml', 'Cargo.lock', 'verification/mediation_driver.rs', 'verification/mediation_schema.rs', 'verification/central_mediation.py', 'verification/dispatch_effects.py', 'verification/layout_proofs.py', 'verification/layout_bindings.py', 'verification/contract_types.py', 'verification/contract_controls.py', 'verification/protected_contracts.py', 'verification/central_proofs.py', 'verification/verus/mediation_path.py', 'verification/metadata_driver.rs', 'verification/check_extension.py', 'verification/metadata_controls.py', 'verification/mediation.py', 'verification/mediation_controls.py', 'verification/fixtures/mediation.rs', 'verification/examples/mediation_probe.rs', 'verification/tools.json', 'verification/validation.py']]
     return {str(p.relative_to(ROOT)): digest(p) for p in sorted(paths)}
 
 def build(profile):
@@ -150,7 +150,7 @@ def main():
     parser.add_argument('--skip-build',action='store_true')
     parser.add_argument('--profile',choices=['all','minimal','both'],default='both')
     mode=parser.add_mutually_exclusive_group()
-    mode.add_argument('--require-proved',action='store_true',help='Prove the common kernel and reject every unguarded or unclassified protected contract entry')
+    mode.add_argument('--require-proved',action='store_true',help='Prove the common kernel and check compiled protected entries for unguarded or unclassified routes')
     mode.add_argument('--expect-counterexample',action='store_true',help='Detector regression: require the known compiler path AND its concrete denied-session reproduction')
     parser.add_argument('--skip-probe',action='store_true',help='Analysis only; cannot confirm or certify the concrete program')
     args=parser.parse_args()

@@ -1,7 +1,7 @@
 //! **The page furniture at a one-finger row** — what was tightened once the rows shrank to one
 //! touch target: the built-in settings screens in cards, a title that reserves a control's height
 //! only when it carries a control, a section heading as tall as its text, an explanation that
-//! wraps at a readable measure, and the two titles of the wide settings screen on one line.
+//! wraps at a configured line width, and the two wide-screen settings titles on one line.
 #![cfg(all(feature = "settings", feature = "mock"))]
 
 use fairing::layout;
@@ -123,7 +123,7 @@ fn a_note_wraps_at_a_readable_measure() -> fairing::Result<()> {
 }
 
 /// **The built-in settings screens group their rows in cards** — filled, rounded, in
-/// `SurfaceVariant` — as the demo's own screens and the phones beside them do.
+/// `SurfaceVariant`.
 #[test]
 fn the_settings_screens_are_cards() -> fairing::Result<()> {
     let mut h = settings("settings.display")?;

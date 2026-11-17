@@ -258,7 +258,7 @@ impl<T> BoundedSender<T> {
         }
     }
 
-    /// Enqueue immediately or return both the reason and the original message.
+    /// Try to enqueue without waiting for queue capacity; return the reason and message on refusal.
     /// A message's owned String/Vec payloads can allocate independently of slot storage.
     ///
     /// # Errors
@@ -275,7 +275,8 @@ impl<T> BoundedSender<T> {
     }
 
     /// Reserve a slot before calling the payload factory. A full/closed queue does
-    /// not call it. If the receiver closes concurrently, a factory may already be running.
+    /// not call it when reservation fails. A reservation acquired before receiver
+    /// closure can still reach its factory or finish one already running.
     /// An unwinding factory automatically returns its reservation.
     ///
     /// # Errors
@@ -332,12 +333,13 @@ impl<T> Drop for BoundedInbox<T> {
 }
 impl<T> BoundedInbox<T> {
     /// Refuse future admission without dropping accepted messages or invoking their destructors.
-    /// A factory already running may still finish; callers must stop dispatch after a fault.
+    /// A factory with a pre-existing reservation may still run or finish; callers
+    /// must stop dispatch after a fault.
     pub fn close_admission(&self) {
         self.budget.open.store(false, Ordering::Release);
     }
 
-    /// Receive immediately, returning one reservation.
+    /// Try to receive a message, returning its capacity reservation when one is received.
     ///
     /// # Errors
     /// Empty or disconnected; never waits.

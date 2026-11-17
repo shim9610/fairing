@@ -1,45 +1,9 @@
-//! `CountBadge` — a count or a dot, inline or laid over a corner.
+//! `CountBadge` displays a count or dot, inline or over another element.
 //!
-//! # The bug this element was written to close
-//!
-//! The dock has drawn a badge since M1: a `Danger` pill with the digits in `OnPrimary`. Measured,
-//! `OnPrimary` on `Danger` is **2.79** in base dark — a number the operator is meant to *read*,
-//! 38 % under the 4.5 a word needs. Crossing the other way is no better: `Surface` on `Primary` is
-//! 3.81 in the same palette.
-//!
-//! So the ink is **per tone**, and it is a measurement rather than a preference:
-//! [`Alert`](BadgeTone::Alert) is `Danger` written in `Surface` (6.59 / 4.78 / 6.09 / 5.80) and
-//! [`Neutral`](BadgeTone::Neutral) is `Primary` written in `OnPrimary` (4.83 / 5.82 / 9.37 / 6.08).
-//! Both clear 4.5 in every shipped palette. Taking the dock's badge through this element changes
-//! its render — the digits go from white to near-black in three of the four palettes — and that
-//! change is the fix.
-//!
-//! There is no `Warning` tone, and it was measured before being refused: `Surface` on `Warning` is
-//! 4.42 in abyss light, 0.08 under the floor. Two tones, not three.
-//!
-//! # Why the digits are drawn in cells
-//!
-//! A badge must not breathe as the number changes, and laying the string out as one run cannot
-//! give that: with proportional figures `1` has a narrower advance than `8`, so a run-laid badge
-//! changes width between `11` and `88` as well as between `9` and `10`. Each glyph is therefore
-//! centred in a cell as wide as a `0`, and a badge has exactly three widths in its whole life — a
-//! circle at one digit, a pill at two, and `99+` at three.
-//!
-//! Neither Material nor Fluent states this rule. It is what "it must not jitter" actually requires.
-//!
-//! # Why an overlaid badge wears a halo and an inline one does not
-//!
-//! Laid over an icon, a badge has to read as punched through it, so it carries a `Surface` ring
-//! outside the pill — 3.81–16.18 against the icon colours it lands on. Inline there is nothing
-//! behind it to separate from, and the same ring on a card would be `Surface` on `SurfaceVariant`
-//! at 1.18: a smudge.
-//!
-//! # Why `paint_over` returns a rect and not a `Response`
-//!
-//! It allocates nothing. The host already owns the rect and already has a `Response` — a badge that
-//! allocated one would either steal the host's tap or need its own touch target beside it, and a
-//! badge is not a target. What it returns is the rect it occupied, halo included, so a caller can
-//! keep clear of it.
+//! Counts use fixed-width digit cells to reduce width changes between values of
+//! the same digit count. An overlaid badge includes a surrounding ring.
+//! `paint_over` paints into a caller-owned rectangle and returns its occupied
+//! rectangle; it does not create a separate interactive target.
 
 use super::BadgeLook;
 use crate::cx::WidgetCx as Cx;
@@ -47,13 +11,10 @@ use crate::theme::{ColorRole, Theme};
 use crate::unit::round_u8;
 use egui::{Color32, CornerRadius, Rect, Response, Sense, Stroke, StrokeKind, Vec2};
 
-/// What a badge says.
-///
-/// Borrowed rather than owned: a dock repaints every frame and a badge must not allocate to be
-/// drawn.
+/// Badge content, borrowed from the caller where it is text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BadgeValue<'a> {
-    /// A number. Over `control.badge_max` it reads `99+`.
+    /// A number. Above `control.badge_max`, displays `<max>+` (`99+` by default).
     Count(u32),
     /// A mark with no number — "something, and it does not matter how many".
     Dot,
@@ -164,11 +125,7 @@ impl<'a> CountBadge<'a> {
         self
     }
 
-    /// Override the height (du). `control.badge_h` by default.
-    ///
-    /// The default is an overlay's size — 16 du at the floor, a third of a fingertip. A kiosk badge
-    /// read across a room is bigger: the reference kiosk's inline count measures 0.53 T, about
-    /// 1.6× this, and that is what this is for.
+    /// Override height in du; the default is `control.badge_h`.
     #[must_use]
     pub fn height(mut self, du: f32) -> Self {
         self.height = Some(du.max(0.0));
@@ -182,12 +139,8 @@ impl<'a> CountBadge<'a> {
         self
     }
 
-    /// Draw a zero count instead of drawing nothing.
-    ///
-    /// Off by default, which is iOS's rule and the one the dock already followed. The reference
-    /// kiosks do the opposite — they show `0` beside the basket, because there the badge is part of
-    /// a button's label and a button that loses half its content when empty reflows. Both are
-    /// right for their case, so it is a flag.
+    /// Draw a zero count instead of omitting it. Off by default.
+    /// Use `reserve` to retain space while an omitted badge is not painted.
     #[must_use]
     pub fn show_zero(mut self, show: bool) -> Self {
         self.show_zero = show;
@@ -253,9 +206,9 @@ impl<'a> CountBadge<'a> {
         response
     }
 
-    /// Draw it over a rect the caller already owns.
-    ///
-    /// Allocates nothing — see the module doc. Returns the rect it occupied, halo included.
+    /// Draw over a caller-owned rectangle without allocating a separate UI slot.
+    /// Return the occupied rectangle including the halo. Text layout and shape
+    /// submission may allocate.
     #[must_use]
     pub fn paint_over(
         self,
@@ -286,18 +239,13 @@ pub fn badge_text(value: BadgeValue<'_>, max: u16) -> String {
     }
 }
 
-/// How many digit cells a string occupies.
-/// How many digit cells a string occupies. `f32`, because every use of it is a width: a
-/// badge that reached the precision limit of an `f32` count would be about a metre wide.
+/// Digit-cell count represented as `f32` for width arithmetic.
 fn cells(text: &str) -> u16 {
     u16::try_from(text.chars().count()).unwrap_or(u16::MAX)
 }
 
-/// The pill's width for `text` at height `h`.
-///
-/// `cells × cell` and not the string's own advance — see the module doc on jitter. A `0` is the
-/// reference glyph because it is the widest digit in almost every face and the one a tabular
-/// figure is cut to.
+/// Pill width using fixed digit cells measured from the glyph `0`, rather than
+/// the current string's variable advance width.
 fn pill_width(painter: &egui::Painter, theme: &Theme, text: &str, h: f32) -> f32 {
     let font = egui::FontId::proportional(h * theme.control.badge_text_ratio);
     let cell = painter
@@ -391,9 +339,7 @@ mod tests {
     use super::{badge_text, cells, BadgeTone, BadgeValue};
     use crate::theme::{contrast, Palette, Preset};
 
-    /// **The digits are readable on every tone in every palette** — the defect this element was
-    /// written to close. The dock shipped `OnPrimary` on `Danger` at 2.79 in base dark, and a
-    /// number the operator has to read is text, gated at 4.5.
+    /// Check badge text/fill contrast for the built-in tone and palette combinations.
     #[test]
     fn a_badges_digits_clear_the_text_floor_in_every_palette() {
         for &preset in Preset::ALL {
@@ -429,7 +375,7 @@ mod tests {
         );
     }
 
-    /// **A badge's pill reads on both grounds**, which is the 3.0 a filled shape needs.
+    /// Check filled-badge boundary contrast against the two tested container roles.
     #[test]
     fn a_badges_pill_reads_on_the_page_and_on_a_card() {
         for &preset in Preset::ALL {

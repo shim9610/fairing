@@ -268,7 +268,7 @@ fn every_dock_placement_keeps_the_grid_clear() -> fairing::Result<()> {
             for id in ["g1", "g2", "g3", "g4"] {
                 shell.add(stub(id).icon(icon::GAUGE).desktop());
             }
-            shell.desktop_mut().set_dock_placement(placement);
+            shell.set_dock_placement(placement);
             Ok(shell)
         })?;
         // The first frame settles the layout and the second draws with it.
@@ -507,10 +507,12 @@ fn status_bar_custom_item_and_builtin_remove() -> fairing::Result<()> {
 fn status_bar_slots_are_laid_out_left_center_right() -> fairing::Result<()> {
     let mut h = test_shell(single_level_access(), |_| {})?;
     {
-        let bar = h.shell.status_bar_mut();
-        bar.left = vec![text_spec("t.left", "LEFT", 0)];
-        bar.center = vec![text_spec("t.center", "CENTER", 0)];
-        bar.right = vec![text_spec("t.right", "RIGHT", 0)];
+        h.shell
+            .set_status_items(Slot::Left, vec![text_spec("t.left", "LEFT", 0)]);
+        h.shell
+            .set_status_items(Slot::Center, vec![text_spec("t.center", "CENTER", 0)]);
+        h.shell
+            .set_status_items(Slot::Right, vec![text_spec("t.right", "RIGHT", 0)]);
     }
     h.frames(2);
     let bar = h.shell.status_bar();
@@ -544,14 +546,16 @@ fn status_bar_slots_are_laid_out_left_center_right() -> fairing::Result<()> {
 fn status_bar_collapses_low_priority_first() -> fairing::Result<()> {
     let mut h = test_shell(single_level_access(), |_| {})?;
     {
-        let bar = h.shell.status_bar_mut();
-        bar.left.clear();
-        bar.center.clear();
-        bar.right = vec![
-            text_spec("t.low", "LOWLOWLOWLOW", -1),
-            text_spec("t.mid", "MIDMIDMIDMID", 0),
-            text_spec("t.high", "HIGHHIGHHIGH", 1),
-        ];
+        h.shell.set_status_items(Slot::Left, vec![]);
+        h.shell.set_status_items(Slot::Center, vec![]);
+        h.shell.set_status_items(
+            Slot::Right,
+            vec![
+                text_spec("t.low", "LOWLOWLOWLOW", -1),
+                text_spec("t.mid", "MIDMIDMIDMID", 0),
+                text_spec("t.high", "HIGHHIGHHIGH", 1),
+            ],
+        );
     }
     // At a generous width all three show.
     h.frames(2);
@@ -565,14 +569,16 @@ fn status_bar_collapses_low_priority_first() -> fairing::Result<()> {
     let mut narrow =
         Harness::new(single_level_access(), fairing::Services::null())?.with_size(160.0, 600.0);
     {
-        let bar = narrow.shell.status_bar_mut();
-        bar.left.clear();
-        bar.center.clear();
-        bar.right = vec![
-            text_spec("t.low", "LOWLOWLOWLOW", -1),
-            text_spec("t.mid", "MIDMIDMIDMID", 0),
-            text_spec("t.high", "HIGHHIGHHIGH", 1),
-        ];
+        narrow.shell.set_status_items(Slot::Left, vec![]);
+        narrow.shell.set_status_items(Slot::Center, vec![]);
+        narrow.shell.set_status_items(
+            Slot::Right,
+            vec![
+                text_spec("t.low", "LOWLOWLOWLOW", -1),
+                text_spec("t.mid", "MIDMIDMIDMID", 0),
+                text_spec("t.high", "HIGHHIGHHIGH", 1),
+            ],
+        );
     }
     narrow.frames(2);
     let bar = narrow.shell.status_bar();
@@ -627,13 +633,11 @@ fn status_bar_item_tap_runs_tap_action() -> fairing::Result<()> {
         sh.add(stub("wifi-settings"));
     })?;
     {
-        let bar = h.shell.status_bar_mut();
-        bar.left = vec![text_spec("t.net", "NET", 0)];
-        bar.center.clear();
-        bar.right.clear();
-        if let Some(spec) = bar.left.first_mut() {
-            spec.tap_action = Some(LaunchAction::open("wifi-settings"));
-        }
+        let mut spec = text_spec("t.net", "NET", 0);
+        spec.tap_action = Some(LaunchAction::open("wifi-settings"));
+        h.shell.set_status_items(Slot::Left, vec![spec]);
+        h.shell.set_status_items(Slot::Center, vec![]);
+        h.shell.set_status_items(Slot::Right, vec![]);
     }
     h.frames(2);
     let rect = h
@@ -742,13 +746,8 @@ fn nav_items_follow_config_and_recents_reports() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **The shell does not decide that a control cannot work.**
-///
-/// `Recents` and `Split` were drawn grey and their taps thrown away, because the crate's own
-/// overview and split panes are M5. But the crate having nowhere to go does not mean the **device**
-/// has nowhere to go — the icon is the shell's to draw and what it does is the integrator's to say.
-/// So both are live and both report. `Back` stays the one item the shell dims, because "is there a
-/// stack behind you" is a fact the shell owns.
+/// Recents and Split remain enabled and emit requests in this configuration.
+/// Back is disabled when no prior screen is available.
 #[test]
 fn recents_and_split_are_live_and_report() -> fairing::Result<()> {
     let mut cfg = single_level_access();
@@ -798,12 +797,8 @@ fn recents_and_split_are_live_and_report() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **Lock, log out and the overview are reported, never swallowed**.
-///
-/// `Shell::launch` had a catch-all arm that wrote these three to the log and dropped them, so the
-/// shade footer's lock button, the `tile.lock` quick tile and `ShellHandle::logout` were all
-/// controls that did nothing and gave the integrator no way to make them do anything. The arms are
-/// written out now, so a new `LaunchAction` cannot be swallowed the same way.
+/// Lock, logout and overview actions emit their corresponding shell events.
+/// The handle logout path is checked alongside direct launch calls.
 #[test]
 fn lock_logout_and_overview_leave_as_events() -> fairing::Result<()> {
     let mut h = test_shell(single_level_access(), |sh| {
@@ -837,6 +832,7 @@ fn lock_logout_and_overview_leave_as_events() -> fairing::Result<()> {
 }
 
 /// Every line of text drawn on the next frame.
+#[cfg(feature = "mock")]
 fn drawn_lines(h: &mut Harness) -> Vec<String> {
     fn walk(shape: &egui::Shape, out: &mut Vec<String>) {
         match shape {

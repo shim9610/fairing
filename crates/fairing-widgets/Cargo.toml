@@ -19,6 +19,6 @@ egui = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
 
-# No features and no platform code, so one target is the whole picture.
+# Build the hosted API reference for Linux; this does not establish cross-target validation.
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]

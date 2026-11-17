@@ -1,85 +1,19 @@
-//! `ProgressBar` — a track that reports, determinate or not.
+//! `ProgressBar` displays determinate or indeterminate progress without editing it.
 //!
-//! # Why it is not a `TouchSlider` with `HandleStyle::None`
+//! Hiding a `TouchSlider` handle does not make a slider read-only. Use this widget
+//! when pointer interaction must not change the reported value.
 //!
-//! That style exists, and its own doc offers it "for a value that is displayed rather than dragged:
-//! a level, a progress, a read-only gauge", so it is the first thing to try and it has to be killed
-//! explicitly. It loses four times over. It takes `&mut f32` and calls `follow_finger`, so a glove
-//! brushing the glass **rewrites the value it is meant to be reporting**. It senses `click()`
-//! unconditionally, so a bar inside a notification card steals the card's own tap. It swells on
-//! press, which is feedback for a grab that cannot happen. And it cannot be indeterminate at all.
+//! With rewind disabled, a lower reported target is raised to the stored target
+//! before easing over `motion.switch`. The configured easing determines the
+//! intermediate displayed values. `paint_bar`, which has no retained `Ui` state,
+//! paints the supplied value directly. The caller supplies the display string and
+//! tone; the widget does not infer process completion or fault severity.
 //!
-//! Read-only is not a style of slider. It is a different contract.
-//!
-//! # Why the track is thinner than a slider's, by a ratio
-//!
-//! `slider_track` is 0.375 T because a gloved finger has to land on it. Nothing lands on this, and
-//! halving it is the only change that follows from taking the hand away — `control.progress_ratio`
-//! is 0.47, and the e-reader reference measures 0.9 % off that. A ratio rather than a `Span` of its
-//! own, so a panel that retunes what you grab retunes what it reports with and the two cannot
-//! drift.
-//!
-//! # Why the track is `SurfaceVariant` with a `ControlEdge`, and not `Outline`
-//!
-//! Both of the shell's own progress drawings used `Outline` as the track. `Outline` measures
-//! 1.15–1.65 against the grounds — the switch module already measured it and called it a ghost — so
-//! **an empty bar was invisible in all four shipped palettes**. That is the defect this element
-//! closes, and it is not a styling preference.
-//!
-//! `SurfaceVariant` alone does not fix it either: on a card the track would be `SurfaceVariant` on
-//! `SurfaceVariant`, which is 1.00. So the fill carries the value (`Primary` on the track: 3.20 /
-//! 5.82 / 6.74 / 4.81, against a 3.0 floor) and the edge carries the *extent* — what tells you how
-//! far there is left to go when the bar is nearly empty.
-//!
-//! # Why an indeterminate bar still moves under `motion.reduce`
-//!
-//! Freezing it is the obvious reading of "honour reduced motion" and it is wrong: a stopped
-//! indeterminate bar reads as a hung machine, and on a panel watching a forty-second purge cycle
-//! that is a worse outcome than the motion. Reduced motion targets **translation**, so the
-//! translation goes and an opacity pulse takes its place — the whole track, breathing between
-//! `disabled_alpha` and 1 over twice the cycle. At 0.31 Hz that is an order of magnitude under
-//! WCAG 2.3.1's three-flash threshold.
-//!
-//! # Why the read-out is the caller's string
-//!
-//! `68 %` versus `68%`, the decimal separator, the digit shaping — and the fact that half of an
-//! instrument panel's bars are not percentages at all (3 of 7 steps, 12.4 of 20 L, 340 of 500 °C).
-//! The crate lays the column out and caps it at `control.trailing_text_max`; the caller writes the
-//! string. The crate does not format the content it lays out.
-//!
-//! # Why the shown value is eased, and never goes backwards
-//!
-//! The same contract as the ring's: a bar is trusted only while it behaves like a
-//! clock. Apple's guidance is to *even out* the pace, Fluent's is never to let one rewind, and a
-//! worker reporting in bursts breaks both — so the bar eases towards each reported value over
-//! `motion.switch` and holds the highest value it has shown unless the caller says a rewind is
-//! meant ([`ProgressBar::allow_rewind`]). A *new run* is a rewind that is meant.
-//! [`paint_bar`] has no `Ui` to remember anything in and draws the value it is handed.
-//!
-//! # Why a stalled bar pulses, and does not turn a colour
-//!
-//! Apple's other rule is that a stopped indicator reads as a hung machine. On a bench that is not
-//! a figure of speech — a purge at 63 % that has not moved for a minute *is* the thing the
-//! operator needs to know — and the bar has no way to know it unless the caller tells it what
-//! "no word" means ([`ProgressBar::stale_after`]) and, when progress is legitimately slow, that
-//! the worker is still alive ([`ProgressBar::heartbeat`]). Past that limit the fill breathes
-//! between `disabled_alpha` and 1 and the read-out dims: "this number is old". It does not turn
-//! `Warning` — ISA-101 keeps colour for a judgement, and *stalled* is the caller's judgement to
-//! make with [`ProgressBar::tone`] once it has decided; the bar only reports the silence.
-//!
-//! The pulse is the same one an indeterminate bar uses under `motion.reduce`, and it is told apart
-//! by where it is: a stall breathes the **fill**, reduced motion breathes the **whole track**.
-//!
-//! # Why the stop indicator and the steps are options and not styles
-//!
-//! Material's 2024 linear indicator cuts a gap between the fill's head and the track and puts a
-//! dot at the far end, so a bar whose fill and track are close in colour still shows where it
-//! ends; Ant's `steps` cuts the track into cells for a quantity that is counted, not measured
-//! ("3 of 7"). Both change the geometry of one bar and nothing about the rest of the panel, so
-//! they are [`ProgressBar::stop_indicator`] and [`ProgressBar::steps`] on the bar and not a
-//! theme-wide style. Every length in both is the track's own thickness — the head gap, the dot,
-//! the cell gap — so a panel that retunes the track retunes them with it and nothing needs a
-//! token of its own.
+//! Indeterminate progress translates normally and uses an opacity pulse under
+//! reduced motion. `stale_after` and `heartbeat` control stale indication. A stale
+//! fill pulses and the read-out dims. Stop indicators and segmented steps are
+//! per-widget options. These presentation choices do not establish accessibility
+//! conformance or confirm that a backend operation is still running.
 
 use super::{ProgressBarLook, ProgressFill as Fill};
 use crate::cx::WidgetCx as Cx;
@@ -184,12 +118,8 @@ impl<'a> ProgressBar<'a> {
         self
     }
 
-    /// The Material 2024 look: a gap of one thickness between the fill's head and the track, and
-    /// a dot of one thickness at the track's far end that hides once the head reaches it.
-    ///
-    /// For a bar whose fill and track are close in colour, and for one read from a distance: the
-    /// end of the track is marked whatever the palette, so "how far is left" is never a guess.
-    /// Off by default — the classic bar, fill over track, is the quieter one in a list.
+    /// Add a gap at the fill head and a dot at the track end. Off by default.
+    /// Both dimensions use one track thickness; the dot hides when the head reaches it.
     #[must_use]
     pub fn stop_indicator(mut self, on: bool) -> Self {
         self.stop_indicator = on;
@@ -209,11 +139,9 @@ impl<'a> ProgressBar<'a> {
         self
     }
 
-    /// Let the shown value follow the reported one **down**.
-    ///
-    /// Off by default: the bar holds the highest value it has shown, so a worker that re-reports
-    /// a phase from zero cannot make it snap back. A new run is the case this is for — the bar is
-    /// meant to rewind to the new run's zero, and the caller says so.
+    /// Allow a lower reported target. Off by default: lower targets are raised to
+    /// the stored target before easing. Displayed values follow the configured
+    /// easing, including any overshoot and return.
     #[must_use]
     pub fn allow_rewind(mut self, allow: bool) -> Self {
         self.allow_rewind = allow;
@@ -385,8 +313,9 @@ pub(crate) fn pulse_alpha(phase: f32, floor: f32) -> f32 {
     floor + (1.0 - floor) * wave
 }
 
-/// The value to show this frame: the reported one eased over `motion.switch`, and never below
-/// the highest shown unless a rewind is meant. Shared by the bar and the ring.
+/// Clamp lower targets to the stored target when rewind is disabled, then ease
+/// using `motion.switch`. Shared by the bar and ring; the stored target is not
+/// the maximum of the intermediate displayed values.
 pub(crate) fn eased_value(
     ui: &egui::Ui,
     cx: &mut Cx<'_>,
@@ -405,8 +334,9 @@ pub(crate) fn eased_value(
     cx.animate(id.with("t"), target, cx.theme.motion.switch)
 }
 
-/// What counts as a word from the worker: its heartbeat when it sends one, else the reported
-/// value's bits — a value that has not changed is a value that has not been reported.
+/// Use the caller's heartbeat when supplied, otherwise the reported value bits.
+/// Repeated updates with an unchanged value need a changing heartbeat to be
+/// distinguished from no updates.
 pub(crate) fn beat_of(value: Option<f32>, heartbeat: Option<u64>) -> u64 {
     heartbeat.unwrap_or_else(|| u64::from(value.unwrap_or(0.0).to_bits()))
 }
@@ -414,10 +344,9 @@ pub(crate) fn beat_of(value: Option<f32>, heartbeat: Option<u64>) -> u64 {
 /// The heartbeat as last remembered: the beat and the clock when it changed.
 type LastBeat = (u64, f64);
 
-/// **When the silence passed `after`**, if it has — remembering the last beat under `id`.
-///
-/// Arms a repaint for the moment the limit passes, so a bar nobody else is redrawing still goes
-/// stale on time and not on the next unrelated frame.
+/// Remember a heartbeat under `id` and report whether `after` has elapsed.
+/// A repaint is requested for that deadline; the host determines when another
+/// update is supplied.
 pub(crate) fn stalled(ui: &egui::Ui, id: egui::Id, beat: u64, after: Duration) -> Option<f64> {
     let now = ui.input(|i| i.time);
     let prev = ui.data(|d| d.get_temp::<LastBeat>(id));
@@ -635,8 +564,8 @@ mod tests {
         assert_eq!(ProgressBar::determinate(0.5).value, Some(0.5));
     }
 
-    /// **A progress track is under half a slider track at every finger size**, so a panel that
-    /// retunes what you grab cannot quietly make what it reports with thicker than it.
+    /// Check the default progress/slider thickness ratio for the sampled 6, 9, 13 and
+    /// 16 mm finger policies.
     #[test]
     fn a_progress_track_stays_under_half_the_thing_you_grab() {
         for finger in [6.0_f32, 9.0, 13.0, 16.0] {
@@ -696,10 +625,10 @@ mod tests {
         assert!(a > 0.0 && b < 1.0, "the midpoint touches an end");
     }
 
-    /// **Reduced motion keeps the bar alive.** Freezing an indeterminate bar is the obvious
-    /// reading of the guidance and reads as a hung machine — Angular shipped that answer and has
-    /// the bug report to show for it. Something has to change between two phases half a period
-    /// apart, and it must not be position.
+    /// Reduced motion replaces indeterminate translation with an opacity pulse.
+    ///
+    /// This is a visual status treatment; it does not confirm backend liveness or
+    /// establish accessibility conformance.
     #[test]
     fn reduced_motion_keeps_the_indeterminate_bar_alive() {
         let floor = 0.55;
@@ -718,8 +647,8 @@ mod tests {
         }
     }
 
-    /// **The track carries a boundary you can measure, in every palette** — and the role it stopped
-    /// using cannot come back, because an empty bar drawn in `Outline` is not there at all.
+    /// Check track-boundary contrast for the built-in palette/background pairs,
+    /// and keep the lower-contrast decorative Outline role out of that boundary.
     #[test]
     fn the_track_is_identified_in_every_palette_and_outline_would_not_be() {
         for &preset in Preset::ALL {
@@ -810,8 +739,8 @@ mod tests {
         );
     }
 
-    /// **A track too narrow to count falls back to one cell.** Cells that are dots are not
-    /// countable, and a bar must never draw nothing.
+    /// Check continuous-track fallback when the sampled width cannot fit the requested
+    /// cell spacing; zero or one step also uses a continuous track.
     #[test]
     fn a_track_too_narrow_to_count_falls_back_to_one_cell() {
         let narrow = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(40.0, 6.0));

@@ -1,4 +1,4 @@
-//! A minimal, dependency-free TOML scanner (shared by 's xtask stages).
+//! A minimal, dependency-free TOML scanner shared by the xtask audit stages.
 //!
 //! Not a complete parser. It walks only the subset the audit gates actually read — table headers,
 //! `key = value`, arrays and inline tables — **respecting string boundaries**.

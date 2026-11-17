@@ -1,7 +1,7 @@
 //! `ShellConfig` — the M1 sections of `fairing.toml` (`[shell]`, `[status_bar]`, `[nav_bar]`,
 //! `[theme]`, `[desktop]`, `[motion]`, `[access]`), with loading and defaults.
 //!
-//! Configuration handles **placement and assignment only**. Declarations (screens, actions,
+//! Configuration sets placement, appearance, interaction and access policy. Declarations (screens, actions,
 //! status items) live in code, and an id the config refers to that does not exist in code is
 //! logged as a warning and ignored. The M2 sections (`[overlay]`, `[notify]`,
 //! `[osk]`, `[gesture]`) are parsed whatever the features are — a section for a subsystem that
@@ -67,8 +67,7 @@ impl ShellConfig {
     /// The [`Theme`](crate::theme::Theme) these settings describe.
     ///
     /// The theme lives in the element crate and takes its five inputs directly
-    /// ([`Theme::from_inputs`](crate::theme::Theme::from_inputs)), because it has no business
-    /// knowing what else is in the shell's config file. This is the one-argument form
+    /// ([`Theme::from_inputs`](crate::theme::Theme::from_inputs)), without depending on the rest of the shell configuration. This is the one-argument form
     /// for a caller that has the whole file in hand.
     ///
     /// # Errors
@@ -135,7 +134,8 @@ impl ShellConfig {
     /// `default_gate` and `pin_table` are validated by
     /// [`crate::access::Access::from_config`], and the `[theme.palette]` role names and colour
     /// formats by [`ShellConfig::build_theme`] — each by whichever side knows those names. All
-    /// three are called at startup by [`crate::Shell::builder`].
+    /// three run during [`crate::ShellBuilder::build`] or
+    /// [`crate::ShellBuilder::build_protected`], not when merely creating the builder.
     ///
     /// # Errors
     /// [`Error::Config`] on a value out of range.
@@ -336,11 +336,8 @@ impl ShellConfig {
                 )));
             }
         }
-        // **A device with no back at all is not allowed to boot**. `gesture` has no back
-        // button — back is a `back_edges` swipe — so with `back_edges` empty there is no way out of
-        // the stack at all, the kind of accident found only after shipping. A bar turned off
-        // (`enabled = false`) does not catch here: it is normal for the screen to draw its own back then
-        // (as the kiosk example does), and the style value means nothing.
+        // An enabled gesture navigation bar needs at least one back edge: this style has no
+        // back button. With the bar disabled, validation leaves navigation to the app.
         if self.nav_bar.enabled
             && self.nav_bar.style == "gesture"
             && self.nav_bar.back_edges.is_empty()
@@ -386,19 +383,14 @@ impl Default for ShellSection {
     }
 }
 
-/// The mouse cursor policy (how it is operated is a runtime axis).
+/// Mouse-cursor visibility policy.
 ///
-/// **A touch device must not have an arrow floating on it.** But every kind of input is in
-/// scope (capacitive, resistive, gloved, a trackball, an industrial HMI with a USB mouse), so
-/// the cursor cannot simply be removed either. The default therefore **follows the last input
-/// used**.
+/// `Auto` follows the last input type; `Hidden` and `Visible` select a fixed policy.
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum CursorPolicy {
-    /// Follow the last input — hidden after touch, visible after the mouse. **The default.**
-    ///
-    /// Straight after boot, with no input yet, it is **hidden**. Most devices are touch, so
-    /// appearing only when a mouse is plugged in is the better way round.
+    /// Follow the last input: hidden after touch and visible after mouse input.
+    /// This is the default, initially hidden before any input.
     #[default]
     Auto,
     /// Always hidden. Not even a plugged-in mouse shows it — for pinning the device to touch only.
@@ -418,13 +410,11 @@ pub enum RepaintMode {
     Continuous,
 }
 
-/// The Abyss background quality tier (`[desktop.abyss] tier`). **Outside the
-/// feature gate** (rule G) — the config parses with `brand` off.
+/// Abyss background quality tier (`[desktop.abyss] tier`).
 ///
-/// **Quality is not derived from the resolution.** Fill rate scales with resolution, but on this
-/// crate's target hardware GPU performance does not — the smaller the industrial panel, the
-/// weaker its GPU. Choosing by resolution would hand an 800×480 software renderer the heaviest
-/// tier. The right answer is the integrator, not an automatic one.
+/// This type remains available with `brand` disabled so configuration can parse.
+/// Choose the tier based on measured rendering cost on the target hardware;
+/// resolution alone does not determine GPU or software-renderer throughput.
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AbyssTier {
@@ -446,8 +436,8 @@ pub struct AbyssConfig {
     /// The quality tier.
     pub tier: AbyssTier,
     /// The scatter seed. **The composition does not move** — only the bubbles, fish and rocks
-    /// do; the manta formation, the ray count, the light position and the band heights are
-    /// authored constants.
+    /// do. Manta/ray counts and light position come from their other configuration
+    /// fields; formation curves and band heights use authored geometry.
     pub seed: u32,
     /// The god ray count (0..=16).
     pub rays: u8,
@@ -461,22 +451,16 @@ pub struct AbyssConfig {
     pub light_x: f32,
     /// The top legibility veil's alpha.
     pub veil_top: f32,
-    /// The veil alpha over the icon grid. **The labels are in the middle of the screen** —
-    /// dropping it to 0 and losing them is the integrator's choice.
+    /// Veil alpha over the icon-grid region. Check label contrast when changing it.
     pub veil_field: f32,
     /// The veil alpha over the bottom band (the dock and the indicator).
     pub veil_bottom: f32,
-    /// Move the mantas every frame. **This breaks zero fps at rest** — `false` by default.
+    /// Animate the mantas, requesting continued updates. `false` by default.
     pub animate: bool,
     /// The bake budget (ms). Over it, the tier drops one step with a warning.
     pub bake_budget_ms: f32,
-    /// Where the colours come from: `"palette"` (the default, following the theme) or `"art"`
-    /// (fixed colours measured from the reference art).
-    ///
-    /// The mid-water in the art is blue while the palette's `primary` is cyan, so no derivation
-    /// reaches the art's colour. When the art itself is what you need, use
-    /// `"art"`. An unknown name warns and falls back to `palette` — the background is
-    /// fail-open.
+    /// Background-colour source: `"palette"` (default) follows the active theme;
+    /// `"art"` uses fixed art colours. An unknown name warns and uses `"palette"`.
     pub colors: String,
 }
 
@@ -608,8 +592,8 @@ pub struct DesktopConfig {
     ///
     /// **There is no count limit**. Five is the phone convention, not a device
     /// requirement — twelve along the bottom of a 1920 bar panel is normal, and so is eight in a
-    /// left rail on 480×800. Cells shrink only once they fall below the physical minimum touch
-    /// size.
+    /// left rail on 480×800. Available dock length is divided between entries; a
+    /// crowded dock can have slots smaller than the resolved touch target.
     pub dock: Vec<String>,
     /// Which edge the dock attaches to: `"bottom"` (the default), `"top"`, `"left"` or
     /// `"right"`.
@@ -625,15 +609,12 @@ pub struct DesktopConfig {
     pub pages: Vec<PageConfig>,
     /// The label line count.
     pub label_lines: u8,
-    /// The background: a palette role name (`"background"`), `#RRGGBB`, `"abyss"` (the
-    /// procedural deep sea), or `"file:<path>"` (a raster image).
+    /// Desktop background: palette role, `#RRGGBB`, `"abyss"` or `"file:<path>"`.
     ///
-    /// `"abyss"` warns and falls back to the `background` role when the `brand` feature is off.
-    ///
-    /// `"file:…"` is only read with the `raster` feature on — it is the way to give each site a
-    /// different background **without rebuilding the device** (guide 09 §2). Use an absolute
-    /// path. If it cannot be read, the shell logs the error and falls back to `background`
-    /// rather than refusing to start — one image must never stop the machine from booting.
+    /// With `brand` disabled, `"abyss"` warns and uses the background role. File paths
+    /// are resolved by the application-provided image loader. Missing loaders or reported
+    /// load errors log a warning and use the background colour. Use an absolute path
+    /// when loading a device-specific asset.
     pub wallpaper: String,
     /// How `wallpaper = "file:…"` is fitted: `"cover"` (the default), `"contain"` or
     /// `"stretch"`.
@@ -656,25 +637,11 @@ pub struct DesktopConfig {
     /// and a 1920 px one. The computed width never goes below one icon cell
     /// (`metrics.icon_cell`).
     pub rail_width: f32,
-    /// Desktop label legibility correction: `"none"` (the default), `"shadow"` or `"veil"`
-    /// (guide 09 §2.2).
+    /// Desktop label treatment: `"none"` (default), `"shadow"` or `"veil"`.
     ///
-    /// **`none` being the default is the rule.** The shell does not lay a veil over the
-    /// background; **the artwork itself is responsible for legibility** — a background authored
-    /// dark needs no correction, and turning correction on by default would fog a good
-    /// background too.
-    ///
-    /// Photo and artwork backgrounds, though, routinely put a bright area over the icon grid
-    /// (the manta reference art's white belly does). For an integrator who cannot change the
-    /// background there are two prescriptions:
-    ///
-    /// | Value | What it does | Cost |
-    /// |---|---|---|
-    /// | `"none"` | Nothing | 0 |
-    /// | `"shadow"` | One dark shadow behind the label text | Text draw calls ×2 |
-    /// | `"veil"` | A translucent `scrim` sheet over the whole content | One rectangle |
-    ///
-    /// `shadow` is usually the answer — it saves the labels without flattening the picture.
+    /// `shadow` paints a second text copy behind labels; `veil` adds a tinted rectangle
+    /// over the content. Check composited contrast against the actual background and
+    /// palette when selecting a treatment.
     pub label_legibility: String,
     /// `[desktop.abyss]` — how the procedural deep-sea background is composed.
     /// Only used when `wallpaper = "abyss"`.
@@ -776,39 +743,20 @@ pub struct OverlayConfig {
     pub max_height_ratio: f32,
     /// How long a peeked hidden status bar stays revealed (ms).
     pub peek_ms: u64,
-    /// **Open the shade in two steps** — the first pull stops at the tiles, a second carries on to
-    /// the notifications. `false`, one step to the bottom, is the default and what every
-    /// panel did before.
-    ///
-    /// It is a choice about what the device is for. On a panel whose notifications are the point,
-    /// a stop on the way is one pull too many; on an instrument where the shade is mostly reached
-    /// for to toggle Wi-Fi, stopping at the tiles keeps three quarters of the screen showing the
-    /// run that is still going. The crate cannot tell which, and guessing wrong costs a gesture
-    /// every time.
-    ///
-    /// Resting at the stop the shade lies over a live, undimmed screen, and it does not
-    /// wait to be closed: a press anywhere outside it — on the page, on a bar — closes it, and
-    /// still lands where it was aimed.
+    /// Open the shade in two steps: the first pull stops after the tiles, and the second
+    /// continues to the notifications. Default `false` opens in one step.
+    /// At the intermediate stop, an outside press closes the shade and continues to its
+    /// target on the underlying screen or bar.
     pub two_step: bool,
-    /// **How the shade comes into view**: `"curtain"` or `"card"`.
-    ///
-    /// `"curtain"` — the default, and what every panel did before — hangs the panel from the top
-    /// edge and draws it down over the page: the content is pinned to the top and only as much as
-    /// has been pulled is revealed (A1). It is the shade of Android up to One UI 6, and
-    /// of the crate's first two years.
-    ///
-    /// `"card"` is the shade of One UI 7 and 8: a floating card, inset from the sides with all
-    /// four corners round, that is already its final size at its final place — what the pull
-    /// drives is how far it has *arrived*. It fades in from nothing, comes down a short way and
-    /// its edge sharpens from a soft blob into a corner; the page behind it is not dimmed. It is
-    /// gone in a tenth of the time it took to come. On a wide screen it rests on the side the
-    /// pull started from ([`OverlayConfig::card_anchor`]).
-    ///
-    /// An unknown name warns at start-up and draws the curtain.
+    /// Shade reveal style: `"curtain"` (default) clips a panel drawn from the top;
+    /// `"card"` uses a floating panel with opacity, vertical-offset and edge-feathering
+    /// animation. Wide cards use [`OverlayConfig::card_anchor`] for placement.
+    /// An unknown name warns and uses `"curtain"`.
     pub reveal: String,
     /// **A card's width as a share of the screen's** (`reveal = "card"`). Measured off One UI 8:
-    /// 0.445 of a tablet's width. It never goes below what the tile row needs at one touch
-    /// target per tile; and where the card would then cover more than three quarters of the
+    /// 0.445 of a tablet's width. Placement prefers enough width for one touch target
+    /// per tile, but the available screen width wins. Where the preference would
+    /// cover more than three quarters of the
     /// screen, leaving only a sliver of page beside it, it takes the whole width less its side
     /// insets instead — a phone's shade rather than a tablet's.
     pub card_width_ratio: f32,
@@ -828,17 +776,11 @@ pub struct OverlayConfig {
     /// the hand that pulled it. A phone-shaped curtain wants One UI's 0.7, where the controls are
     /// the right third.
     pub split_ratio: f32,
-    /// **How opaque a card is over its frosted backdrop** (`reveal = "card"`): 0 is clear
-    /// glass, 1 turns the glass off.
-    ///
-    /// A card asks the runner for one screenshot as it first shows, frosts it — shrunk and blurred
-    /// once — and lies on it, so what is behind comes through as colour and shape, not as text to
-    /// read. 0.7 — the default — lets three tenths of it through: the page's big shapes
-    /// show under the card as soft colour, and the card's own text keeps its contrast. Where no
-    /// screenshot comes back (a headless test, a runner without the command), the card stays
-    /// solid: a translucent plate over the *sharp* page would make both unreadable. So it does,
-    /// until it next opens, where the theme switches or the window resizes under an open card —
-    /// the frost would show a page that is no longer there.
+    /// Card opacity over its optional frosted backdrop (`reveal = "card"`).
+    /// Zero is transparent and one disables the translucent treatment; the default is 0.7.
+    /// The runner is asked for a screenshot when the card opens. If no usable screenshot
+    /// arrives, or if the theme or window size changes, the card uses a solid plate.
+    /// Check rendered text contrast when changing opacity, palette or backdrop.
     pub card_glass: f32,
     /// **How raised a card looks** (`reveal = "card"`): 0 is flat, 1 — the default — is
     /// as designed, 2 is twice it.
@@ -902,11 +844,9 @@ pub struct NotifyConfig {
     pub max_items: u16,
     /// The default time a toast shows (ms).
     pub toast_ms: u64,
-    /// **Draw the dismiss ×** on shade notification rows.
-    ///
-    /// Turned off, the ways to dismiss are **a left swipe and "clear all"**. On a
-    /// finger-only device that is cleaner; on one where swipes register poorly — gloves, a
-    /// resistive panel — the button has to be there. Which makes it policy, not taste.
+    /// Draw a dismiss button on shade-notification rows.
+    /// With the button disabled, dismissal remains available through a left swipe and
+    /// "clear all" for notifications that permit dismissal.
     pub dismiss_button: bool,
 }
 
@@ -968,15 +908,14 @@ impl Default for OskConfig {
 #[non_exhaustive]
 pub struct GestureConfig {
     /// Gestures on or off, globally. Off means no edge swipes, long presses or flings. **The
-    /// emergency gesture** (a 2 s press in a top corner) is a safety device and
-    /// remains — the engine keeps tracking the press (`hold`) alone.
+    /// emergency gesture** (a 2 s press in a top corner) remains enabled — the engine keeps tracking the press (`hold`) alone.
     pub enabled: bool,
     /// How long a finger must be still after a swipe to count as held (ms, `SwipeHold`).
     pub hold_ms: u64,
     /// The emergency gesture: the top-corner long-press duration (ms; 2 s by default).
     pub emergency_ms: u64,
     /// The emergency corner's side (du) — a floor: the zone is never smaller than the finger's
-    /// `touch_target`, so a gloved press lands in it too.
+    /// `touch_target`, using the configured size policy.
     pub emergency_corner_px: f32,
 }
 

@@ -1,8 +1,8 @@
 //! Deterministic noise. No RNG crate — the constraint is zero new dependencies.
 //!
 //! **The seed changes the scatter and nothing else.** What `[desktop.abyss] seed` moves is where
-//! the bubbles, the fish and the rocks go; the manta formation (how many, and the flight lines),
-//! the number of god rays, the light position and the band heights are **authored constants**.
+//! the bubbles, the fish and the rocks go. Manta count, ray count and light position
+//! come from other parameters; formation curves and band heights use authored geometry.
 //! Leaving those to chance too would put a manta on top of the icons at some seed or other.
 
 /// The lowbias32 integer hash. `wrapping_mul` is const-stable.
@@ -29,7 +29,7 @@ pub(super) fn rand01(seed: u32, index: u32, channel: u32) -> f32 {
             .wrapping_mul(0x9e37_79b9)
             .wrapping_add(channel.wrapping_mul(0x85eb_ca6b)),
     );
-    // Only the top 24 bits are used — an f32 has 24 significant bits, so the low 8 are eaten by the rounding anyway.
+    // Use the top 24 bits, which fit the significand precision of f32.
     #[expect(
         clippy::cast_precision_loss,
         reason = "24 bits fit exactly into an f32"
@@ -38,12 +38,10 @@ pub(super) fn rand01(seed: u32, index: u32, channel: u32) -> f32 {
     out
 }
 
-/// Stratified sampling: one jittered point per cell of a `cols × rows` grid. No clumping and no
-/// rejection-sampling loop.
+/// Stratified sampling: one jittered point per cell in a `cols × rows` grid.
 ///
-/// It hands back `(index, u, v)` with `u` and `v` as `[0, 1)` screen fractions. Scattering 24
-/// bubbles does not draw 24 random numbers; it divides the screen into a grid and jitters one
-/// point inside each cell — which gives a blue-noise-like distribution at constant bake cost.
+/// Returns `(index, u, v)` with normalized screen fractions. The number of generated
+/// samples is determined by the grid; no rejection-sampling loop is used.
 pub(super) fn stratified(seed: u32, cols: u32, rows: u32) -> impl Iterator<Item = (u32, f32, f32)> {
     let cols = cols.max(1);
     let rows = rows.max(1);

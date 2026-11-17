@@ -254,9 +254,7 @@ impl Trace {
             })
             .build(ctx)
             .unwrap();
-        shell
-            .access_mut()
-            .set_policy(Box::new(Policy(policy.clone())));
+        shell.set_policy(Box::new(Policy(policy.clone())));
         for id in ["a", "b"] {
             let actions = actions.clone();
             shell.add(action(id, move |_| actions.borrow_mut().push(id)));

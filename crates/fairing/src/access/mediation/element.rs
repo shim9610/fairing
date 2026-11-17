@@ -33,15 +33,11 @@ impl<P: Permission> ElementHandle<P> {
         })?;
         Some((binding, size))
     }
-    pub(crate) fn matches(
-        &self,
-        binding: &PermissionBinding<P>,
-        cx: &Cx<'_>,
-        stamp: Stamp,
-    ) -> bool {
+    pub(crate) fn matches(&self, gate: &crate::Gate, cx: &Cx<'_>, stamp: Stamp) -> bool {
         cx.authority_stamp() == Some(stamp)
-            && self.requirement().gate() == *binding.gate()
-            && binding.allows(cx)
+            && self.requirement().gate() == *gate
+            && cx.token_mode()
+            && cx.allows_gate(gate)
             && cx.authority_stamp() == Some(stamp)
     }
     pub(crate) fn paint(
@@ -50,18 +46,18 @@ impl<P: Permission> ElementHandle<P> {
         cx: &mut Cx<'_>,
         rect: Rect,
         identity: egui::Id,
-        binding: &PermissionBinding<P>,
+        gate: &crate::Gate,
         stamp: Stamp,
     ) -> bool {
         // Read metadata before the final entry check; a getter cannot revoke and
         // then rely on an earlier admission. Never lend the raw body to callers.
-        if self.requirement().gate() != *binding.gate() {
+        if self.requirement().gate() != *gate {
             return false;
         }
-        invoke_requirement(binding.gate(), stamp, cx, |cx| {
+        invoke_requirement(gate, stamp, cx, |cx| {
             let mut child = ui.new_child(
                 egui::UiBuilder::new()
-                    .id_salt(identity.with(binding.gate().as_str()).value())
+                    .id_salt(identity.with(gate.as_str()).value())
                     .max_rect(rect),
             );
             child.set_clip_rect(ui.clip_rect().intersect(rect));

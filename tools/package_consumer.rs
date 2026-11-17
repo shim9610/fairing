@@ -129,6 +129,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut config = single_level_access();
     config.motion.reduce = true;
     let mut harness = Harness::new(config, Services::null())?;
+    harness
+        .shell
+        .set_wallpaper(fairing::desktop::Wallpaper::Solid(
+            fairing::theme::ColorRole::Surface,
+        ));
+    harness.shell.set_desktop_page(0);
+    harness.shell.set_nav_enabled(true);
+    assert!(harness.shell.set_nav_height(48.0));
+    let mut metrics = harness.shell.metrics_spec();
+    metrics.type_scale[1] = fairing::unit::Span::fixed(fairing::unit::Dim::du(23.0)).pinned();
+    harness.shell.set_metrics_spec(metrics);
+    let mut clock = harness
+        .shell
+        .status_item_spec("status.clock")
+        .ok_or("missing clock")?;
+    clock.min_width = Some(84.0);
+    assert!(harness.shell.set_status_item_spec("status.clock", clock));
+    harness
+        .shell
+        .set_wifi_backend(fairing::services::null::NullWifi);
+    assert!(harness
+        .shell
+        .request_service(fairing::services::ServiceRequest::WifiScan)
+        .is_err());
+    #[cfg(feature = "full")]
+    {
+        harness
+            .shell
+            .set_osk_layout(fairing::osk::OskLayout::Qwerty);
+        harness.shell.hide_osk();
+    }
+    harness.frames(2);
+    assert_eq!(harness.shell.theme().metrics.type_scale.body, 23.0);
+    assert_eq!(harness.shell.nav_bar().height, 48.0);
+
     harness.shell.add(
         screen("packaged", |ui: &mut fairing::egui::Ui, _cx: &mut Cx| {
             ui.label("Packaged consumer");

@@ -1,10 +1,10 @@
 # deps.allow — the approved dependency allowlist
 #
-# Every crate appearing in the tree (transitive dependencies included) has to be here. Without it the audit gate fails.
+# Every crate in the selected normal-dependency graph must be approved here, including transitive dependencies.
 # Additions go only through the approval procedure in CONTRIBUTING.md (a PR review).
 #
 #   Check:   cargo xtask deps-check
-#   Refresh: cargo xtask deps-check --write   (dumps the current tree; the existing lines' reasons are kept)
+#   Refresh: cargo xtask deps-check --write   (rewrites the selected graph; matching rows keep reasons)
 #
 # Lines starting with '#' and blank lines are ignored. The column separator is two or more spaces, and
 # only the last column (the reason) may contain two spaces within it.
@@ -13,9 +13,12 @@
 #
 # version-req: =X.Y.Z (exact) · ^X.Y[.Z] (caret; 0.x pins the minor) · ~X.Y[.Z] (pins the minor) · * (any)
 #              With no prefix it is read as a caret. Even for the same crate, a different major (a
-#              different minor for 0.x) is a separate line. `--write` pins only egui and eframe at
-#              =X.Y.Z and writes the rest as carets — so that a transitive dependency's
-#              patch update does not break the gate.
+#              different minor for 0.x) is a separate line. For new entries, `--write` exact-pins
+#              egui, eframe, 0.0.z versions and prereleases; other new entries use carets.
+#              Matching existing approvals retain their reviewed requirement and reason.
+#              The dump selects normal edges in the main workspace; build/dev edges and the
+#              separate verification workspace are outside this selection. Preserve their needed
+#              approval rows separately when refreshing: --write does not emit unselected rows.
 # license:     it has to match cargo tree's {l} value exactly as a string, after whitespace normalisation.
 # reason:      leave the approver and the date with the reason, as `(approver, YYYY-MM-DD)`.
 #              A line with no date, or with a `TODO` left in, counts as unapproved and the gate fails.
@@ -184,10 +187,10 @@ arbitrary                        =1.5.0           MIT OR Apache-2.0             
 chacha20                         =0.10.2          MIT OR Apache-2.0                                       verification only: proptest (shim9610, 2026-11-01)
 core_detect                      =1.0.0           MIT/Apache-2.0                                          verification only: proptest (shim9610, 2026-11-01)
 cpufeatures                      =0.3.1           MIT OR Apache-2.0                                       verification only: proptest (shim9610, 2026-11-01)
-generator                        =0.8.11          MIT/Apache-2.0                                          verification only: loom (shim9610, 2026-11-01)
+generator                        =0.8.12          MIT/Apache-2.0                                          verification only: loom (shim9610, 2026-11-09)
 lazy_static                      =1.5.1           MIT OR Apache-2.0                                       verification only: loom (shim9610, 2026-11-01)
 libfuzzer-sys                    =0.4.13          (MIT OR Apache-2.0) AND NCSA                            verification only: libfuzzer-sys (shim9610, 2026-11-01)
-loom                             =0.7.2           MIT                                                     verification only: loom (shim9610, 2026-11-01)
+loom                             =0.7.3           MIT                                                     verification only: loom (shim9610, 2026-11-09)
 matchers                         =0.2.0           MIT                                                     verification only: loom (shim9610, 2026-11-01)
 nu-ansi-term                     =0.50.3          MIT                                                     verification only: loom (shim9610, 2026-11-01)
 proptest                         =1.12.0          MIT OR Apache-2.0                                       verification only: proptest (shim9610, 2026-11-01)
@@ -207,3 +210,9 @@ valuable                         =0.1.1           MIT                           
 allocator-api2                   =0.4.0            MIT OR Apache-2.0                                       isolated allocator diagnostic allocator API bridge (shim9610, 2026-11-01)
 spinning_top                     =0.3.1            MIT OR Apache-2.0                                       isolated allocator diagnostic allocator synchronization (shim9610, 2026-11-01)
 talc                             =5.1.1            MIT                                                     optional fixed-arena allocator; no System fallback (shim9610, 2026-11-01)
+windows-core                     =0.100.0         MIT OR Apache-2.0                                       owner-requested compatible refresh; verification-only Windows bindings via generator 0.8.12 (shim9610, 2026-11-09)
+windows-implement                =0.100.0         MIT OR Apache-2.0                                       owner-requested compatible refresh; verification-only Windows bindings via generator 0.8.12 (shim9610, 2026-11-09)
+windows-interface                =0.100.0         MIT OR Apache-2.0                                       owner-requested compatible refresh; verification-only Windows bindings via generator 0.8.12 (shim9610, 2026-11-09)
+windows-link                     =0.100.0         MIT OR Apache-2.0                                       owner-requested compatible refresh; verification-only Windows bindings via generator 0.8.12 (shim9610, 2026-11-09)
+windows-result                   =0.100.0         MIT OR Apache-2.0                                       owner-requested compatible refresh; verification-only Windows bindings via generator 0.8.12 (shim9610, 2026-11-09)
+windows-strings                  =0.100.0         MIT OR Apache-2.0                                       owner-requested compatible refresh; verification-only Windows bindings via generator 0.8.12 (shim9610, 2026-11-09)

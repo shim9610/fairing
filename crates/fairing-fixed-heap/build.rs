@@ -1,11 +1,11 @@
-//! Validate the device binary's fixed arena size before compiling it.
+//! Validate the diagnostic binary's fixed arena size before compiling it.
 #![forbid(unsafe_code)]
 use std::{env, fs, path::PathBuf};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-env-changed=FAIRING_HEAP_BYTES");
-    // Large enough for the workspace's parallel renderer tests. Device applications
-    // select their own measured budget, not this development default.
+    // Development budget for the workspace's parallel renderer tests. Diagnostic
+    // runs can select a different measured budget.
     let bytes =
         env::var("FAIRING_HEAP_BYTES").map_or(Ok(512 * 1024 * 1024), |s| s.parse::<usize>())?;
     if !(128 * 1024..=1024 * 1024 * 1024).contains(&bytes) {

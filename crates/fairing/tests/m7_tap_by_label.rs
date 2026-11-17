@@ -1,8 +1,9 @@
-//! **A finger finds a row by its label, not by a number** — the regression the console tour had
-//! after the rows shrank to one finger: a `Tap(90, 210)` written for the old row height landed
-//! on the entry below, and nothing said so. The harness names the place instead
-//! ([`Harness::text_rect`], [`Harness::tap_text`]), so a test written today is still right when
-//! the finger, the type scale or the density changes.
+//! Label-based test input through `Harness::text_rect` and `Harness::tap_text`.
+//!
+//! The fixtures use labels instead of fixed coordinates and compare bare-finger and
+//! gloved size policies. Missing, duplicated and clipped labels are checked as
+//! errors rather than converted into an untargeted tap.
+
 #![cfg(all(feature = "settings", feature = "mock"))]
 
 use fairing::settings::{add_all, SettingsConfig};

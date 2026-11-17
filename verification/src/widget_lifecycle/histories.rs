@@ -141,7 +141,7 @@ impl Scene {
         runner.text("Bravo", self.menu.trigger).is_some()
     }
 
-    fn retire(&mut self, runner: &mut Runner, how: u8) {
+    fn retire(&mut self, runner: &mut Runner, how: u8) -> (bool, bool, bool) {
         let before = self.hold_count;
         match how % 3 {
             0 => {
@@ -158,6 +158,7 @@ impl Scene {
             }
         }
         self.idle(runner, 2);
+        let observed = (self.mounted, self.enabled, self.parent);
         self.mounted = true;
         self.enabled = true;
         self.parent = true;
@@ -173,6 +174,7 @@ impl Scene {
             self.hold_count, before,
             "retired press completed in history"
         );
+        observed
     }
 
     /// Contract preconditions are explicit: visible/enabled controls, released pointer,
@@ -298,17 +300,20 @@ fn exercise(profile_index: u8, history: &[u8]) {
     }
 }
 
-fn exercise_inner(profile_index: u8, history: &[u8]) {
+fn exercise_inner(profile_index: u8, history: &[u8]) -> Vec<(bool, bool, bool)> {
     let (opener, kind) = profile(profile_index);
     let mut runner = Runner::new();
     let mut scene = Scene::new(opener, kind);
     scene.idle(&mut runner, 3);
+    let mut retired = Vec::new();
     for &operation in history {
         runner.dt = [1.0 / 120.0, 1.0 / 60.0, 1.0 / 15.0, 0.25][usize::from(operation / 16 % 4)];
         match operation % 16 {
             0 => scene.tap(&mut runner, scene.menu.trigger.center()),
             1 => scene.tap(&mut runner, OUTSIDE),
-            2..=4 => scene.retire(&mut runner, operation - 2),
+            2..=4 => {
+                retired.push(scene.retire(&mut runner, operation % 16 - 2));
+            }
             5 => scene.tap(&mut runner, scene.text_rect.center()),
             6 => scene.frame(&mut runner, vec![Event::Text("x".into())]),
             7 => scene.frame(&mut runner, pointer(scene.hold_rect.center(), true)),
@@ -339,6 +344,29 @@ fn exercise_inner(profile_index: u8, history: &[u8]) {
         expected(profile_index),
         "prior history changed the promised suffix outcome"
     );
+    retired
+}
+
+/// Timing bits must preserve the owner interruption actually applied during replay.
+#[test]
+fn timing_bits_preserve_owner_interruption_modes() {
+    for (opcode, expected) in [
+        (2, (false, true, true)),
+        (3, (true, false, true)),
+        (4, (true, true, false)),
+    ] {
+        for timing in [
+            0x00, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80, 0x90, 0xa0, 0xb0, 0xc0, 0xd0,
+            0xe0, 0xf0,
+        ] {
+            let byte = timing | opcode;
+            assert_eq!(
+                exercise_inner(0, &[byte]),
+                vec![expected],
+                "history byte {byte:#04x} changed the interrupted owner"
+            );
+        }
+    }
 }
 
 #[test]

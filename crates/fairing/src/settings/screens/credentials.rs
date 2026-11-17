@@ -10,9 +10,9 @@ use super::{
 /// ([`Authenticator::admin`](crate::access::Authenticator::admin)); the reference `PinTable` does
 /// not — its file is the source of truth.
 ///
-/// A screen of its own rather than [`credentials_body`] in a page, so that what is typed goes when
-/// the screen does: stopped, closed, or the session changes, the form and its secrets are dropped
-/// there and then. Back closes an open form before it leaves the screen.
+/// The standalone screen clears its form when handling `Stopped`, `Destroyed` or
+/// `AccessChanged`. Back closes an open form before leaving the screen. Embedded
+/// [`credentials_body`] uses the drawing-instance state described below.
 #[must_use]
 pub fn credentials() -> ScreenDecl {
     crate::screen::screen_of(CREDENTIALS, CredentialsScreen::default())
@@ -23,15 +23,14 @@ pub fn credentials() -> ScreenDecl {
 const CREDENTIALS: &str = "settings.credentials";
 /// The body of [`credentials`]: the entries, and a form to change one or add one.
 ///
-/// **The screen keeps no store of its own.** It draws the shell's last
-/// [`CredentialAdmin::list`](crate::access::CredentialAdmin::list) and leaves every change with the
-/// shell, which hands it to the authenticator — where an entry lives and how its secret is kept
-/// never reach the screen. A form stays up until the authenticator has answered its Apply: what
-/// went through closes it, and what did not is said on it with everything typed still there.
+/// The screen displays the shell's last account list from
+/// [`CredentialAdmin::list`](crate::access::CredentialAdmin::list) and submits changes
+/// through the shell to the authenticator. Persistent account storage belongs to
+/// the authenticator. The form temporarily holds entered values while an Apply
+/// result is pending or rejected.
 ///
-/// Put in a screen of your own, the form in progress is that screen's alone, and it is dropped the
-/// first frame the body is not drawn (closed, covered, another entry on the settings home's right)
-/// or is drawn for another subject — the next person never finds a half-filled form to apply.
+/// Embedded form state is keyed to the drawing screen instance. On the next body
+/// call, a gap in drawing or a changed subject resets the saved form before use.
 pub fn credentials_body(ui: &mut Ui, cx: &mut Cx<'_>) {
     let key = egui::Id::unique((CREDENTIALS, cx.pane.instance.0));
     let mut state: CredentialsState = ui.data_mut(|d| d.remove_temp(key)).unwrap_or_default();
@@ -562,7 +561,7 @@ fn credential_ops(
             }
             let digits = typed.bytes().all(|b| b.is_ascii_digit());
             if !typed.is_empty() {
-                // A fixed length is the only one the prompt can take: it submits on the last digit.
+                // Fixed-length methods require exactly len digits; len == 0 accepts up to max_len.
                 if len > 0 && (typed.len() != usize::from(len) || !digits) {
                     return Err(
                         tr!(strings, "A PIN is {n} digits.").replace("{n}", &len.to_string())

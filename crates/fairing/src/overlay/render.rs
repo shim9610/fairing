@@ -320,21 +320,12 @@ impl Overlay {
         }
         long_press.or(out.action).or_else(|| self.pending.take())
     }
-    /// **The card's frosted backdrop**: asked of the runner on a card's first visible
-    /// frame, frosted and uploaded when it answers — a frame or two later, while the card is still
-    /// arriving — and kept until the shade shuts. A runner that never answers is waited on for
-    /// [`SHOT_PATIENCE`] frames, and the card stays solid.
+    /// Manage the card's optional screenshot backdrop.
     ///
-    /// **A frost that no longer matches is put down**, and the card goes solid until it next
-    /// opens: the theme switched under it (the dark mode tile is on the controls card, and a dark
-    /// page behind a frost of the light one washes the card out) or the window resized (the frost
-    /// no longer lines up). It is not taken again — the card is over the page by then, and a
-    /// second screenshot would frost the card into its own backdrop. A theme switch repaints
-    /// everything anyway, so the card going solid with it does not show as a change of its own.
-    ///
-    /// **A panel painter takes the frost's place**: it draws the ground and is handed no
-    /// backdrop, so with one the screenshot is never asked for — frosting it would be work for
-    /// nothing.
+    /// Request it when the card opens, process a matching host response and retain it
+    /// until closing. Stop waiting after `SHOT_PATIENCE` frames and use a solid plate.
+    /// Drop the backdrop if the theme or viewport size changes. A panel painter replaces
+    /// this background path and suppresses the screenshot request.
     pub(super) fn frost_backdrop(
         &mut self,
         ctx: &egui::Context,

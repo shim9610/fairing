@@ -1,17 +1,9 @@
-//! **The three container kinds draw three different things** — `layout::Container`.
+//! Container rendering for `layout::Container`.
 //!
-//! The vocabulary only carries meaning if the three are distinguishable, and the point of naming
-//! them was that a screen picks one per purpose. Before this every container was a filled card and
-//! the built-in settings screens were a stack of them — the "big grey boxes repeating, so nothing
-//! tells you which element matters" the design review named. Nothing pinned the fix, so a `Deco`
-//! default drifting back to a fill would have silently restored it.
-//!
-//! # How these tests read the frame
-//!
-//! By **difference**, not by classifying shapes absolutely. The status bar, the dock and the page's
-//! own background are painted the same way whichever kind the screen used, so the container is
-//! exactly what one kind paints and another does not. `Divided` is the natural baseline: it draws
-//! no box, so everything above it is the box under test.
+//! Tests compare Filled, Outlined and Divided against the same row content.
+//! Divided is the baseline for the box-shape difference. Transparent rectangles
+//! are excluded, and coordinates are rounded for stable comparison. The full-bleed
+//! divider is compared with the filled card's extent.
 
 use fairing::layout::{self, Container, Deco};
 use fairing::testing::{single_level_access, Harness};
@@ -124,11 +116,8 @@ fn divided_adds_no_box_and_is_never_raised() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **The rule is full-bleed** — it reaches past where a card's body would stop.
-///
-/// A rule that stops short of the screen's edge reads as the bottom of a card that forgot to draw
-/// the rest of itself, so this compares it against the filled card rather than only asserting it
-/// exists.
+/// The divider reaches beyond the filled card's body.
+/// The test compares their extents rather than checking only that a line exists.
 #[test]
 fn the_divider_runs_wider_than_a_card() -> fairing::Result<()> {
     let card = only_in(&boxes(Container::Filled)?, &boxes(Container::Divided)?)

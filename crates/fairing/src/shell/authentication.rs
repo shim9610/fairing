@@ -111,7 +111,7 @@ impl Shell {
             }
         }
     }
-    /// **The one way a failed gate asks for an unlock**: the event always, and — when
+    /// Route a failed gate to an unlock request: emit the event, and — when
     /// the shell can prompt — the prompt over the screen. A granted unlock runs `then` through
     /// [`Shell::launch`] again, gate and all.
     pub(super) fn request_unlock(&mut self, gate: Gate, then: Option<LaunchAction>) {
@@ -172,7 +172,7 @@ impl Shell {
             .open(Purpose::Unlock { gate, then }, methods, hint, self.mono);
     }
     /// The methods the shell's prompt would offer — `None` where it draws none: not `prompt` mode,
-    /// one level, no authenticator, or an authenticator that offers nothing (which behaves as
+    /// a single level in legacy mode, no authenticator, or no offered methods (which behaves as
     /// `routing` — the lock and the logout included).
     pub(super) fn prompt_methods(&mut self) -> Option<Vec<AuthMethod>> {
         if !self.access.can_prompt() {
@@ -311,7 +311,7 @@ impl Shell {
         self.propagate_access_change();
     }
     /// A new integrator subject invalidates the previous person's authentication even when
-    /// their levels are equal. Direct `access_mut().set_subject` is observed before polling too.
+    /// their levels are equal. Direct `set_subject` is observed before polling too.
     pub(super) fn observe_subject_change(&mut self, app: &mut AppRef<'_>) {
         let Some(from) = self.access.take_subject_change() else {
             return;
@@ -339,7 +339,7 @@ impl Shell {
     }
     /// Lock: [`LaunchAction::Lock`], or `idle_lock_secs` running out (`idle`).
     ///
-    /// Always reported as [`ShellEvent::LockRequested`]. With a prompt to draw the
+    /// Emits [`ShellEvent::LockRequested`]. With a prompt to draw the
     /// shell carries it out: the session goes back to where it started and the lock screen
     /// comes up. Without one the idle lock still takes the session back — that is the timer's
     /// job — and the control is the integrator's.
@@ -390,9 +390,8 @@ impl Shell {
                 .push(ShellEvent::Access(AccessEvent::LockScreenToggled(true)));
         }
     }
-    /// Log out: [`LaunchAction::Logout`] and [`ShellHandle::logout`]. Always reported as
-    /// [`ShellEvent::LogoutRequested`]; with a prompt to draw, the shell also takes the
-    /// session back to the starting subject.
+    /// Handle logout and emit [`ShellEvent::LogoutRequested`]. Token mode detaches
+    /// local authority; legacy mode resets the subject when a prompt is available.
     pub(super) fn end_session(&mut self) {
         self.events.push(ShellEvent::LogoutRequested);
         if self.access.uses_session_tokens() {
@@ -428,11 +427,9 @@ impl Shell {
             reason: ChangeReason::Logout,
         });
     }
-    /// Hand what was entered to the authenticator, by value — it is not seen again.
-    ///
-    /// A new attempt calls off the check still under way: a wait ends with an answer or with
-    /// `cancel`, so a slow answer never holds the keys — and the lock screen, which has no
-    /// Cancel, always has a way past an answer that never comes.
+    /// Transfer the entered credential to the authenticator. A new attempt
+    /// cancels the pending request before submitting its replacement. The prompt
+    /// can accept new input while the previous authentication result is pending.
     pub(super) fn submit_credential(&mut self, credential: Credential, app: &mut AppRef<'_>) {
         let now = self.mono;
         let Some(request) = self.new_auth_request() else {
@@ -464,8 +461,8 @@ impl Shell {
             }
         }
     }
-    /// Apply the authenticator's answer. A grant closes the prompt, applies
-    /// `unlock_mode` and runs what the prompt was opened for — through the gate again.
+    /// Apply the authenticator's answer. Legacy grants use `unlock_mode`; session grants
+    /// install the issuer's token. Successful continuations re-enter the launch gate.
     pub(super) fn apply_outcome(&mut self, outcome: AuthOutcome, app: &mut AppRef<'_>) {
         let now = self.mono;
         if !matches!(outcome, AuthOutcome::Pending) {
@@ -606,9 +603,7 @@ impl Shell {
             self.launch_in(action, app);
         }
     }
-    /// Close the prompt without an answer — Cancel, back, a downgrade, the lock coming up, the
-    /// lock screen's Continue, the integrator vouching for someone. The authenticator is always
-    /// told: a wait ends with an answer or with `cancel`, and a reader stops listening.
+    /// Issue a fresh request identity, quarantining the shell if identities are exhausted.
     pub(super) fn new_auth_request(&mut self) -> Option<crate::access::AuthRequestId> {
         self.auth_request = crate::access::AuthRequestId::issue();
         if self.auth_request.is_none() {
@@ -617,6 +612,7 @@ impl Shell {
         }
         self.auth_request
     }
+    /// Close the prompt without an answer and notify the authenticator, if installed.
     pub(super) fn cancel_prompt(&mut self) {
         self.auth_request = None;
         self.routed_auth = None;

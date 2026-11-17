@@ -234,10 +234,8 @@ fn nav_bar_painter_replaces_the_builtin_render() -> fairing::Result<()> {
         vec![
             ("back".to_owned(), false),
             ("home".to_owned(), true),
-            // `recents` is no longer greyed out. The crate has no overview of its own, but
-            // the device may, so the item is live and a press leaves as
-            // `ShellEvent::OverviewRequested`. `back` is the one item the shell still judges,
-            // because "is there a stack behind you" is a fact the shell owns.
+            // Recents is passed to the painter as enabled in this setup.
+            // Back availability follows the workspace stack.
             ("recents".to_owned(), true),
         ],
         "the painter is handed the shell's own liveness judgements, whatever they are"
@@ -612,7 +610,7 @@ fn theme_toggle_keeps_preset_and_overrides() -> fairing::Result<()> {
     Ok(())
 }
 
-/// A palette put in through the guide's proper path (injecting a `Theme`) is not erased
+/// A palette supplied through an injected `Theme` is not erased
 /// by a theme toggle — both sides of the pair being the same, only the `dark` flag and egui's `Visuals` change.
 #[test]
 fn injected_theme_survives_theme_toggle() -> fairing::Result<()> {

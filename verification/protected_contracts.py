@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove the monitor and require automatic coverage of every protected contract."""
+"""Run common-monitor proofs and check protected-payload routing in the configured feature profiles."""
 import hashlib
 import json
 from pathlib import Path
@@ -22,10 +22,14 @@ def verify(skip_build=False,prove=True,profiles=('all','minimal')):
     require(bool(profiles) and len(set(profiles)) == len(profiles) and set(profiles) <= {'all', 'minimal'}, 'Expected distinct all/minimal profiles')
     before=m.source_hashes();out=m.ROOT/'target/assurance/protected-contracts';out.mkdir(parents=True,exist_ok=True)
     report=out/'summary.json';report.unlink(missing_ok=True)
-    if prove:subprocess.run([sys.executable,str(m.ROOT/'verification/central_proofs.py')],cwd=m.ROOT,check=True)
+    if prove:
+        for script in ['central_proofs.py','layout_proofs.py']:
+            subprocess.run([sys.executable,str(m.ROOT/'verification'/script)],cwd=m.ROOT,check=True)
+
     proofs=[receipt(m.ROOT/'target/assurance/central-mediation'/file,status)for file,status in [
         ('kernel-proof.json','shared-production-admission-kernel-verified'),
         ('path-proof.json','unbounded-production-path-verified')]]
+    proofs.append(receipt(m.ROOT/'target/assurance/layout-token/proof.json','production-layout-token-verified'))
     results={}
     for profile in profiles:
         if not skip_build:m.build(profile)

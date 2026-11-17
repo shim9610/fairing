@@ -1,19 +1,9 @@
-//! Input injection: a key tap → `Event::Text` / `Event::Key` plus
-//! `request_repaint()`. It is egui's official soft-keyboard path and takes no extra dependency.
-//! Focus movement goes through a `Tab` key event (`Shift+Tab` for the previous) — a steadier API
-//! than `memory_mut(focus_next)`.
+//! Queue key taps as egui text/key events and request a repaint.
 //!
-//! **Why not push straight into `ctx.input_mut`**: egui replaces `InputState::events` wholesale with `RawInput`'s
-//! on each pass (`InputState::begin_pass`). So an event pushed mid-pass is seen only by widgets
-//! **not yet drawn in that pass** and does not survive to the next one. The OSK is frame stage
-//! 10 and draws after the screen's `TextEdit` (stage 9), so pushed as-is nobody sees it. And
-//! `Tab`'s focus movement is decided by `Focus::begin_pass` from **`RawInput`'s** events only, so
-//! a `Tab` pushed mid-pass has no effect at all.
-//!
-//! So events are queued in egui's store (`ctx.data`) and appended to **the next pass's
-//! `RawInput::events`** in [`egui::Plugin::input_hook`], which egui calls just before
-//! `begin_pass`. The queue `Vec` is drained rather than dropped, so from the second tap on there
-//! is no heap allocation.
+//! The registered egui plugin appends queued events to the next pass's
+//! `RawInput::events` before `begin_pass`. This lets widgets drawn before the OSK
+//! receive its input on the next pass. Focus traversal uses Tab or Shift+Tab events.
+//! The queue retains capacity; growth and event payload construction can allocate.
 
 use super::layouts::KeyAction;
 use egui::{Event, Id, Key, Modifiers, RawInput};
@@ -59,11 +49,8 @@ fn install(ctx: &egui::Context) {
     ctx.data_mut(|data| data.insert_temp(installed_id(), true));
 }
 
-/// Inject one key action into the next pass. `Face` and `Hide` have nothing to inject, so
-/// `false`.
-///
-/// The events are seen on **the next pass** (see the module docs) — which is why
-/// `request_repaint()` goes with them. Even at rest, the next frame is guaranteed to run.
+/// Forward queued input events and request an egui repaint.
+/// The host determines when another UI pass is delivered.
 #[must_use]
 pub fn inject(ctx: &egui::Context, action: &KeyAction) -> bool {
     let events: [Option<Event>; 2] = match action {
@@ -88,36 +75,12 @@ pub fn inject(ctx: &egui::Context, action: &KeyAction) -> bool {
     true
 }
 
-/// Inject a composition result — **erase and retype** ([`super::compose::Compose`]).
+/// Inject composition by replacing previously inserted composing characters.
 ///
-/// It sends `erase` backspaces to take out the composing characters put in last time, and puts
-/// `text` in as an [`Event::Text`]. The composing syllable goes into the buffer as **real
-/// characters** too.
-///
-/// # Why not `ImeEvent::Preedit`
-///
-/// egui's `TextEdit` knows the `Preedit` contract (it removes the previous composing string and
-/// inserts the new one) and even draws the composing underline, so that is what this used at
-/// first. On a real device the symptom was **the composing characters not appearing at all and
-/// only the committed ones showing up**, and the cause was two-layered.
-///
-/// 1. `Event::Ime` only reaches the widget **holding focus** on that frame
-///    (`Event::Ime(ime_event) if owns_ime_events` in `builder.rs`). Pressing an OSK key
-///    completes the click outside the field, so focus wavers for a frame and that frame's
-///    `Preedit` is lost. `Commit` comes again the next frame and survives.
-/// 2. Worse is **an empty `Preedit("")`**. As egui's own comment says, integration layers send
-///    it with no composition in progress — winit does on every `set_ime_allowed` and
-///    `set_ime_cursor_area`, and those happen whenever the caret moves, that is **on every
-///    character typed**. An empty `Preedit` arriving mid-composition wipes the composing string
-///    entirely.
-///
-/// Both are other people's circumstances that we cannot fix, and both apply only to `Preedit`.
-/// So the composing characters go in as committed ones — the same path a physical keyboard
-/// takes, so it behaves identically whatever the IME environment is. What is lost is the
-/// composing underline; what is gained is **the characters being visible**.
-///
-/// The composition rules themselves are unchanged — what to stack and when to commit is
-/// [`super::compose::Composer`]'s, and this only moves the result onto the screen.
+/// Send `erase` backspaces followed by [`Event::Text`] for `text`, including the
+/// current composing syllable. This avoids depending on the host IME's preedit
+/// lifecycle and does not draw a preedit underline. Composition decisions remain
+/// [`super::compose::Composer`]'s responsibility.
 #[must_use]
 pub fn inject_compose(ctx: &egui::Context, erase: usize, text: &str) -> bool {
     if erase == 0 && text.is_empty() {

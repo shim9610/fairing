@@ -1,7 +1,7 @@
 //! The built-in settings screens. Feature `settings`.
 //!
 //! What it checks: whether an item stays away entirely where there is no backend, whether a manufacturer can
-//! override it **at any layer**, and whether the power **never goes off on its own**.
+//! override registrations and layout, and whether power requests wait for host commit.
 //!
 //! The rules are the other integration tests': written as `fairing::Result<()>` with no `panic!` and no `unwrap`.
 
@@ -14,7 +14,7 @@ use fairing::{screen, Cx, Shell, ShellEvent};
 use std::cell::Cell;
 use std::rc::Rc;
 
-/// A shell with every Mock on it (Wi-Fi, Bluetooth, power, the clock and the display).
+/// A shell built from `services::mock::services()`.
 fn mock_shell(config: SettingsConfig) -> fairing::Result<Harness> {
     Harness::from_builder(move |ctx| {
         let services = fairing::services::mock::services();
@@ -26,7 +26,7 @@ fn mock_shell(config: SettingsConfig) -> fairing::Result<Harness> {
     })
 }
 
-/// A shell with no backend at all (all Null).
+/// A shell built with Null backends through `Services::null()`.
 fn bare_shell(config: SettingsConfig) -> fairing::Result<Harness> {
     Harness::from_builder(move |ctx| {
         let mut shell = Shell::builder(single_level_access())
@@ -42,7 +42,7 @@ fn declared(h: &Harness) -> Vec<String> {
     h.shell.observe().screen_ids().map(str::to_owned).collect()
 }
 
-/// One call registers every one of the eleven that a backend stands behind.
+/// `add_all` registers the expected built-in screens for these mock services.
 #[test]
 fn add_all_registers_the_built_in_screens() -> fairing::Result<()> {
     let h = mock_shell(SettingsConfig::default())?;
@@ -67,7 +67,7 @@ fn add_all_registers_the_built_in_screens() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **With no backend the item stays away entirely.** Having to press it to be told "not supported" is the worst of it.
+/// Entries requiring an unavailable backend are omitted.
 #[test]
 fn screens_without_a_backend_are_not_registered() -> fairing::Result<()> {
     let h = bare_shell(SettingsConfig::default())?;
@@ -167,8 +167,8 @@ fn changing_a_setting_reaches_the_integrator() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **The power never goes off on its own.** A screen asking raises only the event, and it runs when the integrator has
-/// tidied up and calls `commit_power` — not calling it is the refusal.
+/// A settings-screen request emits one `PowerRequest` event.
+/// Explicit host `commit_power` is exercised in the following test.
 #[test]
 fn a_power_request_is_only_an_event() -> fairing::Result<()> {
     let requested = Rc::new(Cell::new(false));
@@ -198,7 +198,7 @@ fn a_power_request_is_only_an_event() -> fairing::Result<()> {
         .filter(|e| matches!(e, ShellEvent::PowerRequest(_)))
         .collect();
     assert_eq!(events.len(), 1, "{events:?}");
-    // The shell did not call the backend — running it is in the integrator's hands.
+    // Confirm that the screen submitted its request.
     assert!(requested.get());
     Ok(())
 }
@@ -311,7 +311,7 @@ fn folding_back_returns_to_one_column() -> fairing::Result<()> {
     Ok(())
 }
 
-/// A tall screen is one column however big it is — split in two, both halves feel cramped.
+/// A portrait-shaped screen retains the one-column settings layout.
 #[test]
 fn a_tall_pane_stays_one_column() -> fairing::Result<()> {
     let mut tall = mock_shell(SettingsConfig::default())?.with_size(800.0, 1280.0);
@@ -333,32 +333,8 @@ fn a_tall_pane_stays_one_column() -> fairing::Result<()> {
     Ok(())
 }
 
-/// A card has to **stand apart from the screen's background.** A screen Pane's default background is `Surface`, so a
-/// card is `SurfaceVariant` — with the two close together the whole group disappears (which really did happen).
-///
-/// # Why the floor is 1.12 and not WCAG 1.4.11's 3.0
-///
-/// It was proposed that the page/card separation be widened to 3.0 so a container is identified by
-/// its own body rather than by an edge. Measured, that is not reachable by any palette that stays
-/// recognisably dark or light:
-///
-/// | | card today | card at 3.0 |
-/// |---|---|---|
-/// | `base dark` | L 0.018 (1.19) | **`#626262`** — a mid grey card on a near-black page |
-/// | `base light` | L 1.000 (1.18) | **`#888888`** — a mid grey card on a white page |
-/// | `abyss dark` | L 0.027 (1.24) | `#676767` |
-/// | `abyss light` | L 0.780 (1.26) | `#959595` |
-///
-/// The target is wrong rather than unreachable. SC 1.4.11 asks for 3.0 on "visual information
-/// required to identify **user interface components** and states" — a thing you locate in order to
-/// operate it. A card is a grouping, and its boundary is decoration; the row inside it is what gets
-/// operated, and that row's own contrast is gated at 4.5 and 3.0 by
-/// `every_preset_meets_the_contrast_floor`. One UI and iOS separate a card by a *small* fill step
-/// plus a shadow, which is exactly the 1.19 plus `Elevation::Raised` here.
-///
-/// The complaint that started it — "big grey boxes repeating, so nothing tells you which element
-/// matters" — is answered by drawing **fewer** cards, not louder ones: `layout::Container`
-/// gives filled, outlined and divider-only, and the built-in settings screens now use the last.
+/// Check the built-in palette card/page pairs against the project's decorative
+/// contrast floor of 1.12. Control-boundary and text contrast have separate tests.
 #[test]
 fn cards_are_distinct_from_the_background() {
     use fairing::theme::{Palette, Preset};
@@ -541,11 +517,8 @@ fn visual_inset_shrinks_the_paint_not_the_hit() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **A slider row's layout turns on the width** — wide, the title, the track and the value are one line; narrow, two.
-///
-/// Stacked into two lines always, a slider card comes out more than twice as thick as a switch card. For one item of
-/// the same kind. But **what shrank is the padding, not the hit height** — the track takes `touch_target` in either
-/// layout (the glove policy).
+/// A slider row uses one line at the wide test size and two at the narrow size.
+/// The track retains the configured `touch_target` height in both layouts.
 #[test]
 fn a_wide_slider_row_folds_onto_one_line() {
     use fairing::layout;
@@ -587,7 +560,7 @@ fn a_wide_slider_row_folds_onto_one_line() {
 }
 
 /// `visual_inset` is **not the grid's alone** — a card and an action bar keep their place too and only draw inwards.
-/// A knob that does nothing is worse than no knob.
+/// The same visual-inset setting is exercised on both containers.
 #[test]
 fn visual_inset_floats_the_card_and_the_bar() -> fairing::Result<()> {
     use fairing::layout::{self, Deco};
@@ -675,8 +648,8 @@ fn visual_inset_floats_the_card_and_the_bar() -> fairing::Result<()> {
     Ok(())
 }
 
-/// `ListRow::height` **only grows** — a value below `touch_target` is taken up to that value. One screen being dense
-/// is no reason to make a row a gloved hand cannot press.
+/// `ListRow::height` clamps requests below `touch_target` up to that floor
+/// and permits a larger requested height.
 #[test]
 fn a_row_can_grow_but_never_below_the_touch_target() -> fairing::Result<()> {
     use fairing::widgets::ListRow;
@@ -792,20 +765,9 @@ fn the_grid_never_overflows_its_width() -> fairing::Result<()> {
     Ok(())
 }
 
-/// **The built-in Wi-Fi screen shows; it does not connect**.
-///
-/// A tap on a network row leaves as [`ShellEvent::WifiNetworkTapped`] and the shell does nothing
-/// else — no `connect`, whether the network is open, saved or secured.
-///
-/// This is a regression test. The screen used to connect on a tap for open and saved
-/// networks and refuse a secured one it had no profile for, leaving a line in the log. `MockWifi`
-/// starts with `known` empty, the way a device does out of the box, so **every secured network was
-/// dead** — and because the tap was already spent, adding a password prompt meant rewriting the
-/// screen whole rather than taking one event.
-///
-/// The rows are probed rather than worked out — a test does not copy the layout formula. It sweeps
-/// bottom-up so it has the list before it can reach the scan row or the radio toggle, and stops as
-/// soon as every network has answered.
+/// Tapping a Wi-Fi network emits `WifiNetworkTapped` without invoking connect.
+/// The fixtures include open, known and secured networks. Rows are located by
+/// probing the rendered list rather than duplicating the layout formula.
 #[test]
 fn tapping_a_wifi_network_reports_it_and_connects_to_nothing() -> fairing::Result<()> {
     use fairing::services::WifiState;
@@ -925,10 +887,8 @@ fn open_settings(config: SettingsConfig, id: &str) -> fairing::Result<Harness> {
 
 /// **Holding a network row reports a long press, and that press is not also a tap.**
 ///
-/// This is where "forget this network" goes —
-/// [`WifiBackend::forget`](fairing::services::WifiBackend::forget) is the integrator's call, and
-/// without a hold to hang it on the only way to offer it would be to rewrite the screen, which is
-/// the blockage that handing network taps to the integrator set out to remove.
+/// The application can use the long-press event to offer a forget operation through
+/// [`WifiBackend::forget`](fairing::services::WifiBackend::forget).
 ///
 /// The row times its own press rather than asking egui, because `Response::long_touched()` needs
 /// real touch events and never fires where the platform delivers touch as the mouse —
@@ -1004,7 +964,10 @@ fn a_pairing_passkey_is_drawn_and_confirming_answers_the_backend() -> fairing::R
 
     // The backend raises the request — `MockBluetooth` uses a fixed passkey, being a simulator.
     let addr = "AA:BB:CC:00:00:01";
-    if h.shell.services_mut().bluetooth.pair(addr).is_err() {
+    if h.shell
+        .request_service(fairing::services::ServiceRequest::BluetoothPair(addr))
+        .is_err()
+    {
         return Err(fairing::Error::Config(
             "the mock refused to pair".to_owned(),
         ));

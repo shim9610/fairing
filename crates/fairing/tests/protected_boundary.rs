@@ -1,4 +1,4 @@
-//! Real public-API regression for untyped hooks entering the protected facade.
+//! Public-API regression for untyped hooks entering the protected facade.
 #![allow(
     clippy::panic,
     clippy::unwrap_used,

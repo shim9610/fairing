@@ -1,25 +1,15 @@
-//! The gesture shield: a transparent full-screen
-//! `Area(Order::Foreground)` from the moment an edge gesture is recognised until it is released.
-//! It stops the widgets underneath from receiving the pointer.
+//! Gesture and transition input shield.
 //!
-//! egui 0.36.1 only hit-tests layers registered in `Areas::order` (`hit_test.rs`), so within the
-//! same `Foreground` this Area — **registered later** — sits above the shade panel and the
-//! status bar overlay. A widget that already holds the drag (`drag_id`) keeps it until release,
-//! so the shield only blocks **new** hits — which is why it is not raised inside the slop (taps
-//! pass through).
+//! The shell requests a transparent [`egui::Area`] in `Order::Foreground` over the
+//! supplied rectangle. It allocates that rectangle with `Sense::click_and_drag`;
+//! egui supplies hit testing, pointer ownership and click/drag classification.
+//! The gesture engine decides when recognition has passed its configured slop,
+//! and transitions can request the same shield independently.
 //!
-//! Blocking input during a transition (the A2/A3 tweens) uses the same function; M1 had only
-//! `interactable(false)`.
-//!
-//! **Why no tap leaks on the release frame** (confirmed against egui 0.36.1 `interaction.rs`):
-//! the engine returns to `Idle` on the release frame and does not draw the shield that frame,
-//! but egui's `clicked()` only fires when `potential_click_id` (the widget hit on the press
-//! frame) is hit again on the release frame and `!is_decidedly_dragging()` (it moved less than
-//! 6 px). The shield goes up only past the slop (12 px), so a press that had a shield is already
-//! "decidedly dragging" and no widget is clicked on release — the status bar's
-//! `tap_opens_shade` never closes the shade it just opened
-//! (`m2_shade::release_past_snap_opens_and_settles_within_450ms` pins this). A tap inside the
-//! slop passing through with no shield is the contract to begin with.
+//! Click classification also depends on egui's input options. The regression
+//! `m2_shade::release_past_snap_opens_and_settles_within_450ms` covers one default
+//! configuration and input sequence, rather than every combination of gesture
+//! and host input thresholds.
 
 use egui::{Rect, Sense};
 

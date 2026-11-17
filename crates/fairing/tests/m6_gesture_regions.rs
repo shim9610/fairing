@@ -809,7 +809,7 @@ fn opening_the_keyboard_updates_the_region_band_without_an_extra_frame() -> fair
             ..fairing::screen::ChromePolicy::default()
         }));
     h.shell.launch(LaunchAction::open("manual"));
-    h.shell.osk_mut().toggle();
+    h.shell.toggle_osk();
     h.frame();
     let (_, _, keys) = log
         .borrow()

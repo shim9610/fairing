@@ -67,9 +67,8 @@ impl Shell {
     }
     /// Decide whether to show the mouse cursor (`[shell] cursor`).
     ///
-    /// **An arrow must not sit on a touch device.** But every way of operating one is in scope (an
-    /// industrial HMI with a trackball or a USB mouse), so it cannot simply be removed either; by
-    /// default it follows the input last used.
+    /// The default automatic policy hides the cursor after touch input and shows
+    /// it for mouse-like input. Explicit configuration can override that policy.
     ///
     /// A touch emits pointer events **as well**, so for a few tens of milliseconds after the hand
     /// leaves it looks like a mouse. Ignoring [`TOUCH_GRACE`]'s worth removes that illusion.
@@ -107,9 +106,8 @@ impl Shell {
     }
     /// In a rail layout, open the first entry when at home.
     ///
-    /// There is no kiosk with only a menu and nothing beside it. The home button therefore becomes "to
-    /// the first screen" — emptying the workspace has this function open the first entry again straight
-    /// away.
+    /// In rail mode, returning home opens the first eligible rail entry instead
+    /// of leaving the workspace empty.
     ///
     /// It leaves a transition in progress alone — reopening mid-close makes the A2 transition jump.
     pub(super) fn open_rail_home(&mut self, app: &mut AppRef<'_>) {
@@ -170,16 +168,16 @@ impl Shell {
     pub fn settings(&self) -> &crate::settings::SettingsView {
         &self.settings
     }
-    /// Swap the wallpaper from a file. This is the path by which a shopkeeper chooses a photo
-    /// from the settings screen.
+    /// Replace the wallpaper from a file using the application-provided loader.
     ///
     /// The decode is done by **the integrator loader** registered through
     /// [`ShellBuilder::image_loader`](crate::shell::ShellBuilder::image_loader) — the crate does not
     /// decode images. The texture that comes back is held by
     /// [`Wallpaper::Owned`](crate::desktop::Wallpaper::Owned), so the caller need not keep it.
     ///
-    /// **Call it outside the frame budget.** A large original takes tens of milliseconds to decode, and
-    /// calling it mid-paint overruns the frame.
+    /// The application loader runs synchronously on the calling thread. Decode
+    /// cost depends on the input and implementation; avoid expensive decoding
+    /// during painting or prepare/cache the texture in the application.
     ///
     /// # Errors
     ///
@@ -204,7 +202,7 @@ impl Shell {
         Ok(())
     }
     /// Swap the dark/light palette pair. The palette in view is left alone — it takes effect
-    /// from the next [`Shell::set_theme_dark`].
+    /// on the next dark/light change through [`Shell::set_theme_dark`].
     ///
     /// Where the old behaviour is wanted (a toggle resetting to the neutral palette), it is one line:
     /// `set_palettes(Palette::dark(), Palette::light())`.
@@ -220,10 +218,8 @@ impl Shell {
     pub fn apply_palette(&mut self, palette: crate::theme::Palette) {
         self.theme_fade.start(palette, self.theme.motion.theme_fade);
     }
-    /// Whether an animation or transition was running last frame (for verifying the repaint policy).
-    /// It looks at all three of the shell's animation store (`Cx::animate`, the nav bar's A7), the
-    /// workspace's transitions (A2/A3) and the desktop's icon presses (A7) — the repaint policy is
-    /// settled by this one value.
+    /// Whether a tracked animation or transition was running last frame.
+    /// The repaint scheduler also considers queued work, requests and deadlines.
     #[must_use]
     pub fn is_animating(&self) -> bool {
         self.animations.is_animating()
@@ -262,11 +258,11 @@ impl Shell {
     pub fn set_badge(&mut self, id: &str, badge: Option<&Badge>) -> bool {
         self.desktop.set_badge(id, badge)
     }
-    /// This frame's scale. The density comes from, in order: a code pin > the backend > the
-    /// fallback.
+    /// Resolve this pass's scale from the policy, panel metadata, permitted
+    /// environment overrides and fallback inputs.
     ///
-    /// `set_zoom_factor` is called only on a frame where `pixels_per_point` changed — that call throws
-    /// the font atlas away whole, so calling it every frame breaks idling at 0 fps.
+    /// Commit the egui zoom factor only when `pixels_per_point` changes, avoiding
+    /// repeated font-atlas invalidation.
     pub(super) fn resolve_scale(&mut self, ctx: &egui::Context, root: egui::Rect) {
         use crate::unit::{Scale, ScaleConfidence, ScaleSource};
 
@@ -342,7 +338,7 @@ impl Shell {
             );
         }
         self.scale = scale;
-        // `Metrics` stays f32 — the 71 places that read it do not change. Only the values are resolved again at this scale.
+        // Metrics fields stay f32; resolve their values again at this scale.
         if let Some(spec) = self.metrics_spec.as_ref() {
             let resolved = spec.resolve(&scale);
             // The text sizes go out as egui `TextStyle`s, so a change here has to reach the style too.
@@ -383,8 +379,7 @@ impl Shell {
     pub fn scale(&self) -> &crate::unit::Scale {
         &self.scale
     }
-    /// Once a frame. `ui` is the root `Ui` the runner or the integrator handed over (in egui 0.36 a
-    /// panel takes a `Ui`).
+    /// Draw a shell pass into the root `Ui` supplied by the runner or custom host.
     ///
     /// The stage order is the table in the module docs.
     pub fn frame(&mut self, ui: &mut egui::Ui) {
@@ -412,8 +407,8 @@ impl Shell {
     /// ```
     ///
     /// One value goes over — an app with several things to share hands over one `struct` holding
-    /// them. Nothing is captured by a screen and nothing is stored by the shell, so there is no
-    /// `Rc<RefCell<_>>` between them and no `'static` bound on the state.
+    /// them. The shell borrows that value for the call without requiring shared
+    /// ownership, an interior-mutability wrapper or a `'static` bound.
     ///
     /// [`Shell::frame`] is this with nothing lent; screens then see `cx.app::<T>() == None`.
     pub fn frame_with(&mut self, ui: &mut egui::Ui, app: &mut dyn std::any::Any) {

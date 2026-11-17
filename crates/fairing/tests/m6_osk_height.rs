@@ -1,7 +1,8 @@
 //! **The keyboard's rows have a physical cap**. The height was only a share of the
 //! screen (`[osk] height_ratio`, 0.38) with a floor per row, so on a tall kiosk panel each row of
-//! keys grew to the size of a palm. Now no row is taller than `metrics.osk_max_key`, and the floor
-//! (`[osk] min_key_px`) still wins where the two cross.
+//! keys grew to the size of a palm. Default rows are capped by `metrics.osk_max_key`,
+//! unless the configured `min_key_px` floor is larger; available screen space still
+//! bounds the keyboard.
 #![cfg(feature = "osk")]
 
 use fairing::testing::{single_level_access, Harness};
@@ -157,7 +158,7 @@ fn the_cap_can_be_lifted() -> fairing::Result<()> {
 }
 
 /// **A theme lifts it with `f32::INFINITY`** — and it stays lifted when a run-time spec is
-/// seeded from that theme's metrics (`Shell::metrics_spec_mut`), where a pinned infinite length
+/// seeded from that theme's metrics (`Shell::metrics_spec`), where a pinned infinite length
 /// would have folded to 0 and squashed the keyboard to its floor.
 #[test]
 fn a_theme_lifts_the_cap_with_infinity() -> fairing::Result<()> {
@@ -169,7 +170,7 @@ fn a_theme_lifts_the_cap_with_infinity() -> fairing::Result<()> {
             .theme(theme)
             .build(ctx)
     })?;
-    let _ = h.shell.metrics_spec_mut();
+    h.shell.set_metrics_spec(h.shell.metrics_spec());
     h.frames(2);
     assert!(h.shell.theme().metrics.osk_max_key.is_infinite());
     let share = 0.38 * h.screen_rect().height();

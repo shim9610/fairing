@@ -1,6 +1,6 @@
 //! A shell built inside a pass draws only once its named font families are live.
 //! egui 0.37 applies fonts immediately before text layout; after text layout the change
-//! is deferred, so both startup paths must remain safe.
+//! is deferred; the tests check first-pass drawing and drawing on the following pass.
 
 #![cfg(feature = "mock")]
 
@@ -49,7 +49,7 @@ fn pass_building_inside(
     out
 }
 
-/// Immediate and deferred font installation both allow safe startup and later drawing.
+/// Immediate and deferred font installation reach drawing on the expected pass.
 #[test]
 fn a_shell_built_inside_a_pass_obeys_font_readiness() -> fairing::Result<()> {
     for text_laid_out in [false, true] {

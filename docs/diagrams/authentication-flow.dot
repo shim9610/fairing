@@ -1,0 +1,20 @@
+digraph authentication_flow {
+  graph [rankdir=TB, bgcolor="white", pad=0.3, nodesep=0.65, ranksep=0.6,
+    fontname="DejaVu Sans", fontsize=24, label="Authentication: request ownership and response correlation", labelloc=t];
+  node [shape=box, style="rounded,filled", fillcolor="#f0f6ff", color="#6986a8", fontcolor="#17253b", fontname="DejaVu Sans", fontsize=16, margin="0.18,0.14"];
+  edge [color="#315e9b", fontcolor="#294666", fontname="DejaVu Sans", fontsize=13];
+  request [label="Fairing unlock flow\nCreate live AuthRequestId"];
+  prompt [label="Built-in credential prompt\nAuthenticator::begin(request, gate, now)"];
+  auth [label="Application Authenticator\nsubmit verifies credentials\npoll completes pending attempts\nIssue token; retain controller", fillcolor="#fff9ed"];
+  event [label="Host-owned login request\nSessionRequested { request, gate }"];
+  host [label="Application login UI / issuer\nVerify credentials; issue token\nRetain controller and request identity", fillcolor="#fff9ed"];
+  install [label="Fairing response installation\nAccept only current, unconsumed request\nReject stale / canceled / unsolicited results"];
+  token [label="Accepted SessionToken\nProtected entry checks may now admit work"];
+  request -> prompt [label="built-in prompt available"];
+  prompt -> auth [label="credentials by value"];
+  auth -> install [label="request-correlated result"];
+  request -> event [label="routing / no prompt method"];
+  event -> host [label="host drains shell events"];
+  host -> install [label="accept_auth_response(\nrequest.respond(AuthOutcome::Session(token)))"];
+  install -> token [label="valid session result"];
+}

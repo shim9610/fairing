@@ -381,7 +381,7 @@ fn bottom_row(face: usize, label: &'static str, lang: bool) -> KeyRow {
     row(keys)
 }
 
-/// The pieces from `split("")` are parts of the original `&'static str` and are borrowed as-is — no heap allocation.
+/// Key labels borrow slices of the original `&'static str`; the returned key vector is allocated.
 fn chars(s: &'static str) -> Vec<KeyDef> {
     s.split("")
         .filter(|c| !c.is_empty())

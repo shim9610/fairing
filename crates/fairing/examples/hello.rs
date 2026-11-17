@@ -1,4 +1,4 @@
-//! **The smallest complete app**: one screen on the desktop, the built-in
+//! A small app with one screen on the desktop, the built-in
 //! settings, a status bar item and a nav bar item, in a window.
 //!
 //! ```text
@@ -6,7 +6,7 @@
 //! ```
 //!
 //! It is the README's quick start as a file you can run, and it stands alone — no `mod common`,
-//! unlike the other examples — so it is the one to copy into a new project.
+//! unlike the other examples, and can be used as an integration starting point.
 
 use fairing::prelude::*;
 

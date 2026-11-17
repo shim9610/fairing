@@ -1,10 +1,9 @@
-//! The sole owner and invoker of application payloads. No extraction or Deref API.
+//! Storage and invocation of protected application payloads. No extraction or Deref API.
 #[macro_use]
 pub(crate) mod contract;
 
 use super::{protected_dispatch, Gate, Permission, PermissionBinding, Visibility};
 use crate::screen::{BackAction, Cx, Lifecycle, Screen, ScreenDecl, ScreenValue};
-use std::{cell::RefCell, rc::Rc};
 
 #[derive(Clone)]
 enum Requirement {
@@ -117,108 +116,22 @@ pub(super) fn invoke_gate<R>(
     invoke(Admission::Gate(gate), cx, operation)
 }
 
-protected_contract! { carrier
-/// A payload can be constructed and bound, but never extracted or borrowed.
-pub(crate) struct Callback<T: ?Sized> : T {
-    body: Box<T>,
-    requirement: Requirement,
-}
-}
-
-impl<T: ?Sized> Callback<T> {
-    pub(crate) fn legacy(body: Box<T>) -> Self {
-        Self {
-            body,
-            requirement: Requirement::Legacy,
-        }
-    }
-
-    // Used only to bind library-created initial declarations before publication.
-
-    fn invoke<R>(
-        &mut self,
-        cx: &mut Cx<'_>,
-        operation: impl FnOnce(&mut T, &mut Cx<'_>) -> R,
-    ) -> Option<R> {
-        let Self { body, requirement } = self;
-        invoke(requirement.admission(), cx, |cx| operation(body, cx))
-    }
-}
-
-pub(crate) type ActionCallback = Callback<dyn FnMut(&mut Cx<'_>)>;
-pub(crate) type UiCallback = Callback<dyn FnMut(&mut egui::Ui, &mut Cx<'_>)>;
-
-// One operation declaration emits its mandatory mediated adapter.
-protected_contract!(operation ActionCallback, run(), |body, cx| body(cx));
-protected_contract!(operation UiCallback, paint(ui: &mut egui::Ui), |body, cx| body(
-    ui, cx
-));
-
-type ScreenFactory = dyn FnMut() -> Box<dyn Screen>;
-protected_contract! { carrier
-/// Shared factory storage stays inside the mediation module.
-pub(crate) struct FactoryCallback : ScreenFactory {
-    body: Rc<RefCell<Box<ScreenFactory>>>,
-    requirement: Requirement,
-}
-}
-
-impl FactoryCallback {
-    pub(crate) fn legacy(body: Box<ScreenFactory>) -> Self {
-        Self {
-            body: Rc::new(RefCell::new(body)),
-            requirement: Requirement::Legacy,
-        }
-    }
-
-    pub(crate) fn instance(&self) -> ScreenHandle {
-        ScreenHandle {
-            body: None,
-            factory: Some(Rc::clone(&self.body)),
-            requirement: self.requirement.clone(),
-        }
-    }
-}
+mod execution;
+pub(crate) use execution::{ActionCallback, FactoryCallback, UiCallback};
 
 protected_contract! { carrier
-/// Opaque screen ownership used by declarations, instances and resident loans.
-///
-/// Application code cannot extract the original screen or its factory.
+/// Opaque screen ownership. The executable storage exposes dispatch only.
 pub struct ScreenHandle : dyn Screen {
-    body: Option<Box<dyn Screen>>,
-    factory: Option<Rc<RefCell<Box<ScreenFactory>>>>,
+    storage: execution::ScreenStorage,
     requirement: Requirement,
 }
 }
-
 impl ScreenHandle {
     pub(crate) fn legacy(body: Box<dyn Screen>) -> Self {
         Self {
-            body: Some(body),
-            factory: None,
+            storage: execution::ScreenStorage::legacy(body),
             requirement: Requirement::Legacy,
         }
-    }
-
-    fn invoke<R>(
-        &mut self,
-        cx: &mut Cx<'_>,
-        operation: impl FnOnce(&mut dyn Screen, &mut Cx<'_>) -> R,
-    ) -> Option<R> {
-        let Self {
-            body,
-            factory,
-            requirement,
-        } = self;
-        invoke(requirement.admission(), cx, |cx| {
-            if body.is_none() {
-                *body = factory.as_ref().map(|factory| (factory.borrow_mut())());
-            }
-            body.as_mut().and_then(|body| {
-                invoke(requirement.admission(), cx, |cx| operation(&mut **body, cx))
-            })
-        })
-        .flatten()
     }
 }
 
@@ -233,9 +146,5 @@ pub mod protected;
 
 mod element;
 pub(crate) use element::ElementHandle;
-
-protected_contract!(binding [T: ?Sized] Callback<T>);
-
-protected_contract!(binding [] FactoryCallback);
 
 protected_contract!(binding [] ScreenHandle);

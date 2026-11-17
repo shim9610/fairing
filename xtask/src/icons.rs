@@ -108,7 +108,7 @@ const CHECK_SUBDIVISIONS: usize = 16;
 /// The cross-product tolerance for the convexity decision. The coordinates are on the 24-grid, so below this it counts as a straight line.
 const CONVEX_EPSILON: f64 = 1.0e-3;
 
-/// Flatten a segment list into per-subpath point lists. The same rule as `crates/fairing`'s `flatten`
+/// Flatten segments into per-subpath point lists using the `fairing-widgets` icon painter's rule
 /// (a drawing command after a `Z` carries on from the subpath's starting point).
 // The subdivision count is 16, so `usize → f64` is lossless (the reason for the exception to the
 // workspace's pedantic cast lints).
@@ -192,7 +192,7 @@ fn subpaths(segs: &[Seg]) -> Vec<Vec<(f64, f64)>> {
     out
 }
 
-/// Whether a closed polygon is convex. Every neighbouring pair of edges has to have the same cross-product sign.
+/// Check consistent turn signs around a polygon. For a simple polygon, this tests convexity.
 fn is_convex(points: &[(f64, f64)]) -> bool {
     let count = points.len();
     if count < 4 {
@@ -223,8 +223,8 @@ fn is_convex(points: &[(f64, f64)]) -> bool {
 /// A filled icon's subpaths have to be convex.
 ///
 /// `epaint`'s `fill_closed_path` is a triangle fan from point 0 and so fills a concave polygon wrongly.
-/// The design settled on "no runtime triangulation · pre-decomposed into convex pieces at the xtask
-/// stage", so it is stopped here, fail-closed. A stroked icon (`fill = false`) is not a candidate.
+/// Sources must already provide convex subpaths: this check rejects concave fills rather than
+/// decomposing or triangulating them. Stroked icons (`fill = false`) are not checked for convexity.
 fn check_convex_fill(icon: &Icon) -> Result<()> {
     if !icon.fill {
         return Ok(());

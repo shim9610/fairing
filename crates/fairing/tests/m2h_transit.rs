@@ -74,7 +74,7 @@ fn is_second(c: egui::Color32) -> bool {
 type Paint = (egui::Rect, egui::Rect, u8);
 
 /// The page in `which`'s ink among one frame's shapes. A page is the one big rect in its ink;
-/// a button or a bar is never this large.
+/// the button and bar in this fixture are smaller.
 fn find(shapes: &[egui::epaint::ClippedShape], which: fn(egui::Color32) -> bool) -> Option<Paint> {
     shapes.iter().find_map(|c| match &c.shape {
         egui::Shape::Rect(r)

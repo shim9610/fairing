@@ -130,13 +130,13 @@ fn a_nav_item_added_twice_says_so_once() -> fairing::Result<()> {
 fn a_nav_item_listed_in_code_after_its_add_says_nothing() -> fairing::Result<()> {
     let seen = warnings(|| {
         let mut h = kbd_shell(single_level_access())?;
-        h.shell.nav_bar_mut().style = NavStyle::Buttons {
+        h.shell.set_nav_style(NavStyle::Buttons {
             items: vec![
                 NavItem::Back,
                 NavItem::Home,
                 NavItem::Custom("kbd".to_owned()),
             ],
-        };
+        });
         h.frames(2);
         assert!(
             h.shell.nav_bar().item_rect_by_id("kbd").is_some(),

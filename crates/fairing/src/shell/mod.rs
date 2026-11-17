@@ -1,19 +1,19 @@
-//! `Shell` — the top-level object. One [`Shell::frame`] per frame draws everything.
+//! `Shell` coordinates state updates and draws its registered UI in [`Shell::frame`].
 //!
 //! The frame order is a fixed contract.
 //! [`Shell::logic`] / [`Shell::logic_with`] can run state stages 1–4 plus eviction and
 //! lifecycle requests without drawing. The shell/state runners use them in `App::logic`;
-//! a following UI pass reuses that update and records only its fresh input activity.
+//! a matching UI pass reuses that update and records only its fresh input activity.
 //! Background calls use wall time and schedule state deadlines, leaving visual animation
 //! and gesture processing to UI passes.
 //!
 //! ```text
 //! Shell::frame(ui)
-//!  1. now / dt — now on the real time between frames, dt = stable_dt capped at 50 ms;
+//!  1. now / dt — shell monotonic time; animation dt = stable_dt capped at 50 ms;
 //!               revoke expired access and enforce overdue idle locks before commands or input
 //!               (changed declarations are rebuilt before queued icon updates)
 //!  2. handle.drain()        — the command queue, through mpsc try_recv (+ M2 notify/toast/dismiss/toggle_overlay)
-//!  3. services.poll()       — pin snapshots, reconcile pending Bool targets, gather next_wake
+//!  3. services.poll()       — poll backends, reconcile pending Bool targets, gather next_wake
 //!  4. access                — revalidate policy, record input, poll the authenticator
 //!  5. osk.update()          — current keyboard policy, bounds and reserved band (A5)
 //!     gestures.update()     — edge swipes and long presses (M2)
@@ -42,6 +42,7 @@
 mod authentication;
 mod host;
 mod observation;
+mod operations;
 pub use observation::ShellView;
 mod navigation;
 mod protected;
@@ -199,12 +200,11 @@ pub struct Shell {
     /// The integrator's painters for the recent screens' cards and ground (rung 5), lent
     /// to the workspace each frame.
     recents_painters: crate::workspace::RecentsPainters,
-    /// The integrator's widget painters (rung 5), lent to every widget the shell and its
-    /// screens draw.
+    /// The integrator's widget painters (rung 5), supplied to painter-enabled Fairing controls.
     widget_painters: fairing_widgets::widgets::WidgetPainters,
     /// The integrator's gesture handle painter.
     handle_painter: Option<crate::gesture::HandlePainter>,
-    /// The buffer for the item list handed to a painter (only the values are overwritten each frame).
+    /// Reusable item-list storage for a painter; new rows or longer IDs can grow its allocations.
     bar_rows: Vec<BarItemRow>,
     /// The physical scale policy. How the density is used — separate from "what is known" (`DisplayInfo`).
     scale_policy: crate::unit::ScalePolicy,
@@ -246,7 +246,7 @@ pub struct Shell {
     heads_up: HeadsUp,
     /// The theme cross-fade (M2, A7).
     theme_fade: ThemeFade,
-    /// Set by [`Shell::theme_mut`]; the next frame re-applies the theme to egui's style.
+    /// Set by theme/metrics host operations; the next frame re-applies egui style.
     theme_dirty: bool,
     /// The hidden entry points. Registration order is kept — where several watch the same
     /// corner, the one registered first sees it first.
@@ -329,13 +329,12 @@ pub(crate) const STATUS_BAR_OVERLAY_AREA_ID: &str = "fairing.status_bar.overlay"
 /// warning).
 const MAX_PENDING_EVENTS: usize = 1024;
 
-/// The floor used when a backend's `next_wake` is already in the past. Handing `Duration::ZERO` over
-/// as it stands has egui read it as "repaint immediately" (`outstanding = 1`, two frames) and it
-/// quietly becomes 60 fps (egui 0.36.1 `context.rs` `request_repaint_after`).
+/// Minimum delay for a backend wake that is already overdue. A zero delay would
+/// request an immediate repaint through egui and could cause repeated updates.
 const MIN_WAKE: Duration = Duration::from_millis(1);
 
-/// After `next_wake` has pointed into the past this many frames in a row, it warns which backend it
-/// is. So that the only symptom of 100 % idle CPU is not "it is just slow".
+/// Warn after this many consecutive updates with an overdue backend wake, naming
+/// the backend so repeated scheduling requests can be investigated.
 const STALE_WAKE_FRAMES: u64 = 120;
 
 /// How many more times stage 14 handles the requests that `on_lifecycle` handlers made while it
@@ -399,8 +398,8 @@ fn draw_status_bar(
 
 /// Draw the status bar as a `Foreground` Area — `BarMode::Overlay`, the shade panel's status row and
 /// the peek all take this path (and the same Area id: only one of them is used per frame).
-/// `fade_in(false)`: an egui 0.36 `Area` applies an automatic 80 ms fade on the first frame it is
-/// visible and requests a repaint — turned off for idling at 0 fps and for an exact opacity.
+/// `fade_in(false)` disables egui Area's additional fade so the shell controls
+/// this surface's opacity and related repaint requests.
 #[allow(clippy::too_many_arguments)]
 fn draw_status_bar_area(
     ctx: &egui::Context,
@@ -440,12 +439,9 @@ fn draw_status_bar_area(
 
 /// The screen Rect the shade uses (A1).
 ///
-/// **Where a visible status bar has a band of its own, the shade comes down below it** — that is how
-/// iOS's Control Centre and One UI's quick panel behave, and the clock, the signal and the battery
-/// not disappearing while the shade opens is right on a device too. In overlay mode
-/// (`BarMode::Overlay`) and when hidden, the content starts at the very top of the screen, so this
-/// expression hands the whole screen back as it stands and the panel covers the status bar as before
-/// (and when hidden, the panel has a status row of **its own**).
+/// A visible status bar with its own band leaves that band outside the shade.
+/// In `BarMode::Overlay`, or with the bar hidden, the shade receives the full
+/// screen rectangle. The hidden-bar layout supplies a status row inside the panel.
 fn overlay_screen(layout: &Layout) -> egui::Rect {
     let full = layout
         .status
@@ -531,19 +527,20 @@ impl Shell {
     }
 
     /// Build the shell. `ctx` is the context [`Waker`](crate::services::Waker) will wrap — to hand the
-    /// handle to any thread without a lock, the context has to exist at construction. It
+    /// clone the wake handle for worker threads, the context must exist at construction. It
     /// applies the theme to `ctx` and gives the backends a `Waker`.
     ///
     /// A thin wrapper over [`Shell::builder`] — where customisation is needed, use the builder.
     ///
     /// # Errors
-    /// Config validation failure ([`crate::Error::Config`]) — above all, two or more level tables with
-    /// no `default_gate`, or a bad role name in `[theme.palette]`.
+    /// Config validation failure ([`crate::Error::Config`]), including legacy
+    /// multi-level mode without `default_gate` or a bad `[theme.palette]` role name.
     pub fn new(config: ShellConfig, services: Services, ctx: &egui::Context) -> Result<Self> {
         Self::builder(config).services(services).build(ctx)
     }
 
-    /// Add a declaration. It takes effect from the next frame. The same id is replaced — any open
+    /// Register a declaration immediately; derived desktop/tile state is rebuilt at an update.
+    /// The same id is replaced — any open
     /// instance is closed and each one raises a [`ShellEvent::ScreenClosed`] (so that an
     /// integrator can tidy up the replaced screen's external state).
     ///
@@ -577,7 +574,7 @@ impl Shell {
     /// leave the declaration doing nothing without a word.
     ///
     /// Checked on the frame after the `add`, not inside it: an integrator may declare the item
-    /// first and list it in code afterwards (`nav_bar_mut().style = NavStyle::Buttons { .. }`),
+    /// first and list it in code afterwards (`set_nav_style(NavStyle::Buttons { .. })`),
     /// and a warning at the `add` would then be wrong.
     fn check_added_nav_items(&mut self) {
         if self.nav_item_checks.is_empty() {
@@ -816,25 +813,10 @@ impl Shell {
         &self.desktop
     }
 
-    /// The desktop (mutable — for swapping the wallpaper, and so on).
-    pub fn desktop_mut(&mut self) -> &mut DesktopView {
-        &mut self.desktop
-    }
-
     /// The status bar (for looking last frame's item Rects up with `item_rect`, and so on).
     #[must_use]
     pub fn status_bar(&self) -> &StatusBar {
         &self.status_bar
-    }
-
-    /// The status bar (mutable — `tap_action`, editing the slots).
-    pub fn status_bar_mut(&mut self) -> &mut StatusBar {
-        &mut self.status_bar
-    }
-
-    /// The nav bar (mutable — `enabled`, `style`, replacing the items).
-    pub fn nav_bar_mut(&mut self) -> &mut NavBar {
-        &mut self.nav_bar
     }
 
     /// The nav bar (for looking last frame's item Rects up with `item_rect`, and so on).
@@ -849,45 +831,10 @@ impl Shell {
         &self.theme
     }
 
-    /// **The metrics, to change at run time** — the text sizes
-    /// ([`MetricsSpec::type_scale`](crate::theme::MetricsSpec::type_scale)) included. The next frame
-    /// resolves them at the current scale and hands them to egui's style.
-    ///
-    /// It is the **spec** and not [`Theme::metrics`] because the resolved metrics are a derived
-    /// value: with a spec in play the shell rebuilds `theme.metrics` from it every frame, so a size
-    /// written onto the theme was thrown away before it could reach egui. That is what made the
-    /// type scale a token no rung of the override ladder could hold after start-up.
-    ///
-    /// Where the shell was built without one, the spec is seeded from the metrics it has, so this
-    /// always hands back something to write on.
-    ///
-    /// ```no_run
-    /// # use fairing::Shell;
-    /// # fn bigger(shell: &mut Shell) {
-    /// # let step = |s: &mut fairing::unit::Span<fairing::unit::Eye>, by: f32| { let _ = (s, by); };
-    /// // Standing 70 cm away rather than 30 — the body text goes up.
-    /// let spec = shell.metrics_spec_mut();
-    /// step(&mut spec.type_scale[1], 4.0);
-    /// # }
-    /// ```
-    ///
-    /// The palette and the motion tokens have their own paths: [`Shell::set_palettes`] and
-    /// [`Shell::set_theme_dark`] so the crossfade (10) runs, and [`Shell::set_motion`].
-    pub fn metrics_spec_mut(&mut self) -> &mut crate::theme::MetricsSpec {
-        self.theme_dirty = true;
-        self.metrics_spec
-            .get_or_insert_with(|| crate::theme::MetricsSpec::from_metrics(&self.theme.metrics))
-    }
-
     /// The backends.
     #[must_use]
     pub fn services(&self) -> &Services {
         &self.services
-    }
-
-    /// The backends (mutable).
-    pub fn services_mut(&mut self) -> &mut Services {
-        &mut self.services
     }
 
     /// **Connect the time source, while the shell is running**.
@@ -918,21 +865,19 @@ impl Shell {
     /// a backend: [`crate::settings::keys::UI_CLOCK_12H`], which
     /// `settings.datetime` writes and the status bar reads.
     pub fn set_clock(&mut self, clock: impl crate::services::ClockSource + 'static) {
-        let mut clock = Box::new(clock);
-        // The `Waker` goes to every backend at startup; one arriving later needs its own.
-        clock.attach(self.handle.waker().clone());
-        self.services.clock = clock;
+        self.contain_fault(|shell| {
+            let mut clock = Box::new(clock);
+            // Attach before publication, just like the other backend replacements.
+            clock.attach(shell.handle.waker().clone());
+            shell.services.clock = clock;
+            shell.handle.waker().wake();
+        });
     }
 
     /// Access control.
     #[must_use]
     pub fn access(&self) -> &Access {
         &self.access
-    }
-
-    /// Access control (mutable — for the integrator to replace the `AccessPolicy`, `access_mut().set_policy(..)`).
-    pub fn access_mut(&mut self) -> &mut Access {
-        &mut self.access
     }
 
     /// The shell's monotonic time at its last UI or logic update. `Cx::now`,
@@ -961,7 +906,8 @@ impl Shell {
     }
 
     /// Whether the shell's prompt is up — an unlock prompt, or the lock screen with its prompt.
-    /// Never in `routing` mode, with one level, or without an authenticator.
+    /// No built-in prompt in `routing` mode or without supported authenticator
+    /// methods. A single level suppresses it only in legacy level mode.
     #[must_use]
     pub fn unlock_prompt_visible(&self) -> bool {
         self.prompt.is_open()
@@ -1022,12 +968,6 @@ impl Shell {
     #[must_use]
     pub fn osk(&self) -> &crate::osk::Osk {
         &self.osk.0
-    }
-
-    /// The OSK (mutable — replacing the layout, the manual toggle).
-    #[cfg(feature = "osk")]
-    pub fn osk_mut(&mut self) -> &mut crate::osk::Osk {
-        &mut self.osk.0
     }
 
     /// The notification centre.
@@ -1197,8 +1137,8 @@ impl Shell {
         self.gestures.set_tuning(tuning);
     }
 
-    /// The dark/light switch — it cross-fades the palette over 200 ms (A7). The `theme.dark` setting
-    /// and `tile.theme` come here.
+    /// The dark/light switch uses `motion.theme_fade` (200 ms by default).
+    /// The `theme.dark` setting and `tile.theme` come here.
     ///
     /// The target palette is chosen from the pair [`Shell::set_palettes`] settled. Where both sides of
     /// the pair are the same (the default when the theme was injected from code) the colours stay and
@@ -1220,15 +1160,15 @@ impl Shell {
         self.theme_fade.start(target, self.theme.motion.theme_fade);
     }
 
-    /// **Register a hidden entry point**. The invisible door into the service menu.
+    /// Register a triggered entry point, such as a service-menu shortcut.
     ///
     /// An id already there is swapped out (its progress is reset).
     ///
     /// # This is not a security boundary
     ///
-    /// The knocking is **concealment** and what stops anyone is the [`Gate`]. Leave `gate` empty and
-    /// whoever finds the door walks in — anything irreversible, like a factory reset or a calibration
-    /// value, takes one without exception.
+    /// A trigger controls discovery, not permission. Assign the entry a [`Gate`]
+    /// and classify the target screen/action according to the application policy.
+    /// Launching the target still performs its own gate checks.
     ///
     /// ```no_run
     /// # fn main() -> fairing::Result<()> {
@@ -1289,7 +1229,7 @@ impl Shell {
     /// [`KnockInput::pokes`](crate::access::KnockInput::pokes) `= 1`.
     /// [`Cx::knock`](crate::Cx::knock) comes here.
     ///
-    /// An unknown id does nothing — a typo does not stop the shell (the same policy as a config id the code never declares).
+    /// An unknown id is ignored.
     pub fn knock(&mut self, id: &str) {
         self.contain_fault(|shell| shell.knock_in(id, &mut None));
     }
@@ -1612,9 +1552,8 @@ fn leaves_overlay(action: &LaunchAction) -> bool {
     }
 }
 
-/// The density from the resolution and the physical size (physical px / mm). It is reckoned **by
-/// area** rather than as the mean of the short and long axes, so the area error is smallest even with
-/// non-square pixels. Where the values are odd it hands back `NaN` and sends it to the fallback.
+/// Effective density from the square root of the pixel-area / physical-area ratio.
+/// Invalid dimensions return `NaN` so the caller can select its fallback.
 fn density(size_px: (u32, u32), mm: (f32, f32)) -> f32 {
     let (w, h) = (f64::from(size_px.0), f64::from(size_px.1));
     let (mw, mh) = (f64::from(mm.0), f64::from(mm.1));

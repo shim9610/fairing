@@ -15,10 +15,9 @@ use super::{
 /// decides what happens — the password, what to ask with, where it is stored, whether a saved
 /// network reconnects on a tap at all.
 ///
-/// It reads that way round for one reason: **the shell is a drawing layer and must not own the
-/// secret.** [`WifiBackend::connect`](crate::services::WifiBackend::connect) takes the PSK by
-/// `&str`, so an integrator can hold the buffer in whatever type they trust — a zeroizing wrapper,
-/// say — and hand it straight to the backend without it ever passing through the crate.
+/// [`WifiBackend::connect`](crate::services::WifiBackend::connect) borrows the PSK
+/// as `&str`. The application owns the input buffer; credential handling and any
+/// retention by the backend remain application responsibilities.
 /// [`TextField::password`](crate::widgets::TextField::password) is there to type it into and keeps
 /// no undo history, but the buffer behind it stays the caller's.
 ///
@@ -112,19 +111,18 @@ pub fn wifi_body(ui: &mut Ui, cx: &mut Cx<'_>) {
 }
 /// The `settings.network` screen's body, **without** the scroll wrapper.
 ///
-/// Public so a built-in can be a starting point rather than a wall: drop it into a screen of
-/// your own, or call it and add rows around it. `page` is not applied here - hand it to
-/// [`layout::page`](crate::layout::page) as the built-in declaration does, or your screen
-/// will not scroll.
+/// Use this body inside an application-owned screen, optionally with additional
+/// rows. It supplies no scroll wrapper; use [`layout::page`](crate::layout::page)
+/// or another scrolling container when needed.
 ///
 /// The interfaces are read from the backend every frame the screen is drawn. An edit is a form
 /// held in egui's memory (the body is a plain `fn`, as `settings.power`'s is) and checked with
 /// `std::net` before anything reaches the backend; what the backend then says — `Unsupported`
 /// included — is shown on the form rather than dropped.
 ///
-/// The form is the drawing screen's alone and lives only while it is drawn for the session that
-/// opened it and that session still passes `settings.network.edit`: closed, covered, drawn for
-/// another subject or below the gate, the form is gone, and the next person starts from the list.
+/// Form state is keyed to the drawing screen instance. On the next body call,
+/// a gap in drawing or a changed subject discards the saved form. A denied
+/// `settings.network.edit` check clears it during that call.
 pub fn network_body(ui: &mut Ui, cx: &mut Cx<'_>) {
     held(ui, cx, "fairing.settings.network.form", |ui, cx, form| {
         if !cx.allows(NETWORK_EDIT) {
@@ -452,7 +450,7 @@ fn parse_static(
         dns,
     })
 }
-/// RFC 1123: one to 63 letters, digits and hyphens, not starting or ending with a hyphen.
+/// A single ASCII hostname label: 1–63 letters, digits or hyphens, with no hyphen at either end.
 fn valid_hostname(name: &str) -> bool {
     (1..=63).contains(&name.len())
         && !name.starts_with('-')

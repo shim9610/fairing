@@ -1,7 +1,8 @@
 //! The crate's error type.
 //!
-//! Library code does not panic. A configuration error fails at startup as
-//! [`Error::Config`], and backend errors come back separately as `fairing::services::ServiceError`.
+//! Configuration parsing and validation return [`Error::Config`]. File and image
+//! operations use the variants below. Device backend errors are reported separately
+//! through `fairing::services::ServiceError`.
 
 use std::fmt;
 
@@ -11,9 +12,8 @@ use std::fmt;
 // whole rather than variant by variant.
 #[non_exhaustive]
 pub enum Error {
-    /// Parsing or validating the configuration (`fairing.toml`) failed. Access-control config
-    /// errors land here too ("an unassigned gate") — they are never opened up
-    /// quietly.
+    /// Parsing or validating configuration failed, including access-declaration errors
+    /// reported by the shell.
     Config(String),
     /// Reading a file failed (loading the config). A file that is simply **absent** is not an error; it means the defaults.
     Io {

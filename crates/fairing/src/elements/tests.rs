@@ -1,5 +1,7 @@
 use super::*;
-use crate::access::{Access, PermissionBound, SessionController, SessionGrant, Subject};
+use crate::access::{
+    Access, PermissionBinding, PermissionBound, SessionController, SessionGrant, Subject,
+};
 use crate::config::AccessConfig;
 use crate::screen::cx::fixture::{pane, Fixture};
 use crate::services::Waker;
@@ -426,5 +428,56 @@ fn ancestor_policy_changes_block_later_children_without_an_issuer_revision() -> 
             assert_eq!(consumed, Vec2::ZERO);
         }
     }
+    Ok(())
+}
+
+#[test]
+fn layout_token_reuses_data_only_in_the_same_frame_time_and_revision() -> crate::Result<()> {
+    let (mut runtime, mut owner) = fixture()?;
+    let token = {
+        let mut parts = runtime.parts();
+        let cx = parts.cx(pane(InstanceId::NONE), None);
+        let stamp = cx
+            .authority_stamp()
+            .ok_or_else(|| crate::Error::Config("installed authority missing".into()))?;
+        layout_token::LayoutToken::new(PermissionBinding::new(Rights::View), stamp, &cx)
+            .ok_or_else(|| crate::Error::Config("view layout denied".into()))?
+    };
+    let valid = |runtime: &mut Fixture| {
+        let mut parts = runtime.parts();
+        let cx = parts.cx(pane(InstanceId::NONE), None);
+        token.valid(&cx)
+    };
+    assert!(valid(&mut runtime));
+    assert!(valid(&mut runtime), "layout data should be reusable");
+    runtime.frame += 1;
+    assert!(!valid(&mut runtime), "a new frame reused stale layout");
+    runtime.frame -= 1;
+    runtime.now += std::time::Duration::from_nanos(1);
+    assert!(!valid(&mut runtime), "a new time reused stale layout");
+    runtime.now -= std::time::Duration::from_nanos(1);
+    owner
+        .replace_grants(
+            vec![SessionGrant::base_for(Rights::View)],
+            None,
+            runtime.now,
+        )
+        .map_err(|e| crate::Error::Config(e.to_string()))?;
+    assert!(!valid(&mut runtime), "a new revision reused stale layout");
+    let token = {
+        let mut parts = runtime.parts();
+        let cx = parts.cx(pane(InstanceId::NONE), None);
+        layout_token::LayoutToken::new(
+            PermissionBinding::new(Rights::View),
+            cx.authority_stamp()
+                .ok_or_else(|| crate::Error::Config("new authority missing".into()))?,
+            &cx,
+        )
+        .ok_or_else(|| crate::Error::Config("new revision denied".into()))?
+    };
+    owner.revoke();
+    let mut parts = runtime.parts();
+    let cx = parts.cx(pane(InstanceId::NONE), None);
+    assert!(!token.valid(&cx), "revocation retained layout permission");
     Ok(())
 }

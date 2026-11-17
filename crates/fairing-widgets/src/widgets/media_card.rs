@@ -1,50 +1,8 @@
-//! `MediaCard` — a picture with a text block under it, and the boundary argument that let it in.
+//! `MediaCard` combines an image and text in a selectable card.
 //!
-//! # Why this is not "a product card"
-//!
-//! `layout`'s refusal list says a product card "looks different in every trade and the crate cannot
-//! guess". Measured against the seven screens this element set was designed from, that is not what
-//! the screens do. **Six of them draw one structure across four trades** — a European restaurant, a
-//! Chinese restaurant, a fast-food chain and an e-book reader — and the structure is: a fixed-aspect
-//! picture, a left-aligned title, a muted line or two under it, and a figure.
-//!
-//! What *is* trade-specific is real and stays out: the price format, the spice pips, the allergen
-//! marks, the star rating. Those are the caller's, and this takes them as strings and slots it has
-//! no opinion about. The test for what the crate builds was never "does a shop use it" but **"is it
-//! the same object in every trade"**, and the measurement says this one is.
-//!
-//! # Why the corners are asymmetric
-//!
-//! The picture is full-bleed: it runs to the card's own edge on three sides. So its outer corners
-//! must be the **card's** radius and its inner ones must be square — a rounded corner where the
-//! picture meets the text block would cut a notch out of the middle of the card.
-//!
-//! That is the concentric rule the crate adopted for cards (`inner = outer − gap`) at its
-//! degenerate case: the gap is zero, so the radii are equal.
-//!
-//! # Why the image box's aspect is a number and the default is 4:3
-//!
-//! Measured: 1.314 (Bella Tavola), 1.310 (the Sichuan kiosk), 1.032 (the `McDonald's` kiosk) — two
-//! of three at 4:3 and one square, with the e-reader's covers portrait at about 2:3. A trade does
-//! not pick that; a *photographer* does, and the caller knows which they have. So it is one `f32`
-//! with named constants beside it rather than an enum the crate would have to keep guessing at.
-//!
-//! # Why selection is a ring and not a fill
-//!
-//! **Not one of the seven references fills a card to say it is chosen.** The crate's own kiosk did,
-//! and it is the single thing that made it read as a vending machine rather than a menu: an accent
-//! that floods a photograph destroys the photograph, which was the reason to have a card at all.
-//!
-//! Selection here is a `Primary` ring inside the card's edge, and the count lives on the corner
-//! action's badge, which is what every reference does. The rule is the one task #5 settled for the
-//! quick tiles, applied where it matters most.
-//!
-//! # Why the corner action is a slot and not a button the card owns
-//!
-//! A card reports two different presses — "open this" and "add one of these" — and a widget that
-//! collapsed them would make the commonest kiosk interaction impossible. [`MediaPick`] carries both
-//! and the caller decides; the action itself is an [`IconButton`], so a `+` on a
-//! card and a `+` anywhere else are the same object.
+//! The image region follows the card's outer corners. Selection is shown with an
+//! outline, and an optional corner-action slot can handle a separate interaction.
+//! The caller supplies image resources, content and action handling.
 
 use crate::cx::WidgetCx as Cx;
 use crate::fit::cover_uv;
@@ -163,10 +121,9 @@ impl<'a> MediaCard<'a> {
         self
     }
 
-    /// A scrim and a word over the picture, for an item that cannot be had.
-    ///
-    /// It is not [`Self::enabled`]: an unavailable *item* still opens, so you can read why. A
-    /// disabled *card* is one the operator has no rights to.
+    /// Overlay an unavailable-item scrim and label without disabling card interaction.
+    /// [`Self::enabled`] separately controls interaction; neither setting authenticates
+    /// the user or enforces shell permissions.
     #[must_use]
     pub fn veil(mut self, text: &'a str) -> Self {
         self.veil = Some(text);
@@ -187,13 +144,8 @@ impl<'a> MediaCard<'a> {
         self
     }
 
-    /// **How tall this card has to be at `width` to keep its aspect** — what a grid should give it.
-    ///
-    /// A `Grid` picks a cell height from a row count and only then discovers how wide the cell came
-    /// out, so a caller has no way to reason about the two together. This closes that: ask, then
-    /// size the cell. Measured on the kiosk's menu grid before it did, a tile asking for a square
-    /// picture was handed 282.7 du where it needed 636.4, and the shortfall was paid for out of the
-    /// photograph.
+    /// Required card height at `width` for the selected image aspect and text layout.
+    /// Use this when choosing a grid-cell height.
     ///
     /// ```no_run
     /// # fn f(ui: &mut egui::Ui, cx: &mut fairing_widgets::WidgetCx<'_>) {
@@ -218,20 +170,8 @@ impl<'a> MediaCard<'a> {
         let gap = cx.theme.control.gap;
         let width = ui.available_width().max(m.touch_target);
         let text_h = self.text_height(ui, cx);
-        // The picture takes its aspect **unless the place is shorter**, in which case it takes what
-        // is left. A card in a grid cell has its height decided by the grid, and a picture that
-        // insisted on its aspect there would run over the cell below it — the grid does not clip.
-        // **The aspect the caller asked for is kept, whatever room it is given.** It used to be the
-        // *height* that was capped and the width left at the card's own, so a place too short for
-        // the ratio silently widened the box instead of shrinking it — and `cover_uv` then cropped
-        // the subject to fill it. Measured on the kiosk's menu grid: a tile that asked for 1.000
-        // was drawn at **3.435**, throwing away 71 % of every photograph, in a card whose caller
-        // had written "square, because a 4:3 box would crop the top off every cup". The caller's
-        // reason for the parameter was exactly what the widget was defeating.
-        //
-        // Capping the width instead keeps the ratio and leaves the card's colour at the sides — so
-        // a cell too short to hold the picture **looks** too short, and the caller can see it and
-        // ask for more ([`Self::height_for`] says how much).
+        // Cap picture width by the available height and aspect ratio before placing
+        // the tile; this preserves the requested aspect in a short cell.
         let room = (ui.available_height() - text_h).max(m.touch_target);
         let picture = Vec2::new(width, width / self.aspect);
         let picture = if picture.y > room {

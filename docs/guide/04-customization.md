@@ -1,11 +1,18 @@
-# 04. Compile-time customization
+# 04. Customization
+
+Drawing hooks use [egui `Painter`](https://docs.rs/egui/0.37.0/egui/struct.Painter.html).
+Fairing supplies theme values, widget look data and callback regions; egui supplies
+shape submission and [clipping](https://docs.rs/egui/0.37.0/egui/struct.Ui.html#method.set_clip_rect).
+The visual result also depends on the host renderer and installed fonts.
 
 ## 0. Principle
 
-The look of a fairing shell is **decided in code, at build time.** There is no runtime theme
-editor or drag-a-widget-here mode. A machine's screen has to look
-the way it looks when it ships, and the person who decides that is the integrator, not the end
-user.
+Drawing and layout implementations are Rust extension points selected by the
+application. Initial configuration is applied when the shell is built; palettes,
+motion and supported sizes can also change at runtime through host operations and
+settings. Ordinary hosts use APIs such as `set_theme_dark`, `set_palettes` and
+`set_metrics_spec`. Fairing supplies no visual theme editor or widget-placement
+editor; exposing product customization to end users is an application decision.
 
 The config file (`fairing.toml`) selects placement, gate assignments, palette,
 motion and supported sizes. Custom drawing implementations live in code and can be
@@ -38,7 +45,8 @@ Narrower extensions — adding status bar or nav bar items, adding tiles, regist
 
 ## 1. Injecting a theme
 
-A `Theme` is four things: palette, metrics, motion tokens, and whether it is dark.
+A `Theme` contains its palette, shared metrics, component/control/elevation metrics,
+motion tokens and dark-mode flag.
 
 ```rust
 use fairing::{Shell, ShellConfig, Theme};
@@ -51,8 +59,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
 ```
 
 Injecting a theme makes `[shell] theme` (dark|light) and `[theme.palette]` **ignored**, and logs
-a warning at startup. Ignoring them silently would only ever show up as "why is the colour not
-changing".
+a warning at startup.
 
 The single source of truth for bar heights is `theme.metrics.status_bar_height` ·
 `nav_bar_height`; `build()` feeds those into the status bar and the nav bar. Without an injected
@@ -70,49 +77,47 @@ config file uses the snake_case name.
 |---|---|---|---|---|
 | `Background` | `background` | `#0b0b0d` | `#e1e1e8` | Desktop base background, egui `extreme_bg_color` |
 | `Surface` | `surface` | `#141416` | `#ececf1` | **The page.** Status bar, nav bar, shade panel, screen background, toast and heads-up cards, OSK key bed, dock band (×0.6) |
-| `SurfaceVariant` | `surface_variant` | `#242428` | `#ffffff` | **What sits on the page, one step lighter than it in both modes** (iOS and Windows 11 both lift the card off the page rather than recessing it). Card ground (`layout::group`), tile ground, OSK keys, `BigButton::Normal`, egui `faint_bg_color` · `widgets.inactive` |
+| `SurfaceVariant` | `surface_variant` | `#242428` | `#ffffff` | **Surfaces placed on the page, lighter than `Surface` in both built-in modes.** Card ground (`layout::group`), tile ground, OSK keys, egui `faint_bg_color` · `widgets.inactive` |
 | `OnSurface` | `on_surface` | `#f0f0f3` | `#1a1a1c` | Default text and icon colour on a surface, default status bar icon, egui `override_text_color` |
 | `Muted` | `muted` | `#93939d` | `#63636b` | Dimmed text, disabled icons (alpha 0.6), the empty arc and empty remainder of parametric icons, list subtitles |
 | `Primary` | `primary` | `#2878a9` | `#106aa2` | Tiles and switches that are on, `BigButton::Primary`, pressed widget outline, the emergency gesture ring, the default user-level dot |
-| `OnPrimary` | `on_primary` | white | white | Text on a Primary or Danger ground, switch knobs, notification badge numbers |
+| `OnPrimary` | `on_primary` | white | white | Text on Primary fills, switch knobs, notification badge numbers |
 | `Danger` | `danger` | `#ff6b5e` | `#c0322a` | Battery at 20 % or below, error notifications, `BigButton::Danger` |
 | `Warning` | `warning` | `#e9a83b` | `#8f5e00` | Warning notifications, warning badges |
 | `Success` | `success` | `#4fd07a` | `#1a7f37` | Success notifications |
 | `Focus` | `focus` | `#549ac5` | `#2784be` | Focus outline — egui `selection.stroke`, so a focused `TextEdit` wears it. Deliberately not the same value as `Primary`: a focus ring drawn over a pressed control has to be visible against the press |
 | `Scrim` | `scrim` | black α128 | black α100 | The dim behind the shade; its alpha is how dark it gets at the full pull |
 | `Outline` | `outline` | `#303036` | `#d2d2da` | 1 px borders, list separators, slider tracks |
-| `ControlEdge` | `control_edge` | `#70707b` | `#85858e` | The boundary that makes a control a control — a switch's track, a checkbox, a radio, a segmented strip. Gated at 3:1 against the surface, where `Outline` is decoration |
+| `ControlEdge` | `control_edge` | `#70707b` | `#85858e` | Control boundaries: switch tracks, checkboxes, radios and segmented strips. Built-in palette tests check at least 3:1 against supported surface backgrounds; `Outline` is decorative |
 | `Pressed` | `pressed` | white α28 | black α24 | Press tint (nav items, icons, keys, buttons, list rows) |
 | `Shadow` | `shadow` | white α14 | black α14 | The cast shadow of a floating container in light mode, its rim in dark mode. Figure-ground help, not a boundary |
 | `ShadeSurface` | `shade_surface` | = `surface` | = `surface` | The pull-down shade's face: the curtain, the floating card and the tile pucks on it. Unset, it follows `surface`; set it to colour the shade alone. Text on it stays `on_surface`, so keep the two readable together |
 
-Switching dark ↔ light interpolates every role per channel over 200 ms. So a new palette
-that fills in one or two roles and leaves the rest looks wrong mid-transition. Fill the rest with
-`..Palette::dark()`.
+Switching dark ↔ light interpolates palette roles per channel over 200 ms. Start
+from a complete palette, such as `..Palette::dark()`, when overriding selected roles.
 
 ### 1.2 Metrics tokens
 
 `Metrics` is `Copy`, so change a few fields with `..Metrics::default()`. Units are du
-(density-independent units, egui's points) unless stated otherwise. There are 50 fields today;
-the table covers the ones you are likely to change, and the API docs describe every one.
-Twenty-two of them, plus the type scale and the slider thumb, are resolved
-from `MetricsSpec` in physical units each frame rather than being fixed
+(density-independent units, egui's points) unless stated otherwise. The table selects commonly adjusted fields; see the API docs for individual fields.
+Physical metrics, the type scale and the slider thumb are resolved from `MetricsSpec`
+during updates rather than being fixed.
 
 | Field | Default | What it changes |
 |---|---|---|
-| `status_bar_height` | `32.0` | Status bar height (the single source of truth for bar height) |
+| `status_bar_height` | 7 mm, `32.0` du floor | Status bar height (the single source of truth for bar height) |
 | `nav_bar_height` | one finger + 8 du, `56.0` floor | Nav bar height |
-| `touch_target` | one finger, `48.0` floor | Minimum touch target — one finger (9 mm by default, about 57 du on a 160 dpi panel). Nav item minimum width, the basis for slider and switch heights, egui `interact_size` |
-| `icon_cell` | two fingers, `96.0` floor | The side of a desktop cell. What the automatic grid counts columns and rows from |
-| `icon_size` | one finger, `48.0` floor | Desktop icon size. Toast, heads-up and tile icons are half of it |
-| `status_icon_size` | `18.0` | The status bar's icons and the icons in the shade's notification rows. `[status_bar] icon_size` pins it from config |
-| `row_height` | one finger, `48.0` floor | `ListRow` height (the larger of this and `widget_height`). **One touch target** by default: the padding is inside the row, and a row grows only when its own text needs more |
-| `corner_radius` | `12.0` | **Container** corner radius — cards, tiles, toasts, heads-up, OSK keys, press tint, egui `window_corner_radius` and `menu_corner_radius` |
-| `control_radius` | `6.0` | **Control** corner radius — every egui widget (buttons, fields, combos). Half the container's, so a button inside a card does not read as another card. Set it equal to `corner_radius` for the old uniform look |
-| `edge_px` | `24.0` | Edge zone width. When a bar is visible, the whole bar becomes the zone |
-| `dock_height` | `96.0` | Dock band height |
-| `screen_inset` | `12.0` | Padding inside the rect a screen receives. `ChromePolicy::inset` overrides it per screen |
-| `desktop_label_size` | `13.0` | Desktop label font size |
+| `touch_target` | one finger, `48.0` floor | Minimum touch target — one finger (9 mm by default, about 57 du on a 160 dpi panel). Nav item minimum width, minimum touch allocation for controls and egui `interact_size`; drawn slider/switch geometry also uses `ControlMetrics` |
+| `icon_cell` | `finger × 1.7`, `96.0` du floor | The side of a desktop cell. What the automatic grid counts columns and rows from |
+| `icon_size` | `finger × 0.85`, `48.0` du floor | Desktop icon size. Toast and heads-up icons are half of it; shade tile icons use the puck diameter instead |
+| `status_icon_size` | 3.6 mm, `18.0` du floor | Status bar icon size. `[status_bar] icon_size` pins it from config; notification-row icon sizing uses shade component metrics instead |
+| `row_height` | one finger, `48.0` floor | `ListRow` height (the larger of this and `widget_height`). **One touch target** by default: the padding is inside the row, and text and widget metrics determine additional height |
+| `corner_radius` | `text × 0.7485`, `12.0` du floor | **Container** corner radius — cards, tiles, toasts, heads-up, OSK keys, press tint, egui `window_corner_radius` and `menu_corner_radius` |
+| `control_radius` | `text × 0.8982`, `14.0` du floor | Default **control** corner radius in the egui style (buttons, fields, combos); per-widget styling can override it. Its spec is independent of the container-radius spec |
+| `edge_px` | `finger × 0.5`, `24.0` du floor | Edge zone width. When a bar is visible, the whole bar becomes the zone |
+| `dock_height` | `finger × 1.7`, `96.0` du floor | Dock band height |
+| `screen_inset` | `finger × 0.25`, `12.0` du floor | Padding inside the rect a screen receives. `ChromePolicy::inset` overrides it per screen |
+| `desktop_label_size` | 2.7 mm, `13.0` du floor | Desktop label font size |
 | `desktop_label_line` | `1.3` | Label line-height multiplier (an approximation, for space calculations) |
 | `desktop_label_gap` | `6.0` | Gap between icon and label |
 | `desktop_badge_size` | `10.0` | Desktop badge font size |
@@ -129,36 +134,36 @@ from `MetricsSpec` in physical units each frame rather than being fixed
 | `desktop_lock_ring_pad` | `4.0` | How much larger the padlock badge's **outer circle** is than the padlock. Raising `desktop_lock_size` grows the glyph too; this only grows the ring |
 | `desktop_badge_dot_r` | `5.0` | Radius of the numberless notification dot |
 | `desktop_content_min_pad` | `2.0` | Minimum gap between the icon+label block and the top/bottom of the cell |
-| `nav_icon_size` | `24.0` | Nav bar icon side |
+| `nav_icon_size` | 5 mm, `24.0` du floor | Nav bar icon side |
 | `nav_item_max_span` | `3.0` | Nav item maximum width multiplier (`touch_target` × 3.0) |
 | `nav_indicator_length` | `108.0` | The gesture style's home indicator length — never more than half the band ([03 §2.6](03-chrome.md#26-the-gesture-style)) |
 | `nav_indicator_thickness` | `5.0` | The home indicator's thickness (its ends are round) |
 | `status_edge_pad` | `12.0` | Status bar side padding |
-| `status_overlay_alpha` | `1.0` | Background alpha of a `BarMode::Overlay` status bar — opaque, since 0.72 put caption text under the contrast floor |
-| `tile_size` | `72.0` | Quick-settings tile side (an upper bound) |
+| `status_overlay_alpha` | `1.0` | Background alpha of a `BarMode::Overlay` status bar — opaque by default; this controls background opacity, not whether the bar overlays content |
+| `tile_size` | `finger × 1.3`, `72.0` du floor | Quick-settings tile side (an upper bound) |
 | `shade_handle_width` | `40.0` | Width of the shade's bottom handle |
-| `notification_row_height` | `72.0` | Notification row height |
+| `notification_row_height` | one finger + 10 du, `72.0` du floor | Notification row height |
 | `toast_width` | `420.0` | Maximum toast width |
 | `heads_up_height` | `88.0` | Heads-up banner height |
 | `osk_key_gap` | `6.0` | Gap between OSK keys |
 | `osk_max_key` | `72.0` du floor, `finger × 1.5` | The tallest a row of OSK keys gets, gap included — a cap on `[osk] height_ratio`, so a tall panel does not get rows the size of a palm. `[osk] min_key_px` wins where the two cross. `f32::INFINITY` lifts the cap — `None` in a `MetricsSpec` ([03 §6.2](03-chrome.md#62-layouts)) |
 | `split_divider` | `8.0` | The band between two panes ([03 §2.3](03-chrome.md#23-recent-screens-and-the-split)). Its handle is widened to `touch_target` for the finger; this is what is drawn and what the panes give up |
-| `widget_height` | one finger, `48.0` floor | Default height of `BigButton` · `ListRow` · the shade footer. One touch target, like a row |
-| `slider_thumb` | `28.0` du floor, `finger × 0.585` | Slider thumb diameter. It is dragged with a finger, so it is a **touch** dimension and tracks `finger_mm` — 28 du (4.4 mm) is right for a Material-sized hand and visibly under-scale beside a gloved 13 mm target |
-| `type_scale` | `13/16/17/22/16` du floors, `text × 0.811/1/1.063/1.374/1` | **The five text sizes** (`small` · `body` · `button` · `heading` · `monospace`). `Theme::egui_style()` builds egui's `TextStyle` from them. **They track the viewing distance, not `finger_mm`**: one body em (`Dim::text(1.0)`) is `0.008684 ×` `ScalePolicy::viewing_distance_mm` — 3.13 mm at the default 360 mm, about 20 du, a phone's body text. The hand and the eye are separate knobs: a gloved policy grows the touch targets and leaves the text alone, and a standing kiosk raises `viewing_distance_mm` and the text grows with everything sized in `text` beside it. The `du` floors are the old fixed sizes, so a panel of unknown density still reads |
+| `widget_height` | one finger, `48.0` floor | Height input for `ListRow` and shell layouts such as the shade footer. `BigButton` uses the larger of `row_height` and `touch_target` instead |
+| `slider_thumb` | `28.0` du floor, `finger × 0.585` | Slider thumb diameter. It is dragged with a finger, so it is a **touch** dimension and tracks `finger_mm` ; check the resolved diameter against the intended input device |
+| `type_scale` | `13/16/17/22/16` du floors, `text × 0.811/1/1.063/1.374/1` | **The five text sizes** (`small` · `body` · `button` · `heading` · `monospace`). `Theme::egui_style()` builds egui's `TextStyle` from them. **They track the viewing distance, not `finger_mm`**: one body em (`Dim::text(1.0)`) is `0.008684 ×` `ScalePolicy::viewing_distance_mm` — 3.13 mm at the default 360 mm, about 20 du. The hand and the eye are separate knobs: a gloved policy grows the touch targets and leaves the text alone, and a standing kiosk raises `viewing_distance_mm` and the text grows with everything sized in `text` beside it. The `du` floors provide fallback sizes when physical density is unknown; check readability on the target |
 
 ### 1.3 MotionTokens
 
 The A1–A7 labels used below are the repository's `motion_lab` groups: shade,
 home/task, push/pop, pages, on-screen keyboard, toasts/banners and widgets,
-respectively. They are local example labels, not an external classification.
+respectively.
 
 `MotionTokens` is `[motion]` turned into motion-system types. The value table and how to tune
 them are in §8.
 
 | Token | Type | What it moves |
 |---|---|---|
-| `reduce` | `bool` | When true every tween is 0 ms and springs settle instantly |
+| `reduce` | `bool` | Reduced-motion policy flag. `MotionTokens::from_config` makes configured tweens instant when enabled; directly supplied tokens retain their assigned field values |
 | `spring` | `Spring` | The default spring (`k`, `c`) |
 | `snap_ratio` · `fling_px_s` · `slop_px` | `f32` | Release distance and velocity thresholds, drag slop |
 | `tap` · `long_press` | `Duration` | Tap and long-press timing |
@@ -232,32 +237,32 @@ fn snappy() -> Theme {
 
 ### 1.5 Two things to watch
 
-- **Status bar icon size** is `Metrics::status_icon_size`: the status bar and the shade's
-  notification rows both draw at it. From config, `[status_bar] icon_size` pins it; with an
-  injected theme, the theme's value is used and the key is ignored with a warning.
+- **Status bar icon size** is `Metrics::status_icon_size`. From config, `[status_bar] icon_size`
+  pins it; an injected theme supplies its own value and the key is ignored with a warning.
+  Notification-row icon sizing is separate: its disc uses `components.shade.note_icon`
+  multiplied by `touch_target`, and its glyph is fitted inside that disc.
 - **The egui `Style`** comes from the theme too. `Theme::egui_style()` stops separating hover
   from press (touch has no hover), removes shadows, and redefines the five text sizes from
   `Metrics::type_scale` — 13/16/17/22/16 du in a bare `Theme::dark()`, resolved from the viewing
-  distance on a running shell (§1.2). egui's own widgets inside a screen get this style.
+  distance for a shell using metric specs (§1.2). An injected theme retains its assigned
+  type-scale values. egui's own widgets inside a screen get this style.
 
 ### 1.6 Widget metrics — `ComponentSpec`
 
 If §1.2's `Metrics` is what the **shell** divides the screen with, `Theme::components`
-(`ComponentMetrics`) is what a **single widget draws itself** with. Twenty-seven tokens in nine
-groups.
+(`ComponentMetrics`) holds component-specific spacing. Shared control geometry
+comes from `Theme::control` and `Metrics` (§1.7).
 
 | Group | Tokens | Default (du) |
 |---|---|---|
 | `toast` | `enter_offset` · `lift_step` · `stack_gap` · `pad_x` · `icon_gap` · `accent_w` | 24 · 8 · 16 · 16 · 12 · 3 |
 | `heads_up` | `pad` · `icon_gap` · `progress_h` | 16 · 12 · 4 |
-| `button` | `pad` · `icon_gap` · `ring` · `ring_stroke` | 12 · 8 · 24 · 3 |
-| `slider` | `label_gap` · `track_ratio` | 8 · 0.64 |
-| `switch` | `knob_inset` · `height` | 3 · `finger(0.6)` (floor 28.8) |
+| `slider` | `label_gap` | 8 — track thickness uses `control.slider_track` or `.thickness(..)` |
 | `list_row` | `pad` · `two_line_offset` · `chevron_w` | 16 · 11 · 20 |
-| `overview` | `card_gap` · `card_min_width` | 24 · `finger(3.0)` (floor 144) — the recent screens' cards are `0.6 ×` the content, never narrower than this ([03 §2.3](03-chrome.md#23-recent-screens-and-the-split)) |
+| `overview` | `card_gap` · `card_min_width` | 24 · `finger(3.0)` (floor 144) — the recent screens' cards are `0.6 ×` the content, subject to this minimum and the available content width ([03 §2.3](03-chrome.md#23-recent-screens-and-the-split)) |
 | `popover` | `max_width` · `caret` · `icon_gap` | 420 · 8 · 12 — a desktop icon's info popover: the widest it is drawn, how far it stands off the icon, the gap beside its icons ([03 §3.8](03-chrome.md#38-holding-an-icon-the-info-popover)) |
 | `status_bar` | `item_gap` · `user_dot` | 10 · 8 — the gap between two status items, and the diameter of the user level's colour dot. The bar's height, icon size and edge pad are `Metrics` (§1.2); these two are the bar's own |
-| `shade` | **nine multipliers** — separate table below | |
+| `shade` | Multipliers — separate table below | |
 
 The shade alone uses different units. It does not carry lengths but **multipliers on two axes**,
 so that a density change does not grow the icons while leaving the padding behind.
@@ -265,12 +270,13 @@ so that a density change does not grow the icons while leaving the padding behin
 | Axis | Multipliers | Defaults | Multiplied by |
 |---|---|---|---|
 | Visual | `pad` · `gap` · `card_pad` · `card_gap` · `radius` | 1.34 · 1.0 · 1.17 · 0.67 · 1.34 | `metrics.corner_radius` |
+| Visual (card reveal) | `card_corner` · `card_inset` · `card_drop` | 4.0 · 2.68 · 4.0 | `metrics.corner_radius` |
 | Finger | `tile_puck` · `note_icon` · `close` · `footer_button` | 0.8 · 0.62 · 0.72 · 0.82 | `metrics.touch_target` |
 
-Of the four finger-axis values only `tile_puck` is purely a drawing size — a tile's hit area is
-the whole cell, which is larger than the puck. `note_icon` is not pressable. `close` and
-`footer_button`, though, **have hit areas equal to their drawing**, so shrinking these shrinks
-what can be pressed.
+`tile_puck` and `note_icon` size graphics: the tile uses its cell as its hit area, and the
+notification icon is not a separate control. Dismiss and footer controls use separate hit
+rectangles that grow toward `metrics.touch_target`, subject to their available card/footer
+space; their drawn diameters are not their exact hit sizes.
 
 `ComponentSpec` changes these sizes without replacing a painter. For custom drawing,
 widget painters are available in §10.8 and notification painters in §10.2.
@@ -286,11 +292,11 @@ use fairing::{Shell, ShellConfig};
 
 let base = ComponentSpec::default();
 let spec = ComponentSpec {
-    // Button side padding as a physical 4 mm. On a panel whose density is known,
-    // that is the same size whatever the diagonal.
-    button: [Span::fixed(Dim::mm(4.0)), base.button[1], base.button[2], base.button[3]],
-    // A thicker track — a ratio against the thumb (`metrics.slider_thumb`), not a length.
-    slider_track_ratio: 0.85,
+    // Toast horizontal padding: an active reader of ComponentSpec geometry.
+    toast: [base.toast[0], base.toast[1], base.toast[2],
+            Span::fixed(Dim::mm(4.0)), base.toast[4], base.toast[5]],
+    // Space between a TouchSlider label and its track.
+    slider_label_gap: Span::fixed(Dim::mm(3.0)),
     ..base
 };
 let shell = Shell::builder(ShellConfig::default()).component_spec(spec).build(ctx)?;
@@ -298,17 +304,16 @@ let shell = Shell::builder(ShellConfig::default()).component_spec(spec).build(ct
 # Ok(()) }
 ```
 
-**Three rules.**
+**Resolution and control inputs.**
 
 - **Values are `Span`s.** Mix `Dim::du` · `Dim::mm` · `Dim::finger` freely and put a floor on
   them with `.min(..)`. They resolve against that screen's `Scale` every frame.
-- **Only the track thickness is a ratio.** `slider_track_ratio` is a multiple of
-  `metrics.slider_thumb`, not a length — exposed as a length it invites a big thumb on a
-  thread-thin track.
-- **Switch height is a drawing size.** The hit rect keeps the touch target regardless. Shrinking
-  this does not shrink what your finger can land on.
+- **Use current control inputs for built-in tracks and switches.** Set
+  `ControlSpec::slider_track` (or `TouchSlider::thickness`) for slider thickness. Switch geometry
+  uses `ControlSpec::mark_size` and its `ratios.switch_aspect` / `ratios.knob_ratio`.
+  These controls allocate touch space separately using the widget and theme metrics.
 
-`ComponentSpec::validate()` checks every one of them at the reference scale — negative or
+`ComponentSpec::validate()` checks every one of them at the reference scale — non-positive or
 non-finite is an `Error::Config`. It does not quietly draw a zero-thickness track.
 
 ### 1.7 Control and elevation specs
@@ -327,7 +332,7 @@ use fairing::{Shell, ShellConfig};
 
 fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
     Shell::builder(ShellConfig::default())
-        // An e-ink or 16-level panel dithers a soft shadow into rings: draw no height at all.
+        // Example for a display where soft shadows are unsuitable: disable elevation.
         .elevation_spec(ElevationSpec::flat())
         .build(ctx)
 }
@@ -339,9 +344,8 @@ Like the other two, they are left alone when a whole theme is injected (§1).
 
 ## 2. Changing only the colours with `[theme.palette]`
 
-Leaving metrics and motion alone and changing only colours is the most common request. Do not
-inject a theme for it; use config. It overlays whichever dark/light palette `[shell] theme`
-picked.
+To change colours while retaining metrics and motion, use `[theme.palette]`.
+It overlays whichever dark/light palette `[shell] theme` selected.
 
 ```toml
 [shell]
@@ -428,7 +432,7 @@ use fairing::{BarCx, ColorRole, Shell, ShellConfig};
 const DEVICE: &str = "LAB-7 CONTROL";
 
 fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
-    // Keeping the clock string buffer in the closure means no per-frame heap allocation.
+    // Reuse the clock string buffer's capacity between frames.
     let mut clock = String::new();
     Shell::builder(ShellConfig::default())
         .status_bar_painter(move |ui: &mut egui::Ui, bar: &mut BarCx<'_>| {
@@ -472,8 +476,10 @@ fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
 
 ### 3.4 A nav bar painter
 
-The painter takes item taps with its own widgets and asks the shell through `bar.cx.shell`. The
-shell re-checks the gate at that point.
+The painter owns its item widgets and must respect `BarItem::enabled` / `allowed`. It can
+issue commands through `bar.cx.shell`; launch commands check the target action or screen
+gate, but do not infer a separate custom item's gate from the painter's code. This example
+implements only back and home and configures only those two slots.
 
 ```rust
 use fairing::{BarCx, ColorRole, Shell, ShellConfig};
@@ -527,14 +533,17 @@ fn nav_bar_painter(ui: &mut egui::Ui, bar: &mut BarCx<'_>) {
 }
 
 fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
-    Shell::builder(ShellConfig::default())
+    let config = ShellConfig::default().configure(|c| {
+        c.nav_bar.items = vec!["back".into(), "home".into()];
+    });
+    Shell::builder(config)
         .nav_bar_painter(nav_bar_painter)
         .build(ctx)
 }
 ```
 
-`painter.text` allocates a string on every call. In real device code, cache the galley and only
-re-lay it out when the value changes — that is what the built-in bars do.
+`painter.text` converts its input to owned text for layout. Cache a reusable galley where
+profiling shows repeated formatting or layout cost; rebuild it when its inputs change.
 
 ---
 
@@ -549,7 +558,7 @@ pub struct SlotCx<'a> {
     pub icon: Rect,           // icon rect before the press scale (the A2 origin)
     pub pressed_icon: Rect,   // icon rect with the press scale applied
     pub slot: &'a IconSlot,   // id · label · icon · badge · gate · kind
-    pub scale: f32,           // press scale (1.0 → motion.press.scale)
+    pub scale: f32,           // press scale (1.0 → theme.motion.press_scale)
     pub pressed: bool,
     pub allowed: bool,        // passed its gate — false needs a padlock or a disabled look
     pub in_dock: bool,
@@ -560,8 +569,9 @@ pub struct SlotCx<'a> {
 }
 ```
 
-How an `allowed == false` cell looks is the painter's call. A cell that is `Visibility::Hidden`
-never reaches the painter at all.
+How an `allowed == false` cell looks is the painter's call when its denied presentation is
+`Visibility::Locked`. A denied cell with `Visibility::Hidden` is filtered out before the
+painter; once its gate passes, that same cell can be drawn.
 
 ```rust
 use fairing::icons::{IconColor, IconStyle};
@@ -613,10 +623,10 @@ fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
 }
 ```
 
-Taking `SlotCx` by value is the `SlotPainter` contract: it carries an `&mut IconSet`, so it
-cannot be taken by reference.
+`SlotPainter` takes `SlotCx` by value, so use that callback signature. The context carries
+a temporary `&mut IconSet` borrow for drawing during the call.
 
-To swap it at runtime use `shell.desktop_mut().set_slot_painter(..)`, and `has_slot_painter()`
+To swap it at runtime use `shell.set_desktop_slot_painter(..)`, and `has_slot_painter()`
 to ask whether one is installed.
 
 ---
@@ -651,15 +661,15 @@ fn grid_wallpaper(theme: &Theme) -> Wallpaper {
 
 fn install(shell: &mut Shell) {
     let wallpaper = grid_wallpaper(shell.theme());
-    shell.desktop_mut().set_wallpaper(wallpaper);
+    shell.set_wallpaper(wallpaper);
 }
 ```
 
-`rect` is the whole content rect. It is called every frame, so do not allocate in it — drawing
-lines directly, as above, is enough. On a machine that switches dark and light, the captured
+`rect` is the whole content rect. The callback runs when the wallpaper is drawn; cache reusable
+geometry if its construction is costly. On a machine that switches dark and light, the captured
 colours are frozen, so rebuild the wallpaper on the switch.
 
-The other four backgrounds (`Solid` · `Fixed` · `Gradient` · `Texture`) are in
+The wallpaper variants are listed in
 [03 Chrome §3.7](03-chrome.md#37-wallpaper).
 
 ---
@@ -671,32 +681,33 @@ The other four backgrounds (`Solid` · `Fixed` · `Gradient` · `Texture`) are i
 | What | How | Result |
 |---|---|---|
 | Status bar | `[status_bar] enabled = false` | No bar, and the content grows by that much. The top edge zone stays |
-| Status bar (per screen) | `ChromePolicy::status_bar = BarMode::Hide` | Hidden only while that screen is focused. With `allow_peek`, a pull still shows it |
+| Status bar (per screen) | `ChromePolicy::status_bar = BarMode::Hide` | Follows the focused screen; in split view both panes must request hiding. With `allow_peek`, a pull can reveal it |
 | Nav bar | `[nav_bar] enabled = false` | Going back is up to in-screen buttons (`cx.finish()`) or the edge gesture |
 | One nav item | Remove it from `[nav_bar] items` | The slot itself disappears |
 | Gesture back | `[nav_bar] back_edges = []` | Edge swipes no longer go back |
 | Dock | `[desktop] dock = []` and no `.dock()` declaration | No band is drawn and the grid grows |
 | Page indicator | Fit the icons on one page | With one page it gives its space back automatically |
-| Shade (at runtime) | Put the `overlay.open` gate at a higher level + `[status_bar] tap_opens_shade = false` | It does not open; only `UnlockRequested` fires |
+| Shade (at runtime) | Deny `overlay.open` for the intended sessions through the access policy; optionally disable `[status_bar] tap_opens_shade` | Denied entry leaves it closed and requests authentication; token routing can also emit `SessionRequested` |
 | Shade (at compile time) | Turn the `overlay` feature off | The `overlay` module, tiles and scrim all go |
 | Some shade tiles | Remove them from `[overlay] tiles` | |
 | OSK (per screen) | `ChromePolicy::osk = OskMode::Off` | For a screen with a hardware keyboard |
 | OSK (at compile time) | Turn the `osk` feature off | The `osk` module goes entirely |
 | All gestures | `[gesture] enabled = false` | No edge swipes, long presses or flings. **The emergency gesture stays** |
 | Heads-up banners | `[notify] heads_up = false` | Notifications only stack in the shade |
-| Animation | `[motion] reduce = true` | Every tween 0 ms, springs settle instantly |
+| Animation | `[motion] reduce = true` | Config-derived tweens have zero duration; built-in springs settle without intermediate motion |
 | Notifications themselves | Send none | There is no setting for it |
 
-Config sections for a subsystem turned off by feature are **parsed and ignored.** With `overlay`
-off, a config file containing `[overlay]` still parses. That is so one config file can drive
-builds with different feature combinations.
+Shared configuration sections remain deserialized and range-validated when their UI feature
+is off. For example, `[overlay] tile_columns = 0` is still rejected without `overlay`;
+disabling the renderer does not bypass those checks. Valid configurations can be shared
+across feature combinations.
 
 ### 6.2 Feature combinations
 
 | Feature | Default | On | Off |
 |---|---|---|---|
-| `mock` | on | `services::mock` (`MockClock` · `MockWifi` · `MockPower` …) | Examples and tests drop out of the build |
-| `overlay` | on | The `overlay` module, shade, tiles and scrim, `tile()` · `TileKind` · handling of `LaunchAction::OpenOverlay` | The shell does not know a shade exists |
+| `mock` | on | `services::mock` (`MockClock` · `MockWifi` · `MockPower` …) | Mock-dependent examples/tests are excluded; backend-independent tests and compatible examples remain |
+| `overlay` | on | The `overlay` module, shade, tiles and scrim, `tile()` · `TileKind` · handling of `LaunchAction::OpenOverlay` | The shade renderer is absent; `LaunchAction::OpenOverlay` remains available but logs without opening it |
 | `osk` | on | The `osk` module, the on-screen keyboard, `Shell::osk()` | `Layout.osk` is always `None`, `inset_bottom` always 0 |
 | `brand` | on | `fairing::brand` — the manta mark and the Abyss background | `[theme] preset` and the palettes stay; `wallpaper = "abyss"` falls back to the background colour, with a warning |
 | `settings` | on | The built-in settings screens and `settings::add_all` | No built-in settings screens; the setting keys and values are there either way |
@@ -725,7 +736,7 @@ backends.
 
 ## 7. Reading `examples/custom_chrome.rs`
 
-A working example that changes the whole shell without touching the crate. It puts §1 · §3 · §4 ·
+An example combining the theme, bar, cell and wallpaper hooks from §1 · §3 · §4 ·
 §5 of this page, and the two custom tile kinds from [03 §4.4c](03-chrome.md#44c-tiles-the-crate-has-no-kind-for), into one file.
 
 ```sh
@@ -735,7 +746,7 @@ cargo run -p fairing --features runner-x11 --example custom_chrome -- --size=102
 | Order in the file | Function | What it does | This page |
 |---|---|---|---|
 | 1 | `theme()` | Starts from `Theme::dark()` and overrides six colours and five metrics | §1.4 |
-| 2 | `config()` | A config literal. Status bar slots are `["status.clock", "status.wifi"]`, nav bar off, no dock, and `[overlay] tiles` mixes built-in ids with our own | §6.1 |
+| 2 | `config()` | Starts from `ShellConfig::default()` and updates fields through `configure`. Status bar slots are `["status.clock", "status.wifi"]`, nav bar off, no dock, and `[overlay] tiles` mixes built-in ids with our own | §6.1 |
 | 3 | `services()` | The mock backends (clock, power, Wi-Fi) | [06 Services](06-services.md) |
 | 4 | `build(ctx)` | Hangs the theme, services, status bar painter and slot painter on the builder, installs the wallpaper, then adds screens and tiles | §1 · §3 · §4 · §5 |
 | 5 | `status_bar_painter()` | Device name on the left, Wi-Fi strength and clock on the right. The closure owns the string buffer | §3.3 |
@@ -748,7 +759,7 @@ cargo run -p fairing --features runner-x11 --example custom_chrome -- --size=102
 
 The thing to watch while reading is **what the shell keeps doing.** Three painters and two
 foreign tiles later, the layout rects, gate decisions, hit testing and press detection, the
-A2/A3 transitions and the repaint policy are all still the shell's. The painters only paint.
+A2/A3 transitions and the repaint policy are all still the shell's. The hooks provide drawing while the shell retains that built-in interaction logic.
 
 ---
 
@@ -762,20 +773,22 @@ A2/A3 transitions and the repaint policy are all still the shell's. The painters
 cargo run -p fairing --features runner-x11 --example motion_lab -- --size=1024x600
 ```
 
-It puts every `[motion]` token on a slider and replays transitions on a loop while you pick
+It provides sliders for motion settings and replays transitions on a loop while you pick
 values.
 
 | On screen | What it does |
 |---|---|
 | Collapsible slider groups | Common · A2/A3 · A1 shade · A4 pages · A5 OSK · A6 toast/heads-up · A7 widgets |
 | `play loop` | Home → page round trip → icon zoom → shade open/close → push/pop, forever |
-| `export [motion]` | Prints the current values as `[motion]` TOML to the log (stderr). Paste it straight into a config file |
+| `export [motion]` | Prints the lab's represented settings as TOML to the log (stderr). This is a partial motion configuration; pane/overview and other unrepresented settings must be configured separately |
 | `shade` · `push child` · `toast` · `notify` · `home` · `hold 2 s` | Each transition once |
 | Frame graph, top right | The last 180 frame intervals (ms) with p50 and p95. The gridline is the 33 ms budget |
 
-Moving a slider calls `ShellHandle::set_motion(tokens)` and takes effect from the next frame; an
-animation already in flight is left alone. A bar over the 33 ms line means that motion is eating
-the frame budget.
+Moving a slider calls `ShellHandle::set_motion(tokens)`. If admitted, the command
+takes effect when a later logic/UI update reaches it within the command budget;
+this void helper drops rejection. Use `try_send(Command::SetMotion(tokens))` when
+admission must be observed. An animation already in flight is left alone. A bar over the 33 ms line records an interval above that reference budget;
+profiling is needed to identify whether rendering, scheduling or other work caused it.
 
 The same thing from code:
 
@@ -797,7 +810,7 @@ fn apply_snappy(handle: &ShellHandle) {
 
 | Key | Default | Meaning |
 |---|---|---|
-| `reduce` | `false` | True makes every tween 0 ms (§8.3) |
+| `reduce` | `false` | True zeroes config-derived tween durations (§8.3) |
 | `spring` | `{ k = 400, c = 40 }` | The default spring. `c = 2√k` is critical damping |
 | `snap_ratio` | `0.33` | Release distance threshold (0..=1) |
 | `fling_px_s` | `800.0` | Release velocity threshold (px/s) |
@@ -842,13 +855,15 @@ spring = { k = 500, c = 45 }
 reduce = true
 ```
 
-`reduce` makes every tween 0 ms and settles springs instantly. The state transitions themselves
-are unchanged — the shade still opens and closes, there are simply no frames in between.
+`reduce` zeroes the configured transition tweens and settles the built-in springs
+without intermediate motion. State changes still occur on host updates. Some status
+indicators use opacity pulses under reduced motion, and application drawing must
+handle the `reduce` flag where appropriate.
 
 | Where it is used | Why |
 |---|---|
-| Machines with an accessibility requirement | Users sensitive to motion |
-| Slow devices | Reclaiming frame budget |
+| Products offering reduced motion | Reduce transition movement; assess the complete UI against its accessibility requirements |
+| Devices where transition rendering is costly | Reduce frames spent on built-in transitions |
 | Headless tests | No waiting for transition frames |
 | Screenshot tours | No blurred intermediate frames |
 
@@ -859,8 +874,11 @@ to draw differently with and without animation, look at `cx.theme.motion.reduce`
 
 ## 9. Text and translations
 
-Every word the shell draws goes through `fairing::i18n::Strings`, and the words of your screens
-can too. **The English text is the key**: `cx.strings.get("Pump pressure")` returns the active
+Built-in UI labels use `fairing::i18n::Strings`; applications can use it for their
+own labels too. User-provided content and backend messages retain their supplied
+text.
+
+**The English text is the key**: `cx.strings.get("Pump pressure")` returns the active
 language's entry for it, or the text as written where the table has none. A word nobody
 translated reads as English, never as a blank.
 
@@ -931,15 +949,17 @@ fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
   digits, `{m}` and `{d}` are the plain numbers, and Korean writes `"{y}년 {m}월 {d}일"`. The
   12-hour clock is `"{t} AM"` and `"{t} PM"`, and Korean puts the half of the day first:
   `"오전 {t}"`.
-- Every built-in key, with its Korean, is in `crates/fairing/src/i18n/ko.rs`. A test keeps that
-  table whole: a word added to the shell with no Korean entry fails it.
+- The Korean table is in `crates/fairing/src/i18n/ko.rs`. A consistency test compares it
+  with literal `tr!` / `tr_key!` marks and the `labels` constants found by its source scanner.
+  Unmarked raw UI strings and arbitrary application labels are outside that scan.
 
 ### 9.3 Fonts
 
 egui's own fonts have no Hangul, so a Korean panel needs a font that has it, handed over with
-`ShellBuilder::fonts` ([09 §3](09-branding.md#3-type--half-of-branding-and-the-crate-carries-no-fonts)).
-The shell checks once per language: where no loaded font has the language's letters, it says so
-in the log rather than drawing boxes with no explanation.
+`ShellBuilder::fonts` ([09 §3](09-branding.md#3-type--font-installation)).
+The shell checks non-ASCII alphabetic characters present in the active translation table
+once per language and logs missing glyphs. This does not check every character that a user
+or backend might supply.
 
 ```rust
 use fairing::fonts::{FontSet, FontSource};
@@ -998,10 +1018,10 @@ narrower hooks, on two rungs of the override ladder:
 | `.gesture_handle_painter(..)` | 5 | — | Each gesture handle's strip, and the arrow while it is swiped ([03 §9.2](03-chrome.md#92-gesture-handles)) | The strips and where they go, which press is a handle's, the way, the reach and the rest, the gestures and what they run |
 | `GestureRegion::paint` | 5 | — | A gesture region of your own, drawn by its own trait ([03 §9.3](03-chrome.md#93-gesture-regions-of-your-own)) — with its rect and its touch | Where it may go (over a screen or the desktop), which press is its, its touch from the press to the release, the guard that keeps the press from what is under it |
 
-Three rules hold for every one of them.
+The layout hooks use the following conventions; hook-specific behavior follows below.
 
 - **A layout starts from the built-in placement.** It is handed the rects the shell would use and
-  changes only the ones it wants, so moving one piece is one line rather than a re-implementation.
+  changes only the ones it wants, so a callback can adjust selected rects.
   The rects are in a fixed order — the config's for items and tiles (the status bar's left,
   centre, right), reading order for keys, oldest first for toasts — and each context names them
   (`index_of`, `id`).
@@ -1158,7 +1178,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<Shell> {
   then the next), placed the built-in way. `OskKeyLayoutCx` names them — `key(i)` gives a key's
   row, place and `KeyDef`, `index_of(label)` finds one — and carries `panel` (the keyboard at its
   full height, where it is this frame: it slides up from below, so place keys relative to it) and
-  `face_index`. The layout runs for every face, so a key moved on the lowercase face is not moved
+  `face_index`. The layout receives the active face, so moving a key on the lowercase face does not move it
   on the symbols face unless the layout says so there too.
 - A key's hit area is its rect and half the gap round it, cut by the panel, wherever the layout
   puts it. Keep the rects apart: where two overlap, the one later in reading order takes the

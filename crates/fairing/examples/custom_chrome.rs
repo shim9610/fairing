@@ -1,4 +1,4 @@
-//! An example of **an integrator redrawing the whole shell without touching the crate**
+//! Ordinary-shell customization using status-bar, desktop-cell and wallpaper hooks
 //! (M2a). `cargo run -p fairing --features runner-x11 --example custom_chrome -- --size=1024x600`.
 //!
 //! What is changed here, and the hook for it:
@@ -14,8 +14,9 @@
 //! | A quick-settings tile (declared) | [`TileKind::Gauges`](fairing::overlay::TileKind::Gauges) — three hopper level gauges. **Only the row count, the names, the colours and whether they can be operated are written down; the crate does the drawing** |
 //! | A quick-settings tile (drawn) | [`overlay::tile_panel`](fairing::overlay::tile_panel) — an axis jog pad that fits no standard shape. The inside of the row is ours whole |
 //!
-//! What the shell goes on doing: the layout Rects, the gate decisions, the hit testing and press
-//! decisions, the A2/A3 transitions, the repaint policy. A painter **only draws**.
+//! The shell coordinates layout regions, gate decisions, dispatch, transitions and
+//! repaint requests. Input and painting use egui. The application supplies these
+//! drawing callbacks through ordinary-shell hooks.
 //!
 //! # Tour mode (`--tour <dir>`)
 //!
@@ -123,11 +124,8 @@ fn theme() -> Theme {
     theme
 }
 
-/// The chrome's sizes, **in the hand's units**: a bar three quarters of a finger, icons a finger
-/// across in cells of two and a third, a screen inset of three millimetres. Resolved against the
-/// panel's density and the finger policy by the shell, so a gloved finger or a denser panel
-/// gets the same chrome at the same physical size — where a block of `Metrics` literals (44,
-/// 132, 56, 20 du) gave one panel's sizes to every panel.
+/// Chrome dimensions in physical/finger units, resolved with the supplied panel
+/// metadata and size policy. Check the resulting geometry on the target panel.
 fn metrics() -> MetricsSpec {
     MetricsSpec {
         status_bar_height: Span::fixed(Dim::finger(0.75)).reanchored(),
@@ -198,7 +196,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
         .status_bar_painter(status_bar_painter())
         .slot_painter(slot_painter)
         .build(ctx)?;
-    shell.desktop_mut().set_wallpaper(wallpaper);
+    shell.set_wallpaper(wallpaper);
     add_screens(&mut shell);
     add_hopper_tile(&mut shell);
     add_jog_tile(&mut shell);
@@ -209,13 +207,9 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
 // The painters
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Draw the whole status bar. All the shell hands over is `bar.rect` (the layout), `bar.items()` (the
-/// item list with the gate decisions made) and `bar.cx` (the backend snapshots, the theme, the
-/// handle).
-///
-/// The clock string is overwritten in a buffer the closure holds, through
-/// [`WallTime::format_into`](fairing::services::WallTime::format_into), so no heap allocation is made
-/// per frame (the same method as the built-in status bar).
+/// Draw the example status bar from `BarCx` data.
+/// The clock uses a retained formatting buffer; other drawing and egui operations
+/// can still allocate.
 fn status_bar_painter() -> impl FnMut(&mut egui::Ui, &mut BarCx<'_>) {
     let mut clock = String::new();
     move |ui: &mut egui::Ui, bar: &mut BarCx<'_>| {
@@ -303,7 +297,7 @@ fn slot_painter(ui: &mut egui::Ui, slot: SlotCx<'_>) {
     let _ = slot
         .icons
         .paint(&painter, inner, &slot.slot.icon, &style, theme);
-    // The label goes below the badge, in the panel's language. (On a real device the galley would be cached as the built-in rendering does — the example keeps it simple.)
+    // Lay out the translated label below the badge using egui's text layout API.
     painter.text(
         egui::pos2(center.x, slot.cell.max.y - 14.0),
         egui::Align2::CENTER_CENTER,
@@ -343,7 +337,7 @@ fn grid_wallpaper(theme: &Theme) -> Wallpaper {
 // Slotting **something the crate knows nothing of** into the quick settings
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// A hopper's name · config key · colour · initial level (%). A concept only this device has, and the crate knows nothing of it.
+/// Example hopper data: name · config key · colour · initial level (%).
 const HOPPERS: [(&str, &str, ColorRole, i64); 3] = [
     ("Resin A", "hopper.a", ColorRole::Primary, 72),
     ("Resin B", "hopper.b", ColorRole::Warning, 41),
@@ -387,8 +381,8 @@ fn add_hopper_tile(shell: &mut fairing::Shell) {
     }
 }
 
-/// Something that fits no standard shape **takes a whole row** — here, an axis jog pad. The crate
-/// gives only the tile's shape and the open/close transition, and does not touch the inside of the row.
+/// An axis jog pad drawn in a custom tile panel. The shell supplies the panel and its
+/// open/close transition; the callback uses the supplied `Ui` and `Cx` to draw the controls.
 fn add_jog_tile(shell: &mut fairing::Shell) {
     // The tile body is `FnMut`, so the pad's position is a plain `mut` capture.
     let mut at = egui::vec2(0.0, 0.0);

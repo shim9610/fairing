@@ -186,7 +186,7 @@ impl NotificationCenter {
         self.items.is_empty()
     }
 
-    /// Newest first.
+    /// Stored order: newest source groups first, with entries grouped by source.
     pub fn iter(&self) -> impl Iterator<Item = &Notification> {
         self.items.iter()
     }

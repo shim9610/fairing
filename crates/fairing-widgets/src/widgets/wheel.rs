@@ -1,42 +1,14 @@
-//! `WheelPicker` — a drum of **ordered** values, the centre row chosen.
+//! `WheelPicker` selects an index from ordered values using a scrolling drum.
 //!
-//! # Why this is not a `Dropdown`
+//! It displays an odd number of rows, five by default, with the centre row selected.
+//! State is retained under the widget's egui ID. A drag moves the drum; release
+//! projects velocity, rounds to a row and settles with the configured animation.
+//! Tapping a non-centre row moves selection to it. `wrap` joins the ends.
 //!
-//! A list is for names: the operator reads it. A drum is for values with an order — an hour, a
-//! quantity, a year — that the operator *feels*: a flick moves further than a drag, the nearest
-//! row is always the one under the window, and the ends can be joined so 23 rolls into 00. A
-//! dropdown promises a tap on a row; a drum promises that letting go always lands on a row.
-//! Those are different contracts, which is why the dropdown survey put the wheel in
-//! its own widget rather than in [`Opener`](super::Opener). Apple's guidance is the same: a
-//! picker for ordered, predictable values, a table for a long list of names.
-//!
-//! # What it draws
-//!
-//! An odd number of rows, five by default, each a full control height so a gloved finger lands
-//! on one. The **window** — the centre row — wears the control face, and the rows fade with
-//! their distance from it, which is the drum's curvature drawn as ink rather than as geometry:
-//! egui has no cylinder, and a row that shrinks as it turns away would also move its own hit
-//! area. The value is set in the heading size, because a wheel is read from where the hand is,
-//! not from where the eye is, and centred, because the drum is a column.
-//!
-//! # How it moves
-//!
-//! The drum's position is an [`Animated`] value in rows, kept in egui's own memory under the
-//! widget's id, so a closure screen gets it too. A drag follows the finger 1:1; a release
-//! projects the finger's velocity `FLING_SECS` ahead, rounds to the nearest row and settles
-//! there on the theme's spring, with the settle decision scaled from pixels into rows. A tap on
-//! a row that is not the centre turns the drum to it over `motion.switch`, which is what a
-//! finger that missed the window meant. Without `wrap` the drum stops at its ends; with it the
-//! position is unbounded and the row is the position modulo the count.
-//!
-//! The chosen index is **the row under the window right now**, so `changed()` fires as the drum
-//! passes each row and not only when it settles — a clock that ticks as the hour wheel turns
-//! beats one that jumps when it stops.
-//!
-//! A value the **caller** sets is the other way round: the drum turns to it (the short way on a
-//! joined drum) and the value stays what the caller wrote, with no `changed()` for the rows
-//! the turn passes. An index past the end is pulled onto the drum — the last row, or the same
-//! row modulo the count when joined — and that correction is reported as a change.
+//! During user interaction, `changed()` reports rows passed by the centre window,
+//! not just the final settled row. A caller-supplied index animates toward that
+//! value without reporting intermediate rows as user changes. Out-of-range indices
+//! are normalized and the correction is reported as a change.
 
 use super::{WheelLook, WheelRow};
 use crate::cx::WidgetCx as Cx;

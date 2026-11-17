@@ -53,14 +53,14 @@ macro_rules! protected_contract {
     (screen $name:ident($($arg:ident: $ty:ty),*)) => {
         impl ScreenHandle {
             pub(crate) fn $name(&mut self, $($arg:$ty,)* cx:&mut Cx<'_>) {
-                self.invoke(cx, |body,cx| body.$name($($arg,)*cx));
+                self.storage.$name(&self.requirement,$($arg,)*cx);
             }
         }
     };
     (screen $name:ident() -> $result:ty, $denied:expr) => {
         impl ScreenHandle {
             pub(crate) fn $name(&mut self,cx:&mut Cx<'_>)->$result {
-                self.invoke(cx, |body,cx| body.$name(cx)).unwrap_or($denied)
+                self.storage.$name(&self.requirement,cx)
             }
         }
     };

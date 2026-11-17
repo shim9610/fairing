@@ -1,30 +1,9 @@
-//! The dimension spec in physical units.
+//! Configurable size specifications resolved into [`Metrics`].
 //!
-//! [`Metrics`](super::Metrics) keeps its `f32` fields — none of the 71 places inside the crate
-//! that read `metrics.*` change, and no branch appears in the paint loop. What changes is **how
-//! those values are obtained**: today they were logical-pixel constants, and now they are
-//! [`Span`]s resolved with the frame's [`Scale`].
-//!
-//! # Why only these fields
-//!
-//! Dimensions split three ways.
-//!
-//! - **Those that must scale with the finger** — touch targets, bar thickness, icon cells, the
-//!   dock. They use `Dim::finger`. With gloves on, they have to grow.
-//! - **Those that must keep a physical size** — status bar text and icons, label text. They use
-//!   `Dim::mm`. Unrelated to the finger, but they are only legible if they are the same physical
-//!   size at 7 inches and at 24.
-//! - **Those relative to the field of view** — corner radii, padding, stroke widths. They stay
-//!   `du`. The density correction (`ppp`) is enough, and pinning them physically makes them look
-//!   fussy on a large screen.
-//!
-//! The third group keeps the values from [`Metrics::default`](super::Metrics::default).
-//!
-//! # Why there are floors
-//!
-//! Every `Span` has a `du` floor. It stops the physical terms going absurdly small on a panel
-//! whose density is unknown (`ScaleConfidence::Assumed`), and at the same time holds them
-//! **close to today's render**.
+//! [`Span`] values combine text-relative, finger-relative, physical, logical and
+//! pixel-based dimensions. Resolution uses the frame's [`Scale`]. du floors retain
+//! fallback sizes when physical density is unknown. Resolution and validation check
+//! numeric constraints; target sizes and readability require on-device review.
 
 use super::Metrics;
 use crate::unit::{Dim, Eye, Free, Hand, Rigid, Scale, Span};
@@ -44,11 +23,10 @@ use crate::Result;
 ///     egui::vec2(800.0, 480.0),
 /// );
 /// let m = MetricsSpec::default().resolve(&scale);
-/// // The default is a bare finger (9 mm), so the touch target is a physical 9 mm.
+/// // Resolve the default 9 mm finger parameter using the declared panel dimensions.
 /// assert!((scale.du_to_mm(m.touch_target) - 9.0).abs() < 0.5);
 /// ```
-// No `Copy` is attached — it is 14 `Span`s, so 1,180 bytes. Passed by value, clippy's
-// `large_types_passed_by_value` makes a fair point. The answer is `&self`.
+// Resolution borrows this specification rather than copying its collection of spans.
 ///
 /// **It carries no `#[non_exhaustive]`** — it is a struct the integrator builds, and with the
 /// attribute `..MetricsSpec::default()` would not compile outside the crate (see the same note
@@ -83,17 +61,12 @@ pub struct MetricsSpec {
     pub corner_radius: Span<Eye>,
     /// A control's corner radius.
     pub control_radius: Span<Eye>,
-    /// Where a row's or a card's content starts, measured in from its edge.
-    ///
-    /// It is here rather than left at its default because it is the token every row-like thing now
-    /// shares, and a panel that scales its rows has to scale the inset with them or the text drifts
-    /// towards the edge. At adoption step 1 it carries only its `du` base, so nothing moves yet.
+    /// Content inset measured inward from a row or card edge.
     pub content_inset: Span<Eye>,
     /// **A card's inner padding** — the gap between a card's edge and the row inside it.
     ///
-    /// It was `row_height × 0.10`, a bare multiplier inside `layout::group_with`, which put the one
-    /// number the concentric-corner rule needs out of reach of the theme. The value is unchanged:
-    /// `finger(0.10) + du(0.8)` is exactly that product written out.
+    /// The default uses `text(0.3) + du(0.8)` with a 5.6 du floor, independently of
+    /// the row's finger-relative height. Container/control radii are configured separately.
     pub card_pad: Span<Eye>,
     /// The widget height: one touch target, like a row.
     pub widget_height: Span<Hand>,
@@ -101,11 +74,7 @@ pub struct MetricsSpec {
     pub desktop_label_size: Span<Rigid>,
     /// The quick-settings tile size.
     pub tile_size: Span<Hand>,
-    /// The slider thumb's diameter.
-    ///
-    /// It is dragged with a finger, so it belongs with the touch dimensions and not with the
-    /// visual ones. Fixed at 28 du it was 4.4 mm — right for the Material-sized hand these numbers
-    /// were drawn for, and visibly under-scale beside a gloved 13 mm target.
+    /// Slider-thumb diameter, configured through the touch-size specification.
     pub slider_thumb: Span<Hand>,
     /// The notification row height.
     pub notification_row_height: Span<Hand>,
@@ -118,25 +87,11 @@ pub struct MetricsSpec {
     /// **`None` lifts the cap**: the keyboard is the `height_ratio` share alone again, above its
     /// floor. It resolves to `f32::INFINITY` in [`Metrics::osk_max_key`].
     pub osk_max_key: Option<Span<Hand>>,
-    /// The five text sizes (`small` · `body` · `button` · `heading` · `monospace`).
+    /// Five text sizes (`small`, `body`, `button`, `heading`, `monospace`).
     ///
-    /// # Why these track the viewing distance
-    ///
-    /// Written as multiples of [`Dim::text`](crate::unit::Dim::text), so one body em is `text(1.0)`
-    /// by definition and the other four say their ratio to it out loud. The em itself comes from
-    /// [`ScalePolicy::viewing_distance_mm`](crate::unit::ScalePolicy::viewing_distance_mm): text is
-    /// read, and how big a thing has to be to be read is a fact about **distance**, not about hands.
-    /// At the default hand-held distance the body em is 3.13 mm, a phone's.
-    ///
-    /// They used to be `Dim::finger` fractions, with the finger standing in for the viewing distance
-    /// because there was no knob for the eye. Like every proxy it broke the first time the two came
-    /// apart: a panel read standing at a metre had to state its type scale directly, and every
-    /// length still written in finger terms stopped following it. The hand and the eye are separate
-    /// knobs now: a gloved policy grows the targets and leaves the text alone, and a standing kiosk
-    /// raises the distance and the text grows with everything sized in `text` beside it.
-    ///
-    /// The ratios 0.811 / 1 / 1.063 / 1.374 / 1 are the shipped scale's shape. Each keeps a `du`
-    /// floor so a panel of unknown density still reads.
+    /// Defaults use `Dim::text` multiples derived from viewing distance, independently
+    /// of finger-size policy, with du floors when density is unknown. Ratios are
+    /// 0.811 / 1 / 1.063 / 1.374 / 1. Check readability on the target product.
     pub type_scale: [Span<Eye>; 5],
 }
 
@@ -191,18 +146,11 @@ impl Default for MetricsSpec {
             // concentric rule is `inner = outer - gap` and the gap is now text. The fractions are
             // the old finger ones over the body's 0.334, so nothing moves.
             corner_radius: Span::fixed(Dim::text(0.7485)).min(Dim::du(12.0)),
-            // **The concentric rule, as a token.** `inner = outer − gap`: a control inside a card
-            // takes the card's radius less the card's padding, so the two curves share a centre and
-            // the gap between them stays one thickness all the way round. Apple builds it into the
-            // API (`ConcentricRectangle`, `.concentric(minimum:)`); Windows 11 ships the same idea
-            // as two tiers, 8 px for containers and 4 px for in-page controls.
-            //
-            // card_radius = corner_radius × card_radius_ratio = finger(0.25) × 1.6 = finger(0.40),
-            // card_pad    = finger(0.10) + du(0.8),
-            // so concentric = finger(0.30) − du(0.8). A `Span` cannot carry the negative term, and
-            // it does not need to: `finger(0.30)` lands a flat 0.8 du (0.13 mm) over concentric at
-            // every finger size, and the references say a hair more than the maths reads better
-            // than a hair less. `metrics_are_concentric` holds it to within 1 du.
+            // Aim for control radius ≈ card radius − card padding. Before the du floors:
+            // card radius = text(0.7485) × 1.6 = text(1.1976),
+            // card padding = text(0.3) + du(0.8), and control radius = text(0.8982).
+            // The current coefficients and floors are checked within 1 du on the
+            // reference density/finger-policy fixtures by metrics_are_concentric.
             control_radius: Span::fixed(Dim::text(0.8982)).min(Dim::du(14.0)),
             card_pad: Span::fixed(Dim::text(0.3) + Dim::du(0.8)).min(Dim::du(5.6)),
             widget_height: Span::fixed(Dim::finger(1.0)).min(Dim::du(48.0)),
@@ -230,35 +178,29 @@ impl Default for MetricsSpec {
     }
 }
 
-/// **The largest a text token may resolve to**, in du at the base scale.
+/// Maximum text-token size accepted at the base scale, in du.
 ///
-/// Derived rather than chosen. epaint refuses an atlas narrower than 1024 px
-/// (`TextureAtlas::new`'s own assert), so 1024 is the narrowest atlas that can exist, and
-/// `TextureAtlas::allocate` asserts every glyph fits the atlas's width. This crate clamps
-/// `pixels_per_point` to `ScalePolicy::ppp_range`, 8.0 at the top by default, and a glyph is at
-/// most about its font size wide. 1024 / 8 = 128 du is therefore the size that is still safe at the
-/// worst permitted density — and 128 du is around 20 mm of type, far past any real interface.
-///
-/// Raising `ppp_range` past 8.0 lowers the real ceiling proportionally; the check here stays at the
-/// default policy's, which is the one a spec is written against.
+/// The default limit is 128 du, based on a 1024 px minimum atlas width and the
+/// default maximum scale of eight pixels per point. This numeric validation limit
+/// does not parse fonts or bound every glyph. A higher `ppp_range` can require
+/// a lower product-specific text limit.
 const TEXT_CEILING_DU: f32 = 128.0;
 
 impl MetricsSpec {
-    /// The spec that reproduces today's render exactly. Every term is `du`, so it is
-    /// scale-independent.
-    ///
-    /// It is the switch for telling "is this the dimensions or not" apart during the migration —
-    /// with it, the result has to be pixel-identical to before M2b.
+    /// Construct logical-unit terms from the default values for fields represented
+    /// by this specification. Fields outside the specification resolve to defaults.
     #[must_use]
     pub fn legacy_du() -> Self {
         Self::from_metrics(&Metrics::default())
     }
 
-    /// The spec that reproduces **these** metrics exactly, every term in `du`.
+    /// Copy fields represented by this specification into logical-unit terms.
+    /// Fields not represented by `MetricsSpec` are not copied; [`Self::resolve`]
+    /// fills those from [`Metrics::default`]. Numeric resolution still applies
+    /// the span rules, including non-finite-value fallback.
     ///
-    /// `fairing_widgets::Shell::metrics_spec_mut` seeds itself with this where the
-    /// shell was built without a spec, so a run-time change has a source of truth to be written on
-    /// rather than being overwritten by the next frame's resolve.
+    /// `fairing::Shell::metrics_spec` uses this to seed an editable specification
+    /// when the shell was built without one.
     #[must_use]
     pub fn from_metrics(d: &Metrics) -> Self {
         // **Every one of these is `pinned`, and that is the point of the function.** It exists to
@@ -383,14 +325,14 @@ impl MetricsSpec {
         }
         for (name, span) in all {
             span.validate(name)?;
-            // **A text token also has a ceiling**, because past it epaint stops being a library and
-            // becomes an abort: `TextureAtlas::allocate` asserts a glyph is no wider than the
-            // atlas, and a mis-typed `type_scale` is the ordinary way to get there.
+            // Reject oversized text tokens at the reference scale. epaint asserts when a
+            // rasterized glyph exceeds its atlas width; this numeric limit does not parse
+            // fonts or prove that every glyph fits at every product scale.
             if name.starts_with("type_scale") || name.ends_with("text_size") {
                 let size = span.resolve(&Scale::identity());
                 if size > TEXT_CEILING_DU {
                     return Err(crate::Error::Config(format!(
-                        "{name} resolves to {size} du at the base scale, above the                          {TEXT_CEILING_DU} du ceiling — a glyph that size cannot be allocated in                          the font atlas and epaint would abort rather than report it"
+                        "{name} resolves to {size} du at the base scale, above the {TEXT_CEILING_DU} du text-size ceiling"
                     )));
                 }
             }
@@ -416,11 +358,8 @@ mod tests {
         )
     }
 
-    /// **A mis-typed text token is an error from `build`, not an abort inside epaint.**
-    ///
-    /// Without the ceiling this spec validates cleanly and the process dies later, in
-    /// `TextureAtlas::allocate`, with a message about texture atlases that names nothing the
-    /// integrator wrote.
+    /// Reject the fixture's oversized text token during specification validation.
+    /// This exercises the reference-scale ceiling, not font parsing or every atlas allocation.
     #[test]
     fn a_text_token_past_the_atlas_ceiling_is_reported() {
         let spec = MetricsSpec {
@@ -481,8 +420,8 @@ mod tests {
         }
     }
 
-    /// The touch target is **the same physical size** on a 7-inch 800×480 and a 15.6-inch
-    /// 1920×1080. Today both are 48 logical px, so the physical sizes differ by more than 2×.
+    /// Resolve the configured 13 mm touch target on the two declared panel fixtures.
+    /// Compare physical millimetres rather than assuming a fixed logical size.
     #[test]
     fn the_touch_target_is_the_same_physical_size_on_both_panels() {
         // 7" 800×480 = 154 × 86 mm → 5.19 px/mm
@@ -659,9 +598,9 @@ mod scale_tests {
     /// gap between them keeps one thickness the whole way round. Apple ships the rule as an API
     /// (`ConcentricRectangle`, `.concentric(minimum:)`); Windows 11 ships it as two tiers.
     ///
-    /// The tolerance is one `du`: a `Span` cannot carry the negative term the exact expression
-    /// needs, so the shipped `finger(0.30)` sits a flat 0.8 du over concentric at every finger
-    /// size - the side the references say to err on.
+    /// The tolerance is one du for the sampled density/finger-policy combinations.
+    /// The default text-relative coefficients and du floors approximate the
+    /// subtraction rather than expressing a negative term in a `Span`.
     ///
     /// What this catches is what it was written for: the card radius and the control radius were
     /// two unrelated numbers in two files, the layout multiplying `corner_radius` by 2.8 of its own

@@ -46,8 +46,8 @@ pub(crate) const fn display_skip(retained: usize, limit: usize) -> usize {
 
 /// N inline display samples. Full storage overwrites the oldest sample.
 /// There is no heap allocation, overflow buffer or hidden retry queue.
-/// T is Copy so retained samples cannot own a destructor/heap allocation.
-/// Borrowed data inside T remains owned by its caller.
+/// T is Copy, so retained samples have no destructor. References or handles inside
+/// T may refer to externally allocated resources managed by the caller.
 ///
 /// Large N requires suitably sized caller stack/static storage.
 /// ```

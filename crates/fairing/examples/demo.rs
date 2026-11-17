@@ -11,8 +11,8 @@
 //!
 //! It makes its screenshots by itself — one per file named in [`PLAN`]. It sets the state up through the shell API
 //! (`Shell::launch` / `back` / `home`) and **a synthetic finger** (`common::SyntheticInput` — it puts
-//! pointer events into the next pass's `RawInput`, as the headless harness does), sends an
-//! `egui::ViewportCommand::Screenshot` at the appointed moments, and writes the `ColorImage` that
+//! pointer events into the next pass's `RawInput`, as the headless harness does), sends a
+//! screenshot request through `Context::request_screenshot` at the appointed moments, and writes the `ColorImage` that
 //! comes back through the screenshot callback out as a PNG. A mid-transition frame is captured by
 //! reading the transition's progress `t` every frame and taking **the frame closest** to the target,
 //! and a mid-gesture frame (the shade pull, the page swipe, back) is captured with the finger still
@@ -24,8 +24,8 @@
 //! `10b-shade-slider` (a Slider tile expanded — the icon comes down from the tile to the left of the
 //! row) · `10c-shade-swipe` (a notification row being pushed left — the space revealed marks it as
 //! being thrown away) · `11-osk` (the `TextEdit` screen on the English qwerty, with the inset
-//! applied) · `11a-osk-compose` (switched to dubeolsik, mid-composition — `ㅎ`+`ㅏ` with the active
-//! underline) · `11b-osk-latin` (back on the qwerty, the syllable left in the field) ·
+//! applied) · `11a-osk-compose` (switched to dubeolsik, after `ㅎ`+`ㅏ`, with the current syllable
+//! committed into the field) · `11b-osk-latin` (back on the qwerty, the syllable left in the field) ·
 //! `11c-osk-password` (a password field typed into, masked, with its eye) ·
 //! `11d-osk-password-shown` (the eye tapped: the text shows and the keyboard stays) ·
 //! `12-toast` (two toasts plus a heads-up) · `13-page-swipe-mid` (a two-page desktop) ·
@@ -532,22 +532,11 @@ fn main() -> fairing::Result<()> {
 /// The demo's config. The headless regression test reads the same file (`tests/m1_headless.rs`).
 const CONFIG: &str = include_str!("demo.toml");
 
-/// The demo's default wallpaper — **the original artwork**.
+/// Wallpaper assets embedded in the demo executable.
 ///
-/// The procedural Abyss (`--wallpaper=abyss`) is a code approximation of the same picture and is much
-/// shallower in detail. The demo has to show how the brand actually looks, so the original is laid
-/// down by default. It is baked into the executable, so no assets need loading onto the device.
-///
-/// **A different plate is prepared for each aspect ratio.** Stretching a landscape original onto a
-/// portrait panel with `cover` crops the manta enormously and ruins the picture whole (measured).
-/// Which plate to choose is **the integrator's judgement**, so it happens here rather than in the
-/// crate — it is the problem guide 09 §2.1 handles as "how many plates do I need?".
-/// **The light column is the palette's other half**. A texture follows nothing on its
-/// own, so a shell switching to its light palette at dusk would keep the dark painting under a pale
-/// UI. Only the landscape plate has a light twin so far; the rest pair with a flat background,
-/// which is a pair like any other — a painting at night, a plain colour by day.
-/// One row of [`WALLPAPERS`]: the aspect ratio's upper bound, the dark plate, and the light twin
-/// where one exists.
+/// The example selects an asset by aspect ratio. Landscape has a light counterpart;
+/// other aspects use a flat background for the light palette. `--wallpaper` can
+/// select a procedural or application-provided alternative.
 fn default_wallpaper(ctx: &egui::Context) -> Option<fairing::desktop::Wallpaper> {
     if wallpaper_arg().is_some() {
         return None;
@@ -571,7 +560,7 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
     apply_legibility(&mut shell);
 
     // The scenario thread: it takes the Wi-Fi strength round 4 → 0 → 4 every 4 seconds. It sends
-    // through the backend channel (`MockControl`) and wakes the UI with `Waker::wake` — no locks.
+    // through the backend channel (`MockControl`) and requests an update with `Waker::wake`.
     let waker = shell.handle().waker().clone();
     std::thread::spawn(move || {
         let mut strength = 4u8;
@@ -603,25 +592,18 @@ fn build(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
     }
     if let Some(placement) = dock_placement_arg() {
         log::info!("dock placement {placement:?}");
-        shell.desktop_mut().set_dock_placement(placement);
+        shell.set_dock_placement(placement);
     }
     add_hidden_entries(&mut shell);
     Ok(shell)
 }
 
-/// The label legibility correction (guide 09 §2.2).
+/// Label-legibility treatment selected by the demo.
 ///
-/// On the original wallpaper the manta's **white belly passes through the middle of the icon grid** —
-/// that part alone cannot keep §2.2's "dark and low-contrast" requirement. Rather than redrawing the
-/// wallpaper, the integrator-side prescription is used.
-///
-/// **`veil` is the default here.** `shadow` brings the icons back too, but the "Widgets" label right
-/// over the white belly was still weak (measured). White text on a white ground is not saved by one
-/// layer of shadow. The veil flattens the picture but saves the whole grid for certain, and it suits
-/// the deep-sea theme — `--legibility=shadow|none` lets you try the others.
-///
-/// It is turned off for flat and procedural wallpapers (`--wallpaper=background|abyss`), where it is
-/// not needed — there is no reason to fog a well-authored background.
+/// The default veil tints the raster background under the icon grid.
+/// `--legibility=shadow|none` selects alternatives. Flat and procedural backgrounds
+/// disable this correction. Inspect the composited labels after changing assets
+/// or palettes.
 fn apply_legibility(shell: &mut fairing::Shell) {
     use fairing::desktop::LabelLegibility;
     let raster = wallpaper_arg().is_none_or(|name| name.starts_with("file:"));
@@ -631,7 +613,7 @@ fn apply_legibility(shell: &mut fairing::Shell) {
         LabelLegibility::None
     });
     log::info!("label legibility {}", mode.as_str());
-    shell.desktop_mut().set_legibility(mode);
+    shell.set_desktop_legibility(mode);
 }
 
 /// `--legibility=none|shadow|veil` — the label legibility correction (guide 09 §2.2).
@@ -643,13 +625,8 @@ fn legibility_arg() -> Option<fairing::desktop::LabelLegibility> {
     })
 }
 
-/// The built-in settings screens. **One line attaches all eleven.**
-///
-/// The demo's Mock backends offer Wi-Fi, Bluetooth, power, the clock and the display, so those five
-/// screens are registered and network and accounts, having no backend, drop out by themselves.
-///
-/// The colours are untouched — the settings screens are all role colours, so `--preset=abyss` has
-/// them follow the deep-sea palette as they are (guide 09 §8).
+/// Register the built-in settings screens supported by the demo backends.
+/// Desktop icons are registered separately by the demo.
 fn add_settings(shell: &mut fairing::Shell) {
     use fairing::settings::{add_all, SettingsConfig};
     // The desktop icons are turned off, since the demo lays out its own grid — only the screens are registered.
@@ -685,7 +662,7 @@ fn add_hidden_entries(shell: &mut fairing::Shell) {
                         ui,
                         cx,
                         "Opened through a hidden entry point",
-                        Some("A hidden entry point - customers never get this far"),
+                        Some("The default demo allows viewers here; hidden entry points do not replace authorization"),
                         Some(ColorRole::Warning),
                     );
                     layout::section(ui, cx, "Session");
@@ -930,9 +907,8 @@ fn add_screens(shell: &mut fairing::Shell) {
     );
     shell.add(
         screen("fullscreen", |ui: &mut egui::Ui, cx: &mut Cx| {
-            // With the chrome hidden whole, **the screen** provides the way back — the pinned bottom
-            // bar is that place. A button tacked onto the end of a list has to be scrolled to, and on a
-            // device that is another way of saying "there is no way back".
+            // With shell chrome hidden, use a pinned bottom bar for Back rather than
+            // placing it after scrollable content.
             layout::action_bar(
                 ui,
                 cx,
@@ -990,9 +966,7 @@ fn add_screens(shell: &mut fairing::Shell) {
                     "The desktop icon for this screen is neither an SVG nor a glyph \
                      - it is a draw callback registered with `register_icon_painter`.",
                 );
-                // `Outlined` — the box holds a drawing and nothing else, so the drawing should be
-                // the only thing in it with weight. A filled card would put a grey slab behind
-                // three grey rings.
+                // Use an outlined group around the icon samples.
                 layout::section_card_with(
                     ui,
                     cx,
@@ -1405,9 +1379,8 @@ fn add_widgets_screen(shell: &mut fairing::Shell) {
                 layout::note(
                     ui,
                     cx,
-                    "Tapping anywhere on the row toggles it - if only the switch \
-                     were the touch target, a gloved hand would keep missing. The \
-                     slider thumb grows 1.3x while you hold it.",
+                    "Tap the row or the switch to toggle it. The default slider \
+                     paints its press feedback on the track.",
                 );
 
                 // **The rest of the control set, on a screen.** `Checkbox` and `SegmentedControl`
@@ -1501,7 +1474,7 @@ struct Picks {
     device: usize,
 }
 
-/// `dropdowns`: the five closed forms of `Dropdown` and its four ways of opening.
+/// `dropdowns`: examples of configurable Dropdown triggers and openers.
 fn add_dropdowns_screen(shell: &mut fairing::Shell) {
     let mut picks = Picks {
         input: 1,
@@ -1534,10 +1507,9 @@ fn add_dropdowns_screen(shell: &mut fairing::Shell) {
                 layout::note(
                     ui,
                     cx,
-                    "The count picks the form: up to four is a segmented control, five to \
-                     twelve a list, short symbols a gloved hand picks go in a grid, a phone's \
-                     habit is the sheet, and past twelve you search: the trigger itself becomes \
-                     the field, and the page keeps it clear of the keyboard.",
+                    "These examples select each presentation explicitly: an anchored list, \
+                     a grid, a bottom sheet or search. Choose the presentation for your \
+                     options when building the dropdown.",
                 );
                 layout::section(ui, cx, "Ordered values");
                 layout::group_with(ui, cx, layout::Deco::new().pad_content(), |ui, cx| {
@@ -2263,8 +2235,7 @@ const PLAN: &[Act] = &[
     Act::Settle,
     Act::Wait(4),
     Act::Shot("25b-widgets-choice.png"),
-    // The Expandable card and the accordion sit at the end of the page: two dead-stop scrolls
-    // reach it, and the page's end is where it always lands.
+    // Scroll to the page end to reach the Expandable card and accordion.
     Act::Press(Spot::Page(0.5, 0.87)),
     Act::DragTo {
         to: Spot::Page(0.5, 0.02),
@@ -2611,7 +2582,7 @@ fn build_tour(ctx: &egui::Context) -> fairing::Result<fairing::Shell> {
     }
     if let Some(placement) = dock_placement_arg() {
         log::info!("dock placement {placement:?}");
-        shell.desktop_mut().set_dock_placement(placement);
+        shell.set_dock_placement(placement);
     }
     Ok(shell)
 }
@@ -2649,10 +2620,10 @@ fn panel_scale(builder: fairing::ShellBuilder) -> fairing::ShellBuilder {
 
 /// `--wallpaper=NAME` — the wallpaper (`abyss` · a role name · `#RRGGBB` · `file:<path>`).
 ///
-/// `file:` is read only with feature `raster` on:
+/// The example installs `common::image_loader` for `file:` paths:
 ///
 /// ```text
-/// cargo run --example demo --features runner,mock,raster -- ///     --wallpaper=file:$PWD/assets/brand/abyss-landscape.webp
+/// cargo run -p fairing --example demo --features runner-x11,mock -- --wallpaper=file:$PWD/assets/brand/abyss-landscape.webp
 /// ```
 fn wallpaper_arg() -> Option<String> {
     std::env::args().find_map(|a| a.strip_prefix("--wallpaper=").map(str::to_owned))
@@ -2773,22 +2744,23 @@ fn status_labels() -> bool {
 /// Give the status bar items captions, text sizes and minimum widths.
 fn apply_status_labels(shell: &mut fairing::Shell) {
     use fairing::chrome::LabelPos;
-    let bar = shell.status_bar_mut();
     for (id, label) in [
         ("status.wifi", "Network"),
         ("status.bluetooth", "Bluetooth"),
         ("status.battery", "Power"),
         ("status.notifications", "Notification"),
     ] {
-        if let Some(spec) = bar.spec_mut(id) {
+        if let Some(mut spec) = shell.status_item_spec(id) {
             spec.label = Some(label.to_owned());
             spec.label_pos = LabelPos::Below;
             spec.pad_x = Some(6.0);
+            shell.set_status_item_spec(id, spec);
         }
     }
     // The clock takes a larger size rather than a caption. A minimum width keeps its place from shifting as the value wobbles.
-    if let Some(spec) = bar.spec_mut("status.clock") {
+    if let Some(mut spec) = shell.status_item_spec("status.clock") {
         spec.text_size = Some(22.0);
         spec.min_width = Some(84.0);
+        shell.set_status_item_spec("status.clock", spec);
     }
 }

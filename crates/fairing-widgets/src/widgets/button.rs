@@ -1,39 +1,9 @@
-//! `BigButton` — the touch button: one filled kind, two outlined ones, and an optional
-//! long-press ring (control vocabulary).
+//! `BigButton` is a text button with an optional icon and long-press interaction.
 //!
-//! # Why only `Primary` is filled
-//!
-//! A filled face is the loudest thing a screen can put in front of an operator, so exactly one
-//! kind gets it. [`ButtonKind::Normal`] and [`ButtonKind::Danger`] are the same silhouette with an
-//! edge instead of a fill, which is a *fill versus no fill* difference — it survives greyscale and
-//! it survives glare, where "the blue one versus the red one" survives neither.
-//!
-//! For `Danger` that is not a preference, it is arithmetic. On the darkest shipped palette
-//! `surface` has a relative luminance of 0.00706, so a `danger` light enough to be read **as text
-//! on a card** (4.5 : 1 wants L ≥ 0.2068) can never also be dark enough to **carry a white label**
-//! (4.5 : 1 wants L ≤ 0.1833). The two constraints do not overlap, and the way out that was
-//! rejected — adding an `on_danger` role — would put a migration on every integrator's palette
-//! file for one button. So the red goes on the edge and the label, never in the face.
-//!
-//! # Why the press grows
-//!
-//! It used to shrink `1 → press_scale`. A gloved contact patch is 13 mm across and this button is
-//! about 14 mm tall, so the finger covers substantially all of it: an inward move of 0.4 mm
-//! happens *under the fingertip* and is seen only after release, which is the one moment feedback
-//! is no longer wanted. The painted silhouette now grows by `control.press_grow` on every side
-//! (the allocated rect never moves, so nothing reflows), and the tint is composited the right way
-//! round — `face.blend(pressed)`, because `blend`'s **receiver is the layer behind**, and the old
-//! `pressed.blend(face)` over an opaque face multiplied the tint by `255 − 255` and painted
-//! nothing at all.
-//!
-//! # Why the long-press ring moved to the corner
-//!
-//! It sat on `right_center()`, which on a button 19.5 mm wide is dead centre under the finger that
-//! is holding it down — the one piece of feedback in the crate guaranteed to be invisible while it
-//! matters. It is now inset from the top-right corner by `control.gap`, clear of the contact patch.
-//! Its progress is **linear** `0 → 1` while held, an 80 ms reverse on release, and on the
-//! completing frame [`LongPressResponse::completed`] rises once while the ring pops
-//! `0.9 → 1.1 → 1` over 120 ms (A7).
+//! Button kinds select ordinary, primary or destructive styling from theme roles.
+//! Press feedback changes the painted shape without moving the allocated rectangle.
+//! Long-press feedback is painted around the button; focus is painted outside it.
+//! The caller supplies the label, enabled state and action handling.
 
 use super::{ButtonLook, HoldLook};
 use crate::cx::WidgetCx as Cx;
@@ -46,41 +16,21 @@ use egui::{Color32, CornerRadius, Rect, Response, Sense, Stroke, StrokeKind, Vec
 use std::sync::Arc;
 use std::time::Duration;
 
-// Every length here is `theme.metrics` or `theme.control`, and every time is `theme.motion`:
-// the long press's completion pop runs on the `press` tween and the cancel reverse on
-// `press_release`, so both follow `[motion.press]` and go instant under `reduce`. They were
-// literals once (120 ms and 80 ms) and kept animating with reduce on.
-/// The kind of button — **what it is for**, which then settles whether it is filled.
-///
-/// There are three and there is no fourth. A "tonal" or "text" kind was considered and rejected:
-/// each would be a second way to say "secondary", and the moment two kinds mean the same thing an
-/// author picks by taste rather than by intent, which is how a screen ends up with four button
-/// weights and no hierarchy.
+// Completion feedback uses `motion.press` for the pop and `motion.press_release`
+// for the cancel reverse. The hold duration remains the caller's supplied duration.
+/// Theme styling for ordinary, primary and destructive buttons.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum ButtonKind {
-    /// The ordinary button: `SurfaceVariant` face, `Muted` edge, `OnSurface` label.
+    /// Ordinary button: translucent `OnSurface` face, `ControlEdge` boundary and `OnSurface` label.
     ///
-    /// The edge is what identifies it. Its face is the same role a card is drawn in, so inside a
-    /// card the fill contributes nothing and only the edge says where the button is — the failure
-    /// that two integrators worked around independently before the edge existed. `Muted` and not
-    /// `Outline`: `Outline` measures 1.15–1.65 against the two grounds a button sits on, which is
-    /// a ghost, and it keeps exactly one job — decoration between two containers.
+    /// The edge distinguishes the button when its face matches its container.
     #[default]
     Normal,
-    /// The one filled kind: `Primary` face, no edge, `OnPrimary` label.
-    ///
-    /// The fill **is** the boundary, so adding an edge as well would only muddy it. The label is
-    /// gated at 4.5 : 1 against the face in every palette; the WCAG large-text exemption is not
-    /// available here, because the button type tops out around 13 pt at the shipped finger width
-    /// and the operator reads it from arm's length rather than WCAG's ~400 mm.
+    /// Filled kind: `Primary` face, no separate edge, and `OnPrimary` label.
     Primary,
-    /// A destructive action: `SurfaceVariant` face, `Danger` edge, `Danger` label.
-    ///
-    /// Outlined rather than a red slab — see the module docs for why no single `danger` value can
-    /// both carry a white label and stay readable as text on a card. Pair it with
-    /// [`BigButton::long_press`]: on a panel in a moving vehicle, "hold to confirm" is what makes
-    /// a destructive action deliberate, and it is the reason this widget has a ring at all.
+    /// Destructive-action styling: translucent `OnSurface` face and `Danger` edge/label.
+    /// Use [`BigButton::long_press`] when the application requires a hold interaction.
     Danger,
 }
 
@@ -182,7 +132,7 @@ impl Ink {
 /// `cx.theme.…` inside that arithmetic is how a stray literal gets in unnoticed.
 #[derive(Debug, Clone, Copy)]
 struct Tokens {
-    /// `metrics.content_inset` — the side padding, the same token every row uses.
+    /// `metrics.content_inset` — the side padding.
     inset: f32,
     /// `control.gap` — icon to label, and the ring's clearance from the corner.
     gap: f32,
@@ -236,16 +186,14 @@ pub struct LongPressResponse {
 }
 
 impl LongPressResponse {
-    /// It was clicked — the shortcut for the common case with no long press.
-    ///
-    /// The same as `resp.response.clicked()`, without going two levels in. Most buttons use no
-    /// long press, and if that case is awkward the widget is shaped wrong.
+    /// Whether the underlying response was clicked.
+    /// Equivalent to `response.clicked()` for the common non-hold case.
     #[must_use]
     pub fn clicked(&self) -> bool {
         self.response.clicked()
     }
 
-    /// The long press completed. Only ever true on a button given a [`BigButton::long_press`].
+    /// Whether this response reports a completed long press.
     #[must_use]
     pub const fn long_pressed(&self) -> bool {
         self.completed
@@ -293,24 +241,15 @@ impl BigButton {
         self
     }
 
-    /// The label's text size (du). The default is `metrics.type_scale.button`.
-    ///
-    /// **Enlarging the button with [`Self::min_size`] means enlarging the label too.** Otherwise
-    /// a 200 du hero button has 17 du text stranded in the middle of it — a handle that came out
-    /// of actually building a kiosk attract screen.
+    /// Override label text size in du; the default is `metrics.type_scale.button`.
     #[must_use]
     pub fn text_size(mut self, du: f32) -> Self {
         self.text_size = Some(du.max(1.0));
         self
     }
 
-    /// Raise the minimum size above the token floor (`control.min_button_w` × `row_height`).
-    ///
-    /// It can only push **up**: a smaller value is ignored, because the floor is the gloved-hand
-    /// policy and not something to break for one pretty screen. It survives the move to tokens
-    /// because a hero button sized to a bar it must fill is the caller's layout, not this widget's
-    /// geometry — what was deleted is the widget's own `120 × 56` default, which was a length
-    /// literal no integrator could reach.
+    /// Raise the minimum size above the configured token floor.
+    /// Values below the floor are ignored; text size is configured separately.
     #[must_use]
     pub fn min_size(mut self, size: Vec2) -> Self {
         self.min_size = Some(size);
@@ -510,13 +449,8 @@ fn paint_face(painter: &egui::Painter, rect: Rect, t: Tokens, ink: Ink) {
     }
 }
 
-/// The focus ring, **outside** the silhouette.
-///
-/// Outside is a contrast decision rather than a styling one: `Focus` against `Primary` measures
-/// 1.00–1.62 across the shipped palettes, so a ring drawn on a filled button's own edge is
-/// invisible in every one of them and no repaint of `focus` can fix it. Outside, its neighbour is
-/// the card, where the same colour clears 3.0 everywhere. It is measured from the **painted** rect
-/// so that a pressed button grows with its ring instead of through it.
+/// Paint the focus outline outside the control's painted boundary.
+/// Check the focus colour against the surrounding background for custom palettes.
 fn paint_focus_ring(painter: &egui::Painter, silhouette: Rect, t: Tokens, color: Color32) {
     let out = t.focus_gap + t.stroke_mark * 0.5;
     painter.rect_stroke(
@@ -543,8 +477,9 @@ struct Hold {
     scale: f32,
 }
 
-/// The long press: linear `0 → 1` while held, with an 80 ms reverse on release. On the completing
-/// frame it reports `completed` once and the ring pops `0.9 → 1.1 → 1`.
+/// Hold progress is linear over the supplied duration. Release reverses it with
+/// `motion.press_release`; completion is reported once and the ring's `0.9 → 1.1 → 1`
+/// pop uses `motion.press`.
 ///
 /// The progress itself is [`Cx::animate`](crate::cx::WidgetCx::animate), but the "armed →
 /// reported" step is a flag rather than an animation, so it lives in egui's store per widget id.
@@ -652,13 +587,8 @@ fn paint_ring(painter: &egui::Painter, drawn: Rect, hold: Hold, ink: Ink, t: Tok
     );
 }
 
-/// Where the long-press ring sits: inset from the top-right corner of the painted rect by
-/// `control.gap` on both axes.
-///
-/// The corner and not `right_center()`: a 13 mm contact patch on a button 19.5 mm wide covers the
-/// middle of the right-hand edge completely, so that is the one place the progress of the press
-/// being made cannot be watched. It is measured from the painted rect rather than the allocated
-/// one so the ring rides the press growth with the body instead of sinking under its edge.
+/// Place the long-press ring at the top-right of the painted rectangle,
+/// inset by `control.gap`. It follows the press-growth geometry.
 fn ring_center(rect: Rect, t: Tokens) -> egui::Pos2 {
     let d = t.icon;
     rect.right_top() + egui::vec2(-(t.gap + d / 2.0), t.gap + d / 2.0)

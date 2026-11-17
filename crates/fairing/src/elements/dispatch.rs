@@ -1,5 +1,5 @@
 //! Plans borrow their actual opaque receivers; no index-to-body reconciliation.
-use super::{valid_size, Axis, ChildPlan, ElementTree, Node, Plan, PlanNode};
+use super::{valid_size, Axis, ChildPlan, ElementTree, LayoutToken, Node, Plan, PlanNode};
 use crate::access::{mediation::invoke_requirement, Permission, PermissionBinding, SessionId};
 use crate::screen::Cx;
 use egui::{Rect, Vec2};
@@ -19,7 +19,7 @@ impl<P: Permission> ElementTree<P> {
             Node::Leaf(element) => {
                 let (binding, size) = element.measure(available, cx, stamp)?;
                 (valid_size(size) && cx.authority_stamp() == Some(stamp)).then_some(Plan {
-                    binding,
+                    layout: LayoutToken::new(binding, stamp, cx)?,
                     size,
                     node: PlanNode::Leaf(element),
                 })
@@ -62,7 +62,7 @@ impl<P: Permission> ElementTree<P> {
                         .then_some((size, plans))
                 })??;
                 Some(Plan {
-                    binding,
+                    layout: LayoutToken::new(binding, stamp, cx)?,
                     size,
                     node: PlanNode::Group(plans),
                 })
@@ -72,14 +72,11 @@ impl<P: Permission> ElementTree<P> {
 }
 impl<P: Permission> Plan<'_, P> {
     pub(super) fn validate(&self, cx: &Cx<'_>, stamp: Stamp) -> bool {
-        if cx.authority_stamp() != Some(stamp)
-            || !self.binding.allows(cx)
-            || cx.authority_stamp() != Some(stamp)
-        {
+        if !self.layout.valid(cx) {
             return false;
         }
         match &self.node {
-            PlanNode::Leaf(element) => element.matches(&self.binding, cx, stamp),
+            PlanNode::Leaf(element) => element.matches(self.layout.gate(), cx, stamp),
             PlanNode::Group(children) => {
                 children.iter().all(|child| child.plan.validate(cx, stamp))
                     && cx.authority_stamp() == Some(stamp)
@@ -94,12 +91,17 @@ impl<P: Permission> Plan<'_, P> {
         stamp: Stamp,
         identity: egui::Id,
     ) -> bool {
-        if !self.validate(cx, stamp) {
+        // The complete plan was validated once before painting. Each node still
+        // revalidates its own frame/publication/policy; execution uses a fresh,
+        // separately consumed callback token. Do not recursively validate again.
+        if !self.layout.valid(cx) {
             return false;
         }
         match &mut self.node {
-            PlanNode::Leaf(element) => element.paint(ui, cx, rect, identity, &self.binding, stamp),
-            PlanNode::Group(children) => invoke_requirement(self.binding.gate(), stamp, cx, |cx| {
+            PlanNode::Leaf(element) => {
+                element.paint(ui, cx, rect, identity, self.layout.gate(), stamp)
+            }
+            PlanNode::Group(children) => invoke_requirement(self.layout.gate(), stamp, cx, |cx| {
                 for child in children {
                     let rect = Rect::from_min_size(rect.min + child.offset, child.plan.size);
                     if !child
