@@ -285,8 +285,9 @@ pub struct Shell {
     focus_covered: bool,
     /// The unlock prompt and the lock screen.
     prompt: Prompt,
-    auth_request: Option<crate::access::AuthRequestId>,
-    routed_auth: Option<(Gate, Option<LaunchAction>)>,
+    /// The correlation identity and exact operation authenticated by its answer.
+    /// Kept as one private value so a request cannot outlive or be rebound from its continuation.
+    pending_auth: Option<authentication::PendingAuthorization>,
     /// What asked for an unlock behind the lock screen — asked again once it is gone.
     after_lock: Option<(Gate, Option<LaunchAction>)>,
     /// Last frame's OSK target (the `OskToggled` boundary).
@@ -549,6 +550,7 @@ impl Shell {
     pub fn add(&mut self, decl: impl Into<Decl>) {
         let decl = decl.into();
         let id = decl.id().to_owned();
+        self.cancel_authorization_for_decl(&id);
         if matches!(decl, Decl::NavItem(_)) && !self.nav_item_checks.contains(&id) {
             self.nav_item_checks.push(id.clone());
         }
@@ -618,6 +620,7 @@ impl Shell {
             self.events.push(ShellEvent::DeclRemoved(id.to_owned()));
             return true;
         };
+        self.cancel_authorization_for_decl(id);
         self.retire_decl(removed);
         self.close_decl_instances(id);
         self.events.push(ShellEvent::DeclRemoved(id.to_owned()));
@@ -690,8 +693,7 @@ impl Shell {
     pub fn quarantine(&mut self) {
         let was_faulted = self.faulted;
         self.faulted = true;
-        self.auth_request = None;
-        self.routed_auth = None;
+        self.pending_auth = None;
         self.access.quarantine();
         self.rx.close_admission();
         if !was_faulted {

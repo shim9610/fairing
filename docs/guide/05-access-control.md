@@ -304,9 +304,10 @@ With authenticator callbacks that return promptly, the prompt applies these rule
 - **`begin(request, gate, now)` comes first.** The shell calls it each time the prompt
   opens — the lock screen's gate is `session.lock` — so an authenticator can start
   listening, and drop whatever a reader picked up while no prompt was up.
-  Retargeting an open prompt to a different gate calls `cancel` and then `begin`
-  for the new gate before polling again. A request for the same gate keeps its
-  pending check. Lockout countdowns survive either case.
+  Retargeting an open prompt to a different gate or a different continuation on the
+  same gate calls `cancel` and then `begin` with a new request identity before polling
+  again. Repeating the identical operation keeps its pending check. Lockout countdowns
+  survive either case.
 - **A session boundary cancels the previous check.** Logout cancels a pending
   unlock even when the subject is already the initial one. Explicit relocking
   starts a fresh lock challenge and discards deferred actions. Logout while locked
@@ -515,6 +516,10 @@ Authentication implementors receive a Fairing-issued `AuthRequestId` in `begin` 
 original work and return `request.respond(outcome)`. Do not stamp a late result with
 the most recent token. A terminal response consumes its token; if the prompt remains
 open after a refusal, Fairing calls `begin` with a fresh token for the next attempt.
+Fairing stores the request identity, gate and exact continuation as one private pending
+authorization. A new continuation cannot inherit an earlier response merely because it
+uses the same gate. Replacing or removing the screen/action declaration named by a pending
+continuation cancels that authorization before the declaration identity can change.
 `PinTable::check` remains available for synchronous use outside a shell.
 
 ### 5.4 `settings.credentials` — when the authenticator manages its entries

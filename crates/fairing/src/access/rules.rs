@@ -28,3 +28,12 @@ pub(crate) fn lockout_reached(failures: u32, limit: Option<u32>) -> bool {
 pub(crate) fn response_is_current(active: Option<usize>, response: usize) -> bool {
     active == Some(response)
 }
+
+/// A current response may complete only the exact target retained with its request.
+pub(crate) fn response_completes_target(
+    active: Option<usize>,
+    response: usize,
+    target_current: bool,
+) -> bool {
+    response_is_current(active, response) && target_current
+}

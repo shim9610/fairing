@@ -6,6 +6,71 @@ use super::{
     RECENTS_GATE, SPLIT_GATE,
 };
 
+/// One authentication result is bound to one immutable continuation.
+///
+/// Prompt state is presentation; this value is the authorization transaction. It is never
+/// exposed to an authenticator and cannot be replaced without issuing a new request identity.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) enum AuthorizationTarget {
+    Prompt(Purpose),
+    Routed {
+        gate: Gate,
+        then: Option<LaunchAction>,
+    },
+}
+
+impl AuthorizationTarget {
+    fn gate(&self) -> Gate {
+        match self {
+            Self::Prompt(Purpose::Unlock { gate, .. }) | Self::Routed { gate, .. } => gate.clone(),
+            Self::Prompt(Purpose::Lock) => crate::access::prompt::LOCK_GATE,
+        }
+    }
+
+    fn is_lock(&self) -> bool {
+        matches!(self, Self::Prompt(Purpose::Lock))
+    }
+
+    fn into_action(self) -> Option<LaunchAction> {
+        match self {
+            Self::Prompt(Purpose::Unlock { then, .. }) | Self::Routed { then, .. } => then,
+            Self::Prompt(Purpose::Lock) => None,
+        }
+    }
+
+    fn references_declaration(&self, id: &str) -> bool {
+        let action = match self {
+            Self::Prompt(Purpose::Unlock { then, .. }) | Self::Routed { then, .. } => then,
+            Self::Prompt(Purpose::Lock) => return false,
+        };
+        matches!(
+            action,
+            Some(LaunchAction::Open { id: target, .. } | LaunchAction::Run(target))
+                if target == id
+        )
+    }
+}
+
+/// Split capability for one authentication attempt: the authenticator receives only `request`,
+/// while the shell retains the exact target. Terminal handling consumes this pair.
+pub(super) struct PendingAuthorization {
+    request: crate::access::AuthRequestId,
+    target: AuthorizationTarget,
+}
+
+impl PendingAuthorization {
+    fn request(&self) -> crate::access::AuthRequestId {
+        self.request
+    }
+
+    fn target_current(&self, prompt: &crate::access::prompt::Prompt) -> bool {
+        match &self.target {
+            AuthorizationTarget::Prompt(_) => prompt.request() == Some(self.request),
+            AuthorizationTarget::Routed { .. } => !prompt.is_open(),
+        }
+    }
+}
+
 impl Shell {
     /// **Replace the authenticator** while the shell runs — the same as
     /// [`ShellBuilder::authenticator`](crate::ShellBuilder::authenticator) afterwards. It is given the waker first.
@@ -19,8 +84,7 @@ impl Shell {
     }
 
     fn set_authenticator_in(&mut self, authenticator: impl Authenticator + 'static) {
-        self.auth_request = None;
-        self.routed_auth = None;
+        self.pending_auth = None;
         if self.access.uses_session_tokens() {
             let from = self.access.reset(self.mono);
             self.session_changed(SessionChange {
@@ -57,13 +121,15 @@ impl Shell {
             Purpose::Unlock { gate, .. } => (gate.clone(), self.access.hint(gate)),
             Purpose::Lock => (crate::access::prompt::LOCK_GATE, None),
         };
-        let Some(request) = self.new_auth_request() else {
+        let target = AuthorizationTarget::Prompt(purpose.clone());
+        let Some(request) = self.new_auth_request(target) else {
             return;
         };
         if let Some(auth) = self.access.authenticator_mut() {
             auth.begin(request, &gate, now);
         }
         self.prompt.open(purpose, methods, hint, now);
+        self.prompt.bind_request(request);
     }
     /// After a session change: end the instances that can no longer pass their gate, and queue
     /// an `AccessChanged` on every instance left (notified at stage 14). A timeout, a lock, a logout,
@@ -129,10 +195,13 @@ impl Shell {
         let Some(methods) = self.prompt_methods() else {
             if self.access.uses_session_tokens() {
                 self.cancel_prompt();
-                let Some(request) = self.new_auth_request() else {
+                let target = AuthorizationTarget::Routed {
+                    gate: gate.clone(),
+                    then,
+                };
+                let Some(request) = self.new_auth_request(target) else {
                     return;
                 };
-                self.routed_auth = Some((gate.clone(), then));
                 self.events
                     .push(ShellEvent::Access(AccessEvent::SessionRequested {
                         request,
@@ -149,27 +218,40 @@ impl Shell {
             return;
         };
         let hint = self.access.hint(&gate);
-        let current = self.prompt.gate();
-        if current.as_ref() != Some(&gate) {
-            if current.is_some() {
-                // A challenge is bound to its gate. Drop its pending answer before retargeting.
-                let _ = self.prompt.take_wait();
-                if let Some(auth) = self.access.authenticator_mut() {
-                    auth.cancel();
-                }
+        let purpose = Purpose::Unlock { gate, then };
+        let target = AuthorizationTarget::Prompt(purpose.clone());
+        let same_attempt = self
+            .pending_auth
+            .as_ref()
+            .is_some_and(|pending| pending.target == target)
+            && self
+                .pending_auth
+                .as_ref()
+                .is_some_and(|pending| pending.target_current(&self.prompt));
+        if !same_attempt {
+            if self.prompt.is_open() || self.pending_auth.is_some() {
+                // A challenge is bound to its complete continuation, not only its gate.
+                self.cancel_prompt();
             }
             // Whatever was being dragged ends here (A9).
             self.gestures.cancel_held_over();
             let now = self.mono;
-            let Some(request) = self.new_auth_request() else {
+            let auth_gate = target.gate();
+            let Some(request) = self.new_auth_request(target) else {
                 return;
             };
             if let Some(auth) = self.access.authenticator_mut() {
-                auth.begin(request, &gate, now);
+                auth.begin(request, &auth_gate, now);
             }
         }
-        self.prompt
-            .open(Purpose::Unlock { gate, then }, methods, hint, self.mono);
+        self.prompt.open(purpose, methods, hint, self.mono);
+        if let Some(request) = self
+            .pending_auth
+            .as_ref()
+            .map(PendingAuthorization::request)
+        {
+            self.prompt.bind_request(request);
+        }
     }
     /// The methods the shell's prompt would offer — `None` where it draws none: not `prompt` mode,
     /// a single level in legacy mode, no authenticator, or no offered methods (which behaves as
@@ -227,7 +309,15 @@ impl Shell {
     ) {
         self.sync_session(app);
         self.observe_subject_change(app);
-        if response.request.is_active(self.auth_request) {
+        let active = self
+            .pending_auth
+            .as_ref()
+            .map(PendingAuthorization::request);
+        let target_current = self
+            .pending_auth
+            .as_ref()
+            .is_some_and(|pending| pending.target_current(&self.prompt));
+        if response.request.completes(active, target_current) {
             self.finish_auth_outcome(response.outcome, app);
         }
     }
@@ -287,7 +377,7 @@ impl Shell {
             if !self.overlay.is_closed() {
                 self.overlay.close(&self.theme.motion);
             }
-            if (self.prompt.is_open() || self.routed_auth.is_some())
+            if (self.prompt.is_open() || self.pending_auth.is_some())
                 && !self.prompt.is_lock_screen()
             {
                 self.cancel_prompt();
@@ -318,7 +408,7 @@ impl Shell {
         };
         let to = self.access.session().subject.level;
         let lock = self.prompt.is_lock_screen();
-        if (self.prompt.is_open() || self.routed_auth.is_some()) && !lock {
+        if (self.prompt.is_open() || self.pending_auth.is_some()) && !lock {
             self.cancel_prompt();
         }
         self.session_changed(SessionChange {
@@ -369,14 +459,15 @@ impl Shell {
     pub(super) fn show_lock(&mut self, methods: Vec<AuthMethod>) {
         let already_locked = self.prompt.is_lock_screen();
         // An unlock under way gives way to the lock, and so does the shade.
-        if self.prompt.is_open() {
+        if self.prompt.is_open() || self.pending_auth.is_some() {
             self.cancel_prompt();
         }
         if !self.overlay.is_closed() {
             self.overlay.close(&self.theme.motion);
         }
         self.gestures.cancel_held_over();
-        let Some(request) = self.new_auth_request() else {
+        let Some(request) = self.new_auth_request(AuthorizationTarget::Prompt(Purpose::Lock))
+        else {
             return;
         };
         if let Some(auth) = self.access.authenticator_mut() {
@@ -385,6 +476,7 @@ impl Shell {
         // A new lock starts with nothing waiting behind it.
         self.after_lock = None;
         self.prompt.open(Purpose::Lock, methods, None, self.mono);
+        self.prompt.bind_request(request);
         if !already_locked {
             self.events
                 .push(ShellEvent::Access(AccessEvent::LockScreenToggled(true)));
@@ -395,7 +487,7 @@ impl Shell {
     pub(super) fn end_session(&mut self) {
         self.events.push(ShellEvent::LogoutRequested);
         if self.access.uses_session_tokens() {
-            self.auth_request = None;
+            self.pending_auth = None;
             self.after_lock = None;
             let from = self.access.reset(self.mono);
             self.cancel_prompt();
@@ -432,9 +524,25 @@ impl Shell {
     /// can accept new input while the previous authentication result is pending.
     pub(super) fn submit_credential(&mut self, credential: Credential, app: &mut AppRef<'_>) {
         let now = self.mono;
-        let Some(request) = self.new_auth_request() else {
+        let Some(target) = self
+            .pending_auth
+            .as_ref()
+            .map(|pending| pending.target.clone())
+        else {
             return;
         };
+        if !self
+            .pending_auth
+            .as_ref()
+            .is_some_and(|pending| pending.target_current(&self.prompt))
+        {
+            self.cancel_prompt();
+            return;
+        }
+        let Some(request) = self.new_auth_request(target) else {
+            return;
+        };
+        self.prompt.bind_request(request);
         let called_off = self.prompt.take_wait();
         let outcome = self.access.authenticator_mut().map(|auth| {
             if called_off {
@@ -447,14 +555,35 @@ impl Shell {
         }
     }
     pub(super) fn finish_auth_outcome(&mut self, outcome: AuthOutcome, app: &mut AppRef<'_>) {
-        self.apply_outcome(outcome, app);
+        if !self
+            .pending_auth
+            .as_ref()
+            .is_some_and(|pending| pending.target_current(&self.prompt))
+        {
+            self.cancel_prompt();
+            return;
+        }
+        let target = if matches!(outcome, AuthOutcome::Pending) {
+            self.pending_auth
+                .as_ref()
+                .map(|pending| pending.target.clone())
+        } else {
+            self.pending_auth.take().map(|pending| pending.target)
+        };
+        let Some(target) = target else {
+            return;
+        };
+        self.apply_outcome_for(target, outcome, app);
         // A terminal refusal consumes its token too. External readers need a fresh
         // challenge to accept another credential without closing/reopening the prompt.
-        if self.auth_request.is_none() && !self.faulted {
-            if let Some(gate) = self.prompt.gate() {
-                let Some(request) = self.new_auth_request() else {
+        if self.pending_auth.is_none() && !self.faulted {
+            if let Some(purpose) = self.prompt.purpose() {
+                let target = AuthorizationTarget::Prompt(purpose);
+                let gate = target.gate();
+                let Some(request) = self.new_auth_request(target) else {
                     return;
                 };
+                self.prompt.bind_request(request);
                 if let Some(auth) = self.access.authenticator_mut() {
                     auth.begin(request, &gate, self.mono);
                 }
@@ -463,22 +592,18 @@ impl Shell {
     }
     /// Apply the authenticator's answer. Legacy grants use `unlock_mode`; session grants
     /// install the issuer's token. Successful continuations re-enter the launch gate.
-    pub(super) fn apply_outcome(&mut self, outcome: AuthOutcome, app: &mut AppRef<'_>) {
+    fn apply_outcome_for(
+        &mut self,
+        target: AuthorizationTarget,
+        outcome: AuthOutcome,
+        app: &mut AppRef<'_>,
+    ) {
         let now = self.mono;
-        if !matches!(outcome, AuthOutcome::Pending) {
-            self.auth_request = None;
-        }
-        let Some(gate) = self
-            .prompt
-            .gate()
-            .or_else(|| self.routed_auth.as_ref().map(|(gate, _)| gate.clone()))
-        else {
-            return;
-        };
+        let gate = target.gate();
         match outcome {
-            AuthOutcome::Session(token) => self.apply_session_outcome(token, gate, now, app),
+            AuthOutcome::Session(token) => self.apply_session_outcome(token, target, now, app),
             AuthOutcome::Granted(subject) => {
-                let lock = self.prompt.is_lock_screen();
+                let lock = target.is_lock();
                 let level = subject.level;
                 // A level the table does not have would pass every gate; and on the unlock
                 // prompt a grant at or below the session's own level opens nothing — it must not
@@ -503,10 +628,10 @@ impl Shell {
                         .and_then(|auth| auth.refused(now));
                     match counted {
                         Some(locked @ AuthOutcome::Locked { .. }) => {
-                            self.apply_outcome(locked, app);
+                            self.apply_outcome_for(target, locked, app);
                         }
                         Some(AuthOutcome::Denied { message }) => {
-                            self.apply_outcome(AuthOutcome::Denied { message }, app);
+                            self.apply_outcome_for(target, AuthOutcome::Denied { message }, app);
                         }
                         _ => {
                             self.events
@@ -517,7 +642,9 @@ impl Shell {
                     }
                     return;
                 }
-                let purpose = self.prompt.close(now);
+                if matches!(target, AuthorizationTarget::Prompt(_)) {
+                    self.prompt.close(now);
+                }
                 let mode = self.access.unlock_mode();
                 let (subject_id, level) = (subject.id.clone(), subject.level);
                 let from = self.access.unlock(subject, now);
@@ -537,10 +664,7 @@ impl Shell {
                         .push(ShellEvent::Access(AccessEvent::LockScreenToggled(false)));
                     self.ask_after_lock(app);
                 }
-                if let Some(Purpose::Unlock {
-                    then: Some(action), ..
-                }) = purpose
-                {
+                if let Some(action) = target.into_action() {
                     self.launch_in(action, app);
                 }
             }
@@ -554,30 +678,35 @@ impl Shell {
                     .push(ShellEvent::Access(AccessEvent::Locked { gate, until }));
                 self.prompt.locked(until, message);
             }
-            AuthOutcome::Pending => self.prompt.wait(),
+            AuthOutcome::Pending => {
+                if matches!(target, AuthorizationTarget::Prompt(_)) {
+                    self.prompt.wait();
+                }
+            }
         }
     }
     fn apply_session_outcome(
         &mut self,
         token: crate::access::SessionToken,
-        gate: Gate,
+        target: AuthorizationTarget,
         now: Instant,
         app: &mut AppRef<'_>,
     ) {
-        let lock = self.prompt.is_lock_screen();
+        let gate = target.gate();
+        let lock = target.is_lock();
         let from = self.access.session().subject.level;
         if !self.access.install_session(token, now) {
             self.events
                 .push(ShellEvent::Access(AccessEvent::Denied { gate }));
-            self.prompt
-                .denied(crate::access::prompt::labels::NOT_ENOUGH.to_owned(), now);
+            if matches!(target, AuthorizationTarget::Prompt(_)) {
+                self.prompt
+                    .denied(crate::access::prompt::labels::NOT_ENOUGH.to_owned(), now);
+            }
             return;
         }
-        let purpose = self.prompt.close(now).or_else(|| {
-            self.routed_auth
-                .take()
-                .map(|(gate, then)| Purpose::Unlock { gate, then })
-        });
+        if matches!(target, AuthorizationTarget::Prompt(_)) {
+            self.prompt.close(now);
+        }
         let subject = &self.access.session().subject;
         let level = subject.level;
         self.events.push(ShellEvent::Access(AccessEvent::Unlocked {
@@ -596,30 +725,43 @@ impl Shell {
                 .push(ShellEvent::Access(AccessEvent::LockScreenToggled(false)));
             self.ask_after_lock(app);
         }
-        if let Some(Purpose::Unlock {
-            then: Some(action), ..
-        }) = purpose
-        {
+        if let Some(action) = target.into_action() {
             self.launch_in(action, app);
         }
     }
-    /// Issue a fresh request identity, quarantining the shell if identities are exhausted.
-    pub(super) fn new_auth_request(&mut self) -> Option<crate::access::AuthRequestId> {
-        self.auth_request = crate::access::AuthRequestId::issue();
-        if self.auth_request.is_none() {
+    /// Issue a fresh request identity bound to one exact target, quarantining the shell if
+    /// identities are exhausted.
+    fn new_auth_request(
+        &mut self,
+        target: AuthorizationTarget,
+    ) -> Option<crate::access::AuthRequestId> {
+        let request = crate::access::AuthRequestId::issue();
+        self.pending_auth = request.map(|request| PendingAuthorization { request, target });
+        if request.is_none() {
             // Exhaustion never reuses an identifier, including across shell replacements.
             self.quarantine();
         }
-        self.auth_request
+        request
     }
     /// Close the prompt without an answer and notify the authenticator, if installed.
     pub(super) fn cancel_prompt(&mut self) {
-        self.auth_request = None;
-        self.routed_auth = None;
+        self.pending_auth = None;
         if let Some(auth) = self.access.authenticator_mut() {
             auth.cancel();
         }
         self.prompt.close(self.mono);
+    }
+
+    /// A declaration replacement changes the meaning of an id-based continuation. Its previous
+    /// authentication cannot authorize the replacement body, even when its gate is unchanged.
+    pub(super) fn cancel_authorization_for_decl(&mut self, id: &str) {
+        if self
+            .pending_auth
+            .as_ref()
+            .is_some_and(|pending| pending.target.references_declaration(id))
+        {
+            self.cancel_prompt();
+        }
     }
     /// The lock screen's Continue: leave as the starting subject, which the lock already made the
     /// session.

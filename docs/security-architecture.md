@@ -69,7 +69,11 @@ drawing mechanism, not an additional permission boundary.
 ![Built-in prompt and host-owned login retain the library-issued request identity](diagrams/authentication-flow.svg)
 
 The library issues the `AuthRequestId`; the application returns a result bound
-to that request. Authentication can use either of these paths:
+to that request. Fairing retains the request identity, required gate and exact
+continuation as one private pending authorization. Replacing the continuation,
+including with another operation on the same gate, cancels that authorization and
+issues a new identity. Replacing or removing the named screen/action declaration also
+cancels the pending authorization. Authentication can use either of these paths:
 
 | Credential UI | Request and response flow |
 |---|---|
@@ -80,7 +84,8 @@ After verifying credentials, the issuer creates a `(SessionController,
 SessionToken)` pair and retains the controller. The returned
 `AuthOutcome::Session(token)` is installed only for a matching live authentication
 request. Asynchronous completion retains the original request identity; stale,
-canceled, consumed and unsolicited responses do not install authority.
+canceled, consumed and unsolicited responses do not install authority or run a
+different continuation.
 
 The pair binds an immutable subject, session identity and gate catalog. Roles are
 expanded into explicit independent grants by the issuer. A role name or numeric

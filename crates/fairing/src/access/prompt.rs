@@ -65,8 +65,8 @@
 )]
 
 use super::{
-    AuthMethod, Credential, Gate, LockScreenCx, LockScreenPainter, PromptPiece, UnlockPromptCx,
-    UnlockPromptPainter,
+    AuthMethod, AuthRequestId, Credential, Gate, LockScreenCx, LockScreenPainter, PromptPiece,
+    UnlockPromptCx, UnlockPromptPainter,
 };
 use crate::i18n::{LabelKey, Strings};
 use crate::screen::LaunchAction;
@@ -281,6 +281,8 @@ pub(crate) struct Painters {
 pub(crate) struct Prompt {
     open: Option<Open>,
     closing: Option<Closing>,
+    /// Authentication transaction currently bound to `open`; presentation alone has no authority.
+    request: Option<AuthRequestId>,
     painters: Painters,
     /// How many times it has opened — the shuffle seed's input.
     opened: u64,
@@ -404,17 +406,33 @@ impl Prompt {
         matches!(self.open.as_ref().map(|o| &o.purpose), Some(Purpose::Lock))
     }
 
-    /// The gate the answer is for — `session.lock` on the lock screen.
-    pub(crate) fn gate(&self) -> Option<Gate> {
-        self.open.as_ref().map(|o| match &o.purpose {
+    /// The exact operation the current challenge was opened for.
+    pub(crate) fn purpose(&self) -> Option<Purpose> {
+        self.open.as_ref().map(|open| open.purpose.clone())
+    }
+
+    #[cfg(test)]
+    fn gate(&self) -> Option<Gate> {
+        self.open.as_ref().map(|open| match &open.purpose {
             Purpose::Unlock { gate, .. } => gate.clone(),
             Purpose::Lock => LOCK_GATE,
         })
     }
 
-    /// Open it. A second unlock request over an open prompt takes over what the prompt unlocks
-    /// for and keeps what was typed; the lock screen is never replaced by an unlock prompt (the
-    /// shell does not ask).
+    /// Bind the displayed operation to the request retained by the shell.
+    pub(crate) fn bind_request(&mut self, request: AuthRequestId) {
+        self.request = self.open.as_ref().map(|_| request);
+    }
+
+    /// Request identity currently bound to the displayed operation.
+    pub(crate) fn request(&self) -> Option<AuthRequestId> {
+        self.request
+    }
+
+    /// Open it. Reopening the same unlock operation keeps what was typed. The shell cancels and
+    /// reopens before passing a different operation, so credentials cannot move between
+    /// continuations. The lock screen is never replaced by an unlock prompt (the shell does not
+    /// ask).
     pub(crate) fn open(
         &mut self,
         purpose: Purpose,
@@ -422,6 +440,8 @@ impl Prompt {
         hint: Option<LabelKey>,
         now: Instant,
     ) {
+        // Opening or retargeting is presentation only until the shell binds the retained request.
+        self.request = None;
         if let Some(open) = self.open.as_mut() {
             if matches!(open.purpose, Purpose::Unlock { .. })
                 && matches!(purpose, Purpose::Unlock { .. })
@@ -474,6 +494,7 @@ impl Prompt {
 
     /// Close it, keeping nothing typed. Returns what it was up for.
     pub(crate) fn close(&mut self, now: Instant) -> Option<Purpose> {
+        self.request = None;
         let mut open = self.open.take()?;
         open.clear();
         let purpose = open.purpose.clone();

@@ -1,6 +1,7 @@
 //! Cancellation and ordering at authentication/session boundaries.
 
 use fairing::access::{AuthMethod, AuthOutcome, Authenticator, Credential, Gate, Subject};
+use fairing::settings::{SettingKey, SettingValue};
 use fairing::testing::{access_config, Harness};
 use fairing::{action, LaunchAction, Level, Shell};
 use std::cell::{Cell, RefCell};
@@ -199,7 +200,7 @@ fn an_integrator_subject_replacement_cancels_the_previous_users_check() -> fairi
 }
 
 #[test]
-fn same_gate_requests_keep_their_pending_check() -> fairing::Result<()> {
+fn identical_operation_requests_keep_their_pending_check() -> fairing::Result<()> {
     let mut rig = rig()?;
     start_check(&mut rig);
     rig.h.shell.handle().launch(LaunchAction::run("first"));
@@ -430,5 +431,171 @@ fn stale_and_duplicate_replies_cannot_authorize_another_challenge() -> fairing::
     replies.borrow_mut().push_back(replacement.respond(grant()));
     h.frames(2);
     assert_eq!(runs.get(), 3);
+    Ok(())
+}
+
+#[test]
+#[allow(
+    clippy::unwrap_used,
+    reason = "assert challenge issuance in regression test"
+)]
+fn one_challenge_cannot_be_retargeted_to_another_same_gate_action() -> fairing::Result<()> {
+    let requests = Rc::new(RefCell::new(Vec::new()));
+    let replies = Rc::new(RefCell::new(std::collections::VecDeque::new()));
+    let auth = RetainingReader {
+        requests: requests.clone(),
+        replies: replies.clone(),
+    };
+    let first_runs = Rc::new(Cell::new(0));
+    let second_runs = Rc::new(Cell::new(0));
+    let mut h = Harness::from_builder({
+        let first_runs = first_runs.clone();
+        let second_runs = second_runs.clone();
+        move |ctx| {
+            let mut shell = Shell::builder(access_config(&["viewer", "admin"], Some("top")))
+                .authenticator(auth)
+                .build(ctx)?;
+            shell
+                .add(action("first", move |_| first_runs.set(first_runs.get() + 1)).gate("shared"));
+            shell.add(
+                action("second", move |_| second_runs.set(second_runs.get() + 1)).gate("shared"),
+            );
+            Ok(shell)
+        }
+    })?;
+    let grant = || {
+        AuthOutcome::Granted(Subject {
+            level: Level(1),
+            ..Subject::default()
+        })
+    };
+
+    h.shell.launch(LaunchAction::run("first"));
+    let first_request = *requests.borrow().last().unwrap();
+    h.shell.launch(LaunchAction::run("first"));
+    assert_eq!(
+        *requests.borrow().last().unwrap(),
+        first_request,
+        "an identical pending operation restarted its challenge"
+    );
+
+    h.shell.launch(LaunchAction::run("second"));
+    let second_request = *requests.borrow().last().unwrap();
+    assert_ne!(
+        first_request, second_request,
+        "a different operation reused the first operation's challenge"
+    );
+
+    replies
+        .borrow_mut()
+        .push_back(first_request.respond(grant()));
+    h.frames(2);
+    assert_eq!(first_runs.get(), 0);
+    assert_eq!(second_runs.get(), 0);
+
+    replies
+        .borrow_mut()
+        .push_back(second_request.respond(grant()));
+    h.frames(2);
+    assert_eq!(first_runs.get(), 0);
+    assert_eq!(second_runs.get(), 1);
+    Ok(())
+}
+
+#[test]
+#[allow(
+    clippy::unwrap_used,
+    reason = "assert challenge issuance in regression test"
+)]
+fn declaration_replacement_cannot_inherit_its_predecessors_challenge() -> fairing::Result<()> {
+    let requests = Rc::new(RefCell::new(Vec::new()));
+    let replies = Rc::new(RefCell::new(std::collections::VecDeque::new()));
+    let auth = RetainingReader {
+        requests: requests.clone(),
+        replies: replies.clone(),
+    };
+    let old_runs = Rc::new(Cell::new(0));
+    let new_runs = Rc::new(Cell::new(0));
+    let mut h = Harness::from_builder({
+        let old_runs = old_runs.clone();
+        move |ctx| {
+            let mut shell = Shell::builder(access_config(&["viewer", "admin"], Some("top")))
+                .authenticator(auth)
+                .build(ctx)?;
+            shell
+                .add(action("operation", move |_| old_runs.set(old_runs.get() + 1)).gate("shared"));
+            Ok(shell)
+        }
+    })?;
+    let grant = || {
+        AuthOutcome::Granted(Subject {
+            level: Level(1),
+            ..Subject::default()
+        })
+    };
+
+    h.shell.launch(LaunchAction::run("operation"));
+    let old_request = *requests.borrow().last().unwrap();
+    let replacement_runs = new_runs.clone();
+    h.shell.add(
+        action("operation", move |_| {
+            replacement_runs.set(replacement_runs.get() + 1);
+        })
+        .gate("shared"),
+    );
+
+    replies.borrow_mut().push_back(old_request.respond(grant()));
+    h.frames(2);
+    assert_eq!(old_runs.get(), 0);
+    assert_eq!(new_runs.get(), 0);
+
+    h.shell.launch(LaunchAction::run("operation"));
+    let replacement_request = *requests.borrow().last().unwrap();
+    assert_ne!(old_request, replacement_request);
+    replies
+        .borrow_mut()
+        .push_back(replacement_request.respond(grant()));
+    h.frames(2);
+    assert_eq!(old_runs.get(), 0);
+    assert_eq!(new_runs.get(), 1);
+    Ok(())
+}
+
+#[test]
+#[allow(
+    clippy::unwrap_used,
+    reason = "assert challenge issuance in regression test"
+)]
+fn request_binding_does_not_depend_on_continuation_value_equality() -> fairing::Result<()> {
+    let requests = Rc::new(RefCell::new(Vec::new()));
+    let replies = Rc::new(RefCell::new(std::collections::VecDeque::new()));
+    let auth = RetainingReader {
+        requests: requests.clone(),
+        replies: replies.clone(),
+    };
+    let mut h = Harness::from_builder(move |ctx| {
+        Shell::builder(access_config(&["viewer", "admin"], Some("top")))
+            .authenticator(auth)
+            .build(ctx)
+    })?;
+    let key = SettingKey::from("app.nan");
+
+    h.shell.launch(LaunchAction::Set(
+        key.clone(),
+        SettingValue::Float(f64::NAN),
+    ));
+    let request = *requests.borrow().last().unwrap();
+    replies
+        .borrow_mut()
+        .push_back(request.respond(AuthOutcome::Granted(Subject {
+            level: Level(1),
+            ..Subject::default()
+        })));
+    h.frames(2);
+
+    assert!(matches!(
+        h.shell.settings().get(&key),
+        Some(SettingValue::Float(value)) if value.is_nan()
+    ));
     Ok(())
 }

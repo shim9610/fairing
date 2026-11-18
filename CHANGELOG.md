@@ -18,6 +18,13 @@ Notable changes to the fairing crates are recorded here. The format follows
   clock. The `chrono` feature and `ChronoClock` API remain available. UTC time and
   its local offset now come from the same instant.
 
+### Security
+
+- Bind each pending authentication request to its exact gate and continuation.
+  Repeating the same operation may retain its challenge; another operation, including
+  one using the same gate, cancels it and receives a new request identity. Replacing or
+  removing a declaration also invalidates a pending continuation that names it.
+
 ## 0.1.0-beta.1 — unpublished prerelease
 
 For applications using an earlier checkout, see the [migration guide](docs/guide/10-migration.md)

@@ -13,6 +13,7 @@ args = parser.parse_args()
 source = args.source.read_text()
 contracts = {
     "response_is_current": "result == match active { Some(id) => id == response, None => false }",
+    "response_completes_target": "result == ((match active { Some(id) => id == response, None => false }) && target_current)",
     "level_allows": "result == (held >= required)",
     "grant_allowed": "result == (known && (candidate > held || (lock && candidate == held)))",
     "next_failure": "result >= current, result as int == if current < u32::MAX { current as int + 1 } else { current as int }",

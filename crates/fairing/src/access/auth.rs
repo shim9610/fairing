@@ -48,8 +48,8 @@ impl AuthRequestId {
             .map(Self)
     }
 
-    pub(crate) fn is_active(self, active: Option<Self>) -> bool {
-        super::rules::response_is_current(active.map(|id| id.0), self.0)
+    pub(crate) fn completes(self, active: Option<Self>, target_current: bool) -> bool {
+        super::rules::response_completes_target(active.map(|id| id.0), self.0, target_current)
     }
 
     /// Associate an outcome with the operation which produced it.
@@ -319,8 +319,9 @@ pub trait Authenticator {
         None
     }
 
-    /// The prompt opened or retargeted to `gate` (the lock screen's is `session.lock`) — start
-    /// listening now. A different gate cancels the preceding challenge before this call.
+    /// The prompt opened or changed its operation (the lock screen's gate is `session.lock`) —
+    /// start listening now. A different gate or continuation cancels the preceding challenge
+    /// before this call; an identical repeated operation may retain it.
     /// Anything a reader picked up while no prompt was up belongs to nobody and should be dropped
     /// here: a badge swiped at a panel that asked for nothing must not unlock the next person's
     /// prompt hours later.

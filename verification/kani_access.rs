@@ -61,3 +61,15 @@ fn replies_cannot_complete_absent_or_superseded_operations() {
         assert!(!rules::response_is_current(Some(replacement), response));
     }
 }
+
+#[kani::proof]
+fn replies_require_both_the_live_identity_and_its_bound_target() {
+    let active: Option<usize> = kani::any();
+    let response: usize = kani::any();
+    let target_current: bool = kani::any();
+    let completes = rules::response_completes_target(active, response, target_current);
+    assert_eq!(completes, active == Some(response) && target_current);
+    if active != Some(response) || !target_current {
+        assert!(!completes);
+    }
+}

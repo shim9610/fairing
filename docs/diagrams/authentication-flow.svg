@@ -1,15 +1,15 @@
 <?xml version='1.0' encoding='utf-8'?>
 <svg xmlns="http://www.w3.org/2000/svg" width="863pt" height="657pt" viewBox="0.00 0.00 862.70 657.20" role="img" aria-labelledby="diagram-title diagram-description">
-<title id="diagram-title">Fairing authentication request and response flow</title><desc id="diagram-description">The library creates a request identity. Built-in prompts and host-owned login UIs return session results bound to that request; installation rejects stale or canceled responses.</desc><g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(21.6 635.6)">
+<title id="diagram-title">Fairing authentication request and response flow</title><desc id="diagram-description">The library binds each request identity to its gate and exact continuation. Built-in prompts and host-owned login UIs return session results bound to that request; installation rejects stale, canceled, or retargeted responses.</desc><g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(21.6 635.6)">
 <title>authentication_flow</title>
 <polygon fill="white" stroke="transparent" points="-21.6,21.6 -21.6,-635.6 841.1,-635.6 841.1,21.6 -21.6,21.6" />
 <text text-anchor="middle" x="409.75" y="-590.8" font-family="DejaVu Sans, Arial, sans-serif" font-size="24.00">Authentication: request ownership and response correlation</text>
 
 <g id="node1" class="node">
 <title>request</title>
-<path fill="#f0f6ff" stroke="#6986a8" d="M475,-580C475,-580 262,-580 262,-580 256,-580 250,-574 250,-568 250,-568 250,-536 250,-536 250,-530 256,-524 262,-524 262,-524 475,-524 475,-524 481,-524 487,-530 487,-536 487,-536 487,-568 487,-568 487,-574 481,-580 475,-580" />
+<path fill="#f0f6ff" stroke="#6986a8" d="M514,-580C514,-580 223,-580 223,-580 217,-580 211,-574 211,-568 211,-568 211,-536 211,-536 211,-530 217,-524 223,-524 223,-524 514,-524 514,-524 520,-524 526,-530 526,-536 526,-536 526,-568 526,-568 526,-574 520,-580 514,-580" />
 <text text-anchor="middle" x="368.5" y="-557.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Fairing unlock flow</text>
-<text text-anchor="middle" x="368.5" y="-539.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Create live AuthRequestId</text>
+<text text-anchor="middle" x="368.5" y="-539.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Bind request + gate + continuation</text>
 </g>
 
 <g id="node2" class="node">
@@ -58,10 +58,10 @@
 
 <g id="node6" class="node">
 <title>install</title>
-<path fill="#f0f6ff" stroke="#6986a8" d="M548.5,-188C548.5,-188 202.5,-188 202.5,-188 196.5,-188 190.5,-182 190.5,-176 190.5,-176 190.5,-126 190.5,-126 190.5,-120 196.5,-114 202.5,-114 202.5,-114 548.5,-114 548.5,-114 554.5,-114 560.5,-120 560.5,-126 560.5,-126 560.5,-176 560.5,-176 560.5,-182 554.5,-188 548.5,-188" />
+<path fill="#f0f6ff" stroke="#6986a8" d="M553,-188C553,-188 198,-188 198,-188 192,-188 186,-182 186,-176 186,-176 186,-126 186,-126 186,-120 192,-114 198,-114 198,-114 553,-114 553,-114 559,-114 565,-120 565,-126 565,-126 565,-176 565,-176 565,-182 559,-188 553,-188" />
 <text text-anchor="middle" x="375.5" y="-165.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Fairing response installation</text>
-<text text-anchor="middle" x="375.5" y="-147.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Accept only current, unconsumed request</text>
-<text text-anchor="middle" x="375.5" y="-129.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Reject stale / canceled / unsolicited results</text>
+<text text-anchor="middle" x="375.5" y="-147.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Consume the matching bound continuation</text>
+<text text-anchor="middle" x="375.5" y="-129.2" font-family="DejaVu Sans, Arial, sans-serif" font-size="16.00" fill="#17253b">Reject stale / canceled / retargeted results</text>
 </g>
 
 <g id="edge3" class="edge">
