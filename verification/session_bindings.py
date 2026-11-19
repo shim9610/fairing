@@ -8,11 +8,11 @@ def inputs():
     return [ROOT / path for path in [
         'crates/fairing/src/access/session_rules.rs', 'crates/fairing/src/access/session_shared.rs',
         'crates/fairing/src/access/session.rs', 'crates/fairing/src/access/mod.rs',
-        'crates/fairing/src/access/auth.rs', 'crates/fairing/src/config.rs',
+        'crates/fairing/src/access/auth.rs', 'crates/fairing/src/access/rules.rs', 'crates/fairing/src/config.rs',
         'crates/fairing/src/shell/authentication.rs', 'crates/fairing/src/shell/navigation.rs',
         'crates/fairing/src/shell/settings_dispatch.rs', 'crates/fairing/src/shell/background.rs', 'crates/fairing/src/shell/update.rs',
         'crates/fairing/src/shell/mod.rs', 'crates/fairing/src/shell/builder.rs',
-        'verification/kani_session.rs', 'verification/verus/session.py', 'verification/proofs.py', 'verification/proof_obligations.py',
+        'verification/kani_access.rs', 'verification/kani_session.rs', 'verification/verus/access.py', 'verification/verus/session.py', 'verification/proofs.py', 'verification/proof_obligations.py',
         'verification/session_bindings.py', 'verification/src/session_publication.rs',
         'verification/src/sessions.rs', 'crates/fairing/tests/session_tokens.rs',
     ]]
@@ -23,6 +23,7 @@ def audit():
     shared = texts['crates/fairing/src/access/session_shared.rs']
     access = texts['crates/fairing/src/access/mod.rs']
     auth = texts['crates/fairing/src/shell/authentication.rs']
+    shell = texts['crates/fairing/src/shell/mod.rs']
     checks = {
         'opaque-reader': 'pub struct SessionToken(Arc<SessionInner>);' in reader,
         'private-writer-storage': 'pub struct SessionController {\n    inner: Arc<SessionInner>,\n    waker: Waker,\n}' in reader,
@@ -41,7 +42,14 @@ def audit():
         'local-policy-intersection': access.count('session_rules::authorize(') == 3,
         'no-one-level-bypass': '!self.token_sessions && (self.table.len() <= 1 || self.mode == AccessMode::Off)' in access,
         'token-terminal-detach': 'Err(SessionReadError::Revoked | SessionReadError::Expired)' in access and 'self.token.take()' in access,
-        'request-correlation': auth.count('response.request.is_active(self.auth_request)') == 1,
+        'request-target-binding': (
+            'pub(super) struct PendingAuthorization {' in auth
+            and 'request: crate::access::AuthRequestId,' in auth
+            and 'target: AuthorizationTarget,' in auth
+            and auth.count('response.request.completes(active, target_current)') == 1
+            and 'pending.target.references_declaration(id)' in auth
+            and shell.count('self.cancel_authorization_for_decl(') == 2
+        ),
         'legacy-grant-denial': 'self.access.uses_session_tokens()\n                    || !crate::access::rules::grant_allowed' in auth,
     }
     failed = [name for name, passed in checks.items() if not passed]

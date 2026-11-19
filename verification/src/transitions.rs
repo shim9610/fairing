@@ -136,13 +136,11 @@ struct Model {
 }
 impl Model {
     fn request(&mut self, intent: Intent) {
-        let ordinal = match self.challenge {
-            Some(old) if old.intent.gate() == intent.gate() => old.ordinal,
-            _ => {
-                self.issued.push(intent.gate());
-                self.issued.len() - 1
-            }
-        };
+        if self.challenge.is_some_and(|old| old.intent == intent) {
+            return;
+        }
+        let ordinal = self.issued.len();
+        self.issued.push(intent.gate());
         self.challenge = Some(Challenge { ordinal, intent });
     }
     fn execute(&mut self, intent: Intent, policy: bool) {

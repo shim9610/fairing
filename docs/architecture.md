@@ -67,7 +67,7 @@ devices for development ([guide 06](guide/06-services.md)).
 The current version is the unpublished `0.1.0-beta.1` prerelease. `verification/` is a
 separate unpublished Cargo workspace for assurance and is not a product dependency.
 
-`fairing` depends on `fairing-widgets`, `egui`, `serde`, `toml` and `log`, plus `eframe` behind `runner` and `chrono`
+`fairing` depends on `fairing-widgets`, `egui`, `serde`, `toml` and `log`, plus `eframe` behind `runner` and `jiff`
 behind `chrono`. Cargo dependency approvals are checked through `deps.allow` and
 `deny.toml`. Asset licences and attribution are reviewed separately and recorded in
 the hand-maintained asset section of `THIRD_PARTY.md`; the dependency scanner does

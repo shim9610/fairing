@@ -73,7 +73,7 @@ on crates.io, so depend on a reviewed Git revision or a local checkout.
 ```toml
 [dependencies]
 # 0.1.0-beta.1 is not published on crates.io; use a reviewed Git revision
-fairing = { git = "https://github.com/shim9610/fairing", features = ["runner"] }
+fairing = { git = "https://github.com/shim9610/fairing", rev = "d22d28c823f4570014349a5733a5afdfa41aac4b", features = ["runner"] }
 # or the repository checked out next door
 # fairing = { path = "../fairing/crates/fairing", features = ["runner"] }
 
@@ -105,7 +105,7 @@ Straight from `crates/fairing/Cargo.toml`.
 | `settings` | ✓ | The eleven built-in settings screens and `settings::add_all` ([§4.1](#41-the-built-in-settings-screens)). The setting keys and values screens use are there either way |
 | `runner` | | `fairing::runner` — an eframe-based fullscreen bootstrap (Wayland + glow) |
 | `runner-x11` | | `runner` plus `eframe/x11` |
-| `chrono` | | `fairing::services::clock::ChronoClock` — a clock that uses the offset from installed timezone data when queried, including applicable daylight-saving rules. Adds the optional chrono dependency tree; the default `SystemClock` is a fixed offset and does not know about DST |
+| `chrono` | | `fairing::services::clock::ChronoClock` — a clock that uses the system time zone, including daylight-saving rules, through optional `jiff`. The feature and type names are retained for compatibility; the default `SystemClock` uses a fixed offset |
 
 The default set is `["mock", "overlay", "osk", "brand", "settings"]`. A device with a hardware
 keyboard and no need for a shade can drop them all:

@@ -713,7 +713,7 @@ across feature combinations.
 | `settings` | on | The built-in settings screens and `settings::add_all` | No built-in settings screens; the setting keys and values are there either way |
 | `runner` | off | `fairing::runner` (an eframe kiosk window) | The integrator owns the event loop |
 | `runner-x11` | off | `runner` plus eframe's x11 backend | Wayland only |
-| `chrono` | off | `services::clock::ChronoClock` — a clock that asks the OS time-zone database, so daylight saving corrects itself | `SystemClock`: a fixed offset that does not know about DST |
+| `chrono` | off | `services::clock::ChronoClock` — system time-zone and daylight-saving support through optional `jiff`; names retained for compatibility | `SystemClock`: a fixed offset that does not know about DST |
 
 ```toml
 # Integrator Cargo.toml: a minimal shell with no shade and no keyboard

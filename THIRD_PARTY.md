@@ -33,7 +33,6 @@ approved is in `CONTRIBUTING.md`.
 | calloop-wayland-source | 0.3.0 | MIT | https://github.com/smithay/calloop-wayland-source |
 | calloop-wayland-source | 0.4.1 | MIT | https://github.com/smithay/calloop-wayland-source |
 | cfg-if | 1.0.5 | MIT OR Apache-2.0 | https://github.com/rust-lang/cfg-if |
-| chrono | 0.4.45 | MIT OR Apache-2.0 | https://github.com/chronotope/chrono |
 | color | 0.3.3 | Apache-2.0 OR MIT | https://github.com/linebender/color |
 | crc32fast | 1.5.4 | MIT OR Apache-2.0 | https://github.com/srijs/rust-crc32fast |
 | cursor-icon | 1.2.0 | MIT OR Apache-2.0 OR Zlib | https://github.com/rust-windowing/cursor-icon |
@@ -70,10 +69,11 @@ approved is in `CONTRIBUTING.md`.
 | harfrust | 0.12.0 | MIT | https://github.com/harfbuzz/harfrust |
 | hashbrown | 0.15.5 | MIT OR Apache-2.0 | https://github.com/rust-lang/hashbrown |
 | hashbrown | 0.17.1 | MIT OR Apache-2.0 | https://github.com/rust-lang/hashbrown |
-| iana-time-zone | 0.1.65 | MIT OR Apache-2.0 | https://github.com/strawlab/iana-time-zone |
 | image | 0.25.10 | MIT OR Apache-2.0 | https://github.com/image-rs/image |
 | indexmap | 2.14.2 | Apache-2.0 OR MIT | https://github.com/indexmap-rs/indexmap |
 | itertools | 0.15.0 | MIT OR Apache-2.0 | https://github.com/rust-itertools/itertools |
+| jiff | 0.2.46 | Unlicense OR MIT | https://github.com/BurntSushi/jiff |
+| jiff-core | 0.1.8 | Unlicense OR MIT | https://github.com/BurntSushi/jiff |
 | kurbo | 0.13.1 | Apache-2.0 OR MIT | https://github.com/linebender/kurbo |
 | libc | 0.2.191 | MIT OR Apache-2.0 | https://github.com/rust-lang/libc |
 | libloading | 0.8.9 | ISC | https://github.com/nagisa/rust_libloading/ |

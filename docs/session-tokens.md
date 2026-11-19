@@ -14,7 +14,9 @@ admission and the distinction between issuer revocation and local detachment.
 The existing `Authenticator` trait handles credentials, request cancellation and
 responses. After verifying credentials, retain the controller and return
 `AuthOutcome::Session(token)`. Asynchronous results must retain their original
-`AuthRequestId`; a canceled or superseded request cannot install its token.
+`AuthRequestId`; a canceled or superseded request cannot install its token. Fairing
+binds that identity to the exact gate and continuation. Changing the requested
+operation, even to another operation using the same gate, creates a new request.
 
 ```rust
 use fairing::access::{
